@@ -302,19 +302,26 @@ input.seen:checked {
   background: var(--vscode-button-background, #0a84ff);
   border-color: var(--vscode-button-background, #0a84ff);
 }
+/* Centred by the box model rather than by hand: inset plus auto margins
+   places the mark, and rotating about its own centre keeps it there. The
+   nudge up and left is optical — a tick's mass sits low and right of its
+   bounding box, so squaring it to the box leaves it looking dropped. */
 input.seen::after {
   content: "";
   position: absolute;
-  left: 4px;
-  top: 1px;
-  width: 4px;
-  height: 8px;
+  inset: 0;
+  margin: auto;
+  width: 3.5px;
+  height: 7px;
   border: solid var(--vscode-button-foreground, #ffffff);
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg) scale(0);
+  transform: translate(-0.5px, -1px) rotate(45deg) scale(0);
+  transform-origin: center;
   transition: transform 90ms ease;
 }
-input.seen:checked::after { transform: rotate(45deg) scale(1); }
+input.seen:checked::after {
+  transform: translate(-0.5px, -1px) rotate(45deg) scale(1);
+}
 .row.seen-marked .name,
 .row.seen-marked .counts { opacity: 0.45; }
 .row.seen-marked .name { text-decoration: line-through; }
@@ -363,7 +370,28 @@ input.seen:checked::after { transform: rotate(45deg) scale(1); }
 
 /* -------------------------------------------------------- choosing a review */
 
-.picker { padding: 8px; }
+/* The list scrolls; the action does not. A primary button that walks off the
+   bottom of a long list is a button nobody finds. */
+html, body { height: 100%; }
+.picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 8px 8px 0;
+  box-sizing: border-box;
+}
+.picker .pulls {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 0 8px;
+}
+.picker .footer {
+  flex: 0 0 auto;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
 .filter {
   width: 100%;
   box-sizing: border-box;
@@ -411,7 +439,7 @@ input.seen:checked::after { transform: rotate(45deg) scale(1); }
 .tag.warn { color: var(--warning); }
 .tag.muted { color: var(--muted); }
 button {
-  margin: 0 12px;
+  margin: 0;
   font: inherit;
   color: var(--vscode-button-foreground);
   background: var(--vscode-button-background);
@@ -541,7 +569,7 @@ function picker(pulls: PullRequestSummary[], branch: string): string {
   return `<div class="picker">
   <input id="filter" class="filter" type="search" placeholder="Filter pull requests" autocomplete="off">
   <div class="pulls">${rows}</div>
-  <button id="review">Review This Branch</button>
+  <div class="footer"><button id="review">Review This Branch</button></div>
 </div>`;
 }
 
