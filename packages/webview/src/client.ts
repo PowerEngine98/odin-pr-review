@@ -257,6 +257,7 @@ export const CLIENT_SCRIPT = String.raw`
   viewport.addEventListener("click", function (event) {
     if (event.target.closest(".card") || event.target.closest("path.hit")) return;
     clearHighlight();
+    clearSelection();
     tooltip.classList.remove("visible");
   });
 
@@ -622,7 +623,8 @@ export const CLIENT_SCRIPT = String.raw`
     composer.querySelector(".composer-cancel").addEventListener("click", function () {
       composer.hidden = true;
       pending = null;
-      clearSelection();
+      // The pick survives: cancelling is usually a change of wording, not a
+      // change of mind about which lines. Escape or a click away drops it.
     });
 
     composer.querySelector(".composer-add").addEventListener("click", function () {
@@ -744,12 +746,30 @@ export const CLIENT_SCRIPT = String.raw`
   function paintSelection(card, rows) {
     clearMarks();
     card.classList.add("picking");
-    rows.forEach(function (row) { row.classList.add("picked"); });
+    rows.forEach(function (row) {
+      row.classList.add("picked");
+      row.appendChild(chrome("pick-edge", ""));
+    });
+    // A handle at each end. One row is one end, not two, so it gets one.
+    rows[0].appendChild(chrome("pick-plus", "+"));
+    if (rows.length > 1) {
+      rows[rows.length - 1].appendChild(chrome("pick-plus", "+"));
+    }
+  }
+
+  function chrome(className, text) {
+    var span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    return span;
   }
 
   function clearMarks() {
     document.querySelectorAll(".row.picked").forEach(function (row) {
       row.classList.remove("picked");
+    });
+    document.querySelectorAll(".pick-edge, .pick-plus").forEach(function (mark) {
+      mark.remove();
     });
     document.querySelectorAll(".card.picking").forEach(function (card) {
       card.classList.remove("picking");
@@ -772,6 +792,13 @@ export const CLIENT_SCRIPT = String.raw`
 
   cards.forEach(function (card) {
     card.addEventListener("pointerdown", function (event) {
+      // The handle belongs to the pick already made; pressing it must not be
+      // read as the start of a new one.
+      if (event.target.closest(".pick-plus")) {
+        event.stopPropagation();
+        return;
+      }
+
       var row = commentableRow(event);
       if (!row || event.button !== 0) return;
 
@@ -781,6 +808,15 @@ export const CLIENT_SCRIPT = String.raw`
 
       dragging = true;
       paintSelection(card, rowsBetween(card, picking.from, picking.to));
+    });
+
+    // Clicking a handle says the same thing the gesture did: talk about this.
+    // It is what the reader reaches for after cancelling and changing their
+    // mind, when the pick is still lit but the composer has gone.
+    card.addEventListener("click", function (event) {
+      if (!event.target.closest(".pick-plus") || !picking) return;
+      event.stopPropagation();
+      compose(picking.card, rowsBetween(picking.card, picking.from, picking.to), event);
     });
 
     card.addEventListener("pointermove", function (event) {
@@ -1012,8 +1048,17 @@ export const CLIENT_SCRIPT = String.raw`
 
   document.addEventListener("keydown", function (event) {
     if (event.target instanceof HTMLInputElement) return;
+    if (event.target instanceof HTMLTextAreaElement) {
+      // Escape leaves the composer without writing anything, but the lines
+      // stay picked so the handles can reopen it.
+      if (event.key === "Escape" && composer && !composer.hidden) {
+        composer.hidden = true;
+        pending = null;
+      }
+      return;
+    }
     if (event.key === "f") fit();
-    if (event.key === "Escape") clearHighlight();
+    if (event.key === "Escape") { clearHighlight(); clearSelection(); }
   });
 
   /* ------------------------------------------------------------ host bridge */

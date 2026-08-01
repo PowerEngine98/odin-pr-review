@@ -524,11 +524,52 @@ html, body {
 
 /* The lines a comment is about to be written against. Selected text inside a
    card would say the same thing more faintly and would be lost the moment the
-   composer took focus, so the pick is held as state instead. */
+   composer took focus, so the pick is held as state instead.
+
+   Laid on as an image rather than a colour: the row's own background already
+   says added or removed, and replacing it would cost that while the reader is
+   choosing what to say about it. The wash tints, it does not overwrite. */
 .row.picked {
-  background: color-mix(in srgb, var(--status-renamed) 24%, transparent);
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--warning) 20%, transparent),
+    color-mix(in srgb, var(--warning) 20%, transparent)
+  );
 }
 .card.picking { user-select: none; }
+
+/* The pick's own edge, drawn where the code starts rather than at the row's
+   left edge: that is the line the eye already follows down a diff. */
+.pick-edge {
+  position: absolute;
+  left: calc(var(--gutter-width) - 1px);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--status-renamed);
+  pointer-events: none;
+}
+
+/* The handles at the two ends of the pick. They straddle the same edge, which
+   is what makes a span read as one thing with a top and a bottom rather than
+   as a stack of marked rows. */
+.pick-plus {
+  position: absolute;
+  left: calc(var(--gutter-width) - 9px);
+  top: 1px;
+  width: 18px;
+  height: calc(var(--line-height) - 2px);
+  border-radius: 5px;
+  background: var(--status-renamed);
+  color: #fff;
+  font-weight: 700;
+  font-size: calc(var(--font-size) + 1px);
+  line-height: calc(var(--line-height) - 2px);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  z-index: 2;
+}
+.pick-plus:hover { filter: brightness(1.15); }
 
 .composer, .review {
   position: fixed;
@@ -943,6 +984,7 @@ html, body {
   viewport.addEventListener("click", function (event) {
     if (event.target.closest(".card") || event.target.closest("path.hit")) return;
     clearHighlight();
+    clearSelection();
     tooltip.classList.remove("visible");
   });
 
@@ -1308,7 +1350,8 @@ html, body {
     composer.querySelector(".composer-cancel").addEventListener("click", function () {
       composer.hidden = true;
       pending = null;
-      clearSelection();
+      // The pick survives: cancelling is usually a change of wording, not a
+      // change of mind about which lines. Escape or a click away drops it.
     });
 
     composer.querySelector(".composer-add").addEventListener("click", function () {
@@ -1430,12 +1473,30 @@ html, body {
   function paintSelection(card, rows) {
     clearMarks();
     card.classList.add("picking");
-    rows.forEach(function (row) { row.classList.add("picked"); });
+    rows.forEach(function (row) {
+      row.classList.add("picked");
+      row.appendChild(chrome("pick-edge", ""));
+    });
+    // A handle at each end. One row is one end, not two, so it gets one.
+    rows[0].appendChild(chrome("pick-plus", "+"));
+    if (rows.length > 1) {
+      rows[rows.length - 1].appendChild(chrome("pick-plus", "+"));
+    }
+  }
+
+  function chrome(className, text) {
+    var span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    return span;
   }
 
   function clearMarks() {
     document.querySelectorAll(".row.picked").forEach(function (row) {
       row.classList.remove("picked");
+    });
+    document.querySelectorAll(".pick-edge, .pick-plus").forEach(function (mark) {
+      mark.remove();
     });
     document.querySelectorAll(".card.picking").forEach(function (card) {
       card.classList.remove("picking");
@@ -1458,6 +1519,13 @@ html, body {
 
   cards.forEach(function (card) {
     card.addEventListener("pointerdown", function (event) {
+      // The handle belongs to the pick already made; pressing it must not be
+      // read as the start of a new one.
+      if (event.target.closest(".pick-plus")) {
+        event.stopPropagation();
+        return;
+      }
+
       var row = commentableRow(event);
       if (!row || event.button !== 0) return;
 
@@ -1467,6 +1535,15 @@ html, body {
 
       dragging = true;
       paintSelection(card, rowsBetween(card, picking.from, picking.to));
+    });
+
+    // Clicking a handle says the same thing the gesture did: talk about this.
+    // It is what the reader reaches for after cancelling and changing their
+    // mind, when the pick is still lit but the composer has gone.
+    card.addEventListener("click", function (event) {
+      if (!event.target.closest(".pick-plus") || !picking) return;
+      event.stopPropagation();
+      compose(picking.card, rowsBetween(picking.card, picking.from, picking.to), event);
     });
 
     card.addEventListener("pointermove", function (event) {
@@ -1698,8 +1775,17 @@ html, body {
 
   document.addEventListener("keydown", function (event) {
     if (event.target instanceof HTMLInputElement) return;
+    if (event.target instanceof HTMLTextAreaElement) {
+      // Escape leaves the composer without writing anything, but the lines
+      // stay picked so the handles can reopen it.
+      if (event.key === "Escape" && composer && !composer.hidden) {
+        composer.hidden = true;
+        pending = null;
+      }
+      return;
+    }
     if (event.key === "f") fit();
-    if (event.key === "Escape") clearHighlight();
+    if (event.key === "Escape") { clearHighlight(); clearSelection(); }
   });
 
   /* ------------------------------------------------------------ host bridge */

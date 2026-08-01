@@ -530,11 +530,52 @@ html, body {
 
 /* The lines a comment is about to be written against. Selected text inside a
    card would say the same thing more faintly and would be lost the moment the
-   composer took focus, so the pick is held as state instead. */
+   composer took focus, so the pick is held as state instead.
+
+   Laid on as an image rather than a colour: the row's own background already
+   says added or removed, and replacing it would cost that while the reader is
+   choosing what to say about it. The wash tints, it does not overwrite. */
 .row.picked {
-  background: color-mix(in srgb, var(--status-renamed) 24%, transparent);
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--warning) 20%, transparent),
+    color-mix(in srgb, var(--warning) 20%, transparent)
+  );
 }
 .card.picking { user-select: none; }
+
+/* The pick's own edge, drawn where the code starts rather than at the row's
+   left edge: that is the line the eye already follows down a diff. */
+.pick-edge {
+  position: absolute;
+  left: calc(var(--gutter-width) - 1px);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--status-renamed);
+  pointer-events: none;
+}
+
+/* The handles at the two ends of the pick. They straddle the same edge, which
+   is what makes a span read as one thing with a top and a bottom rather than
+   as a stack of marked rows. */
+.pick-plus {
+  position: absolute;
+  left: calc(var(--gutter-width) - 9px);
+  top: 1px;
+  width: 18px;
+  height: calc(var(--line-height) - 2px);
+  border-radius: 5px;
+  background: var(--status-renamed);
+  color: #fff;
+  font-weight: 700;
+  font-size: calc(var(--font-size) + 1px);
+  line-height: calc(var(--line-height) - 2px);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  z-index: 2;
+}
+.pick-plus:hover { filter: brightness(1.15); }
 
 .composer, .review {
   position: fixed;
