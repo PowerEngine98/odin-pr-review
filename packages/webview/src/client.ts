@@ -395,16 +395,22 @@ export const CLIENT_SCRIPT = String.raw`
   function showTooltip(event, id) {
     var edge = data.edges.find(function (e) { return e.id === id; });
     if (!edge) return;
-    // Paths are shown whole and allowed to wrap. Truncating them defeated the
-    // purpose: the one thing a reader wants from this is which file, and an
-    // ellipsis lands in the middle of the part that distinguishes it.
+    // File names only. The directory prefix of two files in the same project
+    // is mostly identical, so it costs three wrapped lines to say almost
+    // nothing; the name is what tells them apart. The full pair stays on the
+    // element's title for when it is genuinely ambiguous.
+    var name = function (path) {
+      return path.slice(path.lastIndexOf("/") + 1);
+    };
+
     tooltip.innerHTML =
       '<div class="target">' + escapeHtml(edge.label || edge.symbol || "") + "</div>" +
-      '<div class="meta">' + escapeHtml(edge.fromPath) + ":" + edge.fromLine + "</div>" +
-      '<div class="meta"><span class="arrow">&rarr;</span> ' +
-      escapeHtml(edge.toPath) + ":" + edge.toLine + "</div>" +
+      '<div class="meta">' + escapeHtml(name(edge.fromPath)) + ":" + edge.fromLine +
+      ' <span class="arrow">&rarr;</span> ' +
+      escapeHtml(name(edge.toPath)) + ":" + edge.toLine + "</div>" +
       '<div class="meta">' + edge.change + " &middot; " + edge.kind +
       " &middot; " + edge.confidence + "</div>";
+    tooltip.title = edge.fromPath + " → " + edge.toPath;
     // The arrow in the tooltip is the arrow under the cursor, so it carries the
     // same colour: green for a reference the change introduced, red for one it
     // took away.
