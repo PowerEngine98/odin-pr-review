@@ -1643,7 +1643,10 @@ export const CLIENT_SCRIPT = String.raw`
       var add = document.createElement("button");
       add.className = "add";
       add.title = "Leave a reaction";
-      add.textContent = "☺";
+      // Drawn rather than typed: the smiley character renders at whatever size
+      // and weight the font feels like, which beside a 14-pixel emoji is a
+      // speck. Static markup, no text from anywhere in it.
+      add.innerHTML = SMILEY;
       add.addEventListener("click", function (event) {
         event.stopPropagation();
         showPicker(comment, add);
@@ -1652,6 +1655,14 @@ export const CLIENT_SCRIPT = String.raw`
     }
     return row;
   }
+
+  var SMILEY =
+    '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">' +
+    '<circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
+    '<circle cx="5.8" cy="6.6" r="0.95" fill="currentColor"/>' +
+    '<circle cx="10.2" cy="6.6" r="0.95" fill="currentColor"/>' +
+    '<path d="M5.2 9.6a3.2 3.2 0 0 0 5.6 0" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.4" stroke-linecap="round"/></svg>';
 
   var EMOJI = {
     "+1": "👍", "-1": "👎", laugh: "😄", hooray: "🎉",

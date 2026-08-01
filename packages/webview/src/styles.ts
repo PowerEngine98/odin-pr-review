@@ -1260,17 +1260,22 @@ input[type="checkbox"]:checked::after {
 .reactions .add {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 8px;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
+/* Room for the face, and no more: it is one glyph, not a label. */
+.reactions .add { width: 34px; padding: 0; }
+.reactions .add svg { display: block; }
+.reactions .pill .emoji { font-size: 13px; line-height: 1; }
 .reactions .pill:hover,
 .reactions .add:hover {
   color: var(--text);
