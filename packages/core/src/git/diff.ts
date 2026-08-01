@@ -62,10 +62,17 @@ export async function readPatch(req: DiffRequest): Promise<{
 
   const patch = await git(args, req);
 
+  // `HEAD` names a commit, not a change. Everything downstream reads headRef as
+  // the answer to "which review is this" — the window title, the file a
+  // rendered page is written to, the key the viewed marks are stored under —
+  // and every branch answering "HEAD" makes all three collide.
+  const headName =
+    headRef === "HEAD" ? (await currentBranch(req)) ?? headRef : headRef;
+
   const meta: GraphMeta = {
     repo: await repoRoot(req),
     baseRef,
-    headRef,
+    headRef: headName,
     baseSha: await revParse(baseRef, req),
     headSha: await revParse(headRef, req),
     mergeBase: base,

@@ -142,7 +142,12 @@ export function renderHtml(
     `<title>${escapeHtml(title)}</title>`,
     `<style>${stylesheet(theme, layout.metrics)}</style>`,
     `</head><body>`,
+    // One fixed block, so the two rows cannot drift apart and the canvas has a
+    // single height to make room for.
+    `<div class="chrome">`,
+    prBar(graph),
     toolbar(graph, layout),
+    `</div>`,
     `<div class="viewport">`,
     `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
     edgeLayer(full),
@@ -190,12 +195,9 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
     .join("");
 
   return `<div class="toolbar">
-  <span class="refs" title="${escapeHtml(graph.meta.baseRef)} → ${escapeHtml(graph.meta.headRef)}"><strong>${escapeHtml(graph.meta.baseRef)}</strong><br><span class="to">→</span> <strong>${escapeHtml(graph.meta.headRef)}</strong></span>
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
-  ${title(graph)}
   <span class="spacer"></span>
-  <button id="action-review" class="pending" hidden>review <span class="count">0</span></button>
   <span class="filters">
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
@@ -207,41 +209,100 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
 }
 
 /**
- * The pull request's own title, linked to it.
+ * The header a pull request has on the forge.
  *
- * A branch name says what the change is called; the title says what it is for,
- * and is usually the first thing a reviewer wants. Absent when there is no
- * pull request — nothing here depends on a forge being involved.
+ * Reviewing here and reviewing in the browser should not feel like two
+ * different jobs, and the browser's answer to "what am I looking at" is this
+ * bar: the state, the title, who is merging what into where, and how much of it
+ * has been read. Repeating its shape costs a few rules and saves the reader
+ * from having to learn a second one.
+ *
+ * It renders with or without a pull request. A branch compared against another
+ * branch still has an author, a commit count and two ref names, and losing the
+ * whole header because no forge is involved would be a strange way to treat the
+ * offline case.
  */
-function title(graph: ChangeGraph): string {
-  const pull = graph.meta.pullRequest;
-  if (!pull) return "";
+function prBar(graph: ChangeGraph): string {
+  const meta = graph.meta;
+  const pull = meta.pullRequest;
+  const authors = meta.authors ?? [];
+  const commits = authors.reduce((n, a) => n + a.commits, 0);
 
-  // The title itself names the tab; what is left here is its state, said the
-  // same way the chooser says it, and a way back to the forge.
-  const tags = [
-    pull.draft
-      ? `<span class="tag draft">draft</span>`
-      : `<span class="tag open">open</span>`,
-    pull.reviewDecision === "APPROVED"
+  const state = pull
+    ? pull.draft
+      ? `<span class="state draft">${PR_ICON}Draft</span>`
+      : `<span class="state open">${PR_ICON}Open</span>`
+    : `<span class="state local">${PR_ICON}Local</span>`;
+
+  const decision =
+    pull?.reviewDecision === "APPROVED"
       ? `<span class="tag ok">approved</span>`
-      : pull.reviewDecision === "CHANGES_REQUESTED"
+      : pull?.reviewDecision === "CHANGES_REQUESTED"
         ? `<span class="tag warn">changes requested</span>`
-        : pull.reviewDecision === "REVIEW_REQUIRED"
+        : pull?.reviewDecision === "REVIEW_REQUIRED"
           ? `<span class="tag muted">review required</span>`
-          : "",
-  ]
-    .filter(Boolean)
-    .join("");
+          : "";
 
-  return (
-    `<span class="pr">` +
-    `<a href="${escapeHtml(pull.url)}" target="_blank" rel="noreferrer" ` +
-    `title="Open #${pull.number} in the browser">#${pull.number}</a>` +
-    tags +
-    `</span>`
-  );
+  const heading = pull
+    ? `<span class="pr-title" title="${escapeHtml(pull.title)}">${escapeHtml(pull.title)}</span>` +
+      `<a class="pr-number" href="${escapeHtml(pull.url)}" target="_blank" rel="noreferrer" ` +
+      `title="Open #${pull.number} in the browser">#${pull.number}</a>${decision}`
+    : `<span class="pr-title">${escapeHtml(meta.headRef)}</span>`;
+
+  // "wants to merge" is the forge's phrasing, and it is worth borrowing: it
+  // names the direction, which two ref names side by side never quite do.
+  const who = authors[0]?.name;
+  const count = commits === 1 ? "1 commit" : `${commits} commits`;
+  const merging =
+    (who ? `<span class="who">${escapeHtml(who)}</span> wants to merge ` : "merging ") +
+    (commits ? `${count} ` : "") +
+    `into <span class="ref base">${escapeHtml(meta.baseRef)}</span> ` +
+    `from <span class="ref head">${escapeHtml(meta.headRef)}</span>` +
+    `<button class="copy-ref" title="Copy the branch name" data-ref="${escapeHtml(meta.headRef)}">${COPY_ICON}</button>`;
+
+  return `<div class="prbar">
+  ${state}
+  <span class="about">
+    <span class="head-line">${heading}</span>
+    <span class="merge-line">${merging}</span>
+  </span>
+  <span class="spacer"></span>
+  <span class="viewed-count" title="Files you have marked as reviewed">
+    ${RING}<span class="tally">0 / 0</span> viewed</span>
+  <button id="action-review" class="submit" hidden>Submit review<span class="count" hidden>0</span></button>
+</div>`;
 }
+
+/** A pull request, drawn rather than borrowed, so nothing has to be fetched. */
+const PR_ICON =
+  `<svg class="icon" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<circle cx="4" cy="3.6" r="1.9" fill="currentColor"/>` +
+  `<circle cx="4" cy="12.4" r="1.9" fill="currentColor"/>` +
+  `<circle cx="12" cy="12.4" r="1.9" fill="currentColor"/>` +
+  `<path d="M4 5.9v4.4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>` +
+  `<path d="M12 10.3V7.2a2.6 2.6 0 0 0-2.6-2.6H6.6" stroke="currentColor" stroke-width="1.5" ` +
+  `fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+const COPY_ICON =
+  `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">` +
+  `<rect x="5.2" y="1.8" width="8" height="9.4" rx="1.6" stroke="currentColor" ` +
+  `stroke-width="1.3" fill="none"/>` +
+  `<path d="M10.8 13.2a1.6 1.6 0 0 1-1.6 1.6H4.4a1.6 1.6 0 0 1-1.6-1.6V5.6" ` +
+  `stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/></svg>`;
+
+/**
+ * The progress ring beside the tally.
+ *
+ * Drawn as a circle whose dash pattern the client rewrites, so reading a file
+ * moves it without anything being re-rendered.
+ */
+const RING =
+  `<svg class="ring" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6" ` +
+  `opacity="0.3"/>` +
+  `<circle class="arc" cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.6" stroke-linecap="round" stroke-dasharray="0 39" ` +
+  `transform="rotate(-90 8 8)"/></svg>`;
 
 /**
  * Where a line comment is written.

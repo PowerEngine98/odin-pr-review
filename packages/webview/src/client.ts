@@ -118,9 +118,9 @@ export const CLIENT_SCRIPT = String.raw`
 
   function fit() {
     var rect = viewport.getBoundingClientRect();
-    // The toolbar stacks into columns, so its height depends on how much it
-    // has to say; measuring beats assuming.
-    var bar = document.querySelector(".toolbar");
+    // The header stacks into columns and wraps, so its height depends on how
+    // much it has to say; measuring beats assuming.
+    var bar = document.querySelector(".chrome") || document.querySelector(".toolbar");
     var top = bar ? bar.getBoundingClientRect().height + 12 : 60;
 
     var scale = clamp(
@@ -657,8 +657,13 @@ export const CLIENT_SCRIPT = String.raw`
 
   function refreshReview() {
     if (reviewButton) {
-      reviewButton.hidden = !data.canReview || drafts.length === 0;
-      reviewButton.querySelector(".count").textContent = String(drafts.length);
+      // Present from the start, the way the forge's own button is: hiding it
+      // until something is drafted keeps the one thing a reviewer came to do
+      // out of sight until they have already worked out how to do it.
+      reviewButton.hidden = !data.canReview;
+      var count = reviewButton.querySelector(".count");
+      count.hidden = drafts.length === 0;
+      count.textContent = String(drafts.length);
     }
     if (panel) {
       panel.querySelector(".review-count").textContent =
@@ -994,6 +999,42 @@ export const CLIENT_SCRIPT = String.raw`
     });
 
     recompute();
+    refreshTally();
+  }
+
+  /**
+   * How much of the change has been read, said the way the forge says it.
+   *
+   * Counts what can actually be ticked. A file nothing changed has no box, so
+   * counting it would leave the tally short of full however much was read and
+   * make finishing look impossible. Files this page inferred as read are left
+   * out too: the number has to mean the same thing here as it does in the
+   * browser, or comparing them is worse than not having it.
+   */
+  function refreshTally() {
+    var bar = document.querySelector(".viewed-count");
+    if (!bar) return;
+
+    var total = 0;
+    var done = 0;
+    data.nodes.forEach(function (node) {
+      if (node.untouched) return;
+      total++;
+      if (viewed[node.id] === true) done++;
+    });
+
+    bar.querySelector(".tally").textContent = done + " / " + total;
+
+    var arc = bar.querySelector(".arc");
+    if (arc) {
+      // 2πr for r = 6.2, to the precision a 13px circle can show.
+      var circumference = 38.96;
+      var filled = total ? (done / total) * circumference : 0;
+      arc.setAttribute(
+        "stroke-dasharray",
+        filled.toFixed(2) + " " + (circumference - filled).toFixed(2),
+      );
+    }
   }
 
   /** Sets one file's state, from a click here or from the host. */
@@ -1045,6 +1086,44 @@ export const CLIENT_SCRIPT = String.raw`
 
   var fitButton = document.getElementById("action-fit");
   if (fitButton) fitButton.addEventListener("click", fit);
+
+  // Copying the branch name is what the forge's header is for half the time —
+  // it is how a reviewer gets from reading the change to checking it out.
+  var copyRef = document.querySelector(".copy-ref");
+  if (copyRef) {
+    copyRef.addEventListener("click", function () {
+      var ref = copyRef.dataset.ref || "";
+      var done = function () {
+        copyRef.classList.add("done");
+        window.setTimeout(function () { copyRef.classList.remove("done"); }, 1200);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ref).then(done, fallback);
+      } else {
+        fallback();
+      }
+
+      // Webviews do not always grant the clipboard API. A hidden field and the
+      // old command work where it is refused, and saying nothing at all would
+      // leave the reviewer pasting whatever was there before.
+      function fallback() {
+        var field = document.createElement("textarea");
+        field.value = ref;
+        field.setAttribute("readonly", "");
+        field.style.position = "fixed";
+        field.style.opacity = "0";
+        document.body.appendChild(field);
+        field.select();
+        try {
+          if (document.execCommand("copy")) done();
+        } catch (e) {
+          /* nothing left to try; the name is on screen to be read */
+        }
+        field.remove();
+      }
+    });
+  }
 
   document.addEventListener("keydown", function (event) {
     if (event.target instanceof HTMLInputElement) return;

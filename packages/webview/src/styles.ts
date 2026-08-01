@@ -39,6 +39,11 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
 
 * { box-sizing: border-box; }
 
+/* The attribute has to beat any display a class sets, or an element the script
+   has hidden stays on screen — which is how a Submit review button appeared on
+   a page with nothing to submit through. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -53,19 +58,162 @@ html, body {
 /* Everything stacks into columns rather than running across the top: a
    docked editor panel is narrow, and a row of eight items wraps into a mess
    long before it runs out of things to say. */
-.toolbar {
+.chrome {
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 20;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.toolbar {
   display: flex;
   align-items: flex-start;
   gap: 16px;
   padding: 8px 14px;
   overflow-x: auto;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
   font-size: 12px;
+}
+
+/* ------------------------------------------------------------ the pull request
+
+   The forge's own header, repeated. A reviewer arriving here has just come from
+   the browser, or is about to go back to it, and the question it answers —
+   what am I looking at, who is merging what into where, how much have I read —
+   is the same question in both places. */
+.prbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.prbar .state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 4px 11px 4px 9px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--muted);
+}
+.prbar .state.open { background: var(--status-added); }
+.prbar .state.draft { background: color-mix(in srgb, var(--muted) 80%, var(--text)); }
+.prbar .state.local { background: color-mix(in srgb, var(--muted) 70%, transparent); }
+
+.prbar .about {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.prbar .head-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.prbar .pr-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prbar .pr-number { color: var(--muted); text-decoration: none; flex: 0 0 auto; }
+.prbar .pr-number:hover { color: var(--status-renamed); text-decoration: underline; }
+
+.prbar .merge-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+.prbar .who { color: var(--status-renamed); }
+
+/* The refs as chips, because the two names are the part of this sentence the
+   eye is looking for. */
+.prbar .ref {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--status-renamed);
+  background: color-mix(in srgb, var(--status-renamed) 14%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  max-width: 34ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prbar .copy-ref {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.prbar .copy-ref:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+.prbar .copy-ref.done { color: var(--added); }
+
+.prbar .spacer { flex: 1 1 auto; }
+
+.prbar .viewed-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.prbar .viewed-count .tally { color: var(--text); font-weight: 600; }
+.prbar .ring { color: var(--status-renamed); }
+
+.prbar .tag {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+.prbar .tag.ok { color: var(--added); }
+.prbar .tag.warn { color: var(--warning); }
+.prbar .tag.muted { color: var(--muted); }
+
+/* Sending a review is the one irreversible thing this page can do, so it is
+   the one control drawn as a filled button. */
+.prbar .submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--status-added);
+  border: 1px solid color-mix(in srgb, #000 18%, var(--status-added));
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.prbar .submit:hover { filter: brightness(1.08); }
+.prbar .submit .count {
+  background: color-mix(in srgb, #000 28%, transparent);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
 }
 
 /* Stacking the rest of the toolbar into columns freed a great deal of width,
@@ -73,9 +221,7 @@ html, body {
    that identifies them. */
 /* A rule between the groups, so the bar reads as sections rather than as one
    long run of unrelated things. */
-.toolbar > .legend,
 .toolbar > .gaps,
-.toolbar > .pr,
 .toolbar > .filters,
 .toolbar > button {
   border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
@@ -83,47 +229,7 @@ html, body {
 }
 .toolbar > .gaps { border-left-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 
-.toolbar .pr {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  align-self: center;
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-.toolbar .pr a { color: var(--status-renamed); text-decoration: none; }
-.toolbar .pr a:hover { text-decoration: underline; }
-
-.toolbar .tag {
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  padding: 0 7px;
-  font-size: 11px;
-}
-.toolbar .tag.open { color: var(--added); }
-.toolbar .tag.draft { color: var(--muted); }
-.toolbar .tag.ok { color: var(--added); }
-.toolbar .tag.warn { color: var(--warning); }
-.toolbar .tag.muted { color: var(--muted); }
-
-.toolbar .refs {
-  color: var(--muted);
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 46ch;
-  line-height: 1.35;
-}
-.toolbar .refs strong {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: bottom;
-}
-.toolbar .refs .to { color: var(--muted); }
 .legend, .filters, .toolbar button { flex: 0 0 auto; }
-.toolbar .refs strong { color: var(--text); font-weight: 600; }
 .toolbar .spacer { flex: 1; }
 
 .toolbar label {
@@ -208,9 +314,13 @@ input[type="checkbox"]:checked::after {
   gap: 1px;
   line-height: 1.35;
 }
+/* Filled, not hollow. An outlined square of exactly this size is what an
+   unticked checkbox looks like, and a legend is not something you can tick. */
 .legend i {
   width: 10px; height: 10px; border-radius: 3px;
-  border: 1.5px solid currentColor; font-style: normal;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 32%, transparent);
+  font-style: normal;
 }
 .legend .added { color: var(--status-added); }
 .legend .modified { color: var(--status-modified); }

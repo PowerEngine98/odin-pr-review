@@ -27,6 +27,12 @@ const CHEVRON =
   '<path fill="currentColor" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/>' +
   "</svg>";
 
+/** The way back to the chooser. The editor's own back arrow, same weight. */
+const BACK =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
+  '<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" ' +
+  'stroke-linejoin="round" d="M9.5 3.5L5 8l4.5 4.5"/></svg>';
+
 /**
  * The glyph inside each status box.
  *
@@ -99,6 +105,14 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
       if (message.type === "checkout" && typeof message.number === "number") {
         void vscode.commands.executeCommand("odin.checkout", message.number);
+        return;
+      }
+      // Back to the chooser. The graph is only dropped from this view — the
+      // panel keeps the one it is showing, so stepping back to look at the
+      // list does not throw away the reading it took to get here.
+      if (message.type === "chooser") {
+        this.graph = undefined;
+        this.render();
       }
     });
 
@@ -201,6 +215,30 @@ body {
   white-space: nowrap;
 }
 .head .stats .spacer { flex: 1; }
+
+/* The way back to the list of pull requests. Reviewing one is rarely the whole
+   morning, and without this the only route to the next one is a command. */
+.head .back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  align-self: center;
+  width: 20px;
+  height: 18px;
+  margin: -2px 0 -2px -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  opacity: 0.65;
+  cursor: pointer;
+}
+.head .back:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+}
 .head .progress { color: var(--muted); }
 .head .progress .done {
   color: var(--vscode-progressBar-background, #0a84ff);
@@ -386,6 +424,10 @@ html, body { height: 100%; }
   margin: 0 -8px;
   padding: 0 8px;
 }
+/* With nothing to list there is no scroller to take up the slack, so the last
+   line of the explanation does it and the button stays where it always is. */
+.picker .empty { flex: 0 0 auto; }
+.picker .empty:last-of-type { margin-bottom: auto; }
 .picker .footer {
   flex: 0 0 auto;
   padding: 8px 0;
@@ -528,6 +570,9 @@ document.querySelectorAll(".ref").forEach((ref) => {
 const review = document.getElementById("review");
 if (review) review.addEventListener("click", () => vscodeApi.postMessage({ type: "review" }));
 
+const chooser = document.getElementById("chooser");
+if (chooser) chooser.addEventListener("click", () => vscodeApi.postMessage({ type: "chooser" }));
+
 document.querySelectorAll(".pull").forEach((pull) => {
   pull.addEventListener("click", () => {
     vscodeApi.postMessage({ type: "checkout", number: Number(pull.dataset.number) });
@@ -556,19 +601,19 @@ if (filter) {
  * last" reshuffles whenever anyone comments.
  */
 function picker(pulls: PullRequestSummary[], branch: string): string {
-  if (pulls.length === 0) {
-    return `<p class="empty">No open pull requests found.</p>
-      <p class="empty small">Odin asks the <code>gh</code> command line, so this
-      needs it installed and signed in. You can review the current branch
-      regardless.</p>
-      <button id="review">Review This Branch</button>`;
-  }
-
-  const rows = pulls.map((pr) => pullRow(pr, branch)).join("");
+  // Same frame either way, so the action sits in the same place whether there
+  // are twenty pull requests, one, or none. A button that moves when the list
+  // changes length is a button that has to be found again every time.
+  const body = pulls.length === 0
+    ? `<p class="empty">No open pull requests found.</p>
+       <p class="empty small">Odin asks the <code>gh</code> command line, so this
+       needs it installed and signed in. You can review the current branch
+       regardless.</p>`
+    : `<input id="filter" class="filter" type="search" placeholder="Filter pull requests" autocomplete="off">
+       <div class="pulls">${pulls.map((pr) => pullRow(pr, branch)).join("")}</div>`;
 
   return `<div class="picker">
-  <input id="filter" class="filter" type="search" placeholder="Filter pull requests" autocomplete="off">
-  <div class="pulls">${rows}</div>
+  ${body}
   <div class="footer"><button id="review">Review This Branch</button></div>
 </div>`;
 }
@@ -615,6 +660,7 @@ function header(graph: ChangeGraph, viewed: ViewedStore): string {
   return `<div class="head">
   <div class="bar"><div class="fill" style="width:${p.percent}%"></div></div>
   <div class="stats">
+    <button id="chooser" class="back" title="Choose another pull request">${BACK}</button>
     <span class="progress"><b class="done">${p.done}</b>/<span class="total">${p.total}</span><span class="pct">${p.percent}%</span></span>
     <span class="spacer"></span>
     ${p.additions > 0 ? `<span class="added">+${p.additions}</span>` : ""}
