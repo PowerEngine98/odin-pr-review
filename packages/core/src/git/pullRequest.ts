@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 
-import type { PullRequest } from "../model/types.js";
+import type { PullRequest, PullRequestSummary } from "../model/types.js";
 import type { GitOptions } from "./exec.js";
 
 /**
@@ -38,6 +38,32 @@ export async function readPullRequest(
   }
 }
 
+/**
+ * Places a command line tool is installed that a windowed application will not
+ * find on its own.
+ *
+ * An editor launched from the dock inherits a bare PATH, not the one a login
+ * shell builds, so anything installed by Homebrew or asdf is invisible to it.
+ * Without this the pull request lookup fails silently in the editor while
+ * working perfectly from a terminal, which is a maddening thing to debug.
+ */
+const EXTRA_PATH = [
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  "/usr/bin",
+  "/opt/local/bin",
+  `${process.env.HOME ?? ""}/.local/bin`,
+];
+
+/** The environment to run the forge client in, with those places added. */
+export function forgeEnv(): NodeJS.ProcessEnv {
+  const parts = (process.env.PATH ?? "").split(":").filter(Boolean);
+  for (const dir of EXTRA_PATH) {
+    if (dir && !parts.includes(dir)) parts.push(dir);
+  }
+  return { ...process.env, PATH: parts.join(":") };
+}
+
 function run(
   args: string[],
   options: GitOptions & { timeoutMs?: number },
@@ -48,6 +74,7 @@ function run(
       args,
       {
         cwd: options.cwd,
+        env: forgeEnv(),
         // Bounded so that a slow or hanging forge cannot hold up a review that
         // does not depend on it.
         timeout: options.timeoutMs ?? 4000,
@@ -56,4 +83,57 @@ function run(
       (error, stdout) => resolve(error ? undefined : stdout),
     );
   });
+}
+
+/**
+ * The open pull requests on this repository, newest first.
+ *
+ * Ordered by creation rather than by update, because "what is in flight" is a
+ * more stable thing to scan than "what was touched last", which reshuffles
+ * under the reader whenever anyone comments.
+ */
+export async function listPullRequests(
+  options: GitOptions & { timeoutMs?: number; limit?: number },
+): Promise<PullRequestSummary[]> {
+  const json = await run(
+    [
+      "pr", "list",
+      "--state", "open",
+      "--limit", String(options.limit ?? 50),
+      "--json", "number,title,url,headRefName,isDraft,author,createdAt,reviewDecision",
+    ],
+    options,
+  );
+  if (!json) return [];
+
+  try {
+    const parsed = JSON.parse(json) as {
+      number: number;
+      title: string;
+      url: string;
+      headRefName: string;
+      isDraft: boolean;
+      author?: { login?: string };
+      createdAt: string;
+      reviewDecision?: string | null;
+    }[];
+
+    return parsed
+      .map((pr) => {
+        const summary: PullRequestSummary = {
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          branch: pr.headRefName,
+          draft: pr.isDraft === true,
+          author: pr.author?.login ?? "",
+          createdAt: pr.createdAt,
+        };
+        if (pr.reviewDecision) summary.reviewDecision = pr.reviewDecision;
+        return summary;
+      })
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.number - b.number));
+  } catch {
+    return [];
+  }
 }

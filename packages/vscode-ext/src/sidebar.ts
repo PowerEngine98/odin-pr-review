@@ -6,11 +6,12 @@ import {
   type Edge,
   type FileNode,
   type FileStatus,
+  type PullRequestSummary,
   type Theme,
 } from "@odin/core";
 import * as vscode from "vscode";
 
-import { buildTree, progressOf, type Folder } from "./tree-model.js";
+import { ago, buildTree, progressOf, type Folder } from "./tree-model.js";
 import type { ViewedStore } from "./viewed.js";
 
 /**
@@ -56,6 +57,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
 
   private view: vscode.WebviewView | undefined;
   private graph: ChangeGraph | undefined;
+  private pulls: PullRequestSummary[] = [];
+  private branch = "";
 
   constructor(private readonly viewed: ViewedStore) {}
 
@@ -69,6 +72,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       edgeId?: string;
       paths?: string[];
       viewed?: boolean;
+      number?: number;
     }) => {
       if (message.type === "open" && message.path) {
         void vscode.commands.executeCommand("odin.openFile", message.path);
@@ -91,6 +95,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
       if (message.type === "viewed" && message.paths) {
         this.viewed.set(message.paths, message.viewed === true);
+        return;
+      }
+      if (message.type === "checkout" && typeof message.number === "number") {
+        void vscode.commands.executeCommand("odin.checkout", message.number);
       }
     });
 
@@ -100,6 +108,13 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   setGraph(graph: ChangeGraph | undefined): void {
     this.graph = graph;
     this.render();
+  }
+
+  /** The pull requests to choose from before a graph has been built. */
+  setPullRequests(pulls: PullRequestSummary[], branch: string): void {
+    this.pulls = pulls;
+    this.branch = branch;
+    if (!this.graph) this.render();
   }
 
   /** Reflects a change made elsewhere, without redrawing the list. */
@@ -116,6 +131,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       this.graph,
       dark ? DARK_THEME : LIGHT_THEME,
       this.viewed,
+      this.pulls,
+      this.branch,
     );
   }
 }
@@ -124,11 +141,12 @@ function html(
   graph: ChangeGraph | undefined,
   theme: Theme,
   viewed: ViewedStore,
+  pulls: PullRequestSummary[] = [],
+  branch = "",
 ): string {
   const body = graph
     ? header(graph, viewed) + renderTree(buildTree(graph.nodes), graph, 0, viewed)
-    : `<p class="empty">Review this branch to see its files here.</p>
-       <button id="review">Review Pull Request</button>`;
+    : picker(pulls, branch);
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -340,6 +358,58 @@ input.seen:checked::after { transform: rotate(45deg) scale(1); }
 .ref .where { color: var(--muted); font-size: 0.9em; }
 
 .empty { color: var(--muted); padding: 8px 12px; }
+.empty.small { font-size: 0.9em; line-height: 1.5; }
+.empty code { font-family: var(--vscode-editor-font-family); }
+
+/* -------------------------------------------------------- choosing a review */
+
+.picker { padding: 8px; }
+.filter {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+}
+.filter:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+.pull {
+  padding: 5px 8px 5px 10px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.pull:hover { background: var(--vscode-list-hoverBackground); }
+/* The branch that is checked out, marked down the edge rather than by colour
+   alone, so it survives being scrolled past at a glance. */
+.pull.current {
+  border-left-color: var(--vscode-button-background, #0a84ff);
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+.pull.hidden { display: none; }
+
+.pull .line { display: flex; align-items: baseline; gap: 6px; }
+.pull .num { color: var(--muted); flex: 0 0 auto; }
+.pull .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pull .meta { margin-top: 2px; font-size: 0.85em; color: var(--muted); }
+.pull .author, .pull .when { white-space: nowrap; }
+
+.tag {
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 0.9em;
+}
+.tag.open { color: var(--status-added); }
+.tag.draft { color: var(--muted); }
+.tag.ok { color: var(--status-added); }
+.tag.warn { color: var(--warning); }
+.tag.muted { color: var(--muted); }
 button {
   margin: 0 12px;
   font: inherit;
@@ -429,7 +499,78 @@ document.querySelectorAll(".ref").forEach((ref) => {
 
 const review = document.getElementById("review");
 if (review) review.addEventListener("click", () => vscodeApi.postMessage({ type: "review" }));
+
+document.querySelectorAll(".pull").forEach((pull) => {
+  pull.addEventListener("click", () => {
+    vscodeApi.postMessage({ type: "checkout", number: Number(pull.dataset.number) });
+  });
+});
+
+const filter = document.getElementById("filter");
+if (filter) {
+  filter.addEventListener("input", () => {
+    const needle = filter.value.trim().toLowerCase();
+    document.querySelectorAll(".pull").forEach((pull) => {
+      pull.classList.toggle("hidden", needle !== "" && !pull.dataset.search.includes(needle));
+    });
+  });
+}
 </script></body></html>`;
+}
+
+/**
+ * What the sidebar shows before a graph exists: the open pull requests.
+ *
+ * Choosing what to review is the step before reviewing it, and doing that in
+ * the browser and then finding the branch by hand is the part of the loop that
+ * has nothing to do with reading code. Sorted by creation rather than by last
+ * activity, because "what is in flight" holds still while "what was touched
+ * last" reshuffles whenever anyone comments.
+ */
+function picker(pulls: PullRequestSummary[], branch: string): string {
+  if (pulls.length === 0) {
+    return `<p class="empty">No open pull requests found.</p>
+      <p class="empty small">Odin asks the <code>gh</code> command line, so this
+      needs it installed and signed in. You can review the current branch
+      regardless.</p>
+      <button id="review">Review This Branch</button>`;
+  }
+
+  const rows = pulls.map((pr) => pullRow(pr, branch)).join("");
+
+  return `<div class="picker">
+  <input id="filter" class="filter" type="search" placeholder="Filter pull requests" autocomplete="off">
+  <div class="pulls">${rows}</div>
+  <button id="review">Review This Branch</button>
+</div>`;
+}
+
+/** `APPROVED` and friends, said the way a reader would say them. */
+const DECISION: Record<string, { label: string; tone: string }> = {
+  APPROVED: { label: "approved", tone: "ok" },
+  CHANGES_REQUESTED: { label: "changes requested", tone: "warn" },
+  REVIEW_REQUIRED: { label: "review required", tone: "muted" },
+};
+
+function pullRow(pr: PullRequestSummary, branch: string): string {
+  const current = pr.branch === branch;
+  const decision = pr.reviewDecision ? DECISION[pr.reviewDecision] : undefined;
+
+  return (
+    `<div class="pull${current ? " current" : ""}" data-number="${pr.number}" ` +
+    `data-search="${escapeHtml(`${pr.number} ${pr.title} ${pr.branch} ${pr.author}`.toLowerCase())}" ` +
+    `title="${escapeHtml(pr.branch)}">` +
+    `<div class="line">` +
+    `<span class="num">#${pr.number}</span>` +
+    `<span class="title">${escapeHtml(pr.title)}</span>` +
+    `</div>` +
+    `<div class="line meta">` +
+    (pr.draft ? `<span class="tag draft">draft</span>` : `<span class="tag open">open</span>`) +
+    (decision ? `<span class="tag ${decision.tone}">${decision.label}</span>` : "") +
+    `<span class="author">${escapeHtml(pr.author)}</span>` +
+    `<span class="when">${escapeHtml(ago(pr.createdAt))}</span>` +
+    `</div></div>`
+  );
 }
 
 /**

@@ -4,7 +4,7 @@ import type { FileNode } from "@odin/core";
 
 import type { ChangeGraph } from "@odin/core";
 
-import { buildTree, progressOf } from "../src/tree-model.js";
+import { ago, buildTree, progressOf } from "../src/tree-model.js";
 
 function file(path: string): FileNode {
   return {
@@ -150,5 +150,31 @@ describe("progress through a change", () => {
     expect(progressOf(many, () => false).authorsFull).toBe(
       "Ada (5), Grace (2), Alan (1)",
     );
+  });
+});
+
+describe("how long ago a pull request was opened", () => {
+  const now = Date.parse("2026-08-01T12:00:00Z");
+
+  it("says today for something opened today", () => {
+    expect(ago("2026-08-01T02:00:00Z", now)).toBe("today");
+  });
+
+  it("names yesterday rather than counting it", () => {
+    expect(ago("2026-07-31T02:00:00Z", now)).toBe("yesterday");
+  });
+
+  it("counts days up to a month", () => {
+    expect(ago("2026-07-25T12:00:00Z", now)).toBe("7d ago");
+    expect(ago("2026-07-03T12:00:00Z", now)).toBe("29d ago");
+  });
+
+  it("switches to months once days stop meaning much", () => {
+    expect(ago("2026-07-01T12:00:00Z", now)).toBe("1mo ago");
+    expect(ago("2026-05-01T12:00:00Z", now)).toBe("3mo ago");
+  });
+
+  it("says nothing rather than guessing at an unparseable date", () => {
+    expect(ago("not a date", now)).toBe("");
   });
 });

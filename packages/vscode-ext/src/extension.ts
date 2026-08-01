@@ -1,4 +1,13 @@
-import { git, listRefs, serializeGraph } from "@odin/core";
+import {
+  currentBranch,
+  forgeEnv,
+  git,
+  listPullRequests,
+  listRefs,
+  serializeGraph,
+} from "@odin/core";
+import { execFile } from "node:child_process";
+
 import * as vscode from "vscode";
 
 import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
@@ -19,6 +28,9 @@ let last: { repo: string; baseRef?: string } | undefined;
 export function activate(context: vscode.ExtensionContext): void {
   viewed = new ViewedStore(context.workspaceState);
   sidebar = new ChangeSidebar(viewed);
+
+  // Populated in the background so activation is not held up by the network.
+  void refreshPullRequests();
 
   // Both views show the same marks, so each follows what the other does.
   context.subscriptions.push(
@@ -54,6 +66,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("odin.reviewAgainst", () => reviewAgainst()),
     vscode.commands.registerCommand("odin.exportGraph", () => exportGraph()),
+    vscode.commands.registerCommand("odin.checkout", (number: number) =>
+      checkout(number),
+    ),
   );
 }
 
@@ -67,6 +82,75 @@ async function handleUri(uri: vscode.Uri): Promise<void> {
   if (!uri.path.startsWith("/review")) return;
   const base = new URLSearchParams(uri.query).get("base") ?? undefined;
   await review(base);
+}
+
+/**
+ * Fills the sidebar's chooser with whatever is open on the forge.
+ *
+ * Best-effort and silent on failure: `gh` may be missing or signed out, and the
+ * ability to review the branch you are on does not depend on it.
+ */
+async function refreshPullRequests(): Promise<void> {
+  const repo = await repositoryRoot(true);
+  if (!repo) return;
+
+  const [pulls, branch] = await Promise.all([
+    listPullRequests({ cwd: repo }),
+    currentBranch({ cwd: repo }),
+  ]);
+  sidebar.setPullRequests(pulls, branch ?? "");
+}
+
+/**
+ * Switches to a pull request's branch.
+ *
+ * Refuses outright when the working tree is dirty. `gh pr checkout` would
+ * either fail halfway or carry the changes onto another branch, and neither is
+ * something to do to someone's work without asking — the reviewer is better
+ * placed to decide whether to commit or stash.
+ */
+async function checkout(number: number): Promise<void> {
+  const repo = await repositoryRoot();
+  if (!repo) return;
+
+  const dirty = (await git(["status", "--porcelain"], { cwd: repo })).trim();
+  if (dirty) {
+    const count = dirty.split("\n").length;
+    vscode.window.showWarningMessage(
+      `Odin: ${count} uncommitted change${count === 1 ? "" : "s"} in this ` +
+        `worktree. Commit or stash before switching to #${number}.`,
+    );
+    return;
+  }
+
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `Odin: checking out #${number}` },
+    async () => {
+      try {
+        await gh(["pr", "checkout", String(number)], repo);
+      } catch (error) {
+        vscode.window.showErrorMessage(
+          `Odin: could not check out #${number}. ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+        return;
+      }
+      await refreshPullRequests();
+      await review();
+    },
+  );
+}
+
+function gh(args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "gh",
+      args,
+      // The editor's PATH is not a shell's; see forgeEnv.
+      { cwd, env: forgeEnv(), encoding: "utf8" },
+      (error, stdout) => (error ? reject(error) : resolve(stdout)),
+    );
+  });
 }
 
 export function deactivate(): void {
@@ -187,10 +271,10 @@ async function exportGraph(): Promise<void> {
  * workspace folder. Picking by active file keeps the right answer in a
  * multi-root workspace without asking.
  */
-async function repositoryRoot(): Promise<string | undefined> {
+async function repositoryRoot(quiet = false): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0) {
-    vscode.window.showErrorMessage("Odin: open a folder first.");
+    if (!quiet) vscode.window.showErrorMessage("Odin: open a folder first.");
     return undefined;
   }
 
@@ -204,7 +288,9 @@ async function repositoryRoot(): Promise<string | undefined> {
     });
     return root.trim();
   } catch {
-    vscode.window.showErrorMessage("Odin: this folder is not a git repository.");
+    if (!quiet) {
+      vscode.window.showErrorMessage("Odin: this folder is not a git repository.");
+    }
     return undefined;
   }
 }

@@ -105,6 +105,13 @@ code --install-extension dist/odin-pr-review-0.1.0.vsix
 
 ![The extension](docs/vscode.png)
 
+Before a graph exists, the sidebar lists the repository's open pull requests —
+number, title, draft or open, review state, author and age — with a filter box
+above them. Clicking one checks out its branch and builds the graph; the branch
+you are on is marked down its left edge. Checking out refuses outright while
+the working tree is dirty, since carrying uncommitted changes onto another
+branch is not a decision to make on someone's behalf.
+
 Where the branch has an open pull request, its number and title appear in the
 toolbar, linked to the forge. This is asked of the `gh` command line, so it
 inherits whatever authentication you already have — and its absence changes

@@ -214,6 +214,18 @@ export interface PullRequest {
   url: string;
 }
 
+/** An open pull request, as listed for choosing between. */
+export interface PullRequestSummary extends PullRequest {
+  /** Branch the pull request is built from. */
+  branch: string;
+  draft: boolean;
+  author: string;
+  /** ISO-8601, as the forge reports it. */
+  createdAt: string;
+  /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
+  reviewDecision?: string;
+}
+
 /** One contributor to the change under review. */
 export interface Author {
   name: string;

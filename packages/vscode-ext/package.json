@@ -71,6 +71,12 @@
         "title": "Refresh",
         "category": "Odin",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "odin.checkout",
+        "title": "Check Out a Pull Request",
+        "category": "Odin",
+        "enablement": "false"
       }
     ],
     "configuration": {

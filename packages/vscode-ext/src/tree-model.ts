@@ -117,3 +117,22 @@ export function progressOf(
     authorsFull: authors.map((a) => `${a.name} (${a.commits})`).join(", "),
   };
 }
+
+/**
+ * How long ago, in the coarsest unit that still says something.
+ *
+ * A reviewer scanning a list wants "last week" or "months old", not a
+ * timestamp; the exact moment is one hover away on the forge.
+ */
+export function ago(iso: string, now = Date.now()): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "";
+
+  const days = Math.floor((now - then) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+
+  const months = Math.floor(days / 30);
+  return months === 1 ? "1mo ago" : `${months}mo ago`;
+}
