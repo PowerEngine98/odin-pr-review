@@ -13,8 +13,17 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["SCM Providers", "Visualization"],
-  "keywords": ["pull request", "code review", "diff", "graph", "call hierarchy"],
+  "categories": [
+    "SCM Providers",
+    "Visualization"
+  ],
+  "keywords": [
+    "pull request",
+    "code review",
+    "diff",
+    "graph",
+    "call hierarchy"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -25,13 +34,19 @@
       },
       {
         "command": "odin.reviewAgainst",
-        "title": "Review Against a Different Base…",
+        "title": "Review Against a Different Base\u2026",
         "category": "Odin"
       },
       {
         "command": "odin.exportGraph",
         "title": "Export Change Graph as JSON",
         "category": "Odin"
+      },
+      {
+        "command": "odin.reviewFromUri",
+        "title": "Review Pull Request as a Graph (from link)",
+        "category": "Odin",
+        "enablement": "false"
       }
     ],
     "configuration": {
@@ -57,7 +72,8 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "package": "vsce package --no-dependencies --out ../../dist/odin-pr-review-0.1.0.vsix"
+    "package": "vsce package --no-dependencies --out ../../dist/odin-pr-review-0.1.0.vsix",
+    "test:integration": "node integration/run.mjs"
   },
   "dependencies": {
     "@odin/core": "0.1.0",
@@ -67,5 +83,15 @@
   "devDependencies": {
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.24.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Odin runs git and type-checks the workspace to resolve references between files."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Odin reads the repository with git, which needs files on disk."
+    }
   }
 }

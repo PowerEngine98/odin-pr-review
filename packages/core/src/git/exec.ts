@@ -46,3 +46,21 @@ export async function mergeBase(
 export async function repoRoot(options: GitOptions): Promise<string> {
   return (await git(["rev-parse", "--show-toplevel"], options)).trim();
 }
+
+/**
+ * Branch name at HEAD, or undefined when the checkout is detached.
+ *
+ * Worth resolving before recording it: a graph whose metadata says "HEAD" tells
+ * a reader nothing once the file is saved or shared, and a panel titled
+ * "main → HEAD" is no help when two reviews are open at once.
+ */
+export async function currentBranch(
+  options: GitOptions,
+): Promise<string | undefined> {
+  try {
+    const name = (await git(["rev-parse", "--abbrev-ref", "HEAD"], options)).trim();
+    return name && name !== "HEAD" ? name : undefined;
+  } catch {
+    return undefined;
+  }
+}

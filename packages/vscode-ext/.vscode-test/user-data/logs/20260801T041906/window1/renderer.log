@@ -1,0 +1,30 @@
+2026-08-01 04:19:07.727 [info] Loading development extension at /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext
+2026-08-01 04:19:07.807 [info] Started local extension host with pid 84531.
+2026-08-01 04:19:07.862 [info] [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-08-01 04:19:07.924 [info] Settings Sync: Account status changed from uninitialized to unavailable
+2026-08-01 04:19:08.330 [info]   ok  the extension is present and activates
+2026-08-01 04:19:08.332 [info]   ok  every declared command is registered
+2026-08-01 04:19:08.332 [info]   ok  the workspace under test is trusted
+2026-08-01 04:19:08.588 [error]   FAIL  exporting produces a change graph for the fixture
+        AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    'added:function3',
+    'removed:function2',
++   'removed:function2'
+  ]
+
+	at /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/integration/suite.cjs:72:10
+	at async Object.run (/Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/integration/suite.cjs:95:7)
+2026-08-01 04:19:09.277 [error]   FAIL  reviewing opens the graph panel
+        AssertionError [ERR_ASSERTION]: The input did not match the regular expression /main → feature\/graph/. Input:
+
+'Odin: main → HEAD'
+
+	at /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/integration/suite.cjs:88:10
+	at async Object.run (/Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/integration/suite.cjs:95:7)
+2026-08-01 04:19:09.277 [info] 
+3/5 passed
+2026-08-01 04:19:09.277 [error] Error: 2 integration test(s) failed
+	at Object.run (/Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/integration/suite.cjs:105:11)

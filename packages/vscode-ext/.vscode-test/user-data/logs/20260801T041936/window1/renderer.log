@@ -1,0 +1,11 @@
+2026-08-01 04:19:37.288 [info] Loading development extension at /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext
+2026-08-01 04:19:37.371 [info] Started local extension host with pid 85800.
+2026-08-01 04:19:37.432 [info] [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-08-01 04:19:37.520 [info] Settings Sync: Account status changed from uninitialized to unavailable
+2026-08-01 04:19:37.913 [info]   ok  the extension is present and activates
+2026-08-01 04:19:37.915 [info]   ok  every declared command is registered
+2026-08-01 04:19:37.915 [info]   ok  the workspace under test is trusted
+2026-08-01 04:19:38.186 [info]   ok  exporting produces a change graph for the fixture
+2026-08-01 04:19:38.876 [info]   ok  reviewing opens the graph panel
+2026-08-01 04:19:38.876 [info] 
+5/5 passed

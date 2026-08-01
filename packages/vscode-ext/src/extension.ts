@@ -12,9 +12,27 @@ export function activate(context: vscode.ExtensionContext): void {
       new BaseContentProvider(),
     ),
     vscode.commands.registerCommand("odin.review", () => review()),
+    vscode.commands.registerCommand("odin.reviewFromUri", (base?: string) =>
+      review(base),
+    ),
+    vscode.window.registerUriHandler({
+      handleUri: (uri) => void handleUri(uri),
+    }),
     vscode.commands.registerCommand("odin.reviewAgainst", () => reviewAgainst()),
     vscode.commands.registerCommand("odin.exportGraph", () => exportGraph()),
   );
+}
+
+/**
+ * Opens a review from a link, e.g. `vscode://odin.odin-pr-review/review?base=main`.
+ *
+ * Useful for triggering a review from outside the editor — a script, a chat
+ * message, a code-review checklist — without hunting through the palette.
+ */
+async function handleUri(uri: vscode.Uri): Promise<void> {
+  if (!uri.path.startsWith("/review")) return;
+  const base = new URLSearchParams(uri.query).get("base") ?? undefined;
+  await review(base);
 }
 
 export function deactivate(): void {

@@ -3,3 +3,4 @@ test/**
 build.mjs
 tsconfig.json
 **/*.map
+integration/**

@@ -74,6 +74,7 @@ function createStub(): Stub {
       openTextDocument: () => Promise.resolve({}),
     },
     window: {
+      registerUriHandler: () => disposable,
       showErrorMessage: () => Promise.resolve(),
       showInformationMessage: () => Promise.resolve(),
       showQuickPick: () => Promise.resolve(undefined),
@@ -136,8 +137,8 @@ describe("the built extension", () => {
     const { extension } = loadWithStub();
     const subscriptions: unknown[] = [];
     extension.activate({ subscriptions });
-    // Three commands and one content provider.
-    expect(subscriptions).toHaveLength(4);
+    // Four commands, a content provider, and the URI handler.
+    expect(subscriptions).toHaveLength(6);
   });
 
   it("deactivates cleanly", () => {

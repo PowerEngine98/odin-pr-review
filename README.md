@@ -81,7 +81,17 @@ Install the packaged build and review without leaving the editor:
 code --install-extension dist/odin-pr-review-0.1.0.vsix
 ```
 
-Then run **Odin: Review Pull Request as a Graph** from the command palette.
+Then run **Odin: Review Pull Request as a Graph** from the command palette, or
+trigger it from anywhere with a link:
+
+```sh
+code --open-url "vscode://odin.odin-pr-review/review?base=main"
+```
+
+The extension requires a trusted workspace. It runs git and type-checks your
+files to resolve references, which is exactly what workspace trust exists to
+gate, so it declares that plainly and stays disabled in Restricted Mode rather
+than half-working.
 
 Clicking an arrow opens its destination beside the graph without taking focus,
 so you can trace a change without losing your place. A removed reference points
@@ -248,7 +258,8 @@ headlessly by the compiler API or inside the editor by a language server.
 ## Development
 
 ```sh
-yarn test                      # 91 tests: parser, graph, layout, resolver, extension
+yarn test                      # 91 unit tests
+yarn test:integration          # 5 tests inside a real VS Code extension host
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples
 ```

@@ -4,6 +4,7 @@ import {
   enrichSnippets,
   graphFromRepo,
   layoutGraph,
+  currentBranch,
   materializeTree,
   revParse,
   type ChangeGraph,
@@ -49,7 +50,8 @@ export async function buildGraphForRepo(
   request: BuildRequest,
 ): Promise<BuiltGraph> {
   const report = request.report ?? (() => {});
-  const headRef = request.headRef ?? "HEAD";
+  const headRef =
+    request.headRef ?? (await currentBranch({ cwd: request.cwd })) ?? "HEAD";
 
   report("Reading the diff…");
   let graph = await graphFromRepo({
