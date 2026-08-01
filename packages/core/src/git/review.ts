@@ -7,8 +7,10 @@ import { forgeEnv } from "./pullRequest.js";
 export interface ReviewComment {
   id: number;
   path: string;
-  /** Line in the file the comment is anchored to, on `side`. */
+  /** Last line the comment covers, on `side`. A one-line comment ends here. */
   line: number;
+  /** First line of a multi-line comment. Absent when it covers one line. */
+  startLine?: number;
   side: "LEFT" | "RIGHT";
   body: string;
   author: string;
@@ -20,10 +22,19 @@ export interface ReviewComment {
   outdated: boolean;
 }
 
-/** A comment the reviewer has written but not yet sent. */
+/**
+ * A comment the reviewer has written but not yet sent.
+ *
+ * A remark is often about a passage rather than a line — a loop, a condition
+ * and its body, three declarations that should be one. `startLine` carries the
+ * top of that passage; `line` is always its last line, which is where the forge
+ * hangs the thread.
+ */
 export interface DraftComment {
   path: string;
   line: number;
+  /** Top of the passage, when the comment covers more than one line. */
+  startLine?: number;
   side: "LEFT" | "RIGHT";
   body: string;
 }
@@ -63,8 +74,17 @@ export async function listReviewComments(
     ],
     options,
   );
-  if (!json) return [];
+  return json ? parseComments(json) : [];
+}
 
+/**
+ * Reads the forge's answer into comments.
+ *
+ * Exported for its own sake: everything that can go wrong in reading a comment
+ * — a thread whose code has moved, a remark about a passage rather than a line
+ * — goes wrong in here, and none of it needs a network to reproduce.
+ */
+export function parseComments(json: string): ReviewComment[] {
   try {
     // `--paginate` concatenates pages as separate arrays when they are large;
     // stitching them is cheaper than asking for them one at a time.
@@ -76,6 +96,8 @@ export async function listReviewComments(
       path: string;
       line: number | null;
       original_line: number | null;
+      start_line?: number | null;
+      original_start_line?: number | null;
       side: string | null;
       body: string;
       user?: { login?: string };
@@ -89,10 +111,16 @@ export async function listReviewComments(
       // original line still says where it was written, which is more useful
       // than dropping it.
       const line = c.line ?? c.original_line ?? 0;
+      const start = c.start_line ?? c.original_start_line ?? undefined;
       const comment: ReviewComment = {
         id: c.id,
         path: c.path,
         line,
+        // A span whose top is the line itself is not a span; keeping it would
+        // draw a one-row bracket beside every ordinary comment.
+        ...(start !== undefined && start !== null && start < line
+          ? { startLine: start }
+          : {}),
         side: c.side === "LEFT" ? "LEFT" : "RIGHT",
         body: c.body,
         author: c.user?.login ?? "",
@@ -120,20 +148,7 @@ export async function submitReview(
   request: SubmitRequest,
   options: GitOptions & { timeoutMs?: number },
 ): Promise<void> {
-  const payload = JSON.stringify({
-    event: request.event,
-    ...(request.body ? { body: request.body } : {}),
-    ...(request.comments.length > 0
-      ? {
-          comments: request.comments.map((c) => ({
-            path: c.path,
-            line: c.line,
-            side: c.side,
-            body: c.body,
-          })),
-        }
-      : {}),
-  });
+  const payload = JSON.stringify(reviewPayload(request));
 
   await write(
     [
@@ -145,6 +160,36 @@ export async function submitReview(
     payload,
     options,
   );
+}
+
+/**
+ * The body of the review request, in the shape the forge expects.
+ *
+ * Separated from the call so the translation can be tested without a network
+ * or a repository: the mistakes possible here — a span sent as a point, a
+ * summary omitted where one is required — are all mistakes of shape.
+ */
+export function reviewPayload(request: SubmitRequest): Record<string, unknown> {
+  return {
+    event: request.event,
+    ...(request.body ? { body: request.body } : {}),
+    ...(request.comments.length > 0
+      ? {
+          comments: request.comments.map((c) => ({
+            path: c.path,
+            line: c.line,
+            side: c.side,
+            // Sent only for a real span. A start equal to the end is rejected,
+            // so a one-line comment must carry no start at all — and a start
+            // below the end would be a range written backwards.
+            ...(c.startLine !== undefined && c.startLine < c.line
+              ? { start_line: c.startLine, start_side: c.side }
+              : {}),
+            body: c.body,
+          })),
+        }
+      : {}),
+  };
 }
 
 /**

@@ -181,8 +181,15 @@ html, body {
 .canvas {
   position: absolute;
   transform-origin: 0 0;
-  will-change: transform;
+  /* Deliberately not promoted at rest. A layer carrying will-change: transform
+     is rasterised once and then stretched as a bitmap, so zooming in magnifies
+     pixels instead of redrawing glyphs — code goes soft exactly when it is
+     being read closely. Promotion is granted only while the view is moving,
+     where the trade is worth it, and given back on settle so the browser
+     redraws the text at the scale it is actually shown. */
+  will-change: auto;
 }
+.canvas.moving { will-change: transform; }
 
 /* -------------------------------------------------------------------- cards */
 
@@ -497,6 +504,32 @@ html, body {
 .card:not(.is-viewed) .row.commented,
 .card:not(.is-viewed) .row.drafted { cursor: text; }
 
+/* A remark covering several lines draws one bracket down the passage, so the
+   extent is read at a glance instead of counted badge by badge. It is inset
+   rather than laid over the row, because the row's own left edge is already
+   spoken for by the added/removed marker. */
+.row.commented::before,
+.row.drafted::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+.row.commented::before { background: var(--status-renamed); }
+.row.drafted::before { background: var(--warning); }
+.row.span-start::before { border-top-left-radius: 2px; top: 1px; }
+.row.span-end::before { border-bottom-left-radius: 2px; bottom: 1px; }
+
+/* The lines a comment is about to be written against. Selected text inside a
+   card would say the same thing more faintly and would be lost the moment the
+   composer took focus, so the pick is held as state instead. */
+.row.picked {
+  background: color-mix(in srgb, var(--status-renamed) 24%, transparent);
+}
+.card.picking { user-select: none; }
+
 .composer, .review {
   position: fixed;
   z-index: 40;
@@ -670,9 +703,41 @@ html, body {
   var MIN_SCALE = 0.15;
   var MAX_SCALE = 3;
 
-  function apply() {
+  /*
+   * Sharpness while zoomed.
+   *
+   * The canvas is a single transformed layer, and a promoted layer is drawn
+   * once at the scale it was promoted at and then stretched — which is why
+   * zoomed-in code looked like an enlarged screenshot rather than larger text.
+   * Promotion is only worth having while the view is in motion, so it is taken
+   * for the gesture and handed back once the view has settled; the browser then
+   * redraws the glyphs and the edge geometry at the scale actually on screen.
+   *
+   * On settle the translation is also landed on whole device pixels. Half a
+   * pixel of offset costs nothing in position and a visible amount in
+   * crispness, because every glyph edge in the picture is then straddling two
+   * pixels instead of filling one.
+   */
+  var settle = 0;
+
+  function apply(hold) {
+    canvas.classList.add("moving");
+    window.clearTimeout(settle);
+    settle = window.setTimeout(rest, hold || 140);
+    paint();
+  }
+
+  function paint() {
     canvas.style.transform =
       "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
+  }
+
+  function rest() {
+    var dpr = window.devicePixelRatio || 1;
+    view.x = Math.round(view.x * dpr) / dpr;
+    view.y = Math.round(view.y * dpr) / dpr;
+    paint();
+    canvas.classList.remove("moving");
   }
 
   /* ------------------------------------------------------------ pan & zoom */
@@ -766,7 +831,9 @@ html, body {
     view.x = rect.width / 2 - (node.x + node.width / 2) * view.scale;
     view.y = rect.height / 2 - (node.y + node.height / 2) * view.scale;
     canvas.style.transition = "transform 320ms cubic-bezier(.22,.61,.36,1)";
-    apply();
+    // Hold the promotion for the whole flight, or the layer would be given
+    // back mid-animation and the browser would repaint every frame of it.
+    apply(400);
     window.setTimeout(function () { canvas.style.transition = ""; }, 340);
 
     var card = document.getElementById("card-" + cssId(nodeId));
@@ -1115,65 +1182,116 @@ html, body {
   var reviewButton = document.getElementById("action-review");
   var pending = null;
 
-  /** Marks the lines that already carry a comment, and the ones drafted here. */
+  /**
+   * Marks the lines that already carry a comment, and the ones drafted here.
+   *
+   * A comment can cover a span, so every row it reaches is marked and the two
+   * ends are told apart, which is what lets the margin draw one bracket down
+   * the passage instead of a stripe per line. The badge sits on the first row:
+   * the forge hangs the thread under the last one, but the reader's eye enters
+   * the passage at the top, and that is where the mark has to be to be seen.
+   */
   function markCommentedLines() {
-    document.querySelectorAll(".row.commented, .row.drafted").forEach(function (row) {
-      row.classList.remove("commented", "drafted");
-      var badge = row.querySelector(".comment-badge");
-      if (badge) badge.remove();
-    });
+    document
+      .querySelectorAll(".row.commented, .row.drafted")
+      .forEach(function (row) {
+        row.classList.remove("commented", "drafted", "span-start", "span-end");
+        var badge = row.querySelector(".comment-badge");
+        if (badge) badge.remove();
+      });
 
-    var byLine = {};
-    (data.comments || []).forEach(function (c) {
-      var key = c.path + ":" + c.side + ":" + c.line;
-      (byLine[key] = byLine[key] || []).push(c);
-    });
-    drafts.forEach(function (d) {
-      var key = d.path + ":" + d.side + ":" + d.line;
-      (byLine[key] = byLine[key] || []).push({ draft: true, body: d.body, author: "you" });
-    });
+    // Grouped by the exact span, so two remarks on the same passage share one
+    // badge while two on overlapping passages stay separate.
+    var spans = {};
+    var add = function (c, draft) {
+      var start = c.startLine || c.line;
+      var key = c.path + " " + c.side + " " + start + " " + c.line;
+      var span = spans[key];
+      if (!span) {
+        span = spans[key] = {
+          path: c.path, side: c.side, start: start, end: c.line, entries: [],
+        };
+      }
+      span.entries.push({
+        draft: draft,
+        body: c.body,
+        author: draft ? "you" : c.author || "?",
+      });
+    };
+    (data.comments || []).forEach(function (c) { add(c, false); });
+    drafts.forEach(function (d) { add(d, true); });
 
-    Object.keys(byLine).forEach(function (key) {
-      var parts = key.split(":");
-      var side = parts[parts.length - 2];
-      var line = parts[parts.length - 1];
-      var path = parts.slice(0, -2).join(":");
-
-      var node = data.nodes.find(function (n) { return n.path === path; });
+    Object.keys(spans).forEach(function (key) {
+      var span = spans[key];
+      var node = data.nodes.find(function (n) { return n.path === span.path; });
       if (!node) return;
       var card = document.getElementById("card-" + cssId(node.id));
       if (!card) return;
 
-      var attribute = side === "LEFT" ? "data-old" : "data-new";
-      var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
-      if (!row) return;
+      var attribute = span.side === "LEFT" ? "data-old" : "data-new";
+      var marked = [];
+      for (var line = span.start; line <= span.end; line++) {
+        var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+        // Lines folded into a gap have no row of their own; the span is drawn
+        // across whatever of it is on screen.
+        if (row) marked.push(row);
+      }
+      if (marked.length === 0) return;
 
-      var entries = byLine[key];
-      var drafted = entries.some(function (e) { return e.draft; });
-      row.classList.add(drafted ? "drafted" : "commented");
+      var drafted = span.entries.some(function (e) { return e.draft; });
+      marked.forEach(function (row) {
+        row.classList.add(drafted ? "drafted" : "commented");
+      });
+      if (marked.length > 1) {
+        marked[0].classList.add("span-start");
+        marked[marked.length - 1].classList.add("span-end");
+      }
 
+      var where = span.start === span.end
+        ? String(span.end)
+        : span.start + "–" + span.end;
       var badge = document.createElement("span");
       badge.className = "comment-badge";
-      badge.textContent = entries.length > 1 ? String(entries.length) : "";
-      badge.title = entries
-        .map(function (e) { return (e.author || "?") + ": " + e.body; })
+      badge.textContent = span.entries.length > 1
+        ? String(span.entries.length)
+        : "";
+      badge.title = span.entries
+        .map(function (e) { return e.author + " (" + where + "): " + e.body; })
         .join("\n\n");
-      row.appendChild(badge);
+      marked[0].appendChild(badge);
     });
   }
 
-  /** Opens the composer against a line, positioned beside it. */
-  function compose(card, row, event) {
+  /** The line a row carries on one side, or null when it has none. */
+  function lineOn(row, side) {
+    var value = row.getAttribute(side === "RIGHT" ? "data-new" : "data-old");
+    return value ? Number(value) : null;
+  }
+
+  /**
+   * Opens the composer against a line or a span of them, positioned beside it.
+   *
+   * The side comes from the first row picked, and the extent is read off every
+   * row in between rather than off the two ends: an added line has no left
+   * number and a removed one no right, so taking the ends alone would fail on
+   * any selection that happens to start or finish on the wrong kind of line.
+   */
+  function compose(card, rows, event) {
     var node = nodeFor(card.dataset.id);
     if (!node) return;
 
-    var side = row.getAttribute("data-new") ? "RIGHT" : "LEFT";
-    var line = row.getAttribute(side === "RIGHT" ? "data-new" : "data-old");
-    if (!line) return;
+    var side = rows[0].getAttribute("data-new") ? "RIGHT" : "LEFT";
+    var lines = rows
+      .map(function (row) { return lineOn(row, side); })
+      .filter(function (line) { return line !== null; });
+    if (lines.length === 0) return;
 
-    pending = { path: node.path, line: Number(line), side: side };
+    var start = Math.min.apply(null, lines);
+    var end = Math.max.apply(null, lines);
+
+    pending = { path: node.path, line: end, startLine: start, side: side };
     composer.querySelector(".composer-where").textContent =
-      node.path.split("/").pop() + ":" + line;
+      node.path.split("/").pop() + ":" + (start === end ? end : start + "–" + end);
     composer.querySelector(".composer-body").value = "";
     composer.querySelector(".as-suggestion").checked = false;
     composer.hidden = false;
@@ -1190,6 +1308,7 @@ html, body {
     composer.querySelector(".composer-cancel").addEventListener("click", function () {
       composer.hidden = true;
       pending = null;
+      clearSelection();
     });
 
     composer.querySelector(".composer-add").addEventListener("click", function () {
@@ -1204,9 +1323,18 @@ html, body {
       var fence = "\u0060\u0060\u0060";
       var body = suggest ? fence + "suggestion\n" + text + "\n" + fence : text;
 
-      drafts.push({ path: pending.path, line: pending.line, side: pending.side, body: body });
+      drafts.push({
+        path: pending.path,
+        line: pending.line,
+        // Carried only for a real span: the forge rejects a start equal to the
+        // end, and a one-line comment is not a span.
+        startLine: pending.startLine < pending.line ? pending.startLine : undefined,
+        side: pending.side,
+        body: body,
+      });
       composer.hidden = true;
       pending = null;
+      clearSelection();
       refreshReview();
     });
   }
@@ -1221,8 +1349,11 @@ html, body {
         drafts.length + (drafts.length === 1 ? " comment" : " comments");
       panel.querySelector(".review-list").innerHTML = drafts
         .map(function (d, i) {
+          var where = d.startLine && d.startLine < d.line
+            ? d.startLine + "–" + d.line
+            : String(d.line);
           return '<div class="review-item"><span class="where">' +
-            escapeHtml(d.path.split("/").pop()) + ":" + d.line +
+            escapeHtml(d.path.split("/").pop()) + ":" + where +
             '</span><span class="what">' + escapeHtml(d.body.slice(0, 90)) +
             '</span><button class="drop" data-index="' + i + '">remove</button></div>';
         })
@@ -1260,17 +1391,103 @@ html, body {
     });
   }
 
-  // Lines accept a comment on click, when the host can post one.
-  cards.forEach(function (card) {
-    card.addEventListener("click", function (event) {
-      if (!data.canReview) return;
-      if (event.target.closest(".card-title")) return;
-      if (event.target.closest(".row.gap, .row.more")) return;
-      var row = event.target.closest(".row");
-      if (!row) return;
-      event.stopPropagation();
-      compose(card, row, event);
+  /*
+   * Picking the lines to talk about.
+   *
+   * A click takes one line; dragging down the card takes the passage, as does
+   * shift-clicking a second line after a first. Both exist because they are
+   * used in different moods — dragging while reading, shift-clicking after
+   * having read — and neither is discoverable enough to be the only one.
+   *
+   * The rows in between are collected from the DOM rather than counted, so a
+   * fold or a hidden import inside the selection simply is not part of it.
+   */
+  // The pick outlives the gesture: it is the span currently chosen, so that a
+  // shift-click afterwards extends it instead of starting again. Dragging is
+  // true only between our own pointerdown and the pointerup that ends it,
+  // which is what keeps a click on the composer from being read as a new pick.
+  var picking = null;
+  var dragging = false;
+
+  /** The commentable rows of a card, in the order they are shown. */
+  function rowsOf(card) {
+    return Array.prototype.filter.call(
+      card.querySelectorAll(".row"),
+      function (row) {
+        return !row.classList.contains("gap") && !row.classList.contains("more");
+      },
+    );
+  }
+
+  function rowsBetween(card, a, b) {
+    var rows = rowsOf(card);
+    var first = rows.indexOf(a);
+    var last = rows.indexOf(b);
+    if (first < 0 || last < 0) return [];
+    return rows.slice(Math.min(first, last), Math.max(first, last) + 1);
+  }
+
+  function paintSelection(card, rows) {
+    clearMarks();
+    card.classList.add("picking");
+    rows.forEach(function (row) { row.classList.add("picked"); });
+  }
+
+  function clearMarks() {
+    document.querySelectorAll(".row.picked").forEach(function (row) {
+      row.classList.remove("picked");
     });
+    document.querySelectorAll(".card.picking").forEach(function (card) {
+      card.classList.remove("picking");
+    });
+  }
+
+  /** Forgets the span as well as the marks. Called once it has been spoken for. */
+  function clearSelection() {
+    clearMarks();
+    picking = null;
+  }
+
+  /** The row a comment gesture is on, or null if this is not one. */
+  function commentableRow(event) {
+    if (!data.canReview) return null;
+    if (event.target.closest(".card-title")) return null;
+    if (event.target.closest(".row.gap, .row.more")) return null;
+    return event.target.closest(".row");
+  }
+
+  cards.forEach(function (card) {
+    card.addEventListener("pointerdown", function (event) {
+      var row = commentableRow(event);
+      if (!row || event.button !== 0) return;
+
+      // Extending the open pick rather than starting a new one.
+      if (event.shiftKey && picking && picking.card === card) picking.to = row;
+      else picking = { card: card, from: row, to: row };
+
+      dragging = true;
+      paintSelection(card, rowsBetween(card, picking.from, picking.to));
+    });
+
+    card.addEventListener("pointermove", function (event) {
+      if (!dragging || !picking || picking.card !== card) return;
+      // Buttons, not button: pointermove reports what is still held down.
+      if (!(event.buttons & 1)) return;
+      var row = commentableRow(event);
+      if (!row || row === picking.to) return;
+      picking.to = row;
+      paintSelection(card, rowsBetween(card, picking.from, row));
+    });
+  });
+
+  document.addEventListener("pointerup", function (event) {
+    if (!dragging || !picking) return;
+    dragging = false;
+    var rows = rowsBetween(picking.card, picking.from, picking.to);
+    if (rows.length === 0) { clearSelection(); return; }
+    compose(picking.card, rows, event);
+    // The pick stays lit under the composer, so the span being talked about is
+    // visible while the words are being chosen.
   });
 
   /* --------------------------------------------------------------- tooltip */

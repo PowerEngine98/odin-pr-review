@@ -119,6 +119,13 @@ together as **Approve**, **Comment** or **Request changes** — behind a
 confirmation that names the verdict, since a review is visible to everyone and
 cannot be taken back from here.
 
+Most remarks are about a passage rather than a line, so a comment can cover
+one: drag down the card, or click a line and shift-click another, and the
+composer says which lines it is about. A span is drawn as a single bracket
+down the margin instead of a mark per line, and a suggestion written against
+one replaces the whole block. Comments already on the pull request keep their
+own spans, including the ones the branch has since moved out from under.
+
 Where the branch has an open pull request, its number and title appear in the
 toolbar, linked to the forge. This is asked of the `gh` command line, so it
 inherits whatever authentication you already have — and its absence changes

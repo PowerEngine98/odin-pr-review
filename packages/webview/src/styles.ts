@@ -187,8 +187,15 @@ html, body {
 .canvas {
   position: absolute;
   transform-origin: 0 0;
-  will-change: transform;
+  /* Deliberately not promoted at rest. A layer carrying will-change: transform
+     is rasterised once and then stretched as a bitmap, so zooming in magnifies
+     pixels instead of redrawing glyphs — code goes soft exactly when it is
+     being read closely. Promotion is granted only while the view is moving,
+     where the trade is worth it, and given back on settle so the browser
+     redraws the text at the scale it is actually shown. */
+  will-change: auto;
 }
+.canvas.moving { will-change: transform; }
 
 /* -------------------------------------------------------------------- cards */
 
@@ -502,6 +509,32 @@ html, body {
 }
 .card:not(.is-viewed) .row.commented,
 .card:not(.is-viewed) .row.drafted { cursor: text; }
+
+/* A remark covering several lines draws one bracket down the passage, so the
+   extent is read at a glance instead of counted badge by badge. It is inset
+   rather than laid over the row, because the row's own left edge is already
+   spoken for by the added/removed marker. */
+.row.commented::before,
+.row.drafted::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+.row.commented::before { background: var(--status-renamed); }
+.row.drafted::before { background: var(--warning); }
+.row.span-start::before { border-top-left-radius: 2px; top: 1px; }
+.row.span-end::before { border-bottom-left-radius: 2px; bottom: 1px; }
+
+/* The lines a comment is about to be written against. Selected text inside a
+   card would say the same thing more faintly and would be lost the moment the
+   composer took focus, so the pick is held as state instead. */
+.row.picked {
+  background: color-mix(in srgb, var(--status-renamed) 24%, transparent);
+}
+.card.picking { user-select: none; }
 
 .composer, .review {
   position: fixed;

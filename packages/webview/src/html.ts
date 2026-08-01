@@ -123,6 +123,7 @@ export function renderHtml(
       id: c.id,
       path: c.path,
       line: c.line,
+      startLine: c.startLine ?? c.line,
       side: c.side,
       body: c.body,
       author: c.author,
