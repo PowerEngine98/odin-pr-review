@@ -983,9 +983,6 @@ input[type="checkbox"]:checked::after {
   margin: 0 0 8px;
   font-size: 14px;
 }
-.editor-preview .suggestion {
-  border: 1px solid color-mix(in srgb, var(--added) 45%, transparent);
-}
 /* The language a block declares, so an uncoloured one still says what it is. */
 .editor-preview pre .lang,
 .remark .text pre .lang {
@@ -1020,14 +1017,6 @@ input[type="checkbox"]:checked::after {
 }
 .editor-preview del, .remark .text del { color: var(--muted); }
 
-.editor-preview .suggestion .label {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--added);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 
 .composer-actions, .review-actions {
   display: flex;
@@ -1282,15 +1271,6 @@ input[type="checkbox"]:checked::after {
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
-.remark .text .suggestion { border: 1px solid color-mix(in srgb, var(--added) 45%, transparent); }
-.remark .text .suggestion .label {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--added);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 .remark .text ul, .remark .text ol { margin: 0 0 6px; padding-left: 18px; }
 
 /* What was left on a remark, and the way to leave one. */
@@ -1419,5 +1399,55 @@ input[type="checkbox"]:checked::after {
   border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
   color: var(--muted);
 }
+
+/* A suggestion is a change, drawn as one: what it replaces above what it puts
+   there, numbered where those lines sit in the file. A block of green with no
+   idea what it is replacing is half the story. */
+.suggestion {
+  margin: 0 0 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.suggestion-head {
+  padding: 6px 10px;
+  color: var(--muted);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+}
+.suggestion table {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.suggestion td {
+  border: 0;
+  padding: 1px 0;
+  vertical-align: top;
+}
+.suggestion .n {
+  width: 1px;
+  padding: 1px 8px;
+  text-align: right;
+  color: var(--gutter);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  user-select: none;
+}
+.suggestion .m {
+  width: 1px;
+  padding: 1px 8px 1px 4px;
+  user-select: none;
+}
+.suggestion .code {
+  padding-right: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.suggestion .del { background: var(--del-bg); }
+.suggestion .add { background: var(--add-bg); }
+.suggestion .del .m { color: var(--removed); }
+.suggestion .add .m { color: var(--added); }
 `;
 }

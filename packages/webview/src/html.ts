@@ -119,6 +119,9 @@ export function renderHtml(
       // moves together leaves the odd-width cards behind, and they collide.
       column: n.rank,
       isTest: n.node.isTest === true,
+      // The language a suggestion in a comment on this file should be coloured
+      // with; the card knows it, and the comment only knows a path.
+      language: n.node.language ?? "",
       // A file the diff never touched is in the picture only because something
       // points at it, which is what lets it follow those references' state.
       untouched: n.node.status === "phantom",

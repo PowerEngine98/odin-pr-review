@@ -977,9 +977,6 @@ input[type="checkbox"]:checked::after {
   margin: 0 0 8px;
   font-size: 14px;
 }
-.editor-preview .suggestion {
-  border: 1px solid color-mix(in srgb, var(--added) 45%, transparent);
-}
 /* The language a block declares, so an uncoloured one still says what it is. */
 .editor-preview pre .lang,
 .remark .text pre .lang {
@@ -1014,14 +1011,6 @@ input[type="checkbox"]:checked::after {
 }
 .editor-preview del, .remark .text del { color: var(--muted); }
 
-.editor-preview .suggestion .label {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--added);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 
 .composer-actions, .review-actions {
   display: flex;
@@ -1276,15 +1265,6 @@ input[type="checkbox"]:checked::after {
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
-.remark .text .suggestion { border: 1px solid color-mix(in srgb, var(--added) 45%, transparent); }
-.remark .text .suggestion .label {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--added);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 .remark .text ul, .remark .text ol { margin: 0 0 6px; padding-left: 18px; }
 
 /* What was left on a remark, and the way to leave one. */
@@ -1413,6 +1393,56 @@ input[type="checkbox"]:checked::after {
   border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
   color: var(--muted);
 }
+
+/* A suggestion is a change, drawn as one: what it replaces above what it puts
+   there, numbered where those lines sit in the file. A block of green with no
+   idea what it is replacing is half the story. */
+.suggestion {
+  margin: 0 0 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.suggestion-head {
+  padding: 6px 10px;
+  color: var(--muted);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+}
+.suggestion table {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.suggestion td {
+  border: 0;
+  padding: 1px 0;
+  vertical-align: top;
+}
+.suggestion .n {
+  width: 1px;
+  padding: 1px 8px;
+  text-align: right;
+  color: var(--gutter);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  user-select: none;
+}
+.suggestion .m {
+  width: 1px;
+  padding: 1px 8px 1px 4px;
+  user-select: none;
+}
+.suggestion .code {
+  padding-right: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.suggestion .del { background: var(--del-bg); }
+.suggestion .add { background: var(--add-bg); }
+.suggestion .del .m { color: var(--removed); }
+.suggestion .add .m { color: var(--added); }
 </style>
 <style>.t0{color:#C586C0}.t1{color:#D4D4D4}.t2{color:#9CDCFE}.t3{color:#CE9178}.t4{color:#569CD6}.t5{color:#4EC9B0}.t6{color:#DCDCAA}.t7{color:#6A9955}</style>
 </head><body>
@@ -1523,7 +1553,7 @@ input[type="checkbox"]:checked::after {
   click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
   scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
 </div>
-<script>window.__ODIN__={"width":2393,"height":971,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":78,"y":48,"width":470,"height":346,"column":0,"isTest":false,"untouched":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":450,"width":530,"height":202,"column":0,"isTest":false,"untouched":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":572,"width":530,"height":292,"column":2,"isTest":false,"untouched":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":218,"width":448,"height":112,"column":2,"isTest":false,"untouched":true},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":541,"width":530,"height":382,"column":1,"isTest":false,"untouched":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false,"untouched":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":67,"width":560,"height":418,"column":1,"isTest":false,"untouched":false}],"arrangements":{"withTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}},"withoutTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}],"canReview":false,"viewer":"","comments":[]};</script>
+<script>window.__ODIN__={"width":2393,"height":971,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":78,"y":48,"width":470,"height":346,"column":0,"isTest":false,"language":"typescript","untouched":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":450,"width":530,"height":202,"column":0,"isTest":false,"language":"typescript","untouched":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":572,"width":530,"height":292,"column":2,"isTest":false,"language":"typescript","untouched":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":218,"width":448,"height":112,"column":2,"isTest":false,"language":"typescript","untouched":true},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":541,"width":530,"height":382,"column":1,"isTest":false,"language":"typescript","untouched":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false,"language":"typescript","untouched":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":67,"width":560,"height":418,"column":1,"isTest":false,"language":"typescript","untouched":false}],"arrangements":{"withTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}},"withoutTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}],"canReview":false,"viewer":"","comments":[]};</script>
 <script>
 (function () {
   var data = window.__ODIN__;
@@ -2150,6 +2180,12 @@ input[type="checkbox"]:checked::after {
     });
   }
 
+  /** What a half-written comment is filed under: the span it is about. */
+  function composerKey(where) {
+    return "c:" + where.path + ":" + where.side + ":" +
+      (where.startLine || where.line) + "-" + where.line;
+  }
+
   /** The line a row carries on one side, or null when it has none. */
   function lineOn(row, side) {
     var value = row.getAttribute(side === "RIGHT" ? "data-new" : "data-old");
@@ -2188,7 +2224,7 @@ input[type="checkbox"]:checked::after {
         ? "Add a comment on line " + mark + end
         : "Add a comment on lines " + mark + start + "–" + mark + end;
 
-    bodyOf(composer).value = "";
+    rememberOn(composer, composerKey(pending));
     setTab(composer, "write");
     composer.hidden = false;
 
@@ -2256,7 +2292,7 @@ input[type="checkbox"]:checked::after {
     preview.hidden = writing;
     if (!writing) {
       preview.innerHTML = field.value.trim()
-        ? renderMarkdown(field.value)
+        ? renderMarkdown(field.value, contextFor(root))
         : '<span class="empty">Nothing to preview</span>';
       colourBlocks(preview);
     }
@@ -2290,7 +2326,8 @@ input[type="checkbox"]:checked::after {
    * will store; a plain line is a better answer than a confident wrong
    * rendering of one.
    */
-  function renderMarkdown(source) {
+  function renderMarkdown(source, context) {
+    var ctx = context || {};
     var lines = source.split("\n");
     var out = [];
     var i = 0;
@@ -2309,18 +2346,23 @@ input[type="checkbox"]:checked::after {
           i++;
         }
         i++;
-        var label = lang === "suggestion"
-          ? '<span class="label">suggested change</span>'
-          : lang && lang !== "suggestion"
-            ? '<span class="lang">' + escapeHtml(lang) + "</span>"
-            : "";
+        // A suggestion is a change, so it is drawn as one: what it replaces
+        // above what it puts there, numbered, the way the forge draws it. A
+        // block of green with no idea what it is replacing is half the story.
+        if (lang === "suggestion") {
+          out.push(suggestionTable(ctx.before || [], body, ctx.startLine || 0, ctx.language));
+          continue;
+        }
+
+        var label = lang
+          ? '<span class="lang">' + escapeHtml(lang) + "</span>"
+          : "";
         // Marked for colouring, which happens after the block is in the
         // document: the grammars live with the host, so this is a round trip.
         var id = ++blockCounter;
         out.push(
-          '<pre class="' + (lang === "suggestion" ? "suggestion" : "") + '">' +
-          label + '<code data-block="' + id + '" data-lang="' + escapeHtml(lang) +
-          '">' + escapeHtml(body.join("\n")) + "</code></pre>",
+          '<pre>' + label + '<code data-block="' + id + '" data-lang="' +
+          escapeHtml(lang) + '">' + escapeHtml(body.join("\n")) + "</code></pre>",
         );
         continue;
       }
@@ -2440,8 +2482,73 @@ input[type="checkbox"]:checked::after {
     return safe;
   }
 
+  /**
+   * A suggestion, drawn as the change it is.
+   *
+   * The lines it replaces are numbered from where they sit in the file; the
+   * replacement carries the same numbers, because that is where it will land.
+   * Both sides go to the host to be coloured, as one request each, so a two
+   * line suggestion costs two round trips rather than four.
+   */
+  function suggestionTable(before, after, startLine, language) {
+    var row = function (kind, marker, number, text, id, index) {
+      return '<tr class="' + kind + '">' +
+        '<td class="n">' + (number || "") + "</td>" +
+        '<td class="m">' + marker + "</td>" +
+        '<td class="code" data-of="' + id + '" data-line="' + index + '">' +
+        escapeHtml(text) + "</td></tr>";
+    };
+
+    var oldId = ++blockCounter;
+    var newId = ++blockCounter;
+    if (language) {
+      suggestionRequests.push({ id: oldId, lang: language, code: before.join("\n") });
+      suggestionRequests.push({ id: newId, lang: language, code: after.join("\n") });
+    }
+
+    var rows = before
+      .map(function (text, i) {
+        return row("del", "−", startLine ? startLine + i : "", text, oldId, i);
+      })
+      .concat(after.map(function (text, i) {
+        return row("add", "+", startLine ? startLine + i : "", text, newId, i);
+      }))
+      .join("");
+
+    return '<div class="suggestion"><div class="suggestion-head">Suggested change</div>' +
+      "<table>" + rows + "</table></div>";
+  }
+
+  /**
+   * Words typed but not yet sent, by the thing they were typed about.
+   *
+   * Closing a box is not the same as discarding what is in it. A reviewer who
+   * shuts a composer to look at the code again, or a thread to check another
+   * file, has not changed their mind about the sentence they were half way
+   * through — and losing it is the kind of small betrayal that teaches people
+   * to draft somewhere else first.
+   */
+  var unsent = {};
+
+  function rememberOn(root, key) {
+    var field = bodyOf(root);
+    if (!field) return;
+    field.dataset.key = key;
+    field.value = unsent[key] || "";
+  }
+
+  function forget(key) { delete unsent[key]; }
+
+  document.addEventListener("input", function (event) {
+    var field = event.target;
+    if (!field || !field.dataset || !field.dataset.key) return;
+    if (field.value.trim()) unsent[field.dataset.key] = field.value;
+    else forget(field.dataset.key);
+  });
+
   var blockCounter = 0;
   var pendingBlocks = {};
+  var suggestionRequests = [];
 
   /**
    * Colours the code blocks in some rendered markdown.
@@ -2452,10 +2559,13 @@ input[type="checkbox"]:checked::after {
    * a page with no host simply keeps the plain text it already has.
    */
   function colourBlocks(root) {
+    var asked = suggestionRequests;
+    suggestionRequests = [];
     if (!host || !root) return;
+
     root.querySelectorAll("code[data-block]").forEach(function (block) {
       var lang = block.dataset.lang || "";
-      if (!lang || lang === "suggestion") return;
+      if (!lang) return;
       pendingBlocks[block.dataset.block] = block;
       notifyHost("highlight", {
         id: Number(block.dataset.block),
@@ -2463,27 +2573,88 @@ input[type="checkbox"]:checked::after {
         code: block.textContent,
       });
     });
+
+    asked.forEach(function (request) {
+      var cells = root.querySelectorAll('.code[data-of="' + request.id + '"]');
+      if (cells.length === 0) return;
+      pendingBlocks[request.id] = cells;
+      notifyHost("highlight", request);
+    });
   }
 
   /** Tokens coming back from the host, turned into spans. */
   function paintBlock(id, lines) {
-    var block = pendingBlocks[id];
-    if (!block) return;
+    var target = pendingBlocks[id];
+    if (!target) return;
     delete pendingBlocks[id];
     if (!lines || lines.length === 0) return;
 
-    block.innerHTML = lines
-      .map(function (tokens) {
-        return tokens
-          .map(function (token) {
-            var text = escapeHtml(token.text);
-            return token.color
-              ? '<span style="color:' + token.color.replace(/[^#\w(),.% ]/g, "") + '">' + text + "</span>"
-              : text;
-          })
-          .join("");
-      })
-      .join("\n");
+    var paint = function (tokens) {
+      return tokens
+        .map(function (token) {
+          var text = escapeHtml(token.text);
+          return token.color
+            ? '<span style="color:' + token.color.replace(/[^#\w(),.% ]/g, "") + '">' + text + "</span>"
+            : text;
+        })
+        .join("");
+    };
+
+    // One element holding every line, or one element per line: a fenced block
+    // is the first, a suggestion's rows are the second.
+    if (target.length !== undefined) {
+      Array.prototype.forEach.call(target, function (cell) {
+        var line = lines[Number(cell.dataset.line)];
+        if (line) cell.innerHTML = paint(line);
+      });
+      return;
+    }
+
+    target.innerHTML = lines.map(paint).join("\n");
+  }
+
+  /** What a suggestion in this box replaces, and where those lines live. */
+  function contextFor(root) {
+    if (composer && composer.contains(root) && pending) {
+      return {
+        before: anchorLines,
+        startLine: pending.startLine || pending.line,
+        language: languageOf(pending.path),
+      };
+    }
+    if (threadBox && threadBox.contains(root) && openThread) {
+      return contextOf(openThread.root);
+    }
+    return {};
+  }
+
+  /** The same, for a remark already posted. */
+  function contextOf(comment) {
+    return {
+      before: linesOf(comment),
+      startLine: comment.startLine || comment.line,
+      language: languageOf(comment.path),
+    };
+  }
+
+  function languageOf(path) {
+    var node = data.nodes.find(function (n) { return n.path === path; });
+    return (node && node.language) || "";
+  }
+
+  /** The rows a remark covers, read back off the card it points at. */
+  function linesOf(comment) {
+    var node = data.nodes.find(function (n) { return n.path === comment.path; });
+    var card = node && document.getElementById("card-" + cssId(node.id));
+    if (!card) return [];
+
+    var attribute = comment.side === "LEFT" ? "data-old" : "data-new";
+    var out = [];
+    for (var line = comment.startLine || comment.line; line <= comment.line; line++) {
+      var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+      if (row) out.push(row.querySelector(".text").textContent);
+    }
+    return out;
   }
 
   /**
@@ -2499,19 +2670,8 @@ input[type="checkbox"]:checked::after {
     if (composer && composer.contains(root)) return anchorLines;
 
     if (threadBox && threadBox.contains(root) && openThread) {
-      var comment = openThread.root;
-      var node = data.nodes.find(function (n) { return n.path === comment.path; });
-      var card = node && document.getElementById("card-" + cssId(node.id));
-      if (!card) return [""];
-
-      var attribute = comment.side === "LEFT" ? "data-old" : "data-new";
-      var from = comment.startLine || comment.line;
-      var out = [];
-      for (var line = from; line <= comment.line; line++) {
-        var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
-        if (row) out.push(row.querySelector(".text").textContent);
-      }
-      return out.length > 0 ? out : [""];
+      var found = linesOf(openThread.root);
+      return found.length > 0 ? found : [""];
     }
 
     return [""];
@@ -2598,6 +2758,7 @@ input[type="checkbox"]:checked::after {
       var body = bodyOf(composer).value.trim();
       if (!body || !pending) return;
 
+      forget(composerKey(pending));
       drafts.push({
         path: pending.path,
         line: pending.line,
@@ -2663,6 +2824,11 @@ input[type="checkbox"]:checked::after {
   }
 
   if (panel) {
+    var summary = bodyOf(panel);
+    if (summary) {
+      summary.dataset.key = "review";
+      summary.value = unsent["review"] || "";
+    }
     var close = panel.querySelector(".review-close");
     if (close) {
       close.addEventListener("click", function () { panel.hidden = true; });
@@ -3038,6 +3204,7 @@ input[type="checkbox"]:checked::after {
         bodyOf(panel).value = "";
       }
       if (message.comments) data.comments = message.comments;
+      forget("review");
       refreshReview();
       buildMarks();
       return;
@@ -3268,7 +3435,7 @@ input[type="checkbox"]:checked::after {
 
       var text = document.createElement("div");
       text.className = "text";
-      text.innerHTML = renderMarkdown(comment.body || "");
+      text.innerHTML = renderMarkdown(comment.body || "", contextOf(comment));
       colourBlocks(text);
       said.appendChild(text);
       said.appendChild(reactionRow(comment));
@@ -3282,7 +3449,8 @@ input[type="checkbox"]:checked::after {
     var reply = threadBox.querySelector(".thread-reply");
     if (reply) {
       reply.hidden = !host;
-      bodyOf(reply).value = "";
+      rememberOn(reply, "t:" + thread.root.id);
+      setTab(reply, "write");
     }
 
     threadBox.hidden = false;
@@ -3511,6 +3679,7 @@ input[type="checkbox"]:checked::after {
         } else {
           notifyHost("reply", { id: openThread.root.id, body: text });
         }
+        forget("t:" + openThread.root.id);
         field.value = "";
       });
     }

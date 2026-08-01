@@ -219,7 +219,16 @@ at each end — and it survives cancelling the composer, since changing the
 wording is not changing your mind about the lines. Escape or a click away
 drops it. A comment already made is drawn as a single bracket down the margin
 instead of a mark per line, and a suggestion written against a span replaces
-the whole block. Comments already on the pull request keep their
+the whole block. A suggestion previews as the change it is — the lines it
+replaces above the lines it puts there, numbered where they sit in the file and
+coloured by the file's own grammar — because a block of green with no idea what
+it is replacing is half the story.
+
+Closing a box keeps what is in it. A reviewer who shuts a composer to look at
+the code again, or a thread to check another file, has not changed their mind
+about the sentence they were half way through; the text comes back when the same
+lines, the same thread or the same review is opened again, and only sending it
+clears it. Comments already on the pull request keep their
 own spans, including the ones the branch has since moved out from under.
 
 Above the graph is the header the pull request has on the forge: its state, its

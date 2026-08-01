@@ -632,6 +632,12 @@ export const CLIENT_SCRIPT = String.raw`
     });
   }
 
+  /** What a half-written comment is filed under: the span it is about. */
+  function composerKey(where) {
+    return "c:" + where.path + ":" + where.side + ":" +
+      (where.startLine || where.line) + "-" + where.line;
+  }
+
   /** The line a row carries on one side, or null when it has none. */
   function lineOn(row, side) {
     var value = row.getAttribute(side === "RIGHT" ? "data-new" : "data-old");
@@ -670,7 +676,7 @@ export const CLIENT_SCRIPT = String.raw`
         ? "Add a comment on line " + mark + end
         : "Add a comment on lines " + mark + start + "–" + mark + end;
 
-    bodyOf(composer).value = "";
+    rememberOn(composer, composerKey(pending));
     setTab(composer, "write");
     composer.hidden = false;
 
@@ -738,7 +744,7 @@ export const CLIENT_SCRIPT = String.raw`
     preview.hidden = writing;
     if (!writing) {
       preview.innerHTML = field.value.trim()
-        ? renderMarkdown(field.value)
+        ? renderMarkdown(field.value, contextFor(root))
         : '<span class="empty">Nothing to preview</span>';
       colourBlocks(preview);
     }
@@ -772,7 +778,8 @@ export const CLIENT_SCRIPT = String.raw`
    * will store; a plain line is a better answer than a confident wrong
    * rendering of one.
    */
-  function renderMarkdown(source) {
+  function renderMarkdown(source, context) {
+    var ctx = context || {};
     var lines = source.split("\n");
     var out = [];
     var i = 0;
@@ -791,18 +798,23 @@ export const CLIENT_SCRIPT = String.raw`
           i++;
         }
         i++;
-        var label = lang === "suggestion"
-          ? '<span class="label">suggested change</span>'
-          : lang && lang !== "suggestion"
-            ? '<span class="lang">' + escapeHtml(lang) + "</span>"
-            : "";
+        // A suggestion is a change, so it is drawn as one: what it replaces
+        // above what it puts there, numbered, the way the forge draws it. A
+        // block of green with no idea what it is replacing is half the story.
+        if (lang === "suggestion") {
+          out.push(suggestionTable(ctx.before || [], body, ctx.startLine || 0, ctx.language));
+          continue;
+        }
+
+        var label = lang
+          ? '<span class="lang">' + escapeHtml(lang) + "</span>"
+          : "";
         // Marked for colouring, which happens after the block is in the
         // document: the grammars live with the host, so this is a round trip.
         var id = ++blockCounter;
         out.push(
-          '<pre class="' + (lang === "suggestion" ? "suggestion" : "") + '">' +
-          label + '<code data-block="' + id + '" data-lang="' + escapeHtml(lang) +
-          '">' + escapeHtml(body.join("\n")) + "</code></pre>",
+          '<pre>' + label + '<code data-block="' + id + '" data-lang="' +
+          escapeHtml(lang) + '">' + escapeHtml(body.join("\n")) + "</code></pre>",
         );
         continue;
       }
@@ -922,8 +934,73 @@ export const CLIENT_SCRIPT = String.raw`
     return safe;
   }
 
+  /**
+   * A suggestion, drawn as the change it is.
+   *
+   * The lines it replaces are numbered from where they sit in the file; the
+   * replacement carries the same numbers, because that is where it will land.
+   * Both sides go to the host to be coloured, as one request each, so a two
+   * line suggestion costs two round trips rather than four.
+   */
+  function suggestionTable(before, after, startLine, language) {
+    var row = function (kind, marker, number, text, id, index) {
+      return '<tr class="' + kind + '">' +
+        '<td class="n">' + (number || "") + "</td>" +
+        '<td class="m">' + marker + "</td>" +
+        '<td class="code" data-of="' + id + '" data-line="' + index + '">' +
+        escapeHtml(text) + "</td></tr>";
+    };
+
+    var oldId = ++blockCounter;
+    var newId = ++blockCounter;
+    if (language) {
+      suggestionRequests.push({ id: oldId, lang: language, code: before.join("\n") });
+      suggestionRequests.push({ id: newId, lang: language, code: after.join("\n") });
+    }
+
+    var rows = before
+      .map(function (text, i) {
+        return row("del", "−", startLine ? startLine + i : "", text, oldId, i);
+      })
+      .concat(after.map(function (text, i) {
+        return row("add", "+", startLine ? startLine + i : "", text, newId, i);
+      }))
+      .join("");
+
+    return '<div class="suggestion"><div class="suggestion-head">Suggested change</div>' +
+      "<table>" + rows + "</table></div>";
+  }
+
+  /**
+   * Words typed but not yet sent, by the thing they were typed about.
+   *
+   * Closing a box is not the same as discarding what is in it. A reviewer who
+   * shuts a composer to look at the code again, or a thread to check another
+   * file, has not changed their mind about the sentence they were half way
+   * through — and losing it is the kind of small betrayal that teaches people
+   * to draft somewhere else first.
+   */
+  var unsent = {};
+
+  function rememberOn(root, key) {
+    var field = bodyOf(root);
+    if (!field) return;
+    field.dataset.key = key;
+    field.value = unsent[key] || "";
+  }
+
+  function forget(key) { delete unsent[key]; }
+
+  document.addEventListener("input", function (event) {
+    var field = event.target;
+    if (!field || !field.dataset || !field.dataset.key) return;
+    if (field.value.trim()) unsent[field.dataset.key] = field.value;
+    else forget(field.dataset.key);
+  });
+
   var blockCounter = 0;
   var pendingBlocks = {};
+  var suggestionRequests = [];
 
   /**
    * Colours the code blocks in some rendered markdown.
@@ -934,10 +1011,13 @@ export const CLIENT_SCRIPT = String.raw`
    * a page with no host simply keeps the plain text it already has.
    */
   function colourBlocks(root) {
+    var asked = suggestionRequests;
+    suggestionRequests = [];
     if (!host || !root) return;
+
     root.querySelectorAll("code[data-block]").forEach(function (block) {
       var lang = block.dataset.lang || "";
-      if (!lang || lang === "suggestion") return;
+      if (!lang) return;
       pendingBlocks[block.dataset.block] = block;
       notifyHost("highlight", {
         id: Number(block.dataset.block),
@@ -945,27 +1025,88 @@ export const CLIENT_SCRIPT = String.raw`
         code: block.textContent,
       });
     });
+
+    asked.forEach(function (request) {
+      var cells = root.querySelectorAll('.code[data-of="' + request.id + '"]');
+      if (cells.length === 0) return;
+      pendingBlocks[request.id] = cells;
+      notifyHost("highlight", request);
+    });
   }
 
   /** Tokens coming back from the host, turned into spans. */
   function paintBlock(id, lines) {
-    var block = pendingBlocks[id];
-    if (!block) return;
+    var target = pendingBlocks[id];
+    if (!target) return;
     delete pendingBlocks[id];
     if (!lines || lines.length === 0) return;
 
-    block.innerHTML = lines
-      .map(function (tokens) {
-        return tokens
-          .map(function (token) {
-            var text = escapeHtml(token.text);
-            return token.color
-              ? '<span style="color:' + token.color.replace(/[^#\w(),.% ]/g, "") + '">' + text + "</span>"
-              : text;
-          })
-          .join("");
-      })
-      .join("\n");
+    var paint = function (tokens) {
+      return tokens
+        .map(function (token) {
+          var text = escapeHtml(token.text);
+          return token.color
+            ? '<span style="color:' + token.color.replace(/[^#\w(),.% ]/g, "") + '">' + text + "</span>"
+            : text;
+        })
+        .join("");
+    };
+
+    // One element holding every line, or one element per line: a fenced block
+    // is the first, a suggestion's rows are the second.
+    if (target.length !== undefined) {
+      Array.prototype.forEach.call(target, function (cell) {
+        var line = lines[Number(cell.dataset.line)];
+        if (line) cell.innerHTML = paint(line);
+      });
+      return;
+    }
+
+    target.innerHTML = lines.map(paint).join("\n");
+  }
+
+  /** What a suggestion in this box replaces, and where those lines live. */
+  function contextFor(root) {
+    if (composer && composer.contains(root) && pending) {
+      return {
+        before: anchorLines,
+        startLine: pending.startLine || pending.line,
+        language: languageOf(pending.path),
+      };
+    }
+    if (threadBox && threadBox.contains(root) && openThread) {
+      return contextOf(openThread.root);
+    }
+    return {};
+  }
+
+  /** The same, for a remark already posted. */
+  function contextOf(comment) {
+    return {
+      before: linesOf(comment),
+      startLine: comment.startLine || comment.line,
+      language: languageOf(comment.path),
+    };
+  }
+
+  function languageOf(path) {
+    var node = data.nodes.find(function (n) { return n.path === path; });
+    return (node && node.language) || "";
+  }
+
+  /** The rows a remark covers, read back off the card it points at. */
+  function linesOf(comment) {
+    var node = data.nodes.find(function (n) { return n.path === comment.path; });
+    var card = node && document.getElementById("card-" + cssId(node.id));
+    if (!card) return [];
+
+    var attribute = comment.side === "LEFT" ? "data-old" : "data-new";
+    var out = [];
+    for (var line = comment.startLine || comment.line; line <= comment.line; line++) {
+      var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+      if (row) out.push(row.querySelector(".text").textContent);
+    }
+    return out;
   }
 
   /**
@@ -981,19 +1122,8 @@ export const CLIENT_SCRIPT = String.raw`
     if (composer && composer.contains(root)) return anchorLines;
 
     if (threadBox && threadBox.contains(root) && openThread) {
-      var comment = openThread.root;
-      var node = data.nodes.find(function (n) { return n.path === comment.path; });
-      var card = node && document.getElementById("card-" + cssId(node.id));
-      if (!card) return [""];
-
-      var attribute = comment.side === "LEFT" ? "data-old" : "data-new";
-      var from = comment.startLine || comment.line;
-      var out = [];
-      for (var line = from; line <= comment.line; line++) {
-        var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
-        if (row) out.push(row.querySelector(".text").textContent);
-      }
-      return out.length > 0 ? out : [""];
+      var found = linesOf(openThread.root);
+      return found.length > 0 ? found : [""];
     }
 
     return [""];
@@ -1080,6 +1210,7 @@ export const CLIENT_SCRIPT = String.raw`
       var body = bodyOf(composer).value.trim();
       if (!body || !pending) return;
 
+      forget(composerKey(pending));
       drafts.push({
         path: pending.path,
         line: pending.line,
@@ -1145,6 +1276,11 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   if (panel) {
+    var summary = bodyOf(panel);
+    if (summary) {
+      summary.dataset.key = "review";
+      summary.value = unsent["review"] || "";
+    }
     var close = panel.querySelector(".review-close");
     if (close) {
       close.addEventListener("click", function () { panel.hidden = true; });
@@ -1520,6 +1656,7 @@ export const CLIENT_SCRIPT = String.raw`
         bodyOf(panel).value = "";
       }
       if (message.comments) data.comments = message.comments;
+      forget("review");
       refreshReview();
       buildMarks();
       return;
@@ -1750,7 +1887,7 @@ export const CLIENT_SCRIPT = String.raw`
 
       var text = document.createElement("div");
       text.className = "text";
-      text.innerHTML = renderMarkdown(comment.body || "");
+      text.innerHTML = renderMarkdown(comment.body || "", contextOf(comment));
       colourBlocks(text);
       said.appendChild(text);
       said.appendChild(reactionRow(comment));
@@ -1764,7 +1901,8 @@ export const CLIENT_SCRIPT = String.raw`
     var reply = threadBox.querySelector(".thread-reply");
     if (reply) {
       reply.hidden = !host;
-      bodyOf(reply).value = "";
+      rememberOn(reply, "t:" + thread.root.id);
+      setTab(reply, "write");
     }
 
     threadBox.hidden = false;
@@ -1993,6 +2131,7 @@ export const CLIENT_SCRIPT = String.raw`
         } else {
           notifyHost("reply", { id: openThread.root.id, body: text });
         }
+        forget("t:" + openThread.root.id);
         field.value = "";
       });
     }
