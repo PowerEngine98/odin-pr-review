@@ -1,0 +1,24 @@
+<!--
+  Activity bar icon: Odin's horned helm, with the one eye he kept.
+
+  VS Code masks activity bar icons to a single themed colour, so this is drawn
+  as monochrome line art on a 24px grid. Detail is limited to the four things
+  that survive at that size: the horns, the helm, the brow band, and the
+  asymmetry of one open eye against one closed. The horns are filled rather
+  than outlined, because hairline crescents close up into mush at 24px, and
+  there is no nose guard — a third mark below the band turned the face into a
+  blob at the size that actually matters.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <g fill="currentColor">
+    <path d="M7.0 12.5C4.5 11.7 2.6 9.8 1.9 7.0c2.5.7 4.4 2.3 5.8 4.3z" />
+    <path d="M17.0 12.5c2.5-.8 4.4-2.7 5.1-5.5-2.5.7-4.4 2.3-5.8 4.3z" />
+    <circle cx="9.8" cy="17.4" r="1.15" />
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1.4"
+     stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6.2 14.6a5.8 5.8 0 0 1 11.6 0" />
+    <path d="M5.3 14.6h13.4" />
+    <path d="M13.4 17.4h2.9" />
+  </g>
+</svg>

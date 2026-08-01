@@ -24,7 +24,7 @@ const SUPPORTED = [
 export interface BuildRequest {
   /** Repository root. */
   cwd: string;
-  baseRef: string;
+  baseRef?: string;
   headRef?: string;
   includeImports: boolean;
   includeContext: boolean;
@@ -56,7 +56,7 @@ export async function buildGraphForRepo(
   report("Reading the diff…");
   let graph = await graphFromRepo({
     cwd: request.cwd,
-    baseRef: request.baseRef,
+    ...(request.baseRef ? { baseRef: request.baseRef } : {}),
     headRef,
   });
 

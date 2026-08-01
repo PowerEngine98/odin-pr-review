@@ -1,11 +1,22 @@
 import { parseUnifiedDiff, type ParsedFile } from "../diff/parse.js";
 import { buildGraph } from "../graph/build.js";
 import type { ChangeGraph, GraphMeta } from "../model/types.js";
-import { git, mergeBase, repoRoot, revParse, type GitOptions } from "./exec.js";
+import {
+  git,
+  mergeBase,
+  repoRoot,
+  resolveBaseRef,
+  revParse,
+  type GitOptions,
+} from "./exec.js";
 
 export interface DiffRequest extends GitOptions {
-  /** The branch the PR targets. */
-  baseRef: string;
+  /**
+   * Branch the PR targets. Treated as a preference: if it does not exist here,
+   * the remote's default branch and the usual names are tried before giving up.
+   * Omit it to detect the base entirely.
+   */
+  baseRef?: string;
   /** The branch under review. Defaults to the working tree via `HEAD`. */
   headRef?: string;
   /** Lines of context around each hunk. */
@@ -25,7 +36,10 @@ export async function readPatch(req: DiffRequest): Promise<{
   meta: GraphMeta;
 }> {
   const headRef = req.headRef ?? "HEAD";
-  const base = await mergeBase(req.baseRef, headRef, req);
+  // The configured name may not exist here: worktrees and fresh clones often
+  // carry only `origin/main`, and plenty of repositories still use `master`.
+  const baseRef = await resolveBaseRef(req.baseRef, req);
+  const base = await mergeBase(baseRef, headRef, req);
 
   const args = [
     "diff",
@@ -44,9 +58,9 @@ export async function readPatch(req: DiffRequest): Promise<{
 
   const meta: GraphMeta = {
     repo: await repoRoot(req),
-    baseRef: req.baseRef,
+    baseRef,
     headRef,
-    baseSha: await revParse(req.baseRef, req),
+    baseSha: await revParse(baseRef, req),
     headSha: await revParse(headRef, req),
     mergeBase: base,
     generator: "odin-pr-review/0.1.0",

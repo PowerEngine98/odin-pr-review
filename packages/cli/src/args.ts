@@ -4,7 +4,7 @@ Usage:
   odin graph [options]
 
 Options:
-  -b, --base <ref>      base branch the PR targets            (default: main)
+  -b, --base <ref>      base branch the PR targets   (default: detect)
   -H, --head <ref>      branch under review                   (default: HEAD)
   -C, --cwd <dir>       repository directory                  (default: .)
   -p, --patch <file>    read a .patch file instead of a repo
@@ -30,7 +30,7 @@ export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 export interface GraphOptions {
   kind: "graph";
   cwd: string;
-  baseRef: string;
+  baseRef?: string;
   headRef: string;
   patchFile?: string;
   out?: string;
@@ -54,7 +54,6 @@ export function parseArgs(argv: string[]): ParseResult {
   const opts: GraphOptions = {
     kind: "graph",
     cwd: process.cwd(),
-    baseRef: "main",
     headRef: "HEAD",
     context: 3,
     pathspecs: [],

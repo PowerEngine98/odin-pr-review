@@ -81,6 +81,13 @@ Install the packaged build and review without leaving the editor:
 code --install-extension dist/odin-pr-review-0.1.0.vsix
 ```
 
+![The extension](docs/vscode.png)
+
+Odin gets its own activity bar entry. The sidebar lists every changed file with
+its status, and expands to show the references leaving it — the graph as a list,
+for when a change is too large to take in visually or you just want to scan.
+Clicking a file opens its diff; clicking a reference follows it.
+
 Then run **Odin: Review Pull Request as a Graph** from the command palette, or
 trigger it from anywhere with a link:
 
@@ -258,8 +265,8 @@ headlessly by the compiler API or inside the editor by a language server.
 ## Development
 
 ```sh
-yarn test                      # 91 unit tests
-yarn test:integration          # 5 tests inside a real VS Code extension host
+yarn test                      # 98 unit tests
+yarn test:integration          # 6 tests inside a real VS Code extension host
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples
 ```

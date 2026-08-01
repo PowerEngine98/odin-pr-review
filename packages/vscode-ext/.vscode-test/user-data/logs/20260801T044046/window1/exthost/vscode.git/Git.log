@@ -1,0 +1,32 @@
+2026-08-01 04:40:47.583 [info] [main] Log level: Info
+2026-08-01 04:40:47.583 [info] [main] Validating found git in: "/usr/bin/git"
+2026-08-01 04:40:47.600 [info] [main] Using git "2.50.1 (Apple Git-155)" from "/usr/bin/git"
+2026-08-01 04:40:47.600 [info] [Model][doInitialScan] Initial repository scan started
+2026-08-01 04:40:47.616 [info] > git rev-parse --show-toplevel [12ms]
+2026-08-01 04:40:47.754 [info] > git rev-parse --path-format=relative --show-toplevel [138ms]
+2026-08-01 04:40:47.772 [info] > git rev-parse --git-dir --git-common-dir --show-superproject-working-tree [17ms]
+2026-08-01 04:40:47.777 [info] [Model][openRepository] Opened repository (path): /var/folders/v2/jdx9_4z903bc0z83sz_2bq8m0000gn/T/odin-it-4qsz9u
+2026-08-01 04:40:47.778 [info] [Model][openRepository] Opened repository (real path): /private/var/folders/v2/jdx9_4z903bc0z83sz_2bq8m0000gn/T/odin-it-4qsz9u
+2026-08-01 04:40:47.778 [info] [Model][openRepository] Opened repository (kind): repository
+2026-08-01 04:40:47.783 [info] [Git][getRemotes] No remotes found in the git config file
+2026-08-01 04:40:47.791 [info] > git config --get --local core.virtualfilesystem [12ms]
+2026-08-01 04:40:47.791 [warning] [Git][config] git config failed: Failed to execute git
+2026-08-01 04:40:47.792 [info] > git config --get commit.template [12ms]
+2026-08-01 04:40:47.792 [info] > git rev-parse --show-toplevel [11ms]
+2026-08-01 04:40:47.795 [info] > git for-each-ref --format=%(refname)%00%(upstream:short)%00%(objectname)%00%(upstream:track)%00%(upstream:remotename)%00%(upstream:remoteref) --ignore-case refs/heads/feature/graph refs/remotes/feature/graph [12ms]
+2026-08-01 04:40:47.804 [info] > git rev-parse --path-format=relative --show-toplevel [12ms]
+2026-08-01 04:40:47.805 [info] [Model][doInitialScan] Initial repository scan completed - repositories (1), closed repositories (0), parent repositories (0), unsafe repositories (0)
+2026-08-01 04:40:47.808 [info] > git status -z -uall [12ms]
+2026-08-01 04:40:47.808 [info] > git for-each-ref --sort -committerdate --format %(refname)%00%(objectname)%00%(*objectname) [11ms]
+2026-08-01 04:40:47.818 [info] [Git][getRemotes] No remotes found in the git config file
+2026-08-01 04:40:47.828 [info] > git config --get commit.template [11ms]
+2026-08-01 04:40:47.830 [info] > git for-each-ref --format=%(refname)%00%(upstream:short)%00%(objectname)%00%(upstream:track)%00%(upstream:remotename)%00%(upstream:remoteref) --ignore-case refs/heads/feature/graph refs/remotes/feature/graph [13ms]
+2026-08-01 04:40:47.831 [info] > git for-each-ref --format=%(refname)%00%(upstream:short)%00%(objectname)%00%(upstream:track)%00%(upstream:remotename)%00%(upstream:remoteref) --ignore-case refs/heads/feature/graph refs/remotes/feature/graph [13ms]
+2026-08-01 04:40:47.842 [info] > git config --get --local branch.feature/graph.vscode-merge-base [12ms]
+2026-08-01 04:40:47.843 [warning] [Git][config] git config failed: Failed to execute git
+2026-08-01 04:40:47.844 [info] > git status -z -uall [13ms]
+2026-08-01 04:40:47.845 [info] > git for-each-ref --sort -committerdate --format %(refname)%00%(objectname)%00%(*objectname) [13ms]
+2026-08-01 04:40:47.856 [info] > git reflog feature/graph --grep-reflog=branch: Created from *. [13ms]
+2026-08-01 04:40:47.872 [info] > git reflog HEAD --grep-reflog=checkout: moving from .* to feature/graph [14ms]
+2026-08-01 04:40:47.885 [info] > git for-each-ref --format=%(refname)%00%(upstream:short)%00%(objectname)%00%(upstream:track)%00%(upstream:remotename)%00%(upstream:remoteref) --ignore-case refs/heads/main refs/remotes/main [13ms]
+2026-08-01 04:40:48.294 [info] > git check-ignore -v -z --stdin [13ms]

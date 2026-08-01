@@ -47,6 +47,30 @@
         "title": "Review Pull Request as a Graph (from link)",
         "category": "Odin",
         "enablement": "false"
+      },
+      {
+        "command": "odin.openFile",
+        "title": "Open File",
+        "category": "Odin",
+        "enablement": "false"
+      },
+      {
+        "command": "odin.followEdge",
+        "title": "Follow Reference",
+        "category": "Odin",
+        "enablement": "false"
+      },
+      {
+        "command": "odin.showGraph",
+        "title": "Show the Graph",
+        "category": "Odin",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "odin.refresh",
+        "title": "Refresh",
+        "category": "Odin",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -54,8 +78,8 @@
       "properties": {
         "odin.baseRef": {
           "type": "string",
-          "default": "main",
-          "description": "Branch a pull request is compared against. The diff is taken from the merge base, not the branch tip."
+          "default": "",
+          "description": "Branch a pull request is compared against. Leave empty to detect it from the remote's default branch. The diff is taken from the merge base, not the branch tip."
         },
         "odin.includeImports": {
           "type": "boolean",
@@ -68,6 +92,45 @@
           "description": "Resolve references on unchanged lines too. Shows pre-existing relationships, at the cost of a much busier graph."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "odin",
+          "title": "Odin PR Review",
+          "icon": "media/odin.svg"
+        }
+      ]
+    },
+    "views": {
+      "odin": [
+        {
+          "id": "odin.changes",
+          "name": "Change Graph",
+          "icon": "media/odin.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "odin.changes",
+        "contents": "Review this branch as a graph: every changed file becomes a card, every call-site reference becomes an arrow.\n\n[Review Pull Request](command:odin.review)\n[Choose a base branch\u2026](command:odin.reviewAgainst)\n\nThe diff is taken from the merge base, not the branch tip.",
+        "when": "workspaceFolderCount != 0"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "odin.showGraph",
+          "when": "view == odin.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "odin.refresh",
+          "when": "view == odin.changes",
+          "group": "navigation@2"
+        }
+      ]
     }
   },
   "scripts": {

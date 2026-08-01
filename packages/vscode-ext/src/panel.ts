@@ -59,6 +59,28 @@ export class GraphPanel {
     return GraphPanel.current;
   }
 
+  /** Brings the existing graph back to the front, if there is one. */
+  static revealCurrent(): void {
+    GraphPanel.current
+      ? GraphPanel.current.panel.reveal(vscode.ViewColumn.One)
+      : vscode.commands.executeCommand("odin.review");
+  }
+
+  /** Opens a file as a diff, for the sidebar's file rows. */
+  static async openPath(path: string): Promise<void> {
+    await GraphPanel.current?.openDiff(path);
+  }
+
+  /** Follows a reference, for the sidebar's reference rows. */
+  static async follow(target: {
+    toPath: string;
+    toLine: number;
+    toSide: "base" | "head";
+  }): Promise<void> {
+    if (!target.toPath) return;
+    await GraphPanel.current?.reveal(target.toPath, target.toLine, target.toSide);
+  }
+
   private constructor(
     panel: vscode.WebviewPanel,
     graph: ChangeGraph,

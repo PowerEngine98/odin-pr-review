@@ -1,3 +1,3 @@
-2026/08/01-04:19:36.251 18b75f7 Reusing MANIFEST /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/.vscode-test/user-data/Local Storage/leveldb/MANIFEST-000001
-2026/08/01-04:19:36.253 18b75f7 Recovering log #3
-2026/08/01-04:19:36.253 18b75f7 Reusing old log /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/.vscode-test/user-data/Local Storage/leveldb/000003.log 
+2026/08/01-04:40:46.054 18cce75 Reusing MANIFEST /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/.vscode-test/user-data/Local Storage/leveldb/MANIFEST-000001
+2026/08/01-04:40:46.056 18cce75 Recovering log #3
+2026/08/01-04:40:46.056 18cce75 Reusing old log /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext/.vscode-test/user-data/Local Storage/leveldb/000003.log 

@@ -1,0 +1,7 @@
+2026-08-01 04:38:14.951 [info] Started initializing default profile extensions in extensions installation folder. file:///Users/marcoacosta/workspace/odin-pr-review/.vscode-test/extensions
+2026-08-01 04:38:14.991 [info] Started local extension host with pid 99040.
+2026-08-01 04:38:15.022 [info] [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false
+2026-08-01 04:38:15.042 [info] Completed initializing default profile extensions in extensions installation folder. file:///Users/marcoacosta/workspace/odin-pr-review/.vscode-test/extensions
+2026-08-01 04:38:15.121 [info] Loading development extension at /Users/marcoacosta/workspace/odin-pr-review/packages/vscode-ext
+2026-08-01 04:38:15.222 [info] Settings Sync: Account status changed from uninitialized to unavailable
+2026-08-01 04:38:20.023 [info] [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false

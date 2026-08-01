@@ -1,12 +1,32 @@
-import { git, serializeGraph } from "@odin/core";
+import { git, listRefs, serializeGraph } from "@odin/core";
 import * as vscode from "vscode";
 
 import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo } from "./graph.js";
 import { GraphPanel } from "./panel.js";
+import { ChangeTreeProvider } from "./tree.js";
+
+/** The sidebar's view of the most recent review. */
+const tree = new ChangeTreeProvider();
+
+/** Enough of the last review to act on it without rebuilding. */
+let last: { repo: string; baseRef?: string } | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
+    vscode.window.registerTreeDataProvider("odin.changes", tree),
+    vscode.commands.registerCommand("odin.showGraph", () => GraphPanel.revealCurrent()),
+    vscode.commands.registerCommand("odin.refresh", () =>
+      review(last?.baseRef),
+    ),
+    vscode.commands.registerCommand("odin.openFile", (path: string) =>
+      GraphPanel.openPath(path),
+    ),
+    vscode.commands.registerCommand(
+      "odin.followEdge",
+      (target: { toPath: string; toLine: number; toSide: "base" | "head" }) =>
+        GraphPanel.follow(target),
+    ),
     vscode.workspace.registerTextDocumentContentProvider(
       BASE_SCHEME,
       new BaseContentProvider(),
@@ -44,7 +64,7 @@ async function review(baseRef?: string): Promise<void> {
   if (!repo) return;
 
   const settings = vscode.workspace.getConfiguration("odin");
-  const base = baseRef ?? settings.get<string>("baseRef", "main");
+  const base = baseRef ?? settings.get<string>("baseRef") ?? undefined;
 
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: "Odin" },
@@ -52,7 +72,7 @@ async function review(baseRef?: string): Promise<void> {
       try {
         const { graph, layout } = await buildGraphForRepo({
           cwd: repo,
-          baseRef: base,
+          ...(base ? { baseRef: base } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
           report: (message) => progress.report({ message }),
@@ -60,19 +80,57 @@ async function review(baseRef?: string): Promise<void> {
 
         if (graph.nodes.length === 0) {
           vscode.window.showInformationMessage(
-            `Odin: nothing differs between ${base} and the current branch.`,
+            `Odin: nothing differs between ${graph.meta.baseRef} and the current branch.`,
           );
           return;
         }
 
         GraphPanel.show(graph, layout, repo);
+        tree.setGraph(graph);
+        last = { repo, ...(base ? { baseRef: base } : {}) };
       } catch (error) {
-        vscode.window.showErrorMessage(
-          `Odin: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        await reportFailure(repo, error);
       }
     },
   );
+}
+
+/**
+ * Turns a failed review into something actionable.
+ *
+ * The common failure by far is a base branch that does not exist in this
+ * checkout — a worktree with no local `main`, or a repository that still uses
+ * `master`. Offering the branch list on the spot beats making the reviewer go
+ * and find the settings.
+ */
+async function reportFailure(repo: string, error: unknown): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  const missingBase =
+    message.includes("no base branch found") ||
+    message.includes("Not a valid object name");
+
+  if (!missingBase) {
+    vscode.window.showErrorMessage(`Odin: ${message}`);
+    return;
+  }
+
+  const choice = await vscode.window.showErrorMessage(
+    "Odin: could not find the base branch to compare against.",
+    "Pick a branch",
+  );
+  if (choice !== "Pick a branch") return;
+
+  const picked = await vscode.window.showQuickPick(await listBranches(repo), {
+    title: "Review against which base?",
+    placeHolder: "The diff is taken from the merge base, not the branch tip",
+  });
+  if (!picked) return;
+
+  // Remember it, so the next review does not ask again.
+  await vscode.workspace
+    .getConfiguration("odin")
+    .update("baseRef", picked, vscode.ConfigurationTarget.Workspace);
+  await review(picked);
 }
 
 /** Lets a reviewer compare against something other than the configured base. */
@@ -95,7 +153,9 @@ async function exportGraph(): Promise<void> {
   const settings = vscode.workspace.getConfiguration("odin");
   const { graph } = await buildGraphForRepo({
     cwd: repo,
-    baseRef: settings.get<string>("baseRef", "main"),
+    ...(settings.get<string>("baseRef")
+      ? { baseRef: settings.get<string>("baseRef")! }
+      : {}),
     includeImports: settings.get<boolean>("includeImports", true),
     includeContext: settings.get<boolean>("includeContext", false),
   });
@@ -135,14 +195,6 @@ async function repositoryRoot(): Promise<string | undefined> {
 }
 
 async function listBranches(repo: string): Promise<string[]> {
-  try {
-    const output = await git(
-      ["for-each-ref", "--format=%(refname:short)", "--sort=-committerdate",
-       "refs/heads", "refs/remotes"],
-      { cwd: repo },
-    );
-    return output.split("\n").map((line) => line.trim()).filter(Boolean);
-  } catch {
-    return ["main", "master"];
-  }
+  const refs = await listRefs({ cwd: repo });
+  return refs.length > 0 ? refs : ["main", "master"];
 }

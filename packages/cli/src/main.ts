@@ -35,10 +35,10 @@ async function main(argv: string[]): Promise<number> {
   }
 
   let graph = opts.patchFile
-    ? await graphFromPatchFile(opts.patchFile, opts.baseRef, opts.headRef)
+    ? await graphFromPatchFile(opts.patchFile, opts.baseRef ?? "base", opts.headRef)
     : await graphFromRepo({
         cwd: opts.cwd,
-        baseRef: opts.baseRef,
+        ...(opts.baseRef ? { baseRef: opts.baseRef } : {}),
         headRef: opts.headRef,
         context: opts.context,
         stamp: opts.stamp,

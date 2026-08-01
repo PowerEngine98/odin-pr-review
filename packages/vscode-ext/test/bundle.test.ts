@@ -75,6 +75,7 @@ function createStub(): Stub {
     },
     window: {
       registerUriHandler: () => disposable,
+      registerTreeDataProvider: () => disposable,
       showErrorMessage: () => Promise.resolve(),
       showInformationMessage: () => Promise.resolve(),
       showQuickPick: () => Promise.resolve(undefined),
@@ -98,6 +99,19 @@ function createStub(): Stub {
         toString: () => `${parts.scheme}:${parts.path}?${parts.query}`,
       }),
     },
+    // The tree provider constructs an emitter as a field, so this has to exist
+    // before activation, not merely when something subscribes.
+    EventEmitter: class {
+      readonly event = () => disposable;
+      fire() {}
+      dispose() {}
+    },
+    TreeItem: class { constructor(readonly label: string, readonly state?: unknown) {} },
+    TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+    ThemeIcon: class { constructor(readonly id: string, readonly color?: unknown) {} },
+    ThemeColor: class { constructor(readonly id: string) {} },
+    MarkdownString: class { constructor(readonly value?: string) {} },
+    ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     Position: class { constructor(readonly line: number, readonly character: number) {} },
     Selection: class { constructor(readonly a: unknown, readonly b: unknown) {} },
     ViewColumn: { One: 1, Beside: -2 },
@@ -133,12 +147,24 @@ describe("the built extension", () => {
     expect(api.registeredSchemes).toEqual(["odin-base"]);
   });
 
-  it("collects its registrations for disposal", () => {
-    const { extension } = loadWithStub();
+  it("collects every registration for disposal", async () => {
+    const { api, extension } = loadWithStub();
     const subscriptions: unknown[] = [];
     extension.activate({ subscriptions });
-    // Four commands, a content provider, and the URI handler.
-    expect(subscriptions).toHaveLength(6);
+
+    const manifest = (
+      await import("../package.json", { with: { type: "json" } })
+    ).default as { contributes: { commands: { command: string }[] } };
+
+    // Every command, plus the content provider, the URI handler and the tree
+    // view. Anything registered but not collected here leaks on reload.
+    const nonCommands = 3;
+    expect(subscriptions).toHaveLength(
+      manifest.contributes.commands.length + nonCommands,
+    );
+    expect(api.registeredCommands).toHaveLength(
+      manifest.contributes.commands.length,
+    );
   });
 
   it("deactivates cleanly", () => {

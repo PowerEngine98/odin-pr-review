@@ -91,6 +91,17 @@ test("reviewing opens the graph panel", async () => {
     "the panel should name the branch under review, not \"HEAD\"");
 });
 
+test("the sidebar view is registered and fills in after a review", async () => {
+  // The activity bar container only shows up once a view inside it exists, so
+  // asserting the view can be focused covers both.
+  await vscode.commands.executeCommand("odin.changes.focus");
+
+  const commands = await vscode.commands.getCommands(true);
+  for (const id of ["odin.showGraph", "odin.refresh"]) {
+    assert.ok(commands.includes(id), `view command ${id} is missing`);
+  }
+});
+
 exports.run = async function run() {
   const failures = [];
   for (const { name, fn } of tests) {
