@@ -69,7 +69,23 @@ on any file that both gained and lost lines.
 | Click an arrow | Travel to the definition it points at |
 | Click a filename | Isolate that file and everything it touches |
 | Scroll / ⌘-scroll | Pan / zoom around the cursor |
+| Click a gap | Open the untouched code it stands for |
+| Click *show N more lines* | Reveal the rest of a truncated card |
 | `f` / `esc` | Fit the graph / clear the selection |
+
+Test files are hidden by default, and the **tests** checkbox brings them back.
+A test tends to reference a great deal of what it exercises: on a 24-file
+change here, one test file accounted for 23 of the 35 edges and buried
+everything else. They are hidden rather than dropped, because sometimes the
+tests *are* the change. `--tests` does the same on the command line.
+
+Cards stop at 42 rows and offer the rest behind a bar, so one 500-line addition
+cannot set the height of the whole drawing. An arrow never points at a row a
+card is not showing — it falls back to the card edge, which says which file
+without claiming a position it cannot point to.
+
+An import names a file rather than a position in it, so those arrows meet the
+card at its title instead of landing on whatever line one happens to hold.
 
 Source: [`docs/examples/graph.html`](docs/examples/graph.html).
 
@@ -288,7 +304,7 @@ A missing arrow is recoverable; one that sends you to the wrong file is not.
 ## Development
 
 ```sh
-yarn test                      # 117 unit tests
+yarn test                      # 129 unit tests
 yarn test:integration          # 6 tests inside a real VS Code extension host
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples

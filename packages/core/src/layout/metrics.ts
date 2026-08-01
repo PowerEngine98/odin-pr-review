@@ -33,6 +33,15 @@ export interface LayoutMetrics {
   margin: number;
   /** Height used for a card with nothing to show. */
   emptyCardHeight: number;
+  /**
+   * Rows a card shows before it is truncated with a "show more" bar.
+   *
+   * A file that is entirely additions has nothing unchanged to collapse, so
+   * without a cap one 500-line card sets the height of the whole drawing and
+   * every other card becomes a speck. The cap costs nothing in fidelity — the
+   * remaining rows are still there, one click away.
+   */
+  maxCardRows: number;
 }
 
 export const DEFAULT_METRICS: LayoutMetrics = {
@@ -53,4 +62,5 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   rowGap: 56,
   margin: 48,
   emptyCardHeight: 120,
+  maxCardRows: 42,
 };

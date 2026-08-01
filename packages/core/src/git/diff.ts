@@ -1,5 +1,6 @@
 import { parseUnifiedDiff, type ParsedFile } from "../diff/parse.js";
 import { buildGraph } from "../graph/build.js";
+import { annotateTests } from "../graph/tests.js";
 import type { ChangeGraph, GraphMeta } from "../model/types.js";
 import {
   git,
@@ -74,5 +75,5 @@ export async function readPatch(req: DiffRequest): Promise<{
 export async function graphFromRepo(req: DiffRequest): Promise<ChangeGraph> {
   const { patch, meta } = await readPatch(req);
   const files: ParsedFile[] = parseUnifiedDiff(patch);
-  return buildGraph(files, { meta });
+  return annotateTests(buildGraph(files, { meta }));
 }

@@ -196,10 +196,10 @@ export function parseUnifiedDiff(patch: string): ParsedFile[] {
         const text = line.slice(1);
         let entry: DiffLine;
         if (marker === "+") {
-          entry = { kind: "add", text, newLine: newCursor++ };
+          entry = { kind: "add", text, newLine: newCursor++, oldAnchor: oldCursor };
           draft.additions++;
         } else if (marker === "-") {
-          entry = { kind: "del", text, oldLine: oldCursor++ };
+          entry = { kind: "del", text, oldLine: oldCursor++, newAnchor: newCursor };
           draft.deletions++;
         } else {
           entry = { kind: "ctx", text, oldLine: oldCursor++, newLine: newCursor++ };

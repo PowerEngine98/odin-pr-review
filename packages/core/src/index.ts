@@ -4,6 +4,7 @@ export * from "./model/language.js";
 export * from "./diff/parse.js";
 export * from "./diff/unquote.js";
 export * from "./graph/build.js";
+export * from "./graph/tests.js";
 export * from "./graph/validate.js";
 export * from "./git/exec.js";
 export * from "./git/diff.js";

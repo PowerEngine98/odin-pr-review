@@ -91,6 +91,16 @@ export interface DiffLine {
   oldLine?: number;
   /** 1-based line number in the head file; absent for deleted lines. */
   newLine?: number;
+  /**
+   * Where this line sits on the side it does not exist on.
+   *
+   * An added line has no base-side line number, but it does have a base-side
+   * position: the line it was inserted before. Recording it lets both gutters
+   * stay populated down the whole card without inventing a line that never
+   * existed — the number is a position, and renderers dim it to say so.
+   */
+  oldAnchor?: number;
+  newAnchor?: number;
   /** True when git reported "\ No newline at end of file" for this line. */
   noNewline?: boolean;
 }
@@ -141,6 +151,8 @@ export interface FileNode {
   symbols: SymbolRef[];
   /** Whether anything was able to look for references in this file. */
   resolution?: ResolutionStatus;
+  /** Matches this ecosystem's conventions for test code. */
+  isTest?: boolean;
 }
 
 /** One end of an edge: a precise position inside a node. */

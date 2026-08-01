@@ -42,87 +42,104 @@
             {
               "kind": "add",
               "text": "import { log } from \"./logger\";",
-              "newLine": 1
+              "newLine": 1,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "import type { MyService } from \"./myService\";",
-              "newLine": 2
+              "newLine": 2,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "import type { Repository } from \"./repository\";",
-              "newLine": 3
+              "newLine": 3,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "",
-              "newLine": 4
+              "newLine": 4,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "export class AddedFile {",
-              "newLine": 5
+              "newLine": 5,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "  constructor(",
-              "newLine": 6
+              "newLine": 6,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "    private readonly myService: MyService,",
-              "newLine": 7
+              "newLine": 7,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "    private readonly repository: Repository,",
-              "newLine": 8
+              "newLine": 8,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "  ) {}",
-              "newLine": 9
+              "newLine": 9,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "",
-              "newLine": 10
+              "newLine": 10,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "  myNewFunction(): void {",
-              "newLine": 11
+              "newLine": 11,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "    log(\"starting\");",
-              "newLine": 12
+              "newLine": 12,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "    this.myService.function1();",
-              "newLine": 13
+              "newLine": 13,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "    this.repository.clear();",
-              "newLine": 14
+              "newLine": 14,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "  }",
-              "newLine": 15
+              "newLine": 15,
+              "oldAnchor": 0
             },
             {
               "kind": "add",
               "text": "}",
-              "newLine": 16
+              "newLine": 16,
+              "oldAnchor": 0
             }
           ]
         }
       ],
       "symbols": [],
+      "isTest": false,
       "resolution": "analysed"
     },
     {
@@ -164,12 +181,14 @@
             {
               "kind": "del",
               "text": "    this.myService.function2();",
-              "oldLine": 7
+              "oldLine": 7,
+              "newAnchor": 7
             },
             {
               "kind": "add",
               "text": "    this.myService.function3();",
-              "newLine": 7
+              "newLine": 7,
+              "oldAnchor": 8
             },
             {
               "kind": "ctx",
@@ -187,6 +206,7 @@
         }
       ],
       "symbols": [],
+      "isTest": false,
       "resolution": "analysed"
     },
     {
@@ -210,72 +230,86 @@
             {
               "kind": "del",
               "text": "import type { MyService } from \"./myService\";",
-              "oldLine": 1
+              "oldLine": 1,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "",
-              "oldLine": 2
+              "oldLine": 2,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "export class DeletedFile {",
-              "oldLine": 3
+              "oldLine": 3,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "  constructor(private readonly myService: MyService) {}",
-              "oldLine": 4
+              "oldLine": 4,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "",
-              "oldLine": 5
+              "oldLine": 5,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "  anotherFunction(): void {",
-              "oldLine": 6
+              "oldLine": 6,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "    this.myService.function2();",
-              "oldLine": 7
+              "oldLine": 7,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "  }",
-              "oldLine": 8
+              "oldLine": 8,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "",
-              "oldLine": 9
+              "oldLine": 9,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "  anotherFunction2(): void {",
-              "oldLine": 10
+              "oldLine": 10,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "    console.log(\"legacy\");",
-              "oldLine": 11
+              "oldLine": 11,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "  }",
-              "oldLine": 12
+              "oldLine": 12,
+              "newAnchor": 0
             },
             {
               "kind": "del",
               "text": "}",
-              "oldLine": 13
+              "oldLine": 13,
+              "newAnchor": 0
             }
           ]
         }
       ],
       "symbols": [],
+      "isTest": false,
       "resolution": "analysed"
     },
     {
@@ -290,6 +324,7 @@
       },
       "hunks": [],
       "symbols": [],
+      "isTest": false,
       "resolution": "untouched"
     },
     {
@@ -313,12 +348,14 @@
             {
               "kind": "del",
               "text": "import { DeletedFile } from \"./deletedFile\";",
-              "oldLine": 1
+              "oldLine": 1,
+              "newAnchor": 1
             },
             {
               "kind": "del",
               "text": "",
-              "oldLine": 2
+              "oldLine": 2,
+              "newAnchor": 1
             },
             {
               "kind": "ctx",
@@ -329,12 +366,14 @@
             {
               "kind": "del",
               "text": "  private readonly deletedFile = new DeletedFile(this);",
-              "oldLine": 4
+              "oldLine": 4,
+              "newAnchor": 2
             },
             {
               "kind": "del",
               "text": "",
-              "oldLine": 5
+              "oldLine": 5,
+              "newAnchor": 2
             },
             {
               "kind": "ctx",
@@ -375,27 +414,32 @@
             {
               "kind": "del",
               "text": "    this.deletedFile.anotherFunction2();",
-              "oldLine": 12
+              "oldLine": 12,
+              "newAnchor": 8
             },
             {
               "kind": "add",
               "text": "  }",
-              "newLine": 8
+              "newLine": 8,
+              "oldAnchor": 13
             },
             {
               "kind": "add",
               "text": "",
-              "newLine": 9
+              "newLine": 9,
+              "oldAnchor": 13
             },
             {
               "kind": "add",
               "text": "  function3(): void {",
-              "newLine": 10
+              "newLine": 10,
+              "oldAnchor": 13
             },
             {
               "kind": "add",
               "text": "    console.log(\"three\");",
-              "newLine": 11
+              "newLine": 11,
+              "oldAnchor": 13
             },
             {
               "kind": "ctx",
@@ -413,6 +457,7 @@
         }
       ],
       "symbols": [],
+      "isTest": false,
       "resolution": "analysed"
     },
     {
@@ -428,6 +473,7 @@
       },
       "hunks": [],
       "symbols": [],
+      "isTest": false,
       "resolution": "analysed"
     },
     {
@@ -469,12 +515,14 @@
             {
               "kind": "del",
               "text": "    log(\"saving \" + key);",
-              "oldLine": 11
+              "oldLine": 11,
+              "newAnchor": 11
             },
             {
               "kind": "add",
               "text": "    log(\"saving \" + key + \" (\" + value.length + \" bytes)\");",
-              "newLine": 11
+              "newLine": 11,
+              "oldAnchor": 12
             },
             {
               "kind": "ctx",
@@ -524,7 +572,8 @@
             {
               "kind": "add",
               "text": "    log(\"clearing \" + this.items.size + \" items\");",
-              "newLine": 44
+              "newLine": 44,
+              "oldAnchor": 44
             },
             {
               "kind": "ctx",
@@ -548,6 +597,7 @@
         }
       ],
       "symbols": [],
+      "isTest": false,
       "resolution": "analysed"
     }
   ],

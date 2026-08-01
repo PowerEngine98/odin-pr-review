@@ -79,7 +79,7 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
 
   const textX = node.x + metrics.padding + metrics.gutterWidth;
   const capacity = textCapacity(node.width, metrics);
-  node.rows.forEach((row, i) => {
+  node.rows.slice(0, node.visibleRows).forEach((row, i) => {
     const y = node.y + rowOffset(i, metrics) + metrics.fontSize / 2 - 2;
 
     if (row.kind === "gap") {
@@ -125,26 +125,48 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
         `font-size="${metrics.fontSize}">${marker}</text>`,
     );
 
-    // Both gutters are always drawn so the columns line up down the whole
-    // card. A line that exists on only one side gets a marker on the other
-    // rather than a number, because inventing one would be a lie: an added
-    // line has no position in the base file.
-    parts.push(
-      `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
-        `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
-        `text-anchor="end">${row.oldLine ?? "·"}</text>`,
-    );
-    parts.push(
-      `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
-        `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
-        `text-anchor="end">${row.newLine ?? "·"}</text>`,
-    );
+    // Both gutters always carry a number so the columns run unbroken down the
+    // card. Where a line exists on one side only, the other shows the position
+    // it occupies there rather than a line number it does not have, at reduced
+    // opacity so the two can be told apart.
+    const old = row.oldLine ?? row.oldAnchor;
+    const fresh = row.newLine ?? row.newAnchor;
+    if (old !== undefined) {
+      parts.push(
+        `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
+          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+          `opacity="${row.oldLine === undefined ? 0.45 : 1}" ` +
+          `text-anchor="end">${old}</text>`,
+      );
+    }
+    if (fresh !== undefined) {
+      parts.push(
+        `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
+          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+          `opacity="${row.newLine === undefined ? 0.45 : 1}" ` +
+          `text-anchor="end">${fresh}</text>`,
+      );
+    }
     parts.push(
       `<text x="${textX}" y="${y}" fill="${colour}" ` +
         `font-size="${metrics.fontSize}" xml:space="preserve">` +
         `${escape(fitText(row.text, capacity))}</text>`,
     );
   });
+
+  if (node.hiddenRows > 0) {
+    const y = node.y + rowOffset(node.visibleRows, metrics);
+    parts.push(
+      `<rect x="${node.x + 2}" y="${y - metrics.lineHeight / 2}" ` +
+        `width="${node.width - 4}" height="${metrics.lineHeight}" ` +
+        `fill="${theme.gapBackground}"/>`,
+    );
+    parts.push(
+      `<text x="${node.x + node.width / 2}" y="${y + metrics.fontSize / 2 - 2}" ` +
+        `fill="${theme.mutedText}" font-size="${metrics.fontSize - 1}" ` +
+        `text-anchor="middle">${node.hiddenRows} more lines</text>`,
+    );
+  }
 
   parts.push("</g>");
   return parts.join("");

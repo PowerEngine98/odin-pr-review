@@ -5,6 +5,15 @@ import { git, type GitOptions } from "./exec.js";
 export interface SnippetOptions extends GitOptions {
   /** Lines of surrounding context to show around a target. */
   context?: number;
+  /**
+   * Largest run of untouched code fetched so a gap can be opened.
+   *
+   * Bounded because the text is embedded in the rendered document: without a
+   * limit, one review of a small change to a large file would inline the whole
+   * file. A gap longer than this stays closed, which is honest — it says how
+   * many lines it stands for either way.
+   */
+  maxGapLines?: number;
 }
 
 /**
@@ -54,6 +63,24 @@ export async function enrichSnippets(
   const snippets = new Map<string, Snippet[]>();
   const fileCache = new Map<string, string[] | null>();
 
+  // Material behind the gaps between hunks, so a reader can open them.
+  const maxGap = options.maxGapLines ?? 400;
+  for (const node of graph.nodes) {
+    if (node.binary || node.hunks.length === 0) continue;
+    const side = sideOf(node);
+    const lines = await readBlob(node, side, graph, options, fileCache);
+    if (!lines) continue;
+
+    const collected = snippets.get(node.id) ?? [];
+    for (const [from, to] of gapRanges(node, side)) {
+      if (to - from + 1 > maxGap) continue;
+      const slice = lines.slice(from - 1, Math.min(to, lines.length));
+      if (slice.length === 0) continue;
+      collected.push({ side, startLine: from, lines: slice, hidden: true });
+    }
+    if (collected.length > 0) snippets.set(node.id, collected);
+  }
+
   for (const [nodeId, perSide] of wanted) {
     const node = byId.get(nodeId)!;
     const collected: Snippet[] = [];
@@ -77,6 +104,25 @@ export async function enrichSnippets(
   }
 
   return snippets;
+}
+
+/** The untouched runs between a file's hunks, and before the first one. */
+function gapRanges(node: FileNode, side: Side): [number, number][] {
+  const spans = node.hunks
+    .map((hunk): [number, number] => {
+      const start = side === "base" ? hunk.oldStart : hunk.newStart;
+      const span = side === "base" ? hunk.oldLines : hunk.newLines;
+      return [start, start + Math.max(span, 1) - 1];
+    })
+    .sort((a, b) => a[0] - b[0]);
+
+  const ranges: [number, number][] = [];
+  let cursor = 1;
+  for (const [start, end] of spans) {
+    if (start > cursor) ranges.push([cursor, start - 1]);
+    cursor = Math.max(cursor, end + 1);
+  }
+  return ranges;
 }
 
 /** Which side of the comparison a card displays. */

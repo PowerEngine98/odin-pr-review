@@ -15,6 +15,7 @@ Options:
   -r, --resolve         resolve call-site references into edges
       --no-imports      with --resolve, skip import statements
       --with-context    with --resolve, probe unchanged lines too
+      --tests           include test files (hidden by default)
       --summary         shorthand for --format summary
       --stamp           record generation time (breaks reproducible output)
       --strict          exit non-zero when validation reports an issue
@@ -42,6 +43,7 @@ export interface GraphOptions {
   resolve: boolean;
   imports: boolean;
   withContext: boolean;
+  tests: boolean;
   light: boolean;
 }
 
@@ -63,6 +65,7 @@ export function parseArgs(argv: string[]): ParseResult {
     resolve: false,
     imports: true,
     withContext: false,
+    tests: false,
     light: false,
   };
 
@@ -92,6 +95,7 @@ export function parseArgs(argv: string[]): ParseResult {
       case "-r": case "--resolve": opts.resolve = true; continue;
       case "--no-imports": opts.imports = false; continue;
       case "--with-context": opts.withContext = true; continue;
+      case "--tests": opts.tests = true; continue;
       case "--light": opts.light = true; continue;
     }
 

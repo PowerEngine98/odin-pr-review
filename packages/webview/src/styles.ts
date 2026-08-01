@@ -195,6 +195,30 @@ html, body {
   justify-content: space-between;
   gap: 12px;
 }
+/* Rows the card starts out hiding: past the height cap, or inside a closed
+   gap. Present in the document, absent from the picture. */
+.row.beyond-cap,
+.row.in-gap { display: none; }
+.card.expanded .row.beyond-cap { display: flex; }
+.row.gap.open + .row.in-gap,
+.row.in-gap.open { display: flex; }
+
+.row.gap.expandable,
+.row.more {
+  cursor: pointer;
+  user-select: none;
+}
+.row.gap.expandable:hover,
+.row.more:hover { color: var(--text); }
+
+.row.more {
+  background: var(--gap-bg);
+  color: var(--muted);
+  font-size: calc(var(--font-size) - 1px);
+  justify-content: center;
+}
+.row.more .text { flex: 0 0 auto; }
+
 .row.gap .header {
   color: var(--gutter);
   font-size: calc(var(--font-size) - 2px);
@@ -214,6 +238,7 @@ html, body {
   text-align: right;
   user-select: none;
 }
+.row .num.anchor { opacity: 0.42; }
 .row .num.old {
   width: calc(var(--line-number-right) - var(--padding));
   flex: 0 0 auto;
@@ -279,6 +304,7 @@ html, body {
 #edges g.edge.dim path.wire { opacity: 0.12; }
 #edges g.edge.active path.wire { opacity: 1; stroke-width: 3; }
 
+.card.hidden { display: none; }
 .card.dim { opacity: 0.32; }
 .card.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
 .card.flash { animation: flash 900ms ease-out; }

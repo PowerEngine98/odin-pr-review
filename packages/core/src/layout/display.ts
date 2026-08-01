@@ -7,6 +7,9 @@ export type DisplayRow =
       text: string;
       oldLine?: number;
       newLine?: number;
+      /** Position on the side this line does not exist on. */
+      oldAnchor?: number;
+      newAnchor?: number;
     }
   | {
       kind: "gap";
@@ -15,6 +18,14 @@ export type DisplayRow =
       /** `@@ -a,b +c,d @@ enclosing symbol`, when the gap opens a hunk. */
       header?: string;
       text: string;
+      /**
+       * The rows this gap stands in for, when they are known.
+       *
+       * Present for a run collapsed out of material already on hand, absent for
+       * a jump between hunks, where the lines were never read. A renderer can
+       * offer to expand the first and must not pretend it can expand the second.
+       */
+      rows?: DisplayRow[];
     };
 
 /** A run of consecutive source lines pulled in to give an arrow something to
@@ -24,6 +35,14 @@ export interface Snippet {
   /** 1-based line number of `lines[0]` on `side`. */
   startLine: number;
   lines: string[];
+  /**
+   * Material fetched to stand behind a gap rather than to be shown.
+   *
+   * A jump between hunks covers lines the diff never mentioned, so without this
+   * the gap has nothing to open onto. Marked hidden so it fills the gap instead
+   * of being rendered as ordinary context, which would defeat the collapsing.
+   */
+  hidden?: boolean;
 }
 
 export interface DisplayOptions {
@@ -85,7 +104,10 @@ function assemble(node: FileNode, snippets: Snippet[], side: Side): DisplayRow[]
     });
   }
 
+  const fill = snippets.filter((s) => s.hidden && s.side === side);
+
   for (const snippet of snippets) {
+    if (snippet.hidden) continue;
     if (snippet.side !== side || snippet.lines.length === 0) continue;
     const start = snippet.startLine;
     const end = start + snippet.lines.length - 1;
@@ -111,9 +133,15 @@ function assemble(node: FileNode, snippets: Snippet[], side: Side): DisplayRow[]
     if (previousEnd !== undefined) {
       if (segment.start <= previousEnd) continue; // covered by an earlier one
       const hidden = segment.start - previousEnd - 1;
-      if (hidden > 0) rows.push(gapRow(hidden, segment.label));
+      if (hidden > 0) {
+        rows.push(
+          gapRow(hidden, segment.label, textFor(fill, side, previousEnd + 1, segment.start - 1)),
+        );
+      }
     } else if (segment.start > 1) {
-      rows.push(gapRow(segment.start - 1, segment.label));
+      rows.push(
+        gapRow(segment.start - 1, segment.label, textFor(fill, side, 1, segment.start - 1)),
+      );
     }
     rows.push(...segment.rows);
     previousEnd = segment.end;
@@ -122,19 +150,50 @@ function assemble(node: FileNode, snippets: Snippet[], side: Side): DisplayRow[]
   return rows;
 }
 
+/** The rows covering a line range, if the fetched material spans all of it. */
+function textFor(
+  fill: Snippet[],
+  side: Side,
+  from: number,
+  to: number,
+): DisplayRow[] | undefined {
+  const rows: DisplayRow[] = [];
+
+  for (let line = from; line <= to; line++) {
+    const source = fill.find(
+      (s) => line >= s.startLine && line < s.startLine + s.lines.length,
+    );
+    // A partly-covered gap must not offer to open: it would show a fragment
+    // while claiming to reveal the whole run.
+    if (!source) return undefined;
+    rows.push({
+      kind: "ctx",
+      text: source.lines[line - source.startLine]!,
+      ...(side === "base" ? { oldLine: line } : { newLine: line }),
+    });
+  }
+
+  return rows.length > 0 ? rows : undefined;
+}
+
 function hunkHeader(hunk: Hunk): string {
   const range =
     `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
   return hunk.header ? `${range} ${hunk.header}` : range;
 }
 
-function gapRow(hidden: number, header?: string): DisplayRow {
+function gapRow(
+  hidden: number,
+  header?: string,
+  rows?: DisplayRow[],
+): DisplayRow {
   const row: DisplayRow = {
     kind: "gap",
     hidden,
     text: `⋯ ${hidden} unchanged ${hidden === 1 ? "line" : "lines"}`,
   };
   if (header) row.header = header;
+  if (rows && rows.length > 0) row.rows = rows;
   return row;
 }
 
@@ -142,6 +201,8 @@ function toRow(line: DiffLine): DisplayRow {
   const row: DisplayRow = { kind: line.kind, text: line.text };
   if (line.oldLine !== undefined) row.oldLine = line.oldLine;
   if (line.newLine !== undefined) row.newLine = line.newLine;
+  if (line.oldAnchor !== undefined) row.oldAnchor = line.oldAnchor;
+  if (line.newAnchor !== undefined) row.newAnchor = line.newAnchor;
   return row;
 }
 
@@ -186,7 +247,7 @@ function collapse(
   const flush = () => {
     if (run.length === 0) return;
     if (run.length > threshold) {
-      out.push(gapRow(run.length));
+      out.push(gapRow(run.length, undefined, run));
     } else {
       out.push(...run);
     }
@@ -213,9 +274,12 @@ function mergeAdjacentGaps(rows: DisplayRow[]): DisplayRow[] {
   for (const row of rows) {
     const previous = out[out.length - 1];
     if (row.kind === "gap" && previous && previous.kind === "gap") {
+      const merged = [...(previous.rows ?? []), ...(row.rows ?? [])];
       out[out.length - 1] = gapRow(
         previous.hidden + row.hidden,
         previous.header ?? row.header,
+        // Only offer to expand a merged gap when every part of it is known.
+        merged.length === previous.hidden + row.hidden ? merged : undefined,
       );
       continue;
     }

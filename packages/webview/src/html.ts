@@ -17,6 +17,15 @@ export interface RenderOptions {
   theme?: Theme;
   title?: string;
   /**
+   * Positions to use when test files are shown.
+   *
+   * Hiding tests changes the layout, and the browser has no layout engine, so
+   * both arrangements are computed here and the checkbox swaps between them.
+   * Two sets of coordinates cost a few kilobytes; shipping the layout engine to
+   * the client would cost far more, and risk the two disagreeing.
+   */
+  withTests?: GraphLayout;
+  /**
    * Content policy for an editor webview, which refuses inline scripts without
    * one. Omitted for a standalone file, where the document is opened directly
    * from disk and no policy applies.
@@ -46,19 +55,31 @@ export function renderHtml(
   const title = options.title ??
     `${graph.meta.baseRef} → ${graph.meta.headRef} · Odin`;
 
-  const visibleEdges = layout.edges;
+  const full = options.withTests ?? layout;
+  const place = (l: GraphLayout) => ({
+    width: l.width,
+    height: l.height,
+    nodes: Object.fromEntries(
+      l.nodes.map((n) => [n.id, { x: n.x, y: n.y, height: n.height }]),
+    ),
+  });
+
   const viewModel = {
     width: layout.width,
     height: layout.height,
-    nodes: layout.nodes.map((n) => ({
+    // Cards come from the arrangement that includes everything, so the markup
+    // holds every file; only positions and visibility change with the toggle.
+    nodes: full.nodes.map((n) => ({
       id: n.id,
       path: n.path,
       x: n.x,
       y: n.y,
       width: n.width,
       height: n.height,
+      isTest: n.node.isTest === true,
     })),
-    edges: visibleEdges.map((e) => ({
+    arrangements: { withTests: place(full), withoutTests: place(layout) },
+    edges: full.edges.map((e) => ({
       id: e.id,
       from: e.edge.from.nodeId,
       to: e.edge.to.nodeId,
@@ -91,8 +112,8 @@ export function renderHtml(
     toolbar(graph, layout),
     `<div class="viewport">`,
     `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
-    edgeLayer(layout),
-    layout.nodes.map((node) => card(node, layout)).join("\n"),
+    edgeLayer(full),
+    full.nodes.map((node) => card(node, full)).join("\n"),
     `</div></div>`,
     `<div class="tooltip"></div>`,
     hint(),
@@ -140,6 +161,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
   <span class="spacer"></span>
   <label><input type="checkbox" id="filter-imports" checked> imports</label>
   <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
+  <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
   <button id="action-fit">fit</button>
 </div>`;
 }
@@ -165,35 +187,66 @@ function card(node: PlacedNode, layout: GraphLayout): string {
     : "";
 
   void metrics;
-  const body = node.rows.map(renderRow).join("");
+
+  // Every row is written into the document, including the ones the card starts
+  // out hiding. Expanding is then a matter of revealing markup that is already
+  // there, and the browser's own search still finds code inside a closed gap.
+  const body = node.rows
+    .map((row, i) => renderRow(row, i >= node.visibleRows))
+    .join("");
+  const more =
+    node.hiddenRows > 0
+      ? `<div class="row more" role="button" tabindex="0">` +
+        `<span class="text">show ${node.hiddenRows} more lines</span></div>`
+      : "";
 
   const unresolved = title.note ? " unresolved" : "";
-  return `<div class="card status-${node.node.status}${unresolved}" id="card-${cssId(node.id)}" ` +
+  const test = node.node.isTest ? " is-test" : "";
+  return `<div class="card status-${node.node.status}${unresolved}${test}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
   <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}</div>
-  <div class="card-body">${body}</div>
+  <div class="card-body">${body}${more}</div>
 </div>`;
 }
 
-function renderRow(row: DisplayRow): string {
+function renderRow(row: DisplayRow, beyondCap = false): string {
+  const overflow = beyondCap ? " beyond-cap" : "";
+
   if (row.kind === "gap") {
-    return `<div class="row gap" title="${escapeHtml(row.header ?? "")}">` +
+    // A gap that knows what it hides can be opened; one that does not must not
+    // pretend otherwise, so it is rendered inert.
+    const expandable = row.rows ? " expandable" : "";
+    const hidden = (row.rows ?? [])
+      .map((inner) => renderRow(inner, beyondCap).replace(
+        'class="row ', 'class="row in-gap ',
+      ))
+      .join("");
+    return `<div class="row gap${expandable}${overflow}" title="${escapeHtml(row.header ?? "")}"` +
+      (row.rows ? ' role="button" tabindex="0"' : "") + ">" +
       `<span class="text">${escapeHtml(row.text)}</span>` +
-      `<span class="header">${escapeHtml(row.header ?? "")}</span></div>`;
+      `<span class="header">${escapeHtml(row.header ?? "")}</span></div>` +
+      hidden;
   }
 
   const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : "";
-  // Base number on the left, head number on the right, both always present so
-  // the columns line up down the whole card. A single shared column would
-  // interleave the two numbering schemes and read as nonsense on any file
-  // where lines were both added and removed. A line that exists on only one
-  // side gets a marker on the other rather than a number: an added line has no
-  // position in the base file, and inventing one would be a lie.
-  return `<div class="row ${row.kind}">` +
+  // Base number on the left, head number on the right, both always populated so
+  // the columns run unbroken down the card. A single shared column would
+  // interleave the two numbering schemes and read as nonsense on any file where
+  // lines were both added and removed. Where a line exists on one side only,
+  // the other column shows the position it occupies there rather than a line
+  // number it does not have, dimmed so the difference is visible.
+  // The line numbers double as anchors: after an expansion the client finds a
+  // row by the line it shows rather than by an index that has since moved.
+  const anchors =
+    (row.oldLine !== undefined ? ` data-old="${row.oldLine}"` : "") +
+    (row.newLine !== undefined ? ` data-new="${row.newLine}"` : "");
+  return `<div class="row ${row.kind}${overflow}"${anchors}>` +
     `<span class="marker">${marker}</span>` +
-    `<span class="num old">${row.oldLine ?? "·"}</span>` +
+    `<span class="num old${row.oldLine === undefined ? " anchor" : ""}">` +
+      `${row.oldLine ?? row.oldAnchor ?? ""}</span>` +
     `<span class="text">${escapeHtml(row.text)}</span>` +
-    `<span class="num new">${row.newLine ?? "·"}</span></div>`;
+    `<span class="num new${row.newLine === undefined ? " anchor" : ""}">` +
+      `${row.newLine ?? row.newAnchor ?? ""}</span></div>`;
 }
 
 function edgeLayer(layout: GraphLayout): string {

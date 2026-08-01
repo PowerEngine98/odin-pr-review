@@ -262,6 +262,125 @@ describe("layoutGraph", () => {
   });
 });
 
+describe("truncating a tall card", () => {
+  function bigGraph(rows: number): ChangeGraph {
+    const added = Array.from({ length: rows }, (_, i) => `+line ${i}`);
+    const patch = [
+      "diff --git a/src/big.ts b/src/big.ts",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ b/src/big.ts",
+      `@@ -0,0 +1,${rows} @@`,
+      ...added,
+      "",
+    ].join("\n");
+    return buildGraph(parseUnifiedDiff(patch), { meta: META });
+  }
+
+  it("stops a long file setting the height of the whole drawing", () => {
+    const card = layoutGraph(bigGraph(500)).nodes[0]!;
+    expect(card.visibleRows).toBe(DEFAULT_METRICS.maxCardRows);
+    expect(card.hiddenRows).toBe(500 - DEFAULT_METRICS.maxCardRows);
+    // The cap plus one row for the bar that says what is being held back.
+    const expected =
+      DEFAULT_METRICS.titleHeight +
+      DEFAULT_METRICS.padding * 2 +
+      (DEFAULT_METRICS.maxCardRows + 1) * DEFAULT_METRICS.lineHeight;
+    expect(card.height).toBe(expected);
+  });
+
+  it("leaves a short file alone", () => {
+    const card = layoutGraph(bigGraph(5)).nodes[0]!;
+    expect(card.hiddenRows).toBe(0);
+    expect(card.visibleRows).toBe(card.rows.length);
+  });
+
+  it("keeps every row available even when it shows few of them", () => {
+    const card = layoutGraph(bigGraph(500)).nodes[0]!;
+    expect(card.rows).toHaveLength(500);
+  });
+
+  it("does not anchor an arrow to a row the card is not showing", () => {
+    const base = bigGraph(500);
+    const node = base.nodes[0]!;
+    const other = buildGraph(parseUnifiedDiff([
+      "diff --git a/src/other.ts b/src/other.ts",
+      "--- a/src/other.ts",
+      "+++ b/src/other.ts",
+      "@@ -1 +1 @@",
+      "-a",
+      "+b",
+      "",
+    ].join("\n")), { meta: META }).nodes[0]!;
+
+    const from = { nodeId: other.id, side: "head" as const, line: 1 };
+    const to = { nodeId: node.id, side: "head" as const, line: 400, symbolName: "deep" };
+    const graph = sortGraph({
+      ...base,
+      nodes: [...base.nodes, other],
+      edges: [edge(from, to, "added")],
+    });
+
+    const placed = layoutGraph(graph);
+    const arrow = placed.edges[0]!;
+    const card = placed.nodes.find((n) => n.id === node.id)!;
+    expect(arrow.toRow).toBeUndefined();
+    expect(arrow.to.y).toBe(card.y + card.height / 2);
+  });
+});
+
+describe("gaps that can be opened", () => {
+  it("keeps the rows a collapsed run replaced", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    const rows = displayRows(node, [
+      { side: "head", startLine: 20, lines: Array.from({ length: 12 }, (_, i) => `line ${i}`) },
+    ]);
+    const gap = rows.find((r) => r.kind === "gap" && r.rows) as
+      | Extract<typeof rows[number], { kind: "gap" }>
+      | undefined;
+    expect(gap?.rows?.length).toBe(gap?.hidden);
+  });
+
+  it("opens a hunk boundary onto material fetched for it", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    node.hunks[0]!.newStart = 6;
+    node.hunks[0]!.oldStart = 6;
+
+    const rows = displayRows(node, [
+      { side: "head", startLine: 1, lines: ["a", "b", "c", "d", "e"], hidden: true },
+    ]);
+    const gap = rows[0]!;
+    expect(gap.kind).toBe("gap");
+    expect(gap.kind === "gap" && gap.rows?.map((r) => r.text)).toEqual([
+      "a", "b", "c", "d", "e",
+    ]);
+  });
+
+  it("refuses to open a gap it can only partly fill", () => {
+    // Showing three of eight lines while claiming to reveal the run would be
+    // worse than leaving it closed.
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    node.hunks[0]!.newStart = 9;
+    node.hunks[0]!.oldStart = 9;
+
+    const rows = displayRows(node, [
+      { side: "head", startLine: 1, lines: ["a", "b", "c"], hidden: true },
+    ]);
+    expect(rows[0]!.kind === "gap" && rows[0]!.rows).toBeUndefined();
+  });
+
+  it("does not render fetched gap material as ordinary context", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    node.hunks[0]!.newStart = 4;
+    node.hunks[0]!.oldStart = 4;
+
+    const rows = displayRows(node, [
+      { side: "head", startLine: 1, lines: ["x", "y", "z"], hidden: true },
+    ]);
+    expect(rows.filter((r) => r.text === "x")).toHaveLength(0);
+  });
+});
+
 describe("card titles", () => {
   it("measures the whole header, not just the path", () => {
     const base = graph();

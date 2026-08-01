@@ -1,5 +1,6 @@
 import type { ParsedFile } from "../diff/parse.js";
 import { nodeId } from "../model/ids.js";
+import { isTestPath } from "./tests.js";
 import { detectLanguage } from "../model/language.js";
 import {
   SCHEMA_VERSION,
@@ -100,6 +101,8 @@ export function addPhantomNodes(
       stats: { additions: 0, deletions: 0 },
       hunks: [],
       symbols: [],
+      // Phantoms arrive after the diff has been tagged, so they tag themselves.
+      isTest: isTestPath(ref.path),
     });
   }
 

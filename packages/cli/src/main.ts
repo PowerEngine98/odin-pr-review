@@ -12,6 +12,7 @@ import {
   toMermaid,
   toSvg,
   validateGraph,
+  withoutTests,
   DARK_THEME,
   LIGHT_THEME,
   type ChangeGraph,
@@ -68,14 +69,23 @@ async function main(argv: string[]): Promise<number> {
     if (opts.strict) return 1;
   }
 
-  const rendered = await render(graph, opts);
+  // Tests reference much of what they exercise, so one large test file can
+  // dominate a picture of a change that is not about tests. Excluded unless
+  // asked for, and the interactive renderer carries both arrangements.
+  const shown = opts.tests ? graph : withoutTests(graph);
+
+  const rendered = await render(shown, opts, graph);
   if (opts.out) await writeFile(opts.out, rendered, "utf8");
   else process.stdout.write(rendered);
 
   return 0;
 }
 
-async function render(graph: ChangeGraph, opts: GraphOptions): Promise<string> {
+async function render(
+  graph: ChangeGraph,
+  opts: GraphOptions,
+  everything: ChangeGraph,
+): Promise<string> {
   const includeImports = opts.imports;
 
   switch (opts.format) {
@@ -93,9 +103,13 @@ async function render(graph: ChangeGraph, opts: GraphOptions): Promise<string> {
       const layout = layoutGraph(graph, { snippets });
       const theme = opts.light ? LIGHT_THEME : DARK_THEME;
 
-      return opts.format === "html"
-        ? renderHtml(graph, layout, { theme })
-        : toSvg(layout, { includeImports, theme });
+      if (opts.format !== "html") {
+        return toSvg(layout, { includeImports, theme });
+      }
+      return renderHtml(graph, layout, {
+        theme,
+        withTests: layoutGraph(everything, { snippets }),
+      });
     }
   }
 }

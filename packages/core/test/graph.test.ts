@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseUnifiedDiff } from "../src/diff/parse.js";
 import { addPhantomNodes, buildGraph, sortGraph } from "../src/graph/build.js";
+import { isTestPath, withoutTests } from "../src/graph/tests.js";
 import { validateGraph } from "../src/graph/validate.js";
 import { edgeId, nodeId } from "../src/model/ids.js";
 import { serializeGraph } from "../src/serialize.js";
@@ -80,6 +81,70 @@ describe("addPhantomNodes", () => {
     ]);
     expect(same.nodes).toHaveLength(2);
     expect(same.nodes.find((n) => n.path === "src/Zed.ts")!.status).toBe("modified");
+  });
+});
+
+describe("test files", () => {
+  it("recognises the conventions of each ecosystem", () => {
+    for (const path of [
+      "backend/src/test/kotlin/com/x/FooTests.kt",
+      "src/main/kotlin/com/x/WidgetTest.kt",
+      "web/src/thing.spec.ts",
+      "web/__tests__/thing.ts",
+      "api/tests/test_users.py",
+      "api/users_test.py",
+      "svc/handler_test.go",
+      "app/spec/models/user_spec.rb",
+    ]) {
+      expect(isTestPath(path)).toBe(true);
+    }
+  });
+
+  it("does not mistake production code for tests", () => {
+    for (const path of [
+      "src/main/kotlin/com/x/Widget.kt",
+      "src/testing/Harness.kt",
+      "web/src/latest.ts",
+      "web/src/protest.ts",
+    ]) {
+      expect(isTestPath(path)).toBe(false);
+    }
+  });
+
+  it("drops tests and the edges that only they had", () => {
+    const base = buildGraph(parseUnifiedDiff(PATCH), { meta: META });
+    const test = {
+      ...base.nodes[0]!,
+      id: nodeId("src/Zed.test.ts"),
+      path: "src/Zed.test.ts",
+      isTest: true,
+    };
+    const from = { nodeId: test.id, side: "head" as const, line: 1 };
+    const to = { nodeId: base.nodes[0]!.id, side: "head" as const, line: 1 };
+    const withTest = sortGraph({
+      ...base,
+      nodes: [...base.nodes, test],
+      edges: [{
+        id: edgeId(from, to, "call"), from, to,
+        change: "added" as const, kind: "call" as const,
+        confidence: "resolved" as const, resolver: "ts" as const,
+      }],
+    });
+
+    const trimmed = withoutTests(withTest);
+    expect(trimmed.nodes.some((n) => n.path === "src/Zed.test.ts")).toBe(false);
+    expect(trimmed.edges).toEqual([]);
+  });
+
+  it("drops a file only a test pulled in", () => {
+    const base = buildGraph(parseUnifiedDiff(PATCH), { meta: META });
+    const withPhantom = addPhantomNodes(base, [
+      { nodeId: nodeId("src/OnlyForTests.ts"), path: "src/OnlyForTests.ts" },
+    ]);
+    // No edge survives to it, so the phantom has nothing left to say.
+    expect(
+      withoutTests(withPhantom).nodes.some((n) => n.status === "phantom"),
+    ).toBe(false);
   });
 });
 

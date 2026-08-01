@@ -218,6 +218,134 @@ export const CLIENT_SCRIPT = String.raw`
     tooltip.classList.remove("visible");
   });
 
+  /* ------------------------------------------------------------ expanding */
+
+  // Card geometry arrives already computed, and expanding is the one thing that
+  // changes it. Rather than duplicate the layout engine here, the card is grown
+  // in place, the cards below it in the same column are pushed down by the same
+  // amount, and every arrow is re-anchored from where its row actually sits.
+  // Row heights are fixed by the stylesheet, so measuring is exact.
+
+  function nodeFor(id) {
+    return data.nodes.find(function (n) { return n.id === id; });
+  }
+
+  function reflow(card, delta) {
+    if (!delta) return;
+    var node = nodeFor(card.dataset.id);
+    if (!node) return;
+
+    node.height += delta;
+    card.style.height = node.height + "px";
+    Object.keys(data.arrangements).forEach(function (name) {
+      var placed = data.arrangements[name].nodes[node.id];
+      if (placed) placed.height += delta;
+    });
+
+    // Only this column moves: ranks are horizontal, so nothing in another
+    // column can collide with a card that grew.
+    data.nodes.forEach(function (other) {
+      if (other.id === node.id) return;
+      if (other.x !== node.x) return;
+      if (other.y < node.y) return;
+      other.y += delta;
+      Object.keys(data.arrangements).forEach(function (name) {
+        var placed = data.arrangements[name].nodes[other.id];
+        if (placed && placed.y > node.y) placed.y += delta;
+      });
+      var el = document.getElementById("card-" + cssId(other.id));
+      if (el) el.style.top = other.y + "px";
+    });
+
+    data.height += delta;
+    canvas.style.height = data.height + "px";
+    var svg = document.getElementById("edges");
+    if (svg) svg.setAttribute("height", data.height);
+
+    rerouteEdges();
+  }
+
+  function anchorFor(nodeId, side, line, fileLevel) {
+    var card = document.getElementById("card-" + cssId(nodeId));
+    var node = nodeFor(nodeId);
+    if (!card || !node) return null;
+
+    // An import names the file, so it meets the card at its title.
+    if (fileLevel) {
+      var titleEl = card.querySelector(".card-title");
+      return { y: node.y + (titleEl ? titleEl.offsetHeight / 2 : 17), node: node };
+    }
+
+    var attribute = side === "base" ? "data-old" : "data-new";
+    var row = card.querySelector('.row[' + attribute + '="' + line + '"]');
+    // A row inside a closed gap, or below the cap, has no position to point at.
+    if (!row || row.offsetParent === null) {
+      return { y: node.y + node.height / 2, node: node };
+    }
+    return {
+      y: node.y + row.offsetTop + card.querySelector(".card-body").offsetTop + row.offsetHeight / 2,
+      node: node,
+    };
+  }
+
+  function rerouteEdges() {
+    data.edges.forEach(function (edge) {
+      var group = document.querySelector('g.edge[data-id="' + edge.id + '"]');
+      if (!group) return;
+
+      var from = anchorFor(edge.from, edge.fromSide, edge.fromLine, false);
+      var to = anchorFor(edge.to, edge.toSide, edge.toLine, edge.kind === "import");
+      if (!from || !to) return;
+
+      var goesRight = to.node.x + to.node.width / 2 >= from.node.x + from.node.width / 2;
+      var fromX = goesRight ? from.node.x + from.node.width : from.node.x;
+      var toX = goesRight ? to.node.x : to.node.x + to.node.width;
+      var dx = Math.max(40, Math.abs(toX - fromX) * 0.45);
+      var c1 = goesRight ? fromX + dx : fromX - dx;
+      var c2 = goesRight ? toX - dx : toX + dx;
+
+      var d = "M " + fromX + " " + from.y + " C " + c1 + " " + from.y + ", " +
+              c2 + " " + to.y + ", " + toX + " " + to.y;
+      group.querySelectorAll("path").forEach(function (path) {
+        path.setAttribute("d", d);
+      });
+    });
+  }
+
+  function expand(trigger) {
+    var card = trigger.closest(".card");
+    if (!card) return;
+    var before = card.querySelector(".card-body").scrollHeight;
+
+    if (trigger.classList.contains("more")) {
+      card.classList.add("expanded");
+      trigger.remove();
+    } else {
+      trigger.classList.add("open");
+      var row = trigger.nextElementSibling;
+      while (row && row.classList.contains("in-gap")) {
+        row.classList.add("open");
+        row = row.nextElementSibling;
+      }
+      trigger.remove();
+    }
+
+    var after = card.querySelector(".card-body").scrollHeight;
+    reflow(card, after - before);
+  }
+
+  document.querySelectorAll(".row.more, .row.gap.expandable").forEach(function (trigger) {
+    trigger.addEventListener("click", function (event) {
+      event.stopPropagation();
+      expand(trigger);
+    });
+    trigger.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      expand(trigger);
+    });
+  });
+
   /* --------------------------------------------------------------- tooltip */
 
   function showTooltip(event, id) {
@@ -249,16 +377,58 @@ export const CLIENT_SCRIPT = String.raw`
   function refreshFilters() {
     var showImports = document.getElementById("filter-imports").checked;
     var showUnchanged = document.getElementById("filter-unchanged").checked;
+    var showTests = document.getElementById("filter-tests").checked;
+
+    // Positions come from whichever arrangement was computed for this choice;
+    // there is no layout engine here to work them out.
+    var arrangement = data.arrangements[showTests ? "withTests" : "withoutTests"];
+    var hiddenNodes = {};
+
+    data.nodes.forEach(function (node) {
+      var placed = arrangement.nodes[node.id];
+      var card = document.getElementById("card-" + cssId(node.id));
+      if (!card) return;
+
+      if (!placed) {
+        hiddenNodes[node.id] = true;
+        card.classList.add("hidden");
+        return;
+      }
+
+      card.classList.remove("hidden");
+      node.x = placed.x;
+      node.y = placed.y;
+      card.style.left = node.x + "px";
+      card.style.top = node.y + "px";
+    });
+
+    data.width = arrangement.width;
+    data.height = arrangement.height;
+    canvas.style.width = data.width + "px";
+    canvas.style.height = data.height + "px";
+    var svg = document.getElementById("edges");
+    if (svg) {
+      svg.setAttribute("width", data.width);
+      svg.setAttribute("height", data.height);
+    }
 
     edgeGroups.forEach(function (g) {
+      var edge = data.edges.find(function (e) { return e.id === g.dataset.id; });
       var isImport = g.classList.contains("import");
       var isUnchanged = g.classList.contains("unchanged");
-      var hidden = (isImport && !showImports) || (isUnchanged && !showUnchanged);
+      var touchesHidden =
+        edge && (hiddenNodes[edge.from] || hiddenNodes[edge.to]);
+      var hidden =
+        (isImport && !showImports) ||
+        (isUnchanged && !showUnchanged) ||
+        Boolean(touchesHidden);
       g.classList.toggle("hidden", hidden);
     });
+
+    rerouteEdges();
   }
 
-  ["filter-imports", "filter-unchanged"].forEach(function (id) {
+  ["filter-imports", "filter-unchanged", "filter-tests"].forEach(function (id) {
     var input = document.getElementById(id);
     if (input) input.addEventListener("change", refreshFilters);
   });
