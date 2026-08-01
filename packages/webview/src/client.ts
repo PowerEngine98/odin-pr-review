@@ -246,6 +246,10 @@ export const CLIENT_SCRIPT = String.raw`
     var hideViewed = document.getElementById("filter-viewed").checked;
     var arrangement = data.arrangements[showTests ? "withTests" : "withoutTests"];
 
+    // What counts as read: marked by hand, or accounted for by everything that
+    // referenced it having been marked.
+    implied = impliedRead();
+
     var columns = {};
 
     data.nodes.forEach(function (node) {
@@ -280,9 +284,13 @@ export const CLIENT_SCRIPT = String.raw`
       var shift = 0;
       var floor = -Infinity;
       entries.forEach(function (entry) {
-        var hidden = hideViewed && isViewed(entry.node.id);
+        var read = isRead(entry.node.id);
+        var hidden = hideViewed && read;
         entry.card.classList.toggle("viewed-hidden", hidden);
-        entry.card.classList.toggle("is-viewed", isViewed(entry.node.id));
+        entry.card.classList.toggle("is-viewed", read);
+        // Implied is not the same as marked, so the box stays as the reader
+        // left it; only the card's appearance follows.
+        entry.card.classList.toggle("is-implied", !isViewed(entry.node.id) && read);
 
         var box = entry.card.querySelector(".viewed-box");
         if (box) box.checked = isViewed(entry.node.id);
@@ -505,8 +513,51 @@ export const CLIENT_SCRIPT = String.raw`
   // it is a note about the reader's progress, not a fact about the change.
   var viewed = {};
 
+  /** Untouched files settled by their callers rather than by a click. */
+  var implied = {};
+
+  function isRead(nodeId) {
+    return viewed[nodeId] === true || implied[nodeId] === true;
+  }
+
   function isViewed(nodeId) {
     return viewed[nodeId] === true;
+  }
+
+  /**
+   * Untouched files whose every reference has been read.
+   *
+   * Such a file was never part of the change; it is on the canvas only because
+   * something in the change reaches it. Once every one of those callers has
+   * been marked off, it is answering a question nobody is still asking, so it
+   * follows them. Resolved to a fixed point because one untouched file may
+   * reach another, and reading the last caller of the first settles the second
+   * as well.
+   */
+  function impliedRead() {
+    var implied = {};
+    var settled = false;
+
+    while (!settled) {
+      settled = true;
+      data.nodes.forEach(function (node) {
+        if (!node.untouched || viewed[node.id] || implied[node.id]) return;
+
+        var incoming = data.edges.filter(function (e) { return e.to === node.id; });
+        // Nothing points at it, so nothing can account for it either.
+        if (incoming.length === 0) return;
+
+        var accounted = incoming.every(function (e) {
+          return viewed[e.from] === true || implied[e.from] === true;
+        });
+        if (accounted) {
+          implied[node.id] = true;
+          settled = false;
+        }
+      });
+    }
+
+    return implied;
   }
 
   /**
@@ -522,6 +573,11 @@ export const CLIENT_SCRIPT = String.raw`
     var showUnchanged = document.getElementById("filter-unchanged").checked;
     var showTests = document.getElementById("filter-tests").checked;
     var hideViewed = document.getElementById("filter-viewed").checked;
+
+    // Settle the implied set before anything reads it: the edge pass below
+    // asks what counts as read, and recompute would otherwise update it a step
+    // too late, leaving arrows visible into a card that had just gone.
+    implied = impliedRead();
 
     // The imports switch governs the statements as well as the arrows: showing
     // one without the other leaves arrows pointing into a folded band.
@@ -541,7 +597,7 @@ export const CLIENT_SCRIPT = String.raw`
         edge &&
         (!arrangement.nodes[edge.from] ||
           !arrangement.nodes[edge.to] ||
-          (hideViewed && (isViewed(edge.from) || isViewed(edge.to))));
+          (hideViewed && (isRead(edge.from) || isRead(edge.to))));
       g.classList.toggle(
         "hidden",
         (isImport && !showImports) || (isUnchanged && !showUnchanged) || Boolean(gone),

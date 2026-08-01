@@ -205,6 +205,9 @@ html, body {
 .card-title .viewed input { margin: 0; cursor: pointer; }
 
 .card.is-viewed { opacity: 0.45; }
+/* Settled by its callers rather than by a click: dimmed like the rest, but
+   without the checkbox lighting up, which would claim a decision nobody made. */
+.card.is-implied .card-title .viewed { opacity: 0.2; }
 
 .card-title .note {
   color: var(--warning);
@@ -492,7 +495,7 @@ html, body {
   click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
   scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
 </div>
-<script>window.__ODIN__={"width":2393,"height":916,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":89,"y":48,"width":448,"height":292,"column":0,"isTest":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":396,"width":530,"height":202,"column":0,"isTest":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":535,"width":530,"height":274,"column":2,"isTest":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":185,"width":448,"height":112,"column":2,"isTest":false},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":504,"width":530,"height":364,"column":1,"isTest":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":48,"width":560,"height":400,"column":1,"isTest":false}],"arrangements":{"withTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}},"withoutTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}]};</script>
+<script>window.__ODIN__={"width":2393,"height":916,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":89,"y":48,"width":448,"height":292,"column":0,"isTest":false,"untouched":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":396,"width":530,"height":202,"column":0,"isTest":false,"untouched":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":535,"width":530,"height":274,"column":2,"isTest":false,"untouched":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":185,"width":448,"height":112,"column":2,"isTest":false,"untouched":true},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":504,"width":530,"height":364,"column":1,"isTest":false,"untouched":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false,"untouched":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":48,"width":560,"height":400,"column":1,"isTest":false,"untouched":false}],"arrangements":{"withTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}},"withoutTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}]};</script>
 <script>
 (function () {
   var data = window.__ODIN__;
@@ -733,6 +736,10 @@ html, body {
     var hideViewed = document.getElementById("filter-viewed").checked;
     var arrangement = data.arrangements[showTests ? "withTests" : "withoutTests"];
 
+    // What counts as read: marked by hand, or accounted for by everything that
+    // referenced it having been marked.
+    implied = impliedRead();
+
     var columns = {};
 
     data.nodes.forEach(function (node) {
@@ -767,9 +774,13 @@ html, body {
       var shift = 0;
       var floor = -Infinity;
       entries.forEach(function (entry) {
-        var hidden = hideViewed && isViewed(entry.node.id);
+        var read = isRead(entry.node.id);
+        var hidden = hideViewed && read;
         entry.card.classList.toggle("viewed-hidden", hidden);
-        entry.card.classList.toggle("is-viewed", isViewed(entry.node.id));
+        entry.card.classList.toggle("is-viewed", read);
+        // Implied is not the same as marked, so the box stays as the reader
+        // left it; only the card's appearance follows.
+        entry.card.classList.toggle("is-implied", !isViewed(entry.node.id) && read);
 
         var box = entry.card.querySelector(".viewed-box");
         if (box) box.checked = isViewed(entry.node.id);
@@ -992,8 +1003,51 @@ html, body {
   // it is a note about the reader's progress, not a fact about the change.
   var viewed = {};
 
+  /** Untouched files settled by their callers rather than by a click. */
+  var implied = {};
+
+  function isRead(nodeId) {
+    return viewed[nodeId] === true || implied[nodeId] === true;
+  }
+
   function isViewed(nodeId) {
     return viewed[nodeId] === true;
+  }
+
+  /**
+   * Untouched files whose every reference has been read.
+   *
+   * Such a file was never part of the change; it is on the canvas only because
+   * something in the change reaches it. Once every one of those callers has
+   * been marked off, it is answering a question nobody is still asking, so it
+   * follows them. Resolved to a fixed point because one untouched file may
+   * reach another, and reading the last caller of the first settles the second
+   * as well.
+   */
+  function impliedRead() {
+    var implied = {};
+    var settled = false;
+
+    while (!settled) {
+      settled = true;
+      data.nodes.forEach(function (node) {
+        if (!node.untouched || viewed[node.id] || implied[node.id]) return;
+
+        var incoming = data.edges.filter(function (e) { return e.to === node.id; });
+        // Nothing points at it, so nothing can account for it either.
+        if (incoming.length === 0) return;
+
+        var accounted = incoming.every(function (e) {
+          return viewed[e.from] === true || implied[e.from] === true;
+        });
+        if (accounted) {
+          implied[node.id] = true;
+          settled = false;
+        }
+      });
+    }
+
+    return implied;
   }
 
   /**
@@ -1009,6 +1063,11 @@ html, body {
     var showUnchanged = document.getElementById("filter-unchanged").checked;
     var showTests = document.getElementById("filter-tests").checked;
     var hideViewed = document.getElementById("filter-viewed").checked;
+
+    // Settle the implied set before anything reads it: the edge pass below
+    // asks what counts as read, and recompute would otherwise update it a step
+    // too late, leaving arrows visible into a card that had just gone.
+    implied = impliedRead();
 
     // The imports switch governs the statements as well as the arrows: showing
     // one without the other leaves arrows pointing into a folded band.
@@ -1028,7 +1087,7 @@ html, body {
         edge &&
         (!arrangement.nodes[edge.from] ||
           !arrangement.nodes[edge.to] ||
-          (hideViewed && (isViewed(edge.from) || isViewed(edge.to))));
+          (hideViewed && (isRead(edge.from) || isRead(edge.to))));
       g.classList.toggle(
         "hidden",
         (isImport && !showImports) || (isUnchanged && !showUnchanged) || Boolean(gone),

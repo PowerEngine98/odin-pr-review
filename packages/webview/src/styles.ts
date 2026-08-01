@@ -211,6 +211,9 @@ html, body {
 .card-title .viewed input { margin: 0; cursor: pointer; }
 
 .card.is-viewed { opacity: 0.45; }
+/* Settled by its callers rather than by a click: dimmed like the rest, but
+   without the checkbox lighting up, which would claim a decision nobody made. */
+.card.is-implied .card-title .viewed { opacity: 0.2; }
 
 .card-title .note {
   color: var(--warning);

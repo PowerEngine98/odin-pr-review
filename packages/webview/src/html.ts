@@ -89,6 +89,9 @@ export function renderHtml(
       // moves together leaves the odd-width cards behind, and they collide.
       column: n.rank,
       isTest: n.node.isTest === true,
+      // A file the diff never touched is in the picture only because something
+      // points at it, which is what lets it follow those references' state.
+      untouched: n.node.status === "phantom",
     })),
     arrangements: { withTests: place(full), withoutTests: place(layout) },
     edges: full.edges.map((e) => ({
