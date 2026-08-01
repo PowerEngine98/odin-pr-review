@@ -258,8 +258,8 @@ body {
 
 /* Drawn rather than left to the platform: a native checkbox is stark white on
    a dark editor and drags the eye away from the file names, which are the
-   point of the list. Colours come from the editor's own checkbox tokens, so
-   this follows whatever theme is in use. */
+   point of the list. Colours come from the editor's own tokens, so this
+   follows whatever theme is in use. */
 input.seen {
   appearance: none;
   -webkit-appearance: none;
@@ -273,26 +273,30 @@ input.seen {
   position: relative;
   cursor: pointer;
   opacity: 0.55;
-  transition: opacity 100ms ease;
+  transition: opacity 100ms ease, background-color 100ms ease, border-color 100ms ease;
 }
-.row:hover input.seen,
-.folder:hover input.seen,
-input.seen:checked { opacity: 1; }
+.row:hover input.seen { opacity: 1; }
 
+/* Set: filled with the theme's accent and a light tick, the way a selected
+   control reads everywhere else, rather than an outline with a mark in it. */
 input.seen:checked {
-  border-color: var(--vscode-focusBorder, currentColor);
+  opacity: 1;
+  background: var(--vscode-button-background, #0a84ff);
+  border-color: var(--vscode-button-background, #0a84ff);
 }
 input.seen::after {
+  content: "";
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  line-height: 1;
-  color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--vscode-button-foreground, #ffffff);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 90ms ease;
 }
-input.seen:checked::after { content: "✓"; }
+input.seen:checked::after { transform: rotate(45deg) scale(1); }
 .row.seen-marked .name,
 .row.seen-marked .counts { opacity: 0.45; }
 .row.seen-marked .name { text-decoration: line-through; }
