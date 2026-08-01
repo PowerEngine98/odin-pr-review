@@ -50,14 +50,17 @@ html, body {
 
 /* ------------------------------------------------------------------ toolbar */
 
+/* Everything stacks into columns rather than running across the top: a
+   docked editor panel is narrow, and a row of eight items wraps into a mess
+   long before it runs out of things to say. */
 .toolbar {
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 20;
   display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 10px 16px;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 14px;
   overflow-x: auto;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
@@ -65,8 +68,23 @@ html, body {
   font-size: 12px;
 }
 
-.toolbar .refs { color: var(--muted); flex: 0 1 auto; min-width: 0; }
-.legend, .toolbar label, .toolbar button { flex: 0 0 auto; }
+.toolbar .refs {
+  color: var(--muted);
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 180px;
+  line-height: 1.35;
+}
+.toolbar .refs strong {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.toolbar .refs .to { color: var(--muted); }
+.legend, .filters, .toolbar button { flex: 0 0 auto; }
 .toolbar .refs strong { color: var(--text); font-weight: 600; }
 .toolbar .spacer { flex: 1; }
 
@@ -92,8 +110,21 @@ html, body {
 }
 .toolbar button:hover { color: var(--text); border-color: var(--text); }
 
-.legend { display: flex; gap: 12px; color: var(--muted); }
+.legend {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--muted);
+  line-height: 1.35;
+}
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
+
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.35;
+}
 .legend i {
   width: 10px; height: 10px; border-radius: 3px;
   border: 1.5px solid currentColor; font-style: normal;
@@ -177,6 +208,7 @@ html, body {
    what a narrow editor panel does to it. Fixed radius, one line, and let the
    toolbar scroll instead. */
 .toolbar .gaps {
+  align-self: center;
   color: var(--warning);
   border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
   background: color-mix(in srgb, var(--warning) 12%, transparent);

@@ -155,13 +155,15 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
     .join("");
 
   return `<div class="toolbar">
-  <span class="refs"><strong>${escapeHtml(graph.meta.baseRef)}</strong> → <strong>${escapeHtml(graph.meta.headRef)}</strong></span>
+  <span class="refs" title="${escapeHtml(graph.meta.baseRef)} → ${escapeHtml(graph.meta.headRef)}"><strong>${escapeHtml(graph.meta.baseRef)}</strong><br><span class="to">→</span> <strong>${escapeHtml(graph.meta.headRef)}</strong></span>
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
   <span class="spacer"></span>
-  <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
-  <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
-  <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
+  <span class="filters">
+    <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
+    <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
+    <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
+  </span>
   <button id="action-fit">fit</button>
 </div>`;
 }

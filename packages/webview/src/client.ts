@@ -86,14 +86,22 @@ export const CLIENT_SCRIPT = String.raw`
 
   function fit() {
     var rect = viewport.getBoundingClientRect();
+    // The toolbar stacks into columns, so its height depends on how much it
+    // has to say; measuring beats assuming.
+    var bar = document.querySelector(".toolbar");
+    var top = bar ? bar.getBoundingClientRect().height + 12 : 60;
+
     var scale = clamp(
-      Math.min((rect.width - 80) / data.width, (rect.height - 140) / data.height),
+      Math.min(
+        (rect.width - 80) / data.width,
+        (rect.height - top - 60) / data.height,
+      ),
       MIN_SCALE,
       1,
     );
     view.scale = scale;
     view.x = (rect.width - data.width * scale) / 2;
-    view.y = 60 + (rect.height - 60 - data.height * scale) / 2;
+    view.y = top + (rect.height - top - data.height * scale) / 2;
     apply();
   }
 
