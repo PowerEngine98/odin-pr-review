@@ -11,6 +11,7 @@ export * from "./git/diff.js";
 export * from "./git/checkout.js";
 export * from "./git/snippets.js";
 export * from "./git/pullRequest.js";
+export * from "./git/review.js";
 export * from "./layout/display.js";
 export * from "./layout/metrics.js";
 export * from "./layout/layout.js";

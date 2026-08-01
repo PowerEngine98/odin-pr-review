@@ -4,6 +4,7 @@ import {
   git,
   listPullRequests,
   listRefs,
+  listReviewComments,
   serializeGraph,
 } from "@odin/core";
 import { execFile } from "node:child_process";
@@ -184,7 +185,16 @@ async function review(baseRef?: string): Promise<void> {
         }
 
         viewed.open(repo, graph.meta.baseRef, graph.meta.headRef);
-        GraphPanel.show(shown, layout, repo, layoutWithTests, viewed);
+        const panel = GraphPanel.show(shown, layout, repo, layoutWithTests, viewed);
+
+        // Fetched after the graph is on screen: the picture is the point, and
+        // waiting on the forge before showing it would be the wrong order.
+        const pull = graph.meta.pullRequest;
+        if (pull) {
+          void listReviewComments(pull.number, { cwd: repo }).then((comments) => {
+            if (comments.length > 0) panel.setComments(comments);
+          });
+        }
         sidebar.setGraph(graph);
         last = { repo, ...(base ? { baseRef: base } : {}) };
       } catch (error) {

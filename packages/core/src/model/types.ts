@@ -212,6 +212,9 @@ export interface PullRequest {
   number: number;
   title: string;
   url: string;
+  draft?: boolean;
+  /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
+  reviewDecision?: string;
 }
 
 /** An open pull request, as listed for choosing between. */

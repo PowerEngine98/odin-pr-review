@@ -451,6 +451,175 @@ export const CLIENT_SCRIPT = String.raw`
     });
   });
 
+  /* ---------------------------------------------------------------- review */
+
+  // Comments written here but not yet sent. Held together so the forge sees
+  // one review carrying a verdict, rather than a notification per remark.
+  var drafts = [];
+
+  var composer = document.querySelector(".composer");
+  var panel = document.querySelector(".review");
+  var reviewButton = document.getElementById("action-review");
+  var pending = null;
+
+  /** Marks the lines that already carry a comment, and the ones drafted here. */
+  function markCommentedLines() {
+    document.querySelectorAll(".row.commented, .row.drafted").forEach(function (row) {
+      row.classList.remove("commented", "drafted");
+      var badge = row.querySelector(".comment-badge");
+      if (badge) badge.remove();
+    });
+
+    var byLine = {};
+    (data.comments || []).forEach(function (c) {
+      var key = c.path + ":" + c.side + ":" + c.line;
+      (byLine[key] = byLine[key] || []).push(c);
+    });
+    drafts.forEach(function (d) {
+      var key = d.path + ":" + d.side + ":" + d.line;
+      (byLine[key] = byLine[key] || []).push({ draft: true, body: d.body, author: "you" });
+    });
+
+    Object.keys(byLine).forEach(function (key) {
+      var parts = key.split(":");
+      var side = parts[parts.length - 2];
+      var line = parts[parts.length - 1];
+      var path = parts.slice(0, -2).join(":");
+
+      var node = data.nodes.find(function (n) { return n.path === path; });
+      if (!node) return;
+      var card = document.getElementById("card-" + cssId(node.id));
+      if (!card) return;
+
+      var attribute = side === "LEFT" ? "data-old" : "data-new";
+      var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+      if (!row) return;
+
+      var entries = byLine[key];
+      var drafted = entries.some(function (e) { return e.draft; });
+      row.classList.add(drafted ? "drafted" : "commented");
+
+      var badge = document.createElement("span");
+      badge.className = "comment-badge";
+      badge.textContent = entries.length > 1 ? String(entries.length) : "";
+      badge.title = entries
+        .map(function (e) { return (e.author || "?") + ": " + e.body; })
+        .join("\n\n");
+      row.appendChild(badge);
+    });
+  }
+
+  /** Opens the composer against a line, positioned beside it. */
+  function compose(card, row, event) {
+    var node = nodeFor(card.dataset.id);
+    if (!node) return;
+
+    var side = row.getAttribute("data-new") ? "RIGHT" : "LEFT";
+    var line = row.getAttribute(side === "RIGHT" ? "data-new" : "data-old");
+    if (!line) return;
+
+    pending = { path: node.path, line: Number(line), side: side };
+    composer.querySelector(".composer-where").textContent =
+      node.path.split("/").pop() + ":" + line;
+    composer.querySelector(".composer-body").value = "";
+    composer.querySelector(".as-suggestion").checked = false;
+    composer.hidden = false;
+
+    var box = composer.getBoundingClientRect();
+    composer.style.left =
+      Math.min(event.clientX + 16, window.innerWidth - box.width - 16) + "px";
+    composer.style.top =
+      Math.min(event.clientY, window.innerHeight - box.height - 16) + "px";
+    composer.querySelector(".composer-body").focus();
+  }
+
+  if (composer) {
+    composer.querySelector(".composer-cancel").addEventListener("click", function () {
+      composer.hidden = true;
+      pending = null;
+    });
+
+    composer.querySelector(".composer-add").addEventListener("click", function () {
+      var text = composer.querySelector(".composer-body").value.trim();
+      if (!text || !pending) return;
+
+      // A suggestion is an ordinary comment in a fenced block the forge knows
+      // how to offer as a one-click change.
+      var suggest = composer.querySelector(".as-suggestion").checked;
+      // Written with escapes because this whole script lives inside a template
+      // literal, which a literal fence would end.
+      var fence = "\u0060\u0060\u0060";
+      var body = suggest ? fence + "suggestion\n" + text + "\n" + fence : text;
+
+      drafts.push({ path: pending.path, line: pending.line, side: pending.side, body: body });
+      composer.hidden = true;
+      pending = null;
+      refreshReview();
+    });
+  }
+
+  function refreshReview() {
+    if (reviewButton) {
+      reviewButton.hidden = !data.canReview || drafts.length === 0;
+      reviewButton.querySelector(".count").textContent = String(drafts.length);
+    }
+    if (panel) {
+      panel.querySelector(".review-count").textContent =
+        drafts.length + (drafts.length === 1 ? " comment" : " comments");
+      panel.querySelector(".review-list").innerHTML = drafts
+        .map(function (d, i) {
+          return '<div class="review-item"><span class="where">' +
+            escapeHtml(d.path.split("/").pop()) + ":" + d.line +
+            '</span><span class="what">' + escapeHtml(d.body.slice(0, 90)) +
+            '</span><button class="drop" data-index="' + i + '">remove</button></div>';
+        })
+        .join("");
+      panel.querySelectorAll(".drop").forEach(function (button) {
+        button.addEventListener("click", function () {
+          drafts.splice(Number(button.dataset.index), 1);
+          refreshReview();
+          markCommentedLines();
+        });
+      });
+    }
+    markCommentedLines();
+  }
+
+  if (reviewButton) {
+    reviewButton.addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+    });
+  }
+
+  if (panel) {
+    panel.querySelectorAll(".review-submit").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var body = panel.querySelector(".review-body").value.trim();
+        var event = button.dataset.event;
+        if (event !== "APPROVE" && !body) {
+          panel.querySelector(".review-body").focus();
+          return;
+        }
+        // The host confirms before anything is sent; nothing leaves here on
+        // the strength of a single click.
+        notifyHost("submitReview", { event: event, body: body, comments: drafts });
+      });
+    });
+  }
+
+  // Lines accept a comment on click, when the host can post one.
+  cards.forEach(function (card) {
+    card.addEventListener("click", function (event) {
+      if (!data.canReview) return;
+      if (event.target.closest(".card-title")) return;
+      if (event.target.closest(".row.gap, .row.more")) return;
+      var row = event.target.closest(".row");
+      if (!row) return;
+      event.stopPropagation();
+      compose(card, row, event);
+    });
+  });
+
   /* --------------------------------------------------------------- tooltip */
 
   function showTooltip(event, id) {
@@ -630,6 +799,16 @@ export const CLIENT_SCRIPT = String.raw`
   // in step.
   window.addEventListener("message", function (event) {
     var message = event.data;
+    if (message && message.type === "reviewSubmitted") {
+      drafts = [];
+      if (panel) {
+        panel.hidden = true;
+        panel.querySelector(".review-body").value = "";
+      }
+      if (message.comments) data.comments = message.comments;
+      refreshReview();
+      return;
+    }
     if (!message || message.type !== "setViewed") return;
     var byPath = {};
     data.nodes.forEach(function (n) { byPath[n.path] = n.id; });
@@ -665,6 +844,7 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   refreshFilters();
+  refreshReview();
   fit();
   window.addEventListener("resize", fit);
 })();

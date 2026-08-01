@@ -1,4 +1,14 @@
-import { DARK_THEME, LIGHT_THEME, type ChangeGraph, type GraphLayout } from "@odin/core";
+import {
+  DARK_THEME,
+  LIGHT_THEME,
+  listReviewComments,
+  submitReview,
+  type ChangeGraph,
+  type DraftComment,
+  type GraphLayout,
+  type ReviewComment,
+  type ReviewEvent,
+} from "@odin/core";
 import { renderHtml } from "@odin/webview";
 import * as vscode from "vscode";
 
@@ -27,7 +37,12 @@ interface ViewedMessage {
   payload: { path: string; viewed: boolean };
 }
 
-type Message = NavigateMessage | OpenMessage | ViewedMessage;
+interface SubmitMessage {
+  type: "submitReview";
+  payload: { event: ReviewEvent; body: string; comments: DraftComment[] };
+}
+
+type Message = NavigateMessage | OpenMessage | ViewedMessage | SubmitMessage;
 
 export class GraphPanel {
   private static current: GraphPanel | undefined;
@@ -91,6 +106,72 @@ export class GraphPanel {
 
   private withTests: GraphLayout | undefined;
   private viewed: ViewedStore | undefined;
+  private comments: ReviewComment[] = [];
+
+  /** Comments already on the pull request, shown against their lines. */
+  setComments(comments: ReviewComment[]): void {
+    this.comments = comments;
+    this.render(this.layout);
+  }
+
+  /**
+   * Sends a review, once the reviewer has said so a second time.
+   *
+   * A review is visible to everyone on the pull request and cannot be taken
+   * back, so the confirmation names the verdict and counts the remarks rather
+   * than asking a bare "are you sure" — the point is to catch a wrong verdict,
+   * which a generic prompt does nothing about.
+   */
+  private async submit(payload: {
+    event: ReviewEvent;
+    body: string;
+    comments: DraftComment[];
+  }): Promise<void> {
+    const pull = this.graph.meta.pullRequest;
+    if (!pull) return;
+
+    const verdict = {
+      APPROVE: "Approve",
+      COMMENT: "Comment on",
+      REQUEST_CHANGES: "Request changes on",
+    }[payload.event];
+
+    const remarks =
+      payload.comments.length === 1
+        ? "1 line comment"
+        : `${payload.comments.length} line comments`;
+
+    const confirmed = await vscode.window.showWarningMessage(
+      `${verdict} #${pull.number} with ${remarks}?`,
+      { modal: true, detail: "This is posted to the pull request and cannot be undone from here." },
+      "Submit review",
+    );
+    if (confirmed !== "Submit review") return;
+
+    try {
+      await submitReview(
+        {
+          number: pull.number,
+          event: payload.event,
+          body: payload.body,
+          comments: payload.comments,
+        },
+        { cwd: this.repo },
+      );
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Odin: the review was not posted. ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
+
+    vscode.window.showInformationMessage(`Odin: review posted on #${pull.number}.`);
+    this.comments = await listReviewComments(pull.number, { cwd: this.repo });
+    void this.panel.webview.postMessage({
+      type: "reviewSubmitted",
+      comments: this.comments,
+    });
+  }
 
   /** Reflects a change made in the sidebar. */
   static applyViewed(paths: string[], marked: boolean): void {
@@ -156,7 +237,12 @@ export class GraphPanel {
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
 
-    this.panel.title = `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
+    // The pull request's title names the tab; the branch pair is in the
+    // toolbar, and a tab strip has room for one of them, not both.
+    const pull = this.graph.meta.pullRequest;
+    this.panel.title = pull
+      ? `#${pull.number} ${pull.title}`
+      : `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
 
     // Marks made in an earlier session are restored once the page is up.
     const marked = this.viewed?.all() ?? [];
@@ -173,6 +259,8 @@ export class GraphPanel {
       theme: dark ? DARK_THEME : LIGHT_THEME,
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
       ...(this.withTests ? { withTests: this.withTests } : {}),
+      comments: this.comments,
+      canReview: Boolean(this.graph.meta.pullRequest),
     });
   }
 
@@ -199,6 +287,10 @@ export class GraphPanel {
       }
       if (message.type === "viewed") {
         this.viewed?.set([message.payload.path], message.payload.viewed);
+        return;
+      }
+      if (message.type === "submitReview") {
+        await this.submit(message.payload);
       }
     } catch (error) {
       vscode.window.showErrorMessage(

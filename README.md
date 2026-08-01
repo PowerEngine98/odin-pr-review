@@ -112,6 +112,13 @@ you are on is marked down its left edge. Checking out refuses outright while
 the working tree is dirty, since carrying uncommitted changes onto another
 branch is not a decision to make on someone's behalf.
 
+Comments already on the pull request are marked against the lines they belong
+to. Clicking a line writes a new one, optionally as a suggestion; they collect
+into a pending review rather than being posted one at a time, and go out
+together as **Approve**, **Comment** or **Request changes** — behind a
+confirmation that names the verdict, since a review is visible to everyone and
+cannot be taken back from here.
+
 Where the branch has an open pull request, its number and title appear in the
 toolbar, linked to the forge. This is asked of the `gh` command line, so it
 inherits whatever authentication you already have — and its absence changes

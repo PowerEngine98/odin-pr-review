@@ -2,6 +2,7 @@ import {
   DARK_THEME,
   cardTitle,
   describeGaps,
+  type ReviewComment,
   type ChangeGraph,
   type DisplayRow,
   type GraphLayout,
@@ -36,6 +37,10 @@ export interface RenderOptions {
     /** The host's resource origin, e.g. `webview.cspSource`. */
     source: string;
   };
+  /** Comments already on the pull request. */
+  comments?: ReviewComment[];
+  /** Whether the host can post a review; without it the composer is pointless. */
+  canReview?: boolean;
 }
 
 /**
@@ -55,6 +60,7 @@ export function renderHtml(
   const title = options.title ??
     `${graph.meta.baseRef} → ${graph.meta.headRef} · Odin`;
 
+  const comments = options.comments ?? [];
   const full = options.withTests ?? layout;
   // Column identity belongs to the arrangement, not to the file: hiding the
   // tests changes the graph, which changes the ranking. Carrying it from one
@@ -112,6 +118,17 @@ export function renderHtml(
       symbol: e.edge.to.symbolName ?? "",
       label: e.edge.label ?? "",
     })),
+    canReview: options.canReview === true,
+    comments: comments.map((c) => ({
+      id: c.id,
+      path: c.path,
+      line: c.line,
+      side: c.side,
+      body: c.body,
+      author: c.author,
+      url: c.url,
+      outdated: c.outdated,
+    })),
   };
 
   const nonce = options.csp ? ` nonce="${options.csp.nonce}"` : "";
@@ -131,6 +148,8 @@ export function renderHtml(
     full.nodes.map((node) => card(node, full)).join("\n"),
     `</div></div>`,
     `<div class="tooltip"></div>`,
+    composer(),
+    reviewPanel(),
     hint(),
     `<script${nonce}>window.__ODIN__=${jsonForScript(viewModel)};</script>`,
     `<script${nonce}>${CLIENT_SCRIPT}</script>`,
@@ -175,6 +194,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
   ${title(graph)}
   <span class="spacer"></span>
+  <button id="action-review" class="pending" hidden>review <span class="count">0</span></button>
   <span class="filters">
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
@@ -195,11 +215,70 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
 function title(graph: ChangeGraph): string {
   const pull = graph.meta.pullRequest;
   if (!pull) return "";
+
+  // The title itself names the tab; what is left here is its state, said the
+  // same way the chooser says it, and a way back to the forge.
+  const tags = [
+    pull.draft
+      ? `<span class="tag draft">draft</span>`
+      : `<span class="tag open">open</span>`,
+    pull.reviewDecision === "APPROVED"
+      ? `<span class="tag ok">approved</span>`
+      : pull.reviewDecision === "CHANGES_REQUESTED"
+        ? `<span class="tag warn">changes requested</span>`
+        : pull.reviewDecision === "REVIEW_REQUIRED"
+          ? `<span class="tag muted">review required</span>`
+          : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
   return (
-    `<a class="pr" href="${escapeHtml(pull.url)}" target="_blank" rel="noreferrer" ` +
-    `title="Open #${pull.number} in the browser">` +
-    `<span class="num">#${pull.number}</span> ${escapeHtml(pull.title)}</a>`
+    `<span class="pr">` +
+    `<a href="${escapeHtml(pull.url)}" target="_blank" rel="noreferrer" ` +
+    `title="Open #${pull.number} in the browser">#${pull.number}</a>` +
+    tags +
+    `</span>`
   );
+}
+
+/**
+ * Where a line comment is written.
+ *
+ * Kept out of the card so that composing does not change any card's height and
+ * set every arrow in the column moving; it floats over the canvas instead,
+ * anchored to whatever line was clicked.
+ */
+function composer(): string {
+  return `<div class="composer" hidden>
+  <div class="composer-where"></div>
+  <textarea class="composer-body" rows="4" placeholder="Leave a comment"></textarea>
+  <label class="composer-suggest"><input type="checkbox" class="as-suggestion"> suggest a replacement</label>
+  <div class="composer-actions">
+    <button class="composer-cancel">Cancel</button>
+    <button class="composer-add primary">Add to review</button>
+  </div>
+</div>`;
+}
+
+/**
+ * The pending review: what has been written, and the verdict to send it with.
+ *
+ * Comments accumulate here rather than being posted one at a time, which is
+ * both what the forge's own model expects and what spares a team a notification
+ * per remark. Nothing leaves the machine until one of these three is pressed.
+ */
+function reviewPanel(): string {
+  return `<div class="review" hidden>
+  <div class="review-head">Pending review · <span class="review-count">0</span></div>
+  <div class="review-list"></div>
+  <textarea class="review-body" rows="3" placeholder="Summary (required to comment or request changes)"></textarea>
+  <div class="review-actions">
+    <button class="review-submit" data-event="APPROVE">Approve</button>
+    <button class="review-submit" data-event="COMMENT">Comment</button>
+    <button class="review-submit" data-event="REQUEST_CHANGES">Request changes</button>
+  </div>
+</div>`;
 }
 
 function hint(): string {

@@ -84,18 +84,27 @@ html, body {
 .toolbar > .gaps { border-left-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 
 .toolbar .pr {
-  color: var(--status-renamed);
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 46ch;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   align-self: center;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
-.toolbar .pr:hover { text-decoration: underline; }
-.toolbar .pr .num { color: var(--muted); margin-right: 4px; }
+.toolbar .pr a { color: var(--status-renamed); text-decoration: none; }
+.toolbar .pr a:hover { text-decoration: underline; }
+
+.toolbar .tag {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+.toolbar .tag.open { color: var(--added); }
+.toolbar .tag.draft { color: var(--muted); }
+.toolbar .tag.ok { color: var(--added); }
+.toolbar .tag.warn { color: var(--warning); }
+.toolbar .tag.muted { color: var(--muted); }
 
 .toolbar .refs {
   color: var(--muted);
@@ -463,6 +472,113 @@ html, body {
 .tooltip .facts .added { color: var(--added); }
 .tooltip .facts .removed { color: var(--removed); }
 .tooltip .facts .unchanged { color: var(--unchanged); }
+
+/* ------------------------------------------------------------------ review */
+
+/* A line carrying a remark is marked in the margin rather than by tinting the
+   row: the row's colour already says whether the line was added or removed,
+   and overloading it would cost more than the marker is worth. */
+.row.commented .comment-badge,
+.row.drafted .comment-badge {
+  position: absolute;
+  right: 2px;
+  min-width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  border-radius: 6px;
+  font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+  padding: 0 3px;
+}
+.row { position: relative; }
+.row.commented .comment-badge {
+  background: color-mix(in srgb, var(--status-renamed) 80%, transparent);
+  color: var(--bg);
+}
+.row.drafted .comment-badge {
+  background: color-mix(in srgb, var(--warning) 85%, transparent);
+  color: var(--bg);
+}
+.card:not(.is-viewed) .row.commented,
+.card:not(.is-viewed) .row.drafted { cursor: text; }
+
+.composer, .review {
+  position: fixed;
+  z-index: 40;
+  width: 340px;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  font-size: 12px;
+}
+.composer[hidden], .review[hidden] { display: none; }
+
+.composer-where { color: var(--muted); margin-bottom: 6px; }
+.composer-body, .review-body {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-family: var(--mono);
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 5px;
+  padding: 6px;
+  resize: vertical;
+}
+.composer-suggest { display: block; margin: 6px 0; color: var(--muted); }
+.composer-actions, .review-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.composer button, .review button {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-radius: 5px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.composer button:hover, .review button:hover { color: var(--text); }
+.composer button.primary {
+  color: var(--bg);
+  background: var(--status-renamed);
+  border-color: var(--status-renamed);
+}
+
+/* The panel sits at a corner rather than following the cursor: it is a summary
+   of everything pending, not a remark about one line. */
+.review { right: 16px; top: 96px; }
+.review-head { color: var(--muted); margin-bottom: 6px; }
+.review-list { max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
+.review-item {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+.review-item .where { color: var(--muted); flex: 0 0 auto; }
+.review-item .what {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-item .drop { padding: 0 6px; font-size: 11px; }
+.review-submit[data-event="APPROVE"] { color: var(--added); border-color: var(--added); }
+.review-submit[data-event="REQUEST_CHANGES"] { color: var(--removed); border-color: var(--removed); }
+
+.toolbar #action-review {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 50%, transparent);
+}
+.toolbar #action-review[hidden] { display: none; }
 
 .hint {
   position: fixed;

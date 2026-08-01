@@ -18,13 +18,16 @@ export async function readPullRequest(
   options: GitOptions & { timeoutMs?: number },
 ): Promise<PullRequest | undefined> {
   const json = await run(
-    ["pr", "view", branch, "--json", "number,title,url"],
+    ["pr", "view", branch, "--json", "number,title,url,isDraft,reviewDecision"],
     options,
   );
   if (!json) return undefined;
 
   try {
-    const parsed = JSON.parse(json) as Partial<PullRequest>;
+    const parsed = JSON.parse(json) as Partial<PullRequest> & {
+      isDraft?: boolean;
+      reviewDecision?: string | null;
+    };
     if (
       typeof parsed.number !== "number" ||
       typeof parsed.title !== "string" ||
@@ -32,7 +35,15 @@ export async function readPullRequest(
     ) {
       return undefined;
     }
-    return { number: parsed.number, title: parsed.title, url: parsed.url };
+
+    const pull: PullRequest = {
+      number: parsed.number,
+      title: parsed.title,
+      url: parsed.url,
+    };
+    if (parsed.isDraft === true) pull.draft = true;
+    if (parsed.reviewDecision) pull.reviewDecision = parsed.reviewDecision;
+    return pull;
   } catch {
     return undefined;
   }

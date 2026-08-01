@@ -78,18 +78,27 @@ html, body {
 .toolbar > .gaps { border-left-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 
 .toolbar .pr {
-  color: var(--status-renamed);
-  text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 46ch;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   align-self: center;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
-.toolbar .pr:hover { text-decoration: underline; }
-.toolbar .pr .num { color: var(--muted); margin-right: 4px; }
+.toolbar .pr a { color: var(--status-renamed); text-decoration: none; }
+.toolbar .pr a:hover { text-decoration: underline; }
+
+.toolbar .tag {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+.toolbar .tag.open { color: var(--added); }
+.toolbar .tag.draft { color: var(--muted); }
+.toolbar .tag.ok { color: var(--added); }
+.toolbar .tag.warn { color: var(--warning); }
+.toolbar .tag.muted { color: var(--muted); }
 
 .toolbar .refs {
   color: var(--muted);
@@ -458,6 +467,113 @@ html, body {
 .tooltip .facts .removed { color: var(--removed); }
 .tooltip .facts .unchanged { color: var(--unchanged); }
 
+/* ------------------------------------------------------------------ review */
+
+/* A line carrying a remark is marked in the margin rather than by tinting the
+   row: the row's colour already says whether the line was added or removed,
+   and overloading it would cost more than the marker is worth. */
+.row.commented .comment-badge,
+.row.drafted .comment-badge {
+  position: absolute;
+  right: 2px;
+  min-width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  border-radius: 6px;
+  font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+  padding: 0 3px;
+}
+.row { position: relative; }
+.row.commented .comment-badge {
+  background: color-mix(in srgb, var(--status-renamed) 80%, transparent);
+  color: var(--bg);
+}
+.row.drafted .comment-badge {
+  background: color-mix(in srgb, var(--warning) 85%, transparent);
+  color: var(--bg);
+}
+.card:not(.is-viewed) .row.commented,
+.card:not(.is-viewed) .row.drafted { cursor: text; }
+
+.composer, .review {
+  position: fixed;
+  z-index: 40;
+  width: 340px;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  font-size: 12px;
+}
+.composer[hidden], .review[hidden] { display: none; }
+
+.composer-where { color: var(--muted); margin-bottom: 6px; }
+.composer-body, .review-body {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-family: var(--mono);
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 5px;
+  padding: 6px;
+  resize: vertical;
+}
+.composer-suggest { display: block; margin: 6px 0; color: var(--muted); }
+.composer-actions, .review-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.composer button, .review button {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-radius: 5px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.composer button:hover, .review button:hover { color: var(--text); }
+.composer button.primary {
+  color: var(--bg);
+  background: var(--status-renamed);
+  border-color: var(--status-renamed);
+}
+
+/* The panel sits at a corner rather than following the cursor: it is a summary
+   of everything pending, not a remark about one line. */
+.review { right: 16px; top: 96px; }
+.review-head { color: var(--muted); margin-bottom: 6px; }
+.review-list { max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
+.review-item {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+.review-item .where { color: var(--muted); flex: 0 0 auto; }
+.review-item .what {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-item .drop { padding: 0 6px; font-size: 11px; }
+.review-submit[data-event="APPROVE"] { color: var(--added); border-color: var(--added); }
+.review-submit[data-event="REQUEST_CHANGES"] { color: var(--removed); border-color: var(--removed); }
+
+.toolbar #action-review {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 50%, transparent);
+}
+.toolbar #action-review[hidden] { display: none; }
+
 .hint {
   position: fixed;
   right: 14px;
@@ -477,6 +593,7 @@ html, body {
   
   
   <span class="spacer"></span>
+  <button id="action-review" class="pending" hidden>review <span class="count">0</span></button>
   <span class="filters">
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
@@ -518,11 +635,30 @@ html, body {
 </div>
 </div></div>
 <div class="tooltip"></div>
+<div class="composer" hidden>
+  <div class="composer-where"></div>
+  <textarea class="composer-body" rows="4" placeholder="Leave a comment"></textarea>
+  <label class="composer-suggest"><input type="checkbox" class="as-suggestion"> suggest a replacement</label>
+  <div class="composer-actions">
+    <button class="composer-cancel">Cancel</button>
+    <button class="composer-add primary">Add to review</button>
+  </div>
+</div>
+<div class="review" hidden>
+  <div class="review-head">Pending review · <span class="review-count">0</span></div>
+  <div class="review-list"></div>
+  <textarea class="review-body" rows="3" placeholder="Summary (required to comment or request changes)"></textarea>
+  <div class="review-actions">
+    <button class="review-submit" data-event="APPROVE">Approve</button>
+    <button class="review-submit" data-event="COMMENT">Comment</button>
+    <button class="review-submit" data-event="REQUEST_CHANGES">Request changes</button>
+  </div>
+</div>
 <div class="hint">
   click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
   scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
 </div>
-<script>window.__ODIN__={"width":2393,"height":916,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":89,"y":48,"width":448,"height":292,"column":0,"isTest":false,"untouched":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":396,"width":530,"height":202,"column":0,"isTest":false,"untouched":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":535,"width":530,"height":274,"column":2,"isTest":false,"untouched":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":185,"width":448,"height":112,"column":2,"isTest":false,"untouched":true},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":504,"width":530,"height":364,"column":1,"isTest":false,"untouched":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false,"untouched":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":48,"width":560,"height":400,"column":1,"isTest":false,"untouched":false}],"arrangements":{"withTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}},"withoutTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}]};</script>
+<script>window.__ODIN__={"width":2393,"height":916,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":89,"y":48,"width":448,"height":292,"column":0,"isTest":false,"untouched":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":396,"width":530,"height":202,"column":0,"isTest":false,"untouched":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":535,"width":530,"height":274,"column":2,"isTest":false,"untouched":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":185,"width":448,"height":112,"column":2,"isTest":false,"untouched":true},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":504,"width":530,"height":364,"column":1,"isTest":false,"untouched":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false,"untouched":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":48,"width":560,"height":400,"column":1,"isTest":false,"untouched":false}],"arrangements":{"withTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}},"withoutTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292,"column":0},"n:a5d65acaa45a":{"x":48,"y":396,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274,"column":2},"n:7ca9a636a596":{"x":1459,"y":185,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":504,"height":364,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":48,"height":400,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}],"canReview":false,"comments":[]};</script>
 <script>
 (function () {
   var data = window.__ODIN__;
@@ -968,6 +1104,175 @@ html, body {
     });
   });
 
+  /* ---------------------------------------------------------------- review */
+
+  // Comments written here but not yet sent. Held together so the forge sees
+  // one review carrying a verdict, rather than a notification per remark.
+  var drafts = [];
+
+  var composer = document.querySelector(".composer");
+  var panel = document.querySelector(".review");
+  var reviewButton = document.getElementById("action-review");
+  var pending = null;
+
+  /** Marks the lines that already carry a comment, and the ones drafted here. */
+  function markCommentedLines() {
+    document.querySelectorAll(".row.commented, .row.drafted").forEach(function (row) {
+      row.classList.remove("commented", "drafted");
+      var badge = row.querySelector(".comment-badge");
+      if (badge) badge.remove();
+    });
+
+    var byLine = {};
+    (data.comments || []).forEach(function (c) {
+      var key = c.path + ":" + c.side + ":" + c.line;
+      (byLine[key] = byLine[key] || []).push(c);
+    });
+    drafts.forEach(function (d) {
+      var key = d.path + ":" + d.side + ":" + d.line;
+      (byLine[key] = byLine[key] || []).push({ draft: true, body: d.body, author: "you" });
+    });
+
+    Object.keys(byLine).forEach(function (key) {
+      var parts = key.split(":");
+      var side = parts[parts.length - 2];
+      var line = parts[parts.length - 1];
+      var path = parts.slice(0, -2).join(":");
+
+      var node = data.nodes.find(function (n) { return n.path === path; });
+      if (!node) return;
+      var card = document.getElementById("card-" + cssId(node.id));
+      if (!card) return;
+
+      var attribute = side === "LEFT" ? "data-old" : "data-new";
+      var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+      if (!row) return;
+
+      var entries = byLine[key];
+      var drafted = entries.some(function (e) { return e.draft; });
+      row.classList.add(drafted ? "drafted" : "commented");
+
+      var badge = document.createElement("span");
+      badge.className = "comment-badge";
+      badge.textContent = entries.length > 1 ? String(entries.length) : "";
+      badge.title = entries
+        .map(function (e) { return (e.author || "?") + ": " + e.body; })
+        .join("\n\n");
+      row.appendChild(badge);
+    });
+  }
+
+  /** Opens the composer against a line, positioned beside it. */
+  function compose(card, row, event) {
+    var node = nodeFor(card.dataset.id);
+    if (!node) return;
+
+    var side = row.getAttribute("data-new") ? "RIGHT" : "LEFT";
+    var line = row.getAttribute(side === "RIGHT" ? "data-new" : "data-old");
+    if (!line) return;
+
+    pending = { path: node.path, line: Number(line), side: side };
+    composer.querySelector(".composer-where").textContent =
+      node.path.split("/").pop() + ":" + line;
+    composer.querySelector(".composer-body").value = "";
+    composer.querySelector(".as-suggestion").checked = false;
+    composer.hidden = false;
+
+    var box = composer.getBoundingClientRect();
+    composer.style.left =
+      Math.min(event.clientX + 16, window.innerWidth - box.width - 16) + "px";
+    composer.style.top =
+      Math.min(event.clientY, window.innerHeight - box.height - 16) + "px";
+    composer.querySelector(".composer-body").focus();
+  }
+
+  if (composer) {
+    composer.querySelector(".composer-cancel").addEventListener("click", function () {
+      composer.hidden = true;
+      pending = null;
+    });
+
+    composer.querySelector(".composer-add").addEventListener("click", function () {
+      var text = composer.querySelector(".composer-body").value.trim();
+      if (!text || !pending) return;
+
+      // A suggestion is an ordinary comment in a fenced block the forge knows
+      // how to offer as a one-click change.
+      var suggest = composer.querySelector(".as-suggestion").checked;
+      // Written with escapes because this whole script lives inside a template
+      // literal, which a literal fence would end.
+      var fence = "\u0060\u0060\u0060";
+      var body = suggest ? fence + "suggestion\n" + text + "\n" + fence : text;
+
+      drafts.push({ path: pending.path, line: pending.line, side: pending.side, body: body });
+      composer.hidden = true;
+      pending = null;
+      refreshReview();
+    });
+  }
+
+  function refreshReview() {
+    if (reviewButton) {
+      reviewButton.hidden = !data.canReview || drafts.length === 0;
+      reviewButton.querySelector(".count").textContent = String(drafts.length);
+    }
+    if (panel) {
+      panel.querySelector(".review-count").textContent =
+        drafts.length + (drafts.length === 1 ? " comment" : " comments");
+      panel.querySelector(".review-list").innerHTML = drafts
+        .map(function (d, i) {
+          return '<div class="review-item"><span class="where">' +
+            escapeHtml(d.path.split("/").pop()) + ":" + d.line +
+            '</span><span class="what">' + escapeHtml(d.body.slice(0, 90)) +
+            '</span><button class="drop" data-index="' + i + '">remove</button></div>';
+        })
+        .join("");
+      panel.querySelectorAll(".drop").forEach(function (button) {
+        button.addEventListener("click", function () {
+          drafts.splice(Number(button.dataset.index), 1);
+          refreshReview();
+          markCommentedLines();
+        });
+      });
+    }
+    markCommentedLines();
+  }
+
+  if (reviewButton) {
+    reviewButton.addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+    });
+  }
+
+  if (panel) {
+    panel.querySelectorAll(".review-submit").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var body = panel.querySelector(".review-body").value.trim();
+        var event = button.dataset.event;
+        if (event !== "APPROVE" && !body) {
+          panel.querySelector(".review-body").focus();
+          return;
+        }
+        // The host confirms before anything is sent; nothing leaves here on
+        // the strength of a single click.
+        notifyHost("submitReview", { event: event, body: body, comments: drafts });
+      });
+    });
+  }
+
+  // Lines accept a comment on click, when the host can post one.
+  cards.forEach(function (card) {
+    card.addEventListener("click", function (event) {
+      if (!data.canReview) return;
+      if (event.target.closest(".card-title")) return;
+      if (event.target.closest(".row.gap, .row.more")) return;
+      var row = event.target.closest(".row");
+      if (!row) return;
+      event.stopPropagation();
+      compose(card, row, event);
+    });
+  });
+
   /* --------------------------------------------------------------- tooltip */
 
   function showTooltip(event, id) {
@@ -1147,6 +1452,16 @@ html, body {
   // in step.
   window.addEventListener("message", function (event) {
     var message = event.data;
+    if (message && message.type === "reviewSubmitted") {
+      drafts = [];
+      if (panel) {
+        panel.hidden = true;
+        panel.querySelector(".review-body").value = "";
+      }
+      if (message.comments) data.comments = message.comments;
+      refreshReview();
+      return;
+    }
     if (!message || message.type !== "setViewed") return;
     var byPath = {};
     data.nodes.forEach(function (n) { byPath[n.path] = n.id; });
@@ -1182,6 +1497,7 @@ html, body {
   }
 
   refreshFilters();
+  refreshReview();
   fit();
   window.addEventListener("resize", fit);
 })();
