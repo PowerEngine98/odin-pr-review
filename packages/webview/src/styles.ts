@@ -153,6 +153,8 @@ html, body {
 
 .card-title .was { color: var(--muted); font-size: calc(var(--font-size) - 1px); }
 .card-title .stats { color: var(--muted); font-size: calc(var(--font-size) - 2px); }
+.card-title .stats .added { color: var(--added); }
+.card-title .stats .removed { color: var(--removed); }
 
 /* A file nothing could read. Marked rather than left blank, because a card
    with no arrows otherwise looks like a file that references nothing. */
@@ -203,6 +205,12 @@ html, body {
 .row.gap.open + .row.in-gap,
 .row.in-gap.open { display: flex; }
 
+/* An import band is opened and closed rather than opened once, so it keeps its
+   row instead of dissolving into what it revealed. */
+.row.gap.imports.open { color: var(--gutter); }
+.row.gap.imports.open .text::before { content: "▾ "; }
+.row.gap.imports:not(.open) .text::before { content: "▸ "; }
+
 .row.gap.expandable,
 .row.more {
   cursor: pointer;
@@ -226,8 +234,11 @@ html, body {
   text-overflow: ellipsis;
 }
 
+/* The left block spans padding + gutter, matching the static renderer: the
+   marker sits at the padding, the base number's right edge lands on
+   --line-number-right, and the text starts a clear gap after it. */
 .row .marker {
-  width: calc(var(--gutter-width) - var(--line-number-right));
+  width: calc(var(--padding) + 14px);
   padding-left: var(--padding);
   color: var(--gutter);
 }
@@ -240,7 +251,7 @@ html, body {
 }
 .row .num.anchor { opacity: 0.42; }
 .row .num.old {
-  width: calc(var(--line-number-right) - var(--padding));
+  width: calc(var(--padding) + var(--line-number-right) - var(--padding) - 14px);
   flex: 0 0 auto;
 }
 .row .num.new {
@@ -257,6 +268,7 @@ html, body {
 .row .text {
   flex: 1 1 auto;
   min-width: 0;
+  padding-left: calc(var(--gutter-width) - var(--line-number-right));
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -319,7 +331,7 @@ html, body {
 .tooltip {
   position: fixed;
   z-index: 30;
-  max-width: 460px;
+  max-width: 380px;
   padding: 7px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
@@ -331,6 +343,15 @@ html, body {
   transition: opacity 120ms ease;
 }
 .tooltip.visible { opacity: 1; }
+.tooltip .arrow { color: var(--unchanged); font-weight: 600; }
+.tooltip.added .arrow { color: var(--added); }
+.tooltip.removed .arrow { color: var(--removed); }
+.tooltip .target,
+.tooltip .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .tooltip .target { color: var(--text); }
 .tooltip .meta { color: var(--muted); }
 

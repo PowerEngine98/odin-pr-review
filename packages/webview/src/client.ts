@@ -312,6 +312,16 @@ export const CLIENT_SCRIPT = String.raw`
     });
   }
 
+  /** Opens or closes one band, without measuring or moving anything. */
+  function setGapOpen(band, open) {
+    band.classList.toggle("open", open);
+    var row = band.nextElementSibling;
+    while (row && row.classList.contains("in-gap")) {
+      row.classList.toggle("open", open);
+      row = row.nextElementSibling;
+    }
+  }
+
   function expand(trigger) {
     var card = trigger.closest(".card");
     if (!card) return;
@@ -320,18 +330,43 @@ export const CLIENT_SCRIPT = String.raw`
     if (trigger.classList.contains("more")) {
       card.classList.add("expanded");
       trigger.remove();
+    } else if (trigger.classList.contains("imports")) {
+      // Import bands toggle both ways, so the band stays put.
+      setGapOpen(trigger, !trigger.classList.contains("open"));
     } else {
-      trigger.classList.add("open");
-      var row = trigger.nextElementSibling;
-      while (row && row.classList.contains("in-gap")) {
-        row.classList.add("open");
-        row = row.nextElementSibling;
-      }
+      setGapOpen(trigger, true);
       trigger.remove();
     }
 
     var after = card.querySelector(".card-body").scrollHeight;
     reflow(card, after - before);
+  }
+
+  /**
+   * Applies a height change to every card at once.
+   *
+   * Cards are settled from the top of each column down, because growing one
+   * pushes everything below it, and doing them out of order would compound the
+   * shifts onto cards that had already moved.
+   */
+  function settle(measure) {
+    var pending = [];
+    cards.forEach(function (card) {
+      var body = card.querySelector(".card-body");
+      if (!body) return;
+      var before = body.scrollHeight;
+      measure(card);
+      pending.push({ card: card, delta: body.scrollHeight - before });
+    });
+
+    pending
+      .filter(function (entry) { return entry.delta !== 0; })
+      .sort(function (a, b) {
+        var na = nodeFor(a.card.dataset.id);
+        var nb = nodeFor(b.card.dataset.id);
+        return na.x - nb.x || na.y - nb.y;
+      })
+      .forEach(function (entry) { reflow(entry.card, entry.delta); });
   }
 
   document.querySelectorAll(".row.more, .row.gap.expandable").forEach(function (trigger) {
@@ -351,12 +386,26 @@ export const CLIENT_SCRIPT = String.raw`
   function showTooltip(event, id) {
     var edge = data.edges.find(function (e) { return e.id === id; });
     if (!edge) return;
+    // Enough path to identify the file, not enough to wrap the tooltip across
+    // the card behind it. The full path is on the card itself.
+    var shorten = function (path) {
+      var parts = path.split("/");
+      return parts.slice(-2).join("/");
+    };
+
     tooltip.innerHTML =
       '<div class="target">' + escapeHtml(edge.label || edge.symbol || "") + "</div>" +
-      '<div class="meta">' + escapeHtml(edge.fromPath) + ":" + edge.fromLine +
-      " &rarr; " + escapeHtml(edge.toPath) + ":" + edge.toLine +
-      "  &middot; " + edge.change + " &middot; " + edge.confidence + "</div>";
-    tooltip.classList.add("visible");
+      '<div class="meta">' + escapeHtml(shorten(edge.fromPath)) + ":" + edge.fromLine +
+      ' <span class="arrow">&rarr;</span> ' +
+      escapeHtml(shorten(edge.toPath)) + ":" + edge.toLine + "</div>" +
+      '<div class="meta">' + edge.change + " &middot; " + edge.kind +
+      " &middot; " + edge.confidence + "</div>";
+    tooltip.title = edge.fromPath + " → " + edge.toPath;
+    // The arrow in the tooltip is the arrow under the cursor, so it carries the
+    // same colour: green for a reference the change introduced, red for one it
+    // took away.
+    tooltip.classList.remove("added", "removed", "unchanged");
+    tooltip.classList.add("visible", edge.change);
     moveTooltip(event);
   }
 
@@ -378,6 +427,14 @@ export const CLIENT_SCRIPT = String.raw`
     var showImports = document.getElementById("filter-imports").checked;
     var showUnchanged = document.getElementById("filter-unchanged").checked;
     var showTests = document.getElementById("filter-tests").checked;
+
+    // The imports switch governs the statements as well as the arrows: showing
+    // one without the other leaves arrows pointing into a folded band.
+    settle(function (card) {
+      card.querySelectorAll(".row.gap.imports").forEach(function (band) {
+        setGapOpen(band, showImports);
+      });
+    });
 
     // Positions come from whichever arrangement was computed for this choice;
     // there is no layout engine here to work them out.

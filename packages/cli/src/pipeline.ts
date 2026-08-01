@@ -16,6 +16,8 @@ import { TsResolver } from "@odin/resolver-ts";
 export interface ResolveRequest {
   cwd: string;
   headRef: string;
+  /** Resolve imports even when they start out hidden. */
+  alwaysResolveImports?: boolean;
   /** Probe unchanged lines as well as changed ones. */
   includeContext?: boolean;
   /** Emit edges for import statements. */
@@ -38,14 +40,17 @@ export async function resolveEdges(
 ): Promise<ChangeGraph> {
   // Built before probing so the language list is known, and so coverage can be
   // reported even when nothing resolves.
+  const resolveImports =
+    request.includeImports !== false || request.alwaysResolveImports === true;
+
   const build = (roots: { head: string; base?: string }): ReferenceResolver[] => [
     new TsResolver({
       roots,
-      ...(request.includeImports === false ? { includeImports: false } : {}),
+      ...(resolveImports ? {} : { includeImports: false }),
     }),
     new KotlinResolver({
       roots,
-      ...(request.includeImports === false ? { includeImports: false } : {}),
+      ...(resolveImports ? {} : { includeImports: false }),
     }),
   ];
   const languages = build({ head: request.cwd }).flatMap((r) => [...r.languages]);

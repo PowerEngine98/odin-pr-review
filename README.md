@@ -73,6 +73,12 @@ on any file that both gained and lost lines.
 | Click *show N more lines* | Reveal the rest of a truncated card |
 | `f` / `esc` | Fit the graph / clear the selection |
 
+Import statements are folded into a band and their arrows hidden, both governed
+by the **imports** checkbox. A Kotlin file can open with thirty imports, which
+pushes the actual change off the bottom of the card. They are still resolved, so
+switching them on needs no rebuild — `--imports` does the same on the command
+line.
+
 Test files are hidden by default, and the **tests** checkbox brings them back.
 A test tends to reference a great deal of what it exercises: on a 24-file
 change here, one test file accounted for 23 of the 35 edges and buried

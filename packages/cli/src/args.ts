@@ -13,7 +13,7 @@ Options:
       --light           render html/svg on a light background
   -U, --context <n>     diff context lines                    (default: 3)
   -r, --resolve         resolve call-site references into edges
-      --no-imports      with --resolve, skip import statements
+      --imports         include import statements and their arrows
       --with-context    with --resolve, probe unchanged lines too
       --tests           include test files (hidden by default)
       --summary         shorthand for --format summary
@@ -63,7 +63,7 @@ export function parseArgs(argv: string[]): ParseResult {
     stamp: false,
     strict: false,
     resolve: false,
-    imports: true,
+    imports: false,
     withContext: false,
     tests: false,
     light: false,
@@ -93,6 +93,7 @@ export function parseArgs(argv: string[]): ParseResult {
       case "--stamp": opts.stamp = true; continue;
       case "--strict": opts.strict = true; continue;
       case "-r": case "--resolve": opts.resolve = true; continue;
+      case "--imports": opts.imports = true; continue;
       case "--no-imports": opts.imports = false; continue;
       case "--with-context": opts.withContext = true; continue;
       case "--tests": opts.tests = true; continue;

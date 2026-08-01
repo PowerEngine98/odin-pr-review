@@ -71,11 +71,28 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
   const heading = [title.name, title.was, title.stats, title.note]
     .filter(Boolean)
     .join("  ");
-  parts.push(
-    `<text x="${node.x + node.width / 2}" y="${node.y + metrics.titleHeight - 12}" ` +
-      `fill="${stroke}" font-size="${metrics.fontSize + 1}" text-anchor="middle">` +
-      `${escape(heading)}</text>`,
-  );
+  const y = node.y + metrics.titleHeight - 12;
+
+  if (title.additions) {
+    // One text element with coloured spans, so the counts read like the diff.
+    const lead = [title.name, title.was].filter(Boolean).join("  ");
+    const tail = title.note ? `  ${title.note}` : "";
+    parts.push(
+      `<text x="${node.x + node.width / 2}" y="${y}" ` +
+        `font-size="${metrics.fontSize + 1}" text-anchor="middle">` +
+        `<tspan fill="${stroke}">${escape(lead)}  </tspan>` +
+        `<tspan fill="${theme.change.added}">${escape(title.additions)}</tspan>` +
+        `<tspan fill="${theme.mutedText}"> </tspan>` +
+        `<tspan fill="${theme.change.removed}">${escape(title.deletions)}</tspan>` +
+        `<tspan fill="${theme.mutedText}">${escape(tail)}</tspan></text>`,
+    );
+  } else {
+    parts.push(
+      `<text x="${node.x + node.width / 2}" y="${y}" ` +
+        `fill="${stroke}" font-size="${metrics.fontSize + 1}" text-anchor="middle">` +
+        `${escape(heading)}</text>`,
+    );
+  }
 
   const textX = node.x + metrics.padding + metrics.gutterWidth;
   const capacity = textCapacity(node.width, metrics);

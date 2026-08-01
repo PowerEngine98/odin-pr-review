@@ -159,7 +159,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
   <span class="spacer"></span>
-  <label><input type="checkbox" id="filter-imports" checked> imports</label>
+  <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
   <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
   <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
   <button id="action-fit">fit</button>
@@ -181,7 +181,11 @@ function card(node: PlacedNode, layout: GraphLayout): string {
 
   const title = cardTitle(node.node);
   const was = title.was ? `<span class="was">${escapeHtml(title.was)}</span>` : "";
-  const stats = `<span class="stats">${escapeHtml(title.stats)}</span>`;
+  // Counts carry the diff's own colours, so the card header reads at a glance.
+  const stats = title.additions
+    ? `<span class="stats"><span class="added">${escapeHtml(title.additions)}</span>` +
+      ` <span class="removed">${escapeHtml(title.deletions)}</span></span>`
+    : `<span class="stats">${escapeHtml(title.stats)}</span>`;
   const note = title.note
     ? `<span class="note" title="Odin could not look for references in this file">${escapeHtml(title.note)}</span>`
     : "";
@@ -216,12 +220,13 @@ function renderRow(row: DisplayRow, beyondCap = false): string {
     // A gap that knows what it hides can be opened; one that does not must not
     // pretend otherwise, so it is rendered inert.
     const expandable = row.rows ? " expandable" : "";
+    const imports = row.imports ? " imports" : "";
     const hidden = (row.rows ?? [])
       .map((inner) => renderRow(inner, beyondCap).replace(
         'class="row ', 'class="row in-gap ',
       ))
       .join("");
-    return `<div class="row gap${expandable}${overflow}" title="${escapeHtml(row.header ?? "")}"` +
+    return `<div class="row gap${expandable}${imports}${overflow}" title="${escapeHtml(row.header ?? "")}"` +
       (row.rows ? ' role="button" tabindex="0"' : "") + ">" +
       `<span class="text">${escapeHtml(row.text)}</span>` +
       `<span class="header">${escapeHtml(row.header ?? "")}</span></div>` +

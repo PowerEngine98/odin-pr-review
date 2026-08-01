@@ -17,6 +17,8 @@ export type DisplayRow =
       hidden: number;
       /** `@@ -a,b +c,d @@ enclosing symbol`, when the gap opens a hunk. */
       header?: string;
+      /** This gap stands for a file's import block rather than untouched code. */
+      imports?: boolean;
       text: string;
       /**
        * The rows this gap stands in for, when they are known.
@@ -52,10 +54,24 @@ export interface DisplayOptions {
   contextRadius?: number;
   /** Only runs longer than this are worth collapsing. */
   collapseThreshold?: number;
+  /** Fold a file's import block into one band. Default: true. */
+  foldImports?: boolean;
 }
 
 const DEFAULT_CONTEXT_RADIUS = 2;
 const DEFAULT_COLLAPSE_THRESHOLD = 3;
+/** Shortest run of imports worth folding away. */
+const IMPORT_BLOCK_MINIMUM = 2;
+
+/**
+ * What an import statement looks like, across the languages Odin sees.
+ *
+ * A run of these at the top of a file is the least interesting thing in a
+ * review and often the tallest: a Kotlin file can open with thirty of them
+ * before reaching a line anyone wants to read.
+ */
+const IMPORT_LINE =
+  /^\s*(?:import\b|from\s+[\w.]+\s+import\b|using\s|#include\b|package\b|@file:)/;
 
 /**
  * Flattens a node's hunks and snippets into the rows a card displays.
@@ -77,7 +93,60 @@ export function displayRows(
 ): DisplayRow[] {
   const side: Side = node.status === "deleted" ? "base" : "head";
   const rows = assemble(node, snippets, side);
-  return collapse(rows, side, options);
+  return foldImports(collapse(rows, side, options), options);
+}
+
+/**
+ * Folds a file's import block into a single band.
+ *
+ * Imports are the tallest uninteresting thing in most files, and a card that
+ * opens with thirty of them pushes the actual change off the bottom. The rows
+ * are kept, so the band opens like any other gap and the imports filter can
+ * show them all at once.
+ */
+function foldImports(
+  rows: DisplayRow[],
+  options: DisplayOptions,
+): DisplayRow[] {
+  if (options.foldImports === false) return rows;
+
+  const out: DisplayRow[] = [];
+  let run: DisplayRow[] = [];
+
+  const flush = () => {
+    if (run.length === 0) return;
+    if (run.length >= IMPORT_BLOCK_MINIMUM) {
+      const band: DisplayRow = {
+        kind: "gap",
+        hidden: run.length,
+        text: `⋯ ${run.length} imports`,
+        imports: true,
+        rows: run,
+      };
+      out.push(band);
+    } else {
+      out.push(...run);
+    }
+    run = [];
+  };
+
+  for (const row of rows) {
+    if (row.kind !== "gap" && IMPORT_LINE.test(row.text)) {
+      run.push(row);
+      continue;
+    }
+    // A blank line between imports keeps the block together rather than
+    // splitting it into several bands.
+    if (row.kind !== "gap" && row.text.trim() === "" && run.length > 0) {
+      run.push(row);
+      continue;
+    }
+    flush();
+    out.push(row);
+  }
+  flush();
+
+  return out;
 }
 
 // ------------------------------------------------------------------ assembly
@@ -298,6 +367,9 @@ export interface CardTitle {
   was: string;
   /** `+3 −1`, or `untouched` for a file the diff never mentioned. */
   stats: string;
+  /** The same counts split, so a renderer can colour them like the diff. */
+  additions: string;
+  deletions: string;
   /**
    * Why this card has no arrows, when the reason is not "it has none".
    *
@@ -316,6 +388,8 @@ export function cardTitle(node: FileNode): CardTitle {
       node.status === "phantom"
         ? "untouched"
         : `+${node.stats.additions} −${node.stats.deletions}`,
+    additions: node.status === "phantom" ? "" : `+${node.stats.additions}`,
+    deletions: node.status === "phantom" ? "" : `−${node.stats.deletions}`,
     note:
       node.resolution === "unsupported"
         ? `no ${node.language} resolver`

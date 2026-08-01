@@ -58,6 +58,8 @@ async function main(argv: string[]): Promise<number> {
       headRef: opts.headRef,
       includeImports: opts.imports,
       includeContext: opts.withContext,
+      // The page can switch imports on, so they are resolved regardless.
+      alwaysResolveImports: opts.format === "html",
     });
   }
 

@@ -6,18 +6,13 @@ flowchart LR
   n4["myService.ts<br/><small>+4 −5</small>"]:::modified
   n5["renamedFile.ts<br/><i>was oldName.ts</i><br/><small>+0 −0</small>"]:::renamed
   n6["repository.ts<br/><small>+2 −1</small>"]:::modified
-  n4 -.->|"deletedFile.ts"| n2
   n4 -.->|"DeletedFile"| n2
   n4 -.->|"anotherFunction2"| n2
-  n0 -->|"logger.ts"| n3
-  n0 -->|"myService.ts"| n4
-  n0 -->|"repository.ts"| n6
   n0 -->|"log"| n3
   n0 -->|"function1"| n4
   n0 -->|"clear"| n6
   n1 -->|"function3"| n4
   n1 -.->|"function2"| n4
-  n2 -.->|"myService.ts"| n4
   n2 -.->|"function2"| n4
   n6 -.->|"log"| n3
   n6 -->|"log"| n3
@@ -30,17 +25,12 @@ flowchart LR
   classDef phantom stroke:#6b7280,color:#6b7280,fill:transparent,stroke-dasharray:4 4;
   linkStyle 0 stroke:#f87171,stroke-width:2px;
   linkStyle 1 stroke:#f87171,stroke-width:2px;
-  linkStyle 2 stroke:#f87171,stroke-width:2px;
+  linkStyle 2 stroke:#4ade80,stroke-width:2px;
   linkStyle 3 stroke:#4ade80,stroke-width:2px;
   linkStyle 4 stroke:#4ade80,stroke-width:2px;
   linkStyle 5 stroke:#4ade80,stroke-width:2px;
-  linkStyle 6 stroke:#4ade80,stroke-width:2px;
-  linkStyle 7 stroke:#4ade80,stroke-width:2px;
-  linkStyle 8 stroke:#4ade80,stroke-width:2px;
+  linkStyle 6 stroke:#f87171,stroke-width:2px;
+  linkStyle 7 stroke:#f87171,stroke-width:2px;
+  linkStyle 8 stroke:#f87171,stroke-width:2px;
   linkStyle 9 stroke:#4ade80,stroke-width:2px;
-  linkStyle 10 stroke:#f87171,stroke-width:2px;
-  linkStyle 11 stroke:#f87171,stroke-width:2px;
-  linkStyle 12 stroke:#f87171,stroke-width:2px;
-  linkStyle 13 stroke:#f87171,stroke-width:2px;
-  linkStyle 14 stroke:#4ade80,stroke-width:2px;
-  linkStyle 15 stroke:#4ade80,stroke-width:2px;
+  linkStyle 10 stroke:#4ade80,stroke-width:2px;

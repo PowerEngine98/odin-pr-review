@@ -196,10 +196,14 @@ export function parseUnifiedDiff(patch: string): ParsedFile[] {
         const text = line.slice(1);
         let entry: DiffLine;
         if (marker === "+") {
-          entry = { kind: "add", text, newLine: newCursor++, oldAnchor: oldCursor };
+          entry = { kind: "add", text, newLine: newCursor++ };
+          // `@@ -0,0` means the file has no base side; a position in it would
+          // be a zero printed in the gutter beside every line.
+          if (oldCursor >= 1) entry.oldAnchor = oldCursor;
           draft.additions++;
         } else if (marker === "-") {
-          entry = { kind: "del", text, oldLine: oldCursor++, newAnchor: newCursor };
+          entry = { kind: "del", text, oldLine: oldCursor++ };
+          if (newCursor >= 1) entry.newAnchor = newCursor;
           draft.deletions++;
         } else {
           entry = { kind: "ctx", text, oldLine: oldCursor++, newLine: newCursor++ };

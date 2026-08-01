@@ -482,8 +482,24 @@ describe("toSvg", () => {
   });
 
   it("escapes source text so code cannot break the document", () => {
-    const svg = toSvg(layoutGraph(graph()));
-    expect(svg).not.toMatch(/<text[^>]*>[^<]*<(?!\/text)/);
+    const patch = [
+      "diff --git a/src/x.ts b/src/x.ts",
+      "--- a/src/x.ts",
+      "+++ b/src/x.ts",
+      "@@ -1 +1 @@",
+      "-const a = 1;",
+      "+const t = <div>{a && b}</div>;",
+      "",
+    ].join("\n");
+    const svg = toSvg(layoutGraph(buildGraph(parseUnifiedDiff(patch), { meta: META })));
+
+    // Source text must contain no markup of its own; the header legitimately
+    // does, since its counts are coloured with tspans.
+    for (const drawn of svg.matchAll(/xml:space="preserve">([^<]*)</g)) {
+      expect(drawn[1]).not.toContain("<");
+    }
+    expect(svg).toContain("&lt;div&gt;");
+    expect(svg).toContain("&amp;&amp;");
   });
 
   it("renders the same bytes every time", () => {
