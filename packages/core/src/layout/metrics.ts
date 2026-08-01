@@ -17,8 +17,10 @@ export interface LayoutMetrics {
   titleHeight: number;
   /** Space between the card border and its contents. */
   padding: number;
-  /** Width reserved for the +/- marker and line number gutter. */
+  /** Width reserved for the +/- marker and the line number beside it. */
   gutterWidth: number;
+  /** Where the line number's right edge sits within the gutter. */
+  lineNumberRight: number;
   minCardWidth: number;
   maxCardWidth: number;
   /** Horizontal space between columns. */
@@ -40,7 +42,8 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   lineHeight: 18,
   titleHeight: 34,
   padding: 12,
-  gutterWidth: 26,
+  gutterWidth: 54,
+  lineNumberRight: 44,
   minCardWidth: 240,
   maxCardWidth: 620,
   columnGap: 140,

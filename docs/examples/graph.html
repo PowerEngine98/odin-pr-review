@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>main → feature/graph · Odin</title>
+<style>
+:root {
+  --bg: #111113;
+  --card-bg: #0b0b0d;
+  --text: #e5e7eb;
+  --muted: #6b7280;
+  --gutter: #3f3f46;
+  --added: #4ade80;
+  --removed: #f87171;
+  --unchanged: #71717a;
+  --add-bg: #0f2417;
+  --del-bg: #2a1113;
+  --status-added: #4ade80;
+  --status-modified: #d4d4d8;
+  --status-deleted: #f87171;
+  --status-renamed: #60a5fa;
+  --status-phantom: #52525b;
+  --line-height: 18px;
+  --font-size: 12px;
+  --title-height: 34px;
+  --padding: 12px;
+  --gutter-width: 54px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ toolbar */
+
+.toolbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  font-size: 12px;
+}
+
+.toolbar .refs { color: var(--muted); }
+.toolbar .refs strong { color: var(--text); font-weight: 600; }
+.toolbar .spacer { flex: 1; }
+
+.toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.toolbar label:hover { color: var(--text); }
+.toolbar input { accent-color: var(--status-renamed); margin: 0; }
+
+.toolbar button {
+  font: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.toolbar button:hover { color: var(--text); border-color: var(--text); }
+
+.legend { display: flex; gap: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i {
+  width: 10px; height: 10px; border-radius: 3px;
+  border: 1.5px solid currentColor; font-style: normal;
+}
+.legend .added { color: var(--status-added); }
+.legend .modified { color: var(--status-modified); }
+.legend .deleted { color: var(--status-deleted); }
+.legend .renamed { color: var(--status-renamed); }
+.legend .phantom { color: var(--status-phantom); }
+.legend .phantom i { border-style: dashed; }
+
+/* ----------------------------------------------------------------- viewport */
+
+.viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+.viewport.panning { cursor: grabbing; }
+
+.canvas {
+  position: absolute;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* -------------------------------------------------------------------- cards */
+
+.card {
+  position: absolute;
+  background: var(--card-bg);
+  border: 1.5px solid var(--status-modified);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: box-shadow 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.card.status-added    { border-color: var(--status-added); }
+.card.status-modified { border-color: var(--status-modified); }
+.card.status-deleted  { border-color: var(--status-deleted); }
+.card.status-renamed  { border-color: var(--status-renamed); }
+.card.status-phantom  { border-color: var(--status-phantom); border-style: dashed; }
+
+.card-title {
+  height: var(--title-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: calc(var(--font-size) + 1px);
+  color: var(--status-modified);
+  cursor: pointer;
+}
+.status-added    .card-title { color: var(--status-added); }
+.status-deleted  .card-title { color: var(--status-deleted); }
+.status-renamed  .card-title { color: var(--status-renamed); }
+.status-phantom  .card-title { color: var(--status-phantom); }
+
+.card-title .was { color: var(--muted); font-size: calc(var(--font-size) - 1px); }
+.card-title .stats { color: var(--muted); font-size: calc(var(--font-size) - 2px); }
+
+.card-body { padding: var(--padding) 0; }
+
+.row {
+  display: flex;
+  height: var(--line-height);
+  line-height: var(--line-height);
+  font-size: var(--font-size);
+  white-space: pre;
+}
+.row.add { background: var(--add-bg); color: var(--added); }
+.row.del { background: var(--del-bg); color: var(--removed); }
+.row.gap { color: var(--muted); font-size: calc(var(--font-size) - 1px); }
+
+.row .marker {
+  width: calc(var(--gutter-width) - 34px);
+  padding-left: var(--padding);
+  color: var(--gutter);
+}
+.row .num {
+  width: 30px;
+  text-align: right;
+  padding-right: 8px;
+  color: var(--gutter);
+  font-size: calc(var(--font-size) - 1px);
+}
+.row.add .marker, .row.del .marker { color: inherit; }
+.row .text { flex: 1; }
+
+/* Rows an arrow touches get a marker so the eye can find them without
+   following the line all the way back. */
+.row.anchor::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  width: 3px;
+  height: var(--line-height);
+  background: currentColor;
+  opacity: 0;
+}
+
+/* -------------------------------------------------------------------- edges */
+
+#edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+#edges path.wire {
+  fill: none;
+  stroke-width: 1.8;
+  opacity: 0.85;
+  transition: opacity 160ms ease, stroke-width 160ms ease;
+}
+#edges path.hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+#edges g.edge.added    path.wire { stroke: var(--added); }
+#edges g.edge.removed  path.wire { stroke: var(--removed); }
+#edges g.edge.unchanged path.wire { stroke: var(--unchanged); }
+#edges g.edge.import   path.wire { stroke-dasharray: 4 4; opacity: 0.5; }
+
+#edges g.edge.hidden { display: none; }
+#edges g.edge.dim path.wire { opacity: 0.12; }
+#edges g.edge.active path.wire { opacity: 1; stroke-width: 3; }
+
+.card.dim { opacity: 0.32; }
+.card.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
+.card.flash { animation: flash 900ms ease-out; }
+
+@keyframes flash {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-renamed) 80%, transparent); }
+  100% { box-shadow: 0 0 0 26px color-mix(in srgb, var(--status-renamed) 0%, transparent); }
+}
+
+/* -------------------------------------------------------------------- hover */
+
+.tooltip {
+  position: fixed;
+  z-index: 30;
+  max-width: 460px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.tooltip.visible { opacity: 1; }
+.tooltip .target { color: var(--text); }
+.tooltip .meta { color: var(--muted); }
+
+.hint {
+  position: fixed;
+  right: 14px;
+  bottom: 12px;
+  z-index: 20;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+  line-height: 1.7;
+  pointer-events: none;
+}
+</style>
+</head><body>
+<div class="toolbar">
+  <span class="refs"><strong>main</strong> → <strong>feature/graph</strong></span>
+  <span class="legend"><span class="added"><i></i>1 added</span><span class="modified"><i></i>2 modified</span><span class="deleted"><i></i>1 deleted</span><span class="renamed"><i></i>1 renamed</span><span class="phantom"><i></i>1 phantom</span></span>
+  <span class="spacer"></span>
+  <label><input type="checkbox" id="filter-imports" checked> imports</label>
+  <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
+  <button id="action-fit">fit</button>
+</div>
+<div class="viewport">
+<div class="canvas" style="width:2220px;height:709px">
+<svg id="edges" width="2220" height="709"><defs><marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="head-added"/></marker><marker id="arrow-removed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="head-removed"/></marker><marker id="arrow-unchanged" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="head-unchanged"/></marker></defs><style>#arrow-added path, .head-added { fill: var(--added); }#arrow-removed path, .head-removed { fill: var(--removed); }#arrow-unchanged path, .head-unchanged { fill: var(--unchanged); }</style><g class="edge removed import" data-id="e:d969fdb6d527"><path class="hit" d="M 1164 334 C 1227 334, 1241 352, 1304 352"/><path class="wire" d="M 1164 334 C 1227 334, 1241 352, 1304 352" marker-end="url(#arrow-removed)"/></g><g class="edge removed instantiation" data-id="e:8692a62d0b79"><path class="hit" d="M 1164 388 C 1227 388, 1241 388, 1304 388"/><path class="wire" d="M 1164 388 C 1227 388, 1241 388, 1304 388" marker-end="url(#arrow-removed)"/></g><g class="edge removed call" data-id="e:09b3bbf53573"><path class="hit" d="M 1164 532 C 1227 532, 1241 514, 1304 514"/><path class="wire" d="M 1164 532 C 1227 532, 1241 514, 1304 514" marker-end="url(#arrow-removed)"/></g><g class="edge added import" data-id="e:17c03e0acdd2"><path class="hit" d="M 536 103 C 617.45 103, 635.55 166, 717 166"/><path class="wire" d="M 536 103 C 617.45 103, 635.55 166, 717 166" marker-end="url(#arrow-added)"/></g><g class="edge added import" data-id="e:945e9c3c3ec2"><path class="hit" d="M 536 121 C 599 121, 613 370, 676 370"/><path class="wire" d="M 536 121 C 599 121, 613 370, 676 370" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:ddaad06429fb"><path class="hit" d="M 536 229 C 617.45 229, 635.55 166, 717 166"/><path class="wire" d="M 536 229 C 617.45 229, 635.55 166, 717 166" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:2250e38133dd"><path class="hit" d="M 536 247 C 599 247, 613 424, 676 424"/><path class="wire" d="M 536 247 C 599 247, 613 424, 676 424" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:21cfb5caf93f"><path class="hit" d="M 536 487 C 599 487, 613 586, 676 586"/><path class="wire" d="M 536 487 C 599 487, 613 586, 676 586" marker-end="url(#arrow-added)"/></g><g class="edge removed call" data-id="e:f2658af39d71"><path class="hit" d="M 536 469 C 599 469, 613 496, 676 496"/><path class="wire" d="M 536 469 C 599 469, 613 496, 676 496" marker-end="url(#arrow-removed)"/></g><g class="edge removed import" data-id="e:2aa712b61542"><path class="hit" d="M 1304 352 C 1241 352, 1227 334, 1164 334"/><path class="wire" d="M 1304 352 C 1241 352, 1227 334, 1164 334" marker-end="url(#arrow-removed)"/></g><g class="edge removed call" data-id="e:62fdff7277aa"><path class="hit" d="M 1304 460 C 1241 460, 1227 496, 1164 496"/><path class="wire" d="M 1304 460 C 1241 460, 1227 496, 1164 496" marker-end="url(#arrow-removed)"/></g></svg>
+<div class="card status-added" id="card-n_9518c3291d8e" data-id="n:9518c3291d8e" data-path="src/addedFile.ts" style="left:48px;top:48px;width:488px;height:256px">
+  <div class="card-title" title="src/addedFile.ts">addedFile.ts<span class="stats">+11 −0</span></div>
+  <div class="card-body"><div class="row add"><span class="marker">+</span><span class="num">1</span><span class="text">import { log } from &quot;./logger&quot;;</span></div><div class="row add"><span class="marker">+</span><span class="num">2</span><span class="text">import type { MyService } from &quot;./myService&quot;;</span></div><div class="row add"><span class="marker">+</span><span class="num">3</span><span class="text"></span></div><div class="row add"><span class="marker">+</span><span class="num">4</span><span class="text">export class AddedFile {</span></div><div class="row add"><span class="marker">+</span><span class="num">5</span><span class="text">  constructor(private readonly myService: MyService) {}</span></div><div class="row add"><span class="marker">+</span><span class="num">6</span><span class="text"></span></div><div class="row add"><span class="marker">+</span><span class="num">7</span><span class="text">  myNewFunction(): void {</span></div><div class="row add"><span class="marker">+</span><span class="num">8</span><span class="text">    log(&quot;starting&quot;);</span></div><div class="row add"><span class="marker">+</span><span class="num">9</span><span class="text">    this.myService.function1();</span></div><div class="row add"><span class="marker">+</span><span class="num">10</span><span class="text">  }</span></div><div class="row add"><span class="marker">+</span><span class="num">11</span><span class="text">}</span></div></div>
+</div>
+<div class="card status-modified" id="card-n_a5d65acaa45a" data-id="n:a5d65acaa45a" data-path="src/consumer.ts" style="left:48px;top:360px;width:488px;height:184px">
+  <div class="card-title" title="src/consumer.ts">consumer.ts<span class="stats">+1 −1</span></div>
+  <div class="card-body"><div class="row ctx"><span class="marker"></span><span class="num">4</span><span class="text">  constructor(private readonly myService: MyService) {}</span></div><div class="row ctx"><span class="marker"></span><span class="num">5</span><span class="text"></span></div><div class="row ctx"><span class="marker"></span><span class="num">6</span><span class="text">  aFunction(): void {</span></div><div class="row del"><span class="marker">−</span><span class="num">7</span><span class="text">    this.myService.function2();</span></div><div class="row add"><span class="marker">+</span><span class="num">7</span><span class="text">    this.myService.function3();</span></div><div class="row ctx"><span class="marker"></span><span class="num">8</span><span class="text">  }</span></div><div class="row ctx"><span class="marker"></span><span class="num">9</span><span class="text">}</span></div></div>
+</div>
+<div class="card status-deleted" id="card-n_b2a4cf4d702e" data-id="n:b2a4cf4d702e" data-path="src/deletedFile.ts" style="left:1304px;top:297px;width:488px;height:292px">
+  <div class="card-title" title="src/deletedFile.ts">deletedFile.ts<span class="stats">+0 −13</span></div>
+  <div class="card-body"><div class="row del"><span class="marker">−</span><span class="num">1</span><span class="text">import type { MyService } from &quot;./myService&quot;;</span></div><div class="row del"><span class="marker">−</span><span class="num">2</span><span class="text"></span></div><div class="row del"><span class="marker">−</span><span class="num">3</span><span class="text">export class DeletedFile {</span></div><div class="row del"><span class="marker">−</span><span class="num">4</span><span class="text">  constructor(private readonly myService: MyService) {}</span></div><div class="row del"><span class="marker">−</span><span class="num">5</span><span class="text"></span></div><div class="row del"><span class="marker">−</span><span class="num">6</span><span class="text">  anotherFunction(): void {</span></div><div class="row del"><span class="marker">−</span><span class="num">7</span><span class="text">    this.myService.function2();</span></div><div class="row del"><span class="marker">−</span><span class="num">8</span><span class="text">  }</span></div><div class="row del"><span class="marker">−</span><span class="num">9</span><span class="text"></span></div><div class="row del"><span class="marker">−</span><span class="num">10</span><span class="text">  anotherFunction2(): void {</span></div><div class="row del"><span class="marker">−</span><span class="num">11</span><span class="text">    console.log(&quot;legacy&quot;);</span></div><div class="row del"><span class="marker">−</span><span class="num">12</span><span class="text">  }</span></div><div class="row del"><span class="marker">−</span><span class="num">13</span><span class="text">}</span></div></div>
+</div>
+<div class="card status-phantom" id="card-n_7ca9a636a596" data-id="n:7ca9a636a596" data-path="src/logger.ts" style="left:717px;top:111px;width:406px;height:112px">
+  <div class="card-title" title="src/logger.ts">logger.ts<span class="stats">untouched</span></div>
+  <div class="card-body"><div class="row ctx"><span class="marker"></span><span class="num">1</span><span class="text">export function log(message: string): void {</span></div><div class="row ctx"><span class="marker"></span><span class="num">2</span><span class="text">  console.log(`[demo] ${message}`);</span></div><div class="row ctx"><span class="marker"></span><span class="num">3</span><span class="text">}</span></div></div>
+</div>
+<div class="card status-modified" id="card-n_5353548f9372" data-id="n:5353548f9372" data-path="src/myService.ts" style="left:676px;top:279px;width:488px;height:382px">
+  <div class="card-title" title="src/myService.ts">myService.ts<span class="stats">+4 −5</span></div>
+  <div class="card-body"><div class="row del"><span class="marker">−</span><span class="num">1</span><span class="text">import { DeletedFile } from &quot;./deletedFile&quot;;</span></div><div class="row del"><span class="marker">−</span><span class="num">2</span><span class="text"></span></div><div class="row ctx"><span class="marker"></span><span class="num">1</span><span class="text">export class MyService {</span></div><div class="row del"><span class="marker">−</span><span class="num">4</span><span class="text">  private readonly deletedFile = new DeletedFile(this);</span></div><div class="row del"><span class="marker">−</span><span class="num">5</span><span class="text"></span></div><div class="row ctx"><span class="marker"></span><span class="num">2</span><span class="text">  function1(): void {</span></div><div class="row ctx"><span class="marker"></span><span class="num">3</span><span class="text">    console.log(&quot;one&quot;);</span></div><div class="row ctx"><span class="marker"></span><span class="num">4</span><span class="text">  }</span></div><div class="row ctx"><span class="marker"></span><span class="num">5</span><span class="text"></span></div><div class="row ctx"><span class="marker"></span><span class="num">6</span><span class="text">  function2(): void {</span></div><div class="row ctx"><span class="marker"></span><span class="num">7</span><span class="text">    console.log(&quot;two&quot;);</span></div><div class="row del"><span class="marker">−</span><span class="num">12</span><span class="text">    this.deletedFile.anotherFunction2();</span></div><div class="row add"><span class="marker">+</span><span class="num">8</span><span class="text">  }</span></div><div class="row add"><span class="marker">+</span><span class="num">9</span><span class="text"></span></div><div class="row add"><span class="marker">+</span><span class="num">10</span><span class="text">  function3(): void {</span></div><div class="row add"><span class="marker">+</span><span class="num">11</span><span class="text">    console.log(&quot;three&quot;);</span></div><div class="row ctx"><span class="marker"></span><span class="num">12</span><span class="text">  }</span></div><div class="row ctx"><span class="marker"></span><span class="num">13</span><span class="text">}</span></div></div>
+</div>
+<div class="card status-renamed" id="card-n_d26c6859c04e" data-id="n:d26c6859c04e" data-path="src/renamedFile.ts" style="left:1932px;top:48px;width:240px;height:120px">
+  <div class="card-title" title="src/renamedFile.ts">renamedFile.ts<span class="was">← oldName.ts</span><span class="stats">+0 −0</span></div>
+  <div class="card-body"></div>
+</div>
+</div></div>
+<div class="tooltip"></div>
+<div class="hint">
+  click an arrow to follow it &middot; click a filename to isolate<br>
+  scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
+</div>
+<script>window.__ODIN__={"width":2220,"height":709,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":48,"y":48,"width":488,"height":256},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":360,"width":488,"height":184},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1304,"y":297,"width":488,"height":292},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":717,"y":111,"width":406,"height":112},{"id":"n:5353548f9372","path":"src/myService.ts","x":676,"y":279,"width":488,"height":382},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":1932,"y":48,"width":240,"height":120}],"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:ddaad06429fb","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":8,"toLine":1,"change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:2250e38133dd","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":9,"toLine":2,"change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"}]};</script>
+<script>
+(function () {
+  var data = window.__ODIN__;
+  var viewport = document.querySelector(".viewport");
+  var canvas = document.querySelector(".canvas");
+  var tooltip = document.querySelector(".tooltip");
+
+  var view = { x: 0, y: 0, scale: 1 };
+  var MIN_SCALE = 0.15;
+  var MAX_SCALE = 3;
+
+  function apply() {
+    canvas.style.transform =
+      "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
+  }
+
+  /* ------------------------------------------------------------ pan & zoom */
+
+  var panning = false;
+  var origin = null;
+
+  viewport.addEventListener("pointerdown", function (event) {
+    if (event.target.closest(".card") || event.target.closest("path.hit")) return;
+    panning = true;
+    origin = { x: event.clientX - view.x, y: event.clientY - view.y };
+    viewport.classList.add("panning");
+    viewport.setPointerCapture(event.pointerId);
+  });
+
+  viewport.addEventListener("pointermove", function (event) {
+    if (!panning || !origin) return;
+    view.x = event.clientX - origin.x;
+    view.y = event.clientY - origin.y;
+    apply();
+  });
+
+  function endPan(event) {
+    panning = false;
+    origin = null;
+    viewport.classList.remove("panning");
+    if (event && event.pointerId !== undefined) {
+      try { viewport.releasePointerCapture(event.pointerId); } catch (e) {}
+    }
+  }
+  viewport.addEventListener("pointerup", endPan);
+  viewport.addEventListener("pointercancel", endPan);
+
+  viewport.addEventListener("wheel", function (event) {
+    event.preventDefault();
+
+    // Trackpad two-finger scroll pans; pinch and ctrl+wheel zoom. Matching the
+    // platform convention matters more here than any cleverness, because this
+    // canvas is meant to be navigated without thinking about it.
+    if (!event.ctrlKey && !event.metaKey) {
+      view.x -= event.deltaX;
+      view.y -= event.deltaY;
+      apply();
+      return;
+    }
+
+    var rect = viewport.getBoundingClientRect();
+    var px = event.clientX - rect.left;
+    var py = event.clientY - rect.top;
+    var next = clamp(view.scale * Math.exp(-event.deltaY / 320), MIN_SCALE, MAX_SCALE);
+
+    // Keep whatever is under the cursor under the cursor.
+    view.x = px - (px - view.x) * (next / view.scale);
+    view.y = py - (py - view.y) * (next / view.scale);
+    view.scale = next;
+    apply();
+  }, { passive: false });
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  /* --------------------------------------------------------------- framing */
+
+  function fit() {
+    var rect = viewport.getBoundingClientRect();
+    var scale = clamp(
+      Math.min((rect.width - 80) / data.width, (rect.height - 140) / data.height),
+      MIN_SCALE,
+      1,
+    );
+    view.scale = scale;
+    view.x = (rect.width - data.width * scale) / 2;
+    view.y = 60 + (rect.height - 60 - data.height * scale) / 2;
+    apply();
+  }
+
+  function centerOn(nodeId, scale) {
+    var node = data.nodes.find(function (n) { return n.id === nodeId; });
+    if (!node) return;
+    var rect = viewport.getBoundingClientRect();
+    if (scale) view.scale = clamp(scale, MIN_SCALE, MAX_SCALE);
+    view.x = rect.width / 2 - (node.x + node.width / 2) * view.scale;
+    view.y = rect.height / 2 - (node.y + node.height / 2) * view.scale;
+    canvas.style.transition = "transform 320ms cubic-bezier(.22,.61,.36,1)";
+    apply();
+    window.setTimeout(function () { canvas.style.transition = ""; }, 340);
+
+    var card = document.getElementById("card-" + cssId(nodeId));
+    if (!card) return;
+    card.classList.remove("flash");
+    void card.offsetWidth;
+    card.classList.add("flash");
+  }
+
+  function cssId(id) {
+    return id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  }
+
+  /* ---------------------------------------------------- highlight & travel */
+
+  var edgeGroups = Array.prototype.slice.call(document.querySelectorAll("g.edge"));
+  var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
+
+  function clearHighlight() {
+    edgeGroups.forEach(function (g) { g.classList.remove("dim", "active"); });
+    cards.forEach(function (c) { c.classList.remove("dim", "active"); });
+  }
+
+  function highlightEdge(id) {
+    var edge = data.edges.find(function (e) { return e.id === id; });
+    if (!edge) return;
+    edgeGroups.forEach(function (g) {
+      var match = g.dataset.id === id;
+      g.classList.toggle("active", match);
+      g.classList.toggle("dim", !match);
+    });
+    cards.forEach(function (c) {
+      var match = c.dataset.id === edge.from || c.dataset.id === edge.to;
+      c.classList.toggle("active", match);
+      c.classList.toggle("dim", !match);
+    });
+  }
+
+  function highlightNode(nodeId) {
+    var touching = data.edges.filter(function (e) {
+      return e.from === nodeId || e.to === nodeId;
+    });
+    var ids = {};
+    var neighbours = {};
+    neighbours[nodeId] = true;
+    touching.forEach(function (e) {
+      ids[e.id] = true;
+      neighbours[e.from] = true;
+      neighbours[e.to] = true;
+    });
+
+    edgeGroups.forEach(function (g) {
+      var match = !!ids[g.dataset.id];
+      g.classList.toggle("active", match);
+      g.classList.toggle("dim", !match);
+    });
+    cards.forEach(function (c) {
+      var match = !!neighbours[c.dataset.id];
+      c.classList.toggle("active", c.dataset.id === nodeId);
+      c.classList.toggle("dim", !match);
+    });
+  }
+
+  document.querySelectorAll("path.hit").forEach(function (hit) {
+    var group = hit.parentNode;
+    var id = group.dataset.id;
+
+    hit.addEventListener("mouseenter", function (event) {
+      highlightEdge(id);
+      showTooltip(event, id);
+    });
+    hit.addEventListener("mousemove", moveTooltip);
+    hit.addEventListener("mouseleave", function () {
+      clearHighlight();
+      tooltip.classList.remove("visible");
+    });
+
+    // Following an edge is the core gesture: click the arrow, land on what it
+    // points at, with the destination line flashed so the eye finds it.
+    hit.addEventListener("click", function (event) {
+      event.stopPropagation();
+      var edge = data.edges.find(function (e) { return e.id === id; });
+      if (!edge) return;
+      centerOn(edge.to);
+      notifyHost("navigate", edge);
+    });
+  });
+
+  cards.forEach(function (card) {
+    var title = card.querySelector(".card-title");
+    if (!title) return;
+    title.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (card.classList.contains("active")) clearHighlight();
+      else highlightNode(card.dataset.id);
+      notifyHost("open", { path: card.dataset.path });
+    });
+  });
+
+  viewport.addEventListener("click", function (event) {
+    if (event.target.closest(".card") || event.target.closest("path.hit")) return;
+    clearHighlight();
+  });
+
+  /* --------------------------------------------------------------- tooltip */
+
+  function showTooltip(event, id) {
+    var edge = data.edges.find(function (e) { return e.id === id; });
+    if (!edge) return;
+    tooltip.innerHTML =
+      '<div class="target">' + escapeHtml(edge.label || edge.symbol || "") + "</div>" +
+      '<div class="meta">' + escapeHtml(edge.fromPath) + ":" + edge.fromLine +
+      " &rarr; " + escapeHtml(edge.toPath) + ":" + edge.toLine +
+      "  &middot; " + edge.change + " &middot; " + edge.confidence + "</div>";
+    tooltip.classList.add("visible");
+    moveTooltip(event);
+  }
+
+  function moveTooltip(event) {
+    tooltip.style.left = Math.min(event.clientX + 14, window.innerWidth - 470) + "px";
+    tooltip.style.top = event.clientY + 18 + "px";
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  /* --------------------------------------------------------------- filters */
+
+  function refreshFilters() {
+    var showImports = document.getElementById("filter-imports").checked;
+    var showUnchanged = document.getElementById("filter-unchanged").checked;
+
+    edgeGroups.forEach(function (g) {
+      var isImport = g.classList.contains("import");
+      var isUnchanged = g.classList.contains("unchanged");
+      var hidden = (isImport && !showImports) || (isUnchanged && !showUnchanged);
+      g.classList.toggle("hidden", hidden);
+    });
+  }
+
+  ["filter-imports", "filter-unchanged"].forEach(function (id) {
+    var input = document.getElementById(id);
+    if (input) input.addEventListener("change", refreshFilters);
+  });
+
+  var fitButton = document.getElementById("action-fit");
+  if (fitButton) fitButton.addEventListener("click", fit);
+
+  document.addEventListener("keydown", function (event) {
+    if (event.target instanceof HTMLInputElement) return;
+    if (event.key === "f") fit();
+    if (event.key === "Escape") clearHighlight();
+  });
+
+  /* ------------------------------------------------------------ host bridge */
+
+  // Present when hosted in an editor webview; absent in a plain browser, where
+  // the graph is still fully explorable, just not able to open files.
+  var host =
+    typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
+
+  function notifyHost(type, payload) {
+    if (host) host.postMessage({ type: type, payload: payload });
+  }
+
+  refreshFilters();
+  fit();
+  window.addEventListener("resize", fit);
+})();
+</script>
+</body></html>

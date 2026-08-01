@@ -9,8 +9,8 @@ Options:
   -C, --cwd <dir>       repository directory                  (default: .)
   -p, --patch <file>    read a .patch file instead of a repo
   -o, --out <file>      write output here                     (default: stdout)
-  -f, --format <fmt>    json | svg | mermaid | dot | summary  (default: json)
-      --light           render SVG on a light background
+  -f, --format <fmt>    json | html | svg | mermaid | dot | summary
+      --light           render html/svg on a light background
   -U, --context <n>     diff context lines                    (default: 3)
   -r, --resolve         resolve call-site references into edges
       --no-imports      with --resolve, skip import statements
@@ -22,7 +22,9 @@ Options:
 
 Everything after -- is treated as git pathspecs.`;
 
-export const OUTPUT_FORMATS = ["json", "svg", "mermaid", "dot", "summary"] as const;
+export const OUTPUT_FORMATS = [
+  "json", "html", "svg", "mermaid", "dot", "summary",
+] as const;
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
 export interface GraphOptions {

@@ -1,0 +1,25 @@
+digraph odin {
+  bgcolor="#111111";
+  rankdir=LR;
+  node [shape=box style=rounded fontname="Helvetica" fontsize=11];
+  edge [fontname="Helvetica" fontsize=9];
+
+  "n:9518c3291d8e" [label="src/addedFile.ts\n+11 -0" color="#4ade80" fontcolor="#4ade80" style="rounded"];
+  "n:a5d65acaa45a" [label="src/consumer.ts\n+1 -1" color="#e5e7eb" fontcolor="#e5e7eb" style="rounded"];
+  "n:b2a4cf4d702e" [label="src/deletedFile.ts\n+0 -13" color="#f87171" fontcolor="#f87171" style="rounded"];
+  "n:7ca9a636a596" [label="src/logger.ts\nuntouched" color="#6b7280" fontcolor="#6b7280" style="rounded,dashed"];
+  "n:5353548f9372" [label="src/myService.ts\n+4 -5" color="#e5e7eb" fontcolor="#e5e7eb" style="rounded"];
+  "n:d26c6859c04e" [label="src/renamedFile.ts\n+0 -0" color="#60a5fa" fontcolor="#60a5fa" style="rounded"];
+
+  "n:5353548f9372" -> "n:b2a4cf4d702e" [label="deletedFile.ts" color="#f87171" fontcolor="#f87171" style="dashed"];
+  "n:5353548f9372" -> "n:b2a4cf4d702e" [label="DeletedFile" color="#f87171" fontcolor="#f87171" style="dashed"];
+  "n:5353548f9372" -> "n:b2a4cf4d702e" [label="anotherFunction2" color="#f87171" fontcolor="#f87171" style="dashed"];
+  "n:9518c3291d8e" -> "n:7ca9a636a596" [label="logger.ts" color="#4ade80" fontcolor="#4ade80" style="solid"];
+  "n:9518c3291d8e" -> "n:5353548f9372" [label="myService.ts" color="#4ade80" fontcolor="#4ade80" style="solid"];
+  "n:9518c3291d8e" -> "n:7ca9a636a596" [label="log" color="#4ade80" fontcolor="#4ade80" style="solid"];
+  "n:9518c3291d8e" -> "n:5353548f9372" [label="function1" color="#4ade80" fontcolor="#4ade80" style="solid"];
+  "n:a5d65acaa45a" -> "n:5353548f9372" [label="function3" color="#4ade80" fontcolor="#4ade80" style="solid"];
+  "n:a5d65acaa45a" -> "n:5353548f9372" [label="function2" color="#f87171" fontcolor="#f87171" style="dashed"];
+  "n:b2a4cf4d702e" -> "n:5353548f9372" [label="myService.ts" color="#f87171" fontcolor="#f87171" style="dashed"];
+  "n:b2a4cf4d702e" -> "n:5353548f9372" [label="function2" color="#f87171" fontcolor="#f87171" style="dashed"];
+}

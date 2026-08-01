@@ -1,0 +1,632 @@
+{
+  "schemaVersion": "0.1.0",
+  "meta": {
+    "repo": "<fixture>",
+    "baseRef": "main",
+    "headRef": "feature/graph",
+    "baseSha": "b8aafb392392951d60aa08be16053a9d21e806bd",
+    "headSha": "5c36f2677b1bc1a7fc6a40c27700303cf9f76035",
+    "mergeBase": "b8aafb392392951d60aa08be16053a9d21e806bd",
+    "generator": "odin-pr-review/0.1.0"
+  },
+  "nodes": [
+    {
+      "id": "n:9518c3291d8e",
+      "path": "src/addedFile.ts",
+      "status": "added",
+      "language": "typescript",
+      "binary": false,
+      "stats": {
+        "additions": 11,
+        "deletions": 0
+      },
+      "hunks": [
+        {
+          "header": "",
+          "oldStart": 0,
+          "oldLines": 0,
+          "newStart": 1,
+          "newLines": 11,
+          "lines": [
+            {
+              "kind": "add",
+              "text": "import { log } from \"./logger\";",
+              "newLine": 1
+            },
+            {
+              "kind": "add",
+              "text": "import type { MyService } from \"./myService\";",
+              "newLine": 2
+            },
+            {
+              "kind": "add",
+              "text": "",
+              "newLine": 3
+            },
+            {
+              "kind": "add",
+              "text": "export class AddedFile {",
+              "newLine": 4
+            },
+            {
+              "kind": "add",
+              "text": "  constructor(private readonly myService: MyService) {}",
+              "newLine": 5
+            },
+            {
+              "kind": "add",
+              "text": "",
+              "newLine": 6
+            },
+            {
+              "kind": "add",
+              "text": "  myNewFunction(): void {",
+              "newLine": 7
+            },
+            {
+              "kind": "add",
+              "text": "    log(\"starting\");",
+              "newLine": 8
+            },
+            {
+              "kind": "add",
+              "text": "    this.myService.function1();",
+              "newLine": 9
+            },
+            {
+              "kind": "add",
+              "text": "  }",
+              "newLine": 10
+            },
+            {
+              "kind": "add",
+              "text": "}",
+              "newLine": 11
+            }
+          ]
+        }
+      ],
+      "symbols": []
+    },
+    {
+      "id": "n:a5d65acaa45a",
+      "path": "src/consumer.ts",
+      "status": "modified",
+      "language": "typescript",
+      "binary": false,
+      "stats": {
+        "additions": 1,
+        "deletions": 1
+      },
+      "hunks": [
+        {
+          "header": "export class Consumer {",
+          "oldStart": 4,
+          "oldLines": 6,
+          "newStart": 4,
+          "newLines": 6,
+          "lines": [
+            {
+              "kind": "ctx",
+              "text": "  constructor(private readonly myService: MyService) {}",
+              "oldLine": 4,
+              "newLine": 4
+            },
+            {
+              "kind": "ctx",
+              "text": "",
+              "oldLine": 5,
+              "newLine": 5
+            },
+            {
+              "kind": "ctx",
+              "text": "  aFunction(): void {",
+              "oldLine": 6,
+              "newLine": 6
+            },
+            {
+              "kind": "del",
+              "text": "    this.myService.function2();",
+              "oldLine": 7
+            },
+            {
+              "kind": "add",
+              "text": "    this.myService.function3();",
+              "newLine": 7
+            },
+            {
+              "kind": "ctx",
+              "text": "  }",
+              "oldLine": 8,
+              "newLine": 8
+            },
+            {
+              "kind": "ctx",
+              "text": "}",
+              "oldLine": 9,
+              "newLine": 9
+            }
+          ]
+        }
+      ],
+      "symbols": []
+    },
+    {
+      "id": "n:b2a4cf4d702e",
+      "path": "src/deletedFile.ts",
+      "status": "deleted",
+      "language": "typescript",
+      "binary": false,
+      "stats": {
+        "additions": 0,
+        "deletions": 13
+      },
+      "hunks": [
+        {
+          "header": "",
+          "oldStart": 1,
+          "oldLines": 13,
+          "newStart": 0,
+          "newLines": 0,
+          "lines": [
+            {
+              "kind": "del",
+              "text": "import type { MyService } from \"./myService\";",
+              "oldLine": 1
+            },
+            {
+              "kind": "del",
+              "text": "",
+              "oldLine": 2
+            },
+            {
+              "kind": "del",
+              "text": "export class DeletedFile {",
+              "oldLine": 3
+            },
+            {
+              "kind": "del",
+              "text": "  constructor(private readonly myService: MyService) {}",
+              "oldLine": 4
+            },
+            {
+              "kind": "del",
+              "text": "",
+              "oldLine": 5
+            },
+            {
+              "kind": "del",
+              "text": "  anotherFunction(): void {",
+              "oldLine": 6
+            },
+            {
+              "kind": "del",
+              "text": "    this.myService.function2();",
+              "oldLine": 7
+            },
+            {
+              "kind": "del",
+              "text": "  }",
+              "oldLine": 8
+            },
+            {
+              "kind": "del",
+              "text": "",
+              "oldLine": 9
+            },
+            {
+              "kind": "del",
+              "text": "  anotherFunction2(): void {",
+              "oldLine": 10
+            },
+            {
+              "kind": "del",
+              "text": "    console.log(\"legacy\");",
+              "oldLine": 11
+            },
+            {
+              "kind": "del",
+              "text": "  }",
+              "oldLine": 12
+            },
+            {
+              "kind": "del",
+              "text": "}",
+              "oldLine": 13
+            }
+          ]
+        }
+      ],
+      "symbols": []
+    },
+    {
+      "id": "n:7ca9a636a596",
+      "path": "src/logger.ts",
+      "status": "phantom",
+      "language": "typescript",
+      "binary": false,
+      "stats": {
+        "additions": 0,
+        "deletions": 0
+      },
+      "hunks": [],
+      "symbols": []
+    },
+    {
+      "id": "n:5353548f9372",
+      "path": "src/myService.ts",
+      "status": "modified",
+      "language": "typescript",
+      "binary": false,
+      "stats": {
+        "additions": 4,
+        "deletions": 5
+      },
+      "hunks": [
+        {
+          "header": "",
+          "oldStart": 1,
+          "oldLines": 14,
+          "newStart": 1,
+          "newLines": 13,
+          "lines": [
+            {
+              "kind": "del",
+              "text": "import { DeletedFile } from \"./deletedFile\";",
+              "oldLine": 1
+            },
+            {
+              "kind": "del",
+              "text": "",
+              "oldLine": 2
+            },
+            {
+              "kind": "ctx",
+              "text": "export class MyService {",
+              "oldLine": 3,
+              "newLine": 1
+            },
+            {
+              "kind": "del",
+              "text": "  private readonly deletedFile = new DeletedFile(this);",
+              "oldLine": 4
+            },
+            {
+              "kind": "del",
+              "text": "",
+              "oldLine": 5
+            },
+            {
+              "kind": "ctx",
+              "text": "  function1(): void {",
+              "oldLine": 6,
+              "newLine": 2
+            },
+            {
+              "kind": "ctx",
+              "text": "    console.log(\"one\");",
+              "oldLine": 7,
+              "newLine": 3
+            },
+            {
+              "kind": "ctx",
+              "text": "  }",
+              "oldLine": 8,
+              "newLine": 4
+            },
+            {
+              "kind": "ctx",
+              "text": "",
+              "oldLine": 9,
+              "newLine": 5
+            },
+            {
+              "kind": "ctx",
+              "text": "  function2(): void {",
+              "oldLine": 10,
+              "newLine": 6
+            },
+            {
+              "kind": "ctx",
+              "text": "    console.log(\"two\");",
+              "oldLine": 11,
+              "newLine": 7
+            },
+            {
+              "kind": "del",
+              "text": "    this.deletedFile.anotherFunction2();",
+              "oldLine": 12
+            },
+            {
+              "kind": "add",
+              "text": "  }",
+              "newLine": 8
+            },
+            {
+              "kind": "add",
+              "text": "",
+              "newLine": 9
+            },
+            {
+              "kind": "add",
+              "text": "  function3(): void {",
+              "newLine": 10
+            },
+            {
+              "kind": "add",
+              "text": "    console.log(\"three\");",
+              "newLine": 11
+            },
+            {
+              "kind": "ctx",
+              "text": "  }",
+              "oldLine": 13,
+              "newLine": 12
+            },
+            {
+              "kind": "ctx",
+              "text": "}",
+              "oldLine": 14,
+              "newLine": 13
+            }
+          ]
+        }
+      ],
+      "symbols": []
+    },
+    {
+      "id": "n:d26c6859c04e",
+      "path": "src/renamedFile.ts",
+      "prevPath": "src/oldName.ts",
+      "status": "renamed",
+      "language": "typescript",
+      "binary": false,
+      "stats": {
+        "additions": 0,
+        "deletions": 0
+      },
+      "hunks": [],
+      "symbols": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e:d969fdb6d527",
+      "kind": "import",
+      "from": {
+        "side": "base",
+        "nodeId": "n:5353548f9372",
+        "line": 1,
+        "column": 28
+      },
+      "to": {
+        "side": "base",
+        "nodeId": "n:b2a4cf4d702e",
+        "line": 1,
+        "column": 0,
+        "symbolName": "deletedFile.ts"
+      },
+      "change": "removed",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "./deletedFile"
+    },
+    {
+      "id": "e:8692a62d0b79",
+      "kind": "instantiation",
+      "from": {
+        "side": "base",
+        "nodeId": "n:5353548f9372",
+        "line": 4,
+        "column": 37,
+        "symbolName": "MyService"
+      },
+      "to": {
+        "side": "base",
+        "nodeId": "n:b2a4cf4d702e",
+        "line": 3,
+        "column": 13,
+        "symbolName": "DeletedFile"
+      },
+      "change": "removed",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "new DeletedFile(this)"
+    },
+    {
+      "id": "e:09b3bbf53573",
+      "kind": "call",
+      "from": {
+        "side": "base",
+        "nodeId": "n:5353548f9372",
+        "line": 12,
+        "column": 21,
+        "symbolName": "function2"
+      },
+      "to": {
+        "side": "base",
+        "nodeId": "n:b2a4cf4d702e",
+        "line": 10,
+        "column": 2,
+        "symbolName": "anotherFunction2"
+      },
+      "change": "removed",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "this.deletedFile.anotherFunction2()"
+    },
+    {
+      "id": "e:17c03e0acdd2",
+      "kind": "import",
+      "from": {
+        "side": "head",
+        "nodeId": "n:9518c3291d8e",
+        "line": 1,
+        "column": 20
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:7ca9a636a596",
+        "line": 1,
+        "column": 0,
+        "symbolName": "logger.ts"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "./logger"
+    },
+    {
+      "id": "e:945e9c3c3ec2",
+      "kind": "import",
+      "from": {
+        "side": "head",
+        "nodeId": "n:9518c3291d8e",
+        "line": 2,
+        "column": 31
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:5353548f9372",
+        "line": 1,
+        "column": 0,
+        "symbolName": "myService.ts"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "./myService"
+    },
+    {
+      "id": "e:ddaad06429fb",
+      "kind": "call",
+      "from": {
+        "side": "head",
+        "nodeId": "n:9518c3291d8e",
+        "line": 8,
+        "column": 4,
+        "symbolName": "myNewFunction"
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:7ca9a636a596",
+        "line": 1,
+        "column": 16,
+        "symbolName": "log"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "log(\"starting\")"
+    },
+    {
+      "id": "e:2250e38133dd",
+      "kind": "call",
+      "from": {
+        "side": "head",
+        "nodeId": "n:9518c3291d8e",
+        "line": 9,
+        "column": 19,
+        "symbolName": "myNewFunction"
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:5353548f9372",
+        "line": 2,
+        "column": 2,
+        "symbolName": "function1"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "this.myService.function1()"
+    },
+    {
+      "id": "e:21cfb5caf93f",
+      "kind": "call",
+      "from": {
+        "side": "head",
+        "nodeId": "n:a5d65acaa45a",
+        "line": 7,
+        "column": 19,
+        "symbolName": "aFunction"
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:5353548f9372",
+        "line": 10,
+        "column": 2,
+        "symbolName": "function3"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "this.myService.function3()"
+    },
+    {
+      "id": "e:f2658af39d71",
+      "kind": "call",
+      "from": {
+        "side": "base",
+        "nodeId": "n:a5d65acaa45a",
+        "line": 7,
+        "column": 19,
+        "symbolName": "aFunction"
+      },
+      "to": {
+        "side": "base",
+        "nodeId": "n:5353548f9372",
+        "line": 10,
+        "column": 2,
+        "symbolName": "function2"
+      },
+      "change": "removed",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "this.myService.function2()"
+    },
+    {
+      "id": "e:2aa712b61542",
+      "kind": "import",
+      "from": {
+        "side": "base",
+        "nodeId": "n:b2a4cf4d702e",
+        "line": 1,
+        "column": 31
+      },
+      "to": {
+        "side": "base",
+        "nodeId": "n:5353548f9372",
+        "line": 1,
+        "column": 0,
+        "symbolName": "myService.ts"
+      },
+      "change": "removed",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "./myService"
+    },
+    {
+      "id": "e:62fdff7277aa",
+      "kind": "call",
+      "from": {
+        "side": "base",
+        "nodeId": "n:b2a4cf4d702e",
+        "line": 7,
+        "column": 19,
+        "symbolName": "anotherFunction"
+      },
+      "to": {
+        "side": "base",
+        "nodeId": "n:5353548f9372",
+        "line": 10,
+        "column": 2,
+        "symbolName": "function2"
+      },
+      "change": "removed",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "this.myService.function2()"
+    }
+  ]
+}

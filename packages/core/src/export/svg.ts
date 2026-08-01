@@ -102,11 +102,19 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
           ? theme.change.removed
           : theme.text;
     const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : " ";
+    const number = row.newLine ?? row.oldLine;
 
     parts.push(
       `<text x="${node.x + metrics.padding}" y="${y}" fill="${theme.gutter}" ` +
         `font-size="${metrics.fontSize}">${marker}</text>`,
     );
+    if (number !== undefined) {
+      parts.push(
+        `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
+          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+          `text-anchor="end">${number}</text>`,
+      );
+    }
     parts.push(
       `<text x="${textX}" y="${y}" fill="${colour}" ` +
         `font-size="${metrics.fontSize}" xml:space="preserve">${escape(row.text)}</text>`,

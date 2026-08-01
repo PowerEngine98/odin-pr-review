@@ -23,6 +23,12 @@ git config user.name "Odin Fixture"
 git config user.email "fixture@odin.local"
 git config commit.gpgsign false
 
+# Fixed timestamps so the fixture's commit hashes are stable. Anything derived
+# from this repository - graph JSON, golden files - would otherwise change on
+# every run and stop being comparable.
+export GIT_AUTHOR_DATE="2024-01-01T00:00:00Z"
+export GIT_COMMITTER_DATE="2024-01-01T00:00:00Z"
+
 mkdir -p src
 
 cat > tsconfig.json <<'EOF'

@@ -16,6 +16,7 @@ import {
   LIGHT_THEME,
   type ChangeGraph,
 } from "@odin/core";
+import { renderHtml } from "@odin/webview";
 
 import { parseArgs, USAGE, type GraphOptions } from "./args.js";
 import { resolveEdges } from "./pipeline.js";
@@ -82,16 +83,19 @@ async function render(graph: ChangeGraph, opts: GraphOptions): Promise<string> {
     case "mermaid": return toMermaid(graph, { includeImports });
     case "dot": return toDot(graph, { includeImports });
     case "json": return serializeGraph(graph);
-    case "svg": {
+    case "svg":
+    case "html": {
       // Arrows need somewhere to land, so pull in the source around each
       // target that the diff itself does not show.
       const snippets = opts.patchFile
         ? new Map()
         : await enrichSnippets(graph, { cwd: opts.cwd });
-      return toSvg(layoutGraph(graph, { snippets }), {
-        includeImports,
-        theme: opts.light ? LIGHT_THEME : DARK_THEME,
-      });
+      const layout = layoutGraph(graph, { snippets });
+      const theme = opts.light ? LIGHT_THEME : DARK_THEME;
+
+      return opts.format === "html"
+        ? renderHtml(graph, layout, { theme })
+        : toSvg(layout, { includeImports, theme });
     }
   }
 }

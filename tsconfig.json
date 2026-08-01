@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/core" },
     { "path": "./packages/resolver-ts" },
+    { "path": "./packages/webview" },
     { "path": "./packages/cli" }
   ]
 }

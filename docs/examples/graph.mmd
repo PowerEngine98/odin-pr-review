@@ -1,0 +1,35 @@
+flowchart LR
+  n0["addedFile.ts<br/><small>+11 −0</small>"]:::added
+  n1["consumer.ts<br/><small>+1 −1</small>"]:::modified
+  n2["deletedFile.ts<br/><small>+0 −13</small>"]:::deleted
+  n3["logger.ts<br/><small>untouched</small>"]:::phantom
+  n4["myService.ts<br/><small>+4 −5</small>"]:::modified
+  n5["renamedFile.ts<br/><i>was oldName.ts</i><br/><small>+0 −0</small>"]:::renamed
+  n4 -.->|"deletedFile.ts"| n2
+  n4 -.->|"DeletedFile"| n2
+  n4 -.->|"anotherFunction2"| n2
+  n0 -->|"logger.ts"| n3
+  n0 -->|"myService.ts"| n4
+  n0 -->|"log"| n3
+  n0 -->|"function1"| n4
+  n1 -->|"function3"| n4
+  n1 -.->|"function2"| n4
+  n2 -.->|"myService.ts"| n4
+  n2 -.->|"function2"| n4
+
+  classDef added stroke:#4ade80,color:#4ade80,fill:transparent;
+  classDef modified stroke:#e5e7eb,color:#e5e7eb,fill:transparent;
+  classDef deleted stroke:#f87171,color:#f87171,fill:transparent;
+  classDef renamed stroke:#60a5fa,color:#60a5fa,fill:transparent;
+  classDef phantom stroke:#6b7280,color:#6b7280,fill:transparent,stroke-dasharray:4 4;
+  linkStyle 0 stroke:#f87171,stroke-width:2px;
+  linkStyle 1 stroke:#f87171,stroke-width:2px;
+  linkStyle 2 stroke:#f87171,stroke-width:2px;
+  linkStyle 3 stroke:#4ade80,stroke-width:2px;
+  linkStyle 4 stroke:#4ade80,stroke-width:2px;
+  linkStyle 5 stroke:#4ade80,stroke-width:2px;
+  linkStyle 6 stroke:#4ade80,stroke-width:2px;
+  linkStyle 7 stroke:#4ade80,stroke-width:2px;
+  linkStyle 8 stroke:#f87171,stroke-width:2px;
+  linkStyle 9 stroke:#f87171,stroke-width:2px;
+  linkStyle 10 stroke:#f87171,stroke-width:2px;
