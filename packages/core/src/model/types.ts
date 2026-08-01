@@ -201,6 +201,14 @@ export interface GraphMeta {
   generatedAt?: string;
   /** What the resolvers could and could not reach. */
   coverage?: Coverage;
+  /** Who wrote the commits in this range, most prolific first. */
+  authors?: Author[];
+}
+
+/** One contributor to the change under review. */
+export interface Author {
+  name: string;
+  commits: number;
 }
 
 /** A summary of how much of the change anything was able to analyse. */

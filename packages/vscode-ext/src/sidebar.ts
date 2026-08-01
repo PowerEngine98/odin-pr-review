@@ -10,7 +10,7 @@ import {
 } from "@odin/core";
 import * as vscode from "vscode";
 
-import { buildTree, type Folder } from "./tree-model.js";
+import { buildTree, progressOf, type Folder } from "./tree-model.js";
 import type { ViewedStore } from "./viewed.js";
 
 /**
@@ -126,7 +126,7 @@ function html(
   viewed: ViewedStore,
 ): string {
   const body = graph
-    ? renderTree(buildTree(graph.nodes), graph, 0, viewed)
+    ? header(graph, viewed) + renderTree(buildTree(graph.nodes), graph, 0, viewed)
     : `<p class="empty">Review this branch to see its files here.</p>
        <button id="review">Review Pull Request</button>`;
 
@@ -154,6 +154,49 @@ body {
 /* The right padding is generous on purpose: the reviewed box sits at the end
    of the row, and the editor draws its scrollbar over the last few pixels of
    the view. Without the clearance the box ends up under it. */
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  border-bottom: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  padding: 6px 20px 6px 8px;
+}
+.head .bar {
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+  overflow: hidden;
+}
+.head .fill {
+  height: 100%;
+  background: var(--vscode-progressBar-background, #0a84ff);
+  transition: width 160ms ease;
+}
+.head .stats {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 0.9em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.head .stats .spacer { flex: 1; }
+.head .progress { color: var(--muted); }
+.head .progress .done {
+  color: var(--vscode-progressBar-background, #0a84ff);
+  font-weight: 600;
+}
+.head .pct { margin-left: 4px; }
+.head .added { color: var(--added); }
+.head .removed { color: var(--removed); }
+.head .authors {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
 .row {
   display: flex;
   align-items: center;
@@ -321,6 +364,22 @@ function markRow(row, marked) {
   row.classList.toggle("seen-marked", marked);
 }
 
+/** Keeps the bar in step with the boxes, without redrawing the list. */
+function refreshProgress() {
+  const boxes = [...document.querySelectorAll(".row .seen")];
+  const done = boxes.filter((b) => b.checked).length;
+  const pct = boxes.length === 0 ? 0 : Math.round((done / boxes.length) * 100);
+
+  const fill = document.querySelector(".head .fill");
+  if (fill) fill.style.width = pct + "%";
+  const doneEl = document.querySelector(".head .done");
+  if (doneEl) doneEl.textContent = String(done);
+  const total = document.querySelector(".head .total");
+  if (total) total.textContent = String(boxes.length);
+  const pctEl = document.querySelector(".head .pct");
+  if (pctEl) pctEl.textContent = pct + "%";
+}
+
 function announce(paths, marked) {
   if (paths.length > 0) {
     vscodeApi.postMessage({ type: "viewed", paths: paths, viewed: marked });
@@ -332,6 +391,7 @@ document.querySelectorAll(".row .seen").forEach((box) => {
   box.addEventListener("change", () => {
     const row = box.closest(".row");
     markRow(row, box.checked);
+    refreshProgress();
     announce([row.dataset.path], box.checked);
   });
 });
@@ -343,6 +403,7 @@ window.addEventListener("message", (event) => {
   document.querySelectorAll(".row").forEach((row) => {
     if (wanted.has(row.dataset.path)) markRow(row, message.viewed === true);
   });
+  refreshProgress();
 });
 
 document.querySelectorAll(".row").forEach((row) => {
@@ -365,6 +426,29 @@ document.querySelectorAll(".ref").forEach((ref) => {
 const review = document.getElementById("review");
 if (review) review.addEventListener("click", () => vscodeApi.postMessage({ type: "review" }));
 </script></body></html>`;
+}
+
+/**
+ * The band at the top of the list: how far through the change you are, how big
+ * it is, and who wrote it.
+ *
+ * Sticky, because progress is the one thing worth seeing while scrolling a long
+ * change, and a bar that scrolls away stops answering the question it was put
+ * there for.
+ */
+function header(graph: ChangeGraph, viewed: ViewedStore): string {
+  const p = progressOf(graph, (path) => viewed.has(path));
+
+  return `<div class="head">
+  <div class="bar"><div class="fill" style="width:${p.percent}%"></div></div>
+  <div class="stats">
+    <span class="progress"><b class="done">${p.done}</b>/<span class="total">${p.total}</span><span class="pct">${p.percent}%</span></span>
+    <span class="spacer"></span>
+    ${p.additions > 0 ? `<span class="added">+${p.additions}</span>` : ""}
+    ${p.deletions > 0 ? `<span class="removed">−${p.deletions}</span>` : ""}
+    ${p.authors ? `<span class="authors" title="${escapeHtml(p.authorsFull)}">${escapeHtml(p.authors)}</span>` : ""}
+  </div>
+</div>`;
 }
 
 function renderTree(

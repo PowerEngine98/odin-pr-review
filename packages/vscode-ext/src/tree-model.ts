@@ -1,4 +1,4 @@
-import type { FileNode } from "@odin/core";
+import type { ChangeGraph, FileNode } from "@odin/core";
 
 /** A directory in the change, holding files and further directories. */
 export interface Folder {
@@ -65,4 +65,55 @@ function compact(folder: Folder): void {
     folder.files = only.files;
     folder.folders = only.folders;
   }
+}
+
+/** What the band at the top of the sidebar reports. */
+export interface Progress {
+  /** Files that can be marked off: everything the diff actually touched. */
+  total: number;
+  done: number;
+  percent: number;
+  additions: number;
+  deletions: number;
+  /** Contributors, abbreviated once there are more than two to name. */
+  authors: string;
+  /** Every contributor with their commit count, for the tooltip. */
+  authorsFull: string;
+}
+
+/**
+ * Reads the change's shape and the reviewer's progress through it.
+ *
+ * Untouched files are excluded from both halves of the fraction: they cannot be
+ * marked off, so counting them would leave the bar permanently short of full
+ * and make finishing look impossible.
+ */
+export function progressOf(
+  graph: ChangeGraph,
+  isViewed: (path: string) => boolean,
+): Progress {
+  const reviewable = graph.nodes.filter((n) => n.status !== "phantom");
+  const done = reviewable.filter((n) => isViewed(n.path)).length;
+
+  const totals = reviewable.reduce(
+    (sum, node) => ({
+      additions: sum.additions + node.stats.additions,
+      deletions: sum.deletions + node.stats.deletions,
+    }),
+    { additions: 0, deletions: 0 },
+  );
+
+  const authors = graph.meta.authors ?? [];
+  const names = authors.map((a) => a.name);
+
+  return {
+    total: reviewable.length,
+    done,
+    percent: reviewable.length === 0 ? 0 : Math.round((done / reviewable.length) * 100),
+    additions: totals.additions,
+    deletions: totals.deletions,
+    authors:
+      names.length <= 2 ? names.join(", ") : `${names[0]} +${names.length - 1}`,
+    authorsFull: authors.map((a) => `${a.name} (${a.commits})`).join(", "),
+  };
 }

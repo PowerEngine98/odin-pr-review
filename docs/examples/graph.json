@@ -8,6 +8,12 @@
     "headSha": "795d1caa6c46efbb0084bd1320ed6a8d7e4c5bb7",
     "mergeBase": "bbb36260ba9519af421a19335d93fa825090d753",
     "generator": "odin-pr-review/0.1.0",
+    "authors": [
+      {
+        "name": "Odin Fixture",
+        "commits": 1
+      }
+    ],
     "coverage": {
       "analysed": 6,
       "languages": [

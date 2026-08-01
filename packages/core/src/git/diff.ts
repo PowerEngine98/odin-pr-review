@@ -2,6 +2,7 @@ import { parseUnifiedDiff, type ParsedFile } from "../diff/parse.js";
 import { buildGraph } from "../graph/build.js";
 import { annotateTests } from "../graph/tests.js";
 import type { ChangeGraph, GraphMeta } from "../model/types.js";
+import type { Author } from "../model/types.js";
 import {
   git,
   mergeBase,
@@ -68,6 +69,9 @@ export async function readPatch(req: DiffRequest): Promise<{
   };
   if (req.stamp) meta.generatedAt = new Date().toISOString();
 
+  const authors = await readAuthors(base, headRef, req);
+  if (authors.length > 0) meta.authors = authors;
+
   return { patch, meta };
 }
 
@@ -76,4 +80,35 @@ export async function graphFromRepo(req: DiffRequest): Promise<ChangeGraph> {
   const { patch, meta } = await readPatch(req);
   const files: ParsedFile[] = parseUnifiedDiff(patch);
   return annotateTests(buildGraph(files, { meta }));
+}
+
+/**
+ * Who wrote the commits between the merge base and the head.
+ *
+ * Counted rather than merely listed: on a branch several people touched, the
+ * split matters more than the roll call, and a reviewer reads "mostly one
+ * person, one drive-by commit" differently from "three people interleaved".
+ * Ordered by count then name so the same range always reports the same way.
+ */
+export async function readAuthors(
+  base: string,
+  headRef: string,
+  options: GitOptions,
+): Promise<Author[]> {
+  let output: string;
+  try {
+    output = await git(["log", "--format=%aN", `${base}..${headRef}`], options);
+  } catch {
+    return [];
+  }
+
+  const counts = new Map<string, number>();
+  for (const line of output.split("\n")) {
+    const name = line.trim();
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .map(([name, commits]) => ({ name, commits }))
+    .sort((a, b) => b.commits - a.commits || (a.name < b.name ? -1 : 1));
 }
