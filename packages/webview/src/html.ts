@@ -198,7 +198,7 @@ export function renderHtml(
       `<button class="thread-close" title="Close" aria-label="Close">${CLOSE_ICON}</button>` +
       `</div><div class="thread-body"></div>` +
       `<div class="thread-reply" hidden>` +
-      `<textarea class="reply-body" rows="2" placeholder="Reply…"></textarea>` +
+      editor({ placeholder: "Reply…", rows: 3 }) +
       `<div class="reply-actions"><button class="reply-send primary">Reply</button></div>` +
       `</div></div>`,
     composer(),
@@ -404,20 +404,39 @@ const RING =
 function composer(): string {
   return `<div class="composer" hidden>
   <div class="composer-head"><span class="composer-where"></span></div>
-  <div class="composer-box">
-    <div class="composer-tabs">
-      <button class="tab is-on" data-tab="write">Write</button>
-      <button class="tab" data-tab="preview">Preview</button>
-      <span class="md-tools">${MD_TOOLS}</span>
-    </div>
-    <textarea class="composer-body" rows="5" placeholder="Leave a comment"></textarea>
-    <div class="composer-preview" hidden></div>
-  </div>
+  ${editor({ placeholder: "Leave a comment", rows: 5, suggest: true })}
   <div class="composer-actions">
     <button class="composer-cancel">Cancel</button>
     <button class="composer-add primary">Start a review</button>
   </div>
 </div>`;
+}
+
+/**
+ * One box for writing markdown, wherever markdown is written.
+ *
+ * A line comment, a reply and a review summary are the same act with different
+ * destinations, and giving two of them a bare textarea while the third had
+ * tabs and a toolbar meant the tool was teaching two habits for one job.
+ *
+ * The suggestion button is the exception: it fills itself with the lines being
+ * commented on, so it only belongs where there are lines under the cursor.
+ */
+function editor(options: {
+  placeholder: string;
+  rows: number;
+  suggest?: boolean;
+}): string {
+  return `<div class="editor">
+    <div class="editor-tabs">
+      <button class="tab is-on" data-tab="write">Write</button>
+      <button class="tab" data-tab="preview">Preview</button>
+      <span class="md-tools">${options.suggest ? MD_TOOLS : MD_TOOLS_PLAIN}</span>
+    </div>
+    <textarea class="editor-body" rows="${options.rows}" ` +
+      `placeholder="${escapeHtml(options.placeholder)}"></textarea>
+    <div class="editor-preview" hidden></div>
+  </div>`;
 }
 
 /**
@@ -429,7 +448,11 @@ function composer(): string {
  * having — a suggestion has to be the whole replacement for the lines it covers,
  * and typing them out again from memory is how the wrong indentation gets in.
  */
-const MD_TOOLS = [
+const MD_TOOLS_PLAIN = plainTools();
+const MD_TOOLS = plainTools() + tool("suggest", "Suggest a replacement", "M8 3v10M3 8h10");
+
+function plainTools(): string {
+  return [
   tool("heading", "Heading", "M4 3v10M12 3v10M4 8h8"),
   tool("bold", "Bold", "M5 3h4a2.5 2.5 0 0 1 0 5H5zM5 8h4.5a2.5 2.5 0 0 1 0 5H5z"),
   tool("italic", "Italic", "M10 3H6.5M9.5 13H6M9 3l-2 10"),
@@ -438,9 +461,9 @@ const MD_TOOLS = [
   tool("link", "Link", "M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.7.7M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.7-.7"),
   tool("ul", "Bulleted list", "M6 4h8M6 8h8M6 12h8M3 4h.01M3 8h.01M3 12h.01"),
   tool("ol", "Numbered list", "M6 4h8M6 8h8M6 12h8M2 3h1v3M2 12h2M2 10h2v.01"),
-  tool("task", "Task list", "M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5"),
-  tool("suggest", "Suggest a replacement", "M8 3v10M3 8h10"),
-].join("");
+    tool("task", "Task list", "M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5"),
+  ].join("");
+}
 
 /**
  * Opening the real file, rather than reading the change to it.
@@ -491,7 +514,7 @@ function reviewPanel(): string {
   <div class="review-head"><span>Pending review · <span class="review-count">0</span></span>` +
     `<button class="review-close" title="Close" aria-label="Close">${CLOSE_ICON}</button></div>
   <div class="review-list"></div>
-  <textarea class="review-body" rows="3" placeholder="Summary (required to comment or request changes)"></textarea>
+  ${editor({ placeholder: "Summary (required to comment or request changes)", rows: 3 })}
   <div class="review-actions">
     <button class="review-submit" data-event="APPROVE">Approve</button>
     <button class="review-submit" data-event="COMMENT">Comment</button>

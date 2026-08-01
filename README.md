@@ -194,7 +194,10 @@ edge, the way an inline comment box sits in a diff — a remark belongs to a
 passage, and a box that floats where the cursor happened to be makes the reader
 hold the connection in their head. It carries the forge's own furniture: Write
 and Preview, the markdown buttons, and a primary that says *Start a review*
-until there is one and *Add review comment* after. Preview renders a deliberately
+until there is one and *Add review comment* after. The same box writes a reply
+and a review summary — a line comment, an answer and a verdict are one act with
+three destinations, and giving two of them a bare textarea taught two habits for
+one job. Preview renders a deliberately
 small subset of markdown and escapes everything first — the text comes from a
 person and this page draws it, so nothing typed can become markup by accident.
 

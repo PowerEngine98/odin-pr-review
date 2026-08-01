@@ -832,10 +832,12 @@ input[type="checkbox"]:checked::after {
    where the cursor happened to be. A remark belongs to a passage of code, and a
    box that hides that passage or drifts away from it makes the reviewer hold
    the connection in their head instead of seeing it. */
+/* Wide enough for the toolbar to sit on one row: a box that writes markdown
+   and hides half its buttons is worse than one that never offered them. */
 .composer, .review {
   position: fixed;
   z-index: 40;
-  width: 340px;
+  width: 430px;
   padding: 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
@@ -859,28 +861,28 @@ input[type="checkbox"]:checked::after {
 
 /* One frame around the tabs, the tools and the field, so they read as a single
    control rather than three stacked ones. */
-.composer-box {
+.editor {
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 7px;
   overflow: hidden;
   background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
 }
-.composer-tabs {
+.editor-tabs {
   display: flex;
   align-items: stretch;
   gap: 2px;
   border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   background: color-mix(in srgb, var(--bg) 60%, var(--text) 5%);
 }
-.composer .tab {
+.editor .tab {
   border: 0;
   border-right: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 0;
-  padding: 7px 14px;
+  padding: 7px 11px;
   background: transparent;
   color: var(--muted);
 }
-.composer .tab.is-on {
+.editor .tab.is-on {
   color: var(--text);
   background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
   border-bottom: 1px solid color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
@@ -890,15 +892,15 @@ input[type="checkbox"]:checked::after {
 .md-tools {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 0;
   margin-left: auto;
-  padding: 0 6px;
+  padding: 0 4px;
 }
-.composer .md {
+.editor .md {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
+  width: 24px;
   height: 26px;
   padding: 0;
   border: 0;
@@ -906,14 +908,14 @@ input[type="checkbox"]:checked::after {
   background: transparent;
   color: var(--muted);
 }
-.composer .md:hover {
+.editor .md:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 /* A rule before the list group and before the suggestion, as the forge has:
    the tools are three kinds of thing, not ten of one. */
-.composer .md[data-md="ul"],
-.composer .md[data-md="suggest"] {
+.editor .md[data-md="ul"],
+.editor .md[data-md="suggest"] {
   margin-left: 7px;
   border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
   border-radius: 0 5px 5px 0;
@@ -921,7 +923,7 @@ input[type="checkbox"]:checked::after {
   width: 33px;
 }
 
-.composer-body, .review-body {
+.editor-body {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
@@ -933,57 +935,57 @@ input[type="checkbox"]:checked::after {
   padding: 6px;
   resize: vertical;
 }
-.composer-body {
+.editor-body {
   display: block;
   border: 0;
   border-radius: 0;
   padding: 9px 10px;
   min-height: 96px;
 }
-.composer-body:focus { outline: none; }
+.editor-body:focus { outline: none; }
 
 /* Preview renders a deliberately small subset. Whatever it does not know how to
    draw is shown as the text that was typed, which is what the forge will store
    anyway — better a plain line than a confident wrong rendering. */
-.composer-preview {
+.editor-preview {
   padding: 10px;
   min-height: 96px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.composer-preview .empty { color: var(--muted); }
-.composer-preview p { margin: 0 0 8px; }
-.composer-preview ul, .composer-preview ol { margin: 0 0 8px; padding-left: 20px; }
-.composer-preview blockquote {
+.editor-preview .empty { color: var(--muted); }
+.editor-preview p { margin: 0 0 8px; }
+.editor-preview ul, .editor-preview ol { margin: 0 0 8px; padding-left: 20px; }
+.editor-preview blockquote {
   margin: 0 0 8px;
   padding-left: 10px;
   border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
   color: var(--muted);
 }
-.composer-preview pre {
+.editor-preview pre {
   margin: 0 0 8px;
   padding: 8px 10px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--text) 8%, transparent);
   overflow-x: auto;
 }
-.composer-preview code {
+.editor-preview code {
   font-family: var(--mono);
   font-size: 11px;
 }
-.composer-preview :not(pre) > code {
+.editor-preview :not(pre) > code {
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
-.composer-preview h1, .composer-preview h2, .composer-preview h3 {
+.editor-preview h1, .editor-preview h2, .editor-preview h3 {
   margin: 0 0 8px;
   font-size: 14px;
 }
-.composer-preview .suggestion {
+.editor-preview .suggestion {
   border: 1px solid color-mix(in srgb, var(--added) 45%, transparent);
 }
-.composer-preview .suggestion .label {
+.editor-preview .suggestion .label {
   display: block;
   margin-bottom: 4px;
   color: var(--added);
@@ -1008,7 +1010,7 @@ input[type="checkbox"]:checked::after {
   cursor: pointer;
 }
 .composer button:hover, .review button:hover { color: var(--text); }
-.composer .md:hover { color: var(--text); }
+.editor .md:hover { color: var(--text); }
 .composer button.primary {
   color: var(--action-ink);
   background: var(--action);
@@ -1178,7 +1180,7 @@ input[type="checkbox"]:checked::after {
 .thread {
   position: fixed;
   z-index: 41;
-  width: 380px;
+  width: 430px;
   max-height: 60vh;
   overflow-y: auto;
   padding: 10px 12px 12px;
@@ -1363,18 +1365,6 @@ input[type="checkbox"]:checked::after {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
-}
-.thread-reply textarea {
-  width: 100%;
-  box-sizing: border-box;
-  font: inherit;
-  font-family: var(--mono);
-  color: var(--text);
-  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 6px;
-  padding: 7px 8px;
-  resize: vertical;
 }
 .reply-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
 .thread-reply .primary {

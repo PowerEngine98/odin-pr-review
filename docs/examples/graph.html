@@ -826,10 +826,12 @@ input[type="checkbox"]:checked::after {
    where the cursor happened to be. A remark belongs to a passage of code, and a
    box that hides that passage or drifts away from it makes the reviewer hold
    the connection in their head instead of seeing it. */
+/* Wide enough for the toolbar to sit on one row: a box that writes markdown
+   and hides half its buttons is worse than one that never offered them. */
 .composer, .review {
   position: fixed;
   z-index: 40;
-  width: 340px;
+  width: 430px;
   padding: 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
@@ -853,28 +855,28 @@ input[type="checkbox"]:checked::after {
 
 /* One frame around the tabs, the tools and the field, so they read as a single
    control rather than three stacked ones. */
-.composer-box {
+.editor {
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 7px;
   overflow: hidden;
   background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
 }
-.composer-tabs {
+.editor-tabs {
   display: flex;
   align-items: stretch;
   gap: 2px;
   border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   background: color-mix(in srgb, var(--bg) 60%, var(--text) 5%);
 }
-.composer .tab {
+.editor .tab {
   border: 0;
   border-right: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   border-radius: 0;
-  padding: 7px 14px;
+  padding: 7px 11px;
   background: transparent;
   color: var(--muted);
 }
-.composer .tab.is-on {
+.editor .tab.is-on {
   color: var(--text);
   background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
   border-bottom: 1px solid color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
@@ -884,15 +886,15 @@ input[type="checkbox"]:checked::after {
 .md-tools {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 0;
   margin-left: auto;
-  padding: 0 6px;
+  padding: 0 4px;
 }
-.composer .md {
+.editor .md {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
+  width: 24px;
   height: 26px;
   padding: 0;
   border: 0;
@@ -900,14 +902,14 @@ input[type="checkbox"]:checked::after {
   background: transparent;
   color: var(--muted);
 }
-.composer .md:hover {
+.editor .md:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 /* A rule before the list group and before the suggestion, as the forge has:
    the tools are three kinds of thing, not ten of one. */
-.composer .md[data-md="ul"],
-.composer .md[data-md="suggest"] {
+.editor .md[data-md="ul"],
+.editor .md[data-md="suggest"] {
   margin-left: 7px;
   border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
   border-radius: 0 5px 5px 0;
@@ -915,7 +917,7 @@ input[type="checkbox"]:checked::after {
   width: 33px;
 }
 
-.composer-body, .review-body {
+.editor-body {
   width: 100%;
   box-sizing: border-box;
   font: inherit;
@@ -927,57 +929,57 @@ input[type="checkbox"]:checked::after {
   padding: 6px;
   resize: vertical;
 }
-.composer-body {
+.editor-body {
   display: block;
   border: 0;
   border-radius: 0;
   padding: 9px 10px;
   min-height: 96px;
 }
-.composer-body:focus { outline: none; }
+.editor-body:focus { outline: none; }
 
 /* Preview renders a deliberately small subset. Whatever it does not know how to
    draw is shown as the text that was typed, which is what the forge will store
    anyway — better a plain line than a confident wrong rendering. */
-.composer-preview {
+.editor-preview {
   padding: 10px;
   min-height: 96px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.composer-preview .empty { color: var(--muted); }
-.composer-preview p { margin: 0 0 8px; }
-.composer-preview ul, .composer-preview ol { margin: 0 0 8px; padding-left: 20px; }
-.composer-preview blockquote {
+.editor-preview .empty { color: var(--muted); }
+.editor-preview p { margin: 0 0 8px; }
+.editor-preview ul, .editor-preview ol { margin: 0 0 8px; padding-left: 20px; }
+.editor-preview blockquote {
   margin: 0 0 8px;
   padding-left: 10px;
   border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
   color: var(--muted);
 }
-.composer-preview pre {
+.editor-preview pre {
   margin: 0 0 8px;
   padding: 8px 10px;
   border-radius: 6px;
   background: color-mix(in srgb, var(--text) 8%, transparent);
   overflow-x: auto;
 }
-.composer-preview code {
+.editor-preview code {
   font-family: var(--mono);
   font-size: 11px;
 }
-.composer-preview :not(pre) > code {
+.editor-preview :not(pre) > code {
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);
 }
-.composer-preview h1, .composer-preview h2, .composer-preview h3 {
+.editor-preview h1, .editor-preview h2, .editor-preview h3 {
   margin: 0 0 8px;
   font-size: 14px;
 }
-.composer-preview .suggestion {
+.editor-preview .suggestion {
   border: 1px solid color-mix(in srgb, var(--added) 45%, transparent);
 }
-.composer-preview .suggestion .label {
+.editor-preview .suggestion .label {
   display: block;
   margin-bottom: 4px;
   color: var(--added);
@@ -1002,7 +1004,7 @@ input[type="checkbox"]:checked::after {
   cursor: pointer;
 }
 .composer button:hover, .review button:hover { color: var(--text); }
-.composer .md:hover { color: var(--text); }
+.editor .md:hover { color: var(--text); }
 .composer button.primary {
   color: var(--action-ink);
   background: var(--action);
@@ -1172,7 +1174,7 @@ input[type="checkbox"]:checked::after {
 .thread {
   position: fixed;
   z-index: 41;
-  width: 380px;
+  width: 430px;
   max-height: 60vh;
   overflow-y: auto;
   padding: 10px 12px 12px;
@@ -1358,18 +1360,6 @@ input[type="checkbox"]:checked::after {
   padding-top: 10px;
   border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
 }
-.thread-reply textarea {
-  width: 100%;
-  box-sizing: border-box;
-  font: inherit;
-  font-family: var(--mono);
-  color: var(--text);
-  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 6px;
-  padding: 7px 8px;
-  resize: vertical;
-}
 .reply-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
 .thread-reply .primary {
   font: inherit;
@@ -1451,17 +1441,25 @@ input[type="checkbox"]:checked::after {
 </div></div>
 <div class="marks"></div>
 <div class="tooltip"></div>
-<div class="thread" hidden><div class="thread-head"><span class="thread-where"></span><button class="thread-close" title="Close" aria-label="Close"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><div class="thread-body"></div><div class="thread-reply" hidden><textarea class="reply-body" rows="2" placeholder="Reply…"></textarea><div class="reply-actions"><button class="reply-send primary">Reply</button></div></div></div>
+<div class="thread" hidden><div class="thread-head"><span class="thread-where"></span><button class="thread-close" title="Close" aria-label="Close"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><div class="thread-body"></div><div class="thread-reply" hidden><div class="editor">
+    <div class="editor-tabs">
+      <button class="tab is-on" data-tab="write">Write</button>
+      <button class="tab" data-tab="preview">Preview</button>
+      <span class="md-tools"><button class="md" data-md="heading" title="Heading" aria-label="Heading"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M4 3v10M12 3v10M4 8h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="bold" title="Bold" aria-label="Bold"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5 3h4a2.5 2.5 0 0 1 0 5H5zM5 8h4.5a2.5 2.5 0 0 1 0 5H5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="italic" title="Italic" aria-label="Italic"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M10 3H6.5M9.5 13H6M9 3l-2 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="quote" title="Quote" aria-label="Quote"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 4v8M6 5h7M6 8h7M6 11h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="code" title="Code" aria-label="Code"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4L2.5 8 6 12M10 4l3.5 4-3.5 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="link" title="Link" aria-label="Link"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.7.7M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.7-.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ul" title="Bulleted list" aria-label="Bulleted list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M3 4h.01M3 8h.01M3 12h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ol" title="Numbered list" aria-label="Numbered list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M2 3h1v3M2 12h2M2 10h2v.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="task" title="Task list" aria-label="Task list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>
+    </div>
+    <textarea class="editor-body" rows="3" placeholder="Reply…"></textarea>
+    <div class="editor-preview" hidden></div>
+  </div><div class="reply-actions"><button class="reply-send primary">Reply</button></div></div></div>
 <div class="composer" hidden>
   <div class="composer-head"><span class="composer-where"></span></div>
-  <div class="composer-box">
-    <div class="composer-tabs">
+  <div class="editor">
+    <div class="editor-tabs">
       <button class="tab is-on" data-tab="write">Write</button>
       <button class="tab" data-tab="preview">Preview</button>
       <span class="md-tools"><button class="md" data-md="heading" title="Heading" aria-label="Heading"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M4 3v10M12 3v10M4 8h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="bold" title="Bold" aria-label="Bold"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5 3h4a2.5 2.5 0 0 1 0 5H5zM5 8h4.5a2.5 2.5 0 0 1 0 5H5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="italic" title="Italic" aria-label="Italic"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M10 3H6.5M9.5 13H6M9 3l-2 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="quote" title="Quote" aria-label="Quote"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 4v8M6 5h7M6 8h7M6 11h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="code" title="Code" aria-label="Code"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4L2.5 8 6 12M10 4l3.5 4-3.5 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="link" title="Link" aria-label="Link"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.7.7M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.7-.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ul" title="Bulleted list" aria-label="Bulleted list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M3 4h.01M3 8h.01M3 12h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ol" title="Numbered list" aria-label="Numbered list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M2 3h1v3M2 12h2M2 10h2v.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="task" title="Task list" aria-label="Task list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="suggest" title="Suggest a replacement" aria-label="Suggest a replacement"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>
     </div>
-    <textarea class="composer-body" rows="5" placeholder="Leave a comment"></textarea>
-    <div class="composer-preview" hidden></div>
+    <textarea class="editor-body" rows="5" placeholder="Leave a comment"></textarea>
+    <div class="editor-preview" hidden></div>
   </div>
   <div class="composer-actions">
     <button class="composer-cancel">Cancel</button>
@@ -1471,7 +1469,15 @@ input[type="checkbox"]:checked::after {
 <div class="review" hidden>
   <div class="review-head"><span>Pending review · <span class="review-count">0</span></span><button class="review-close" title="Close" aria-label="Close"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div>
   <div class="review-list"></div>
-  <textarea class="review-body" rows="3" placeholder="Summary (required to comment or request changes)"></textarea>
+  <div class="editor">
+    <div class="editor-tabs">
+      <button class="tab is-on" data-tab="write">Write</button>
+      <button class="tab" data-tab="preview">Preview</button>
+      <span class="md-tools"><button class="md" data-md="heading" title="Heading" aria-label="Heading"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M4 3v10M12 3v10M4 8h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="bold" title="Bold" aria-label="Bold"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5 3h4a2.5 2.5 0 0 1 0 5H5zM5 8h4.5a2.5 2.5 0 0 1 0 5H5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="italic" title="Italic" aria-label="Italic"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M10 3H6.5M9.5 13H6M9 3l-2 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="quote" title="Quote" aria-label="Quote"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 4v8M6 5h7M6 8h7M6 11h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="code" title="Code" aria-label="Code"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4L2.5 8 6 12M10 4l3.5 4-3.5 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="link" title="Link" aria-label="Link"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.7.7M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.7-.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ul" title="Bulleted list" aria-label="Bulleted list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M3 4h.01M3 8h.01M3 12h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ol" title="Numbered list" aria-label="Numbered list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M2 3h1v3M2 12h2M2 10h2v.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="task" title="Task list" aria-label="Task list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>
+    </div>
+    <textarea class="editor-body" rows="3" placeholder="Summary (required to comment or request changes)"></textarea>
+    <div class="editor-preview" hidden></div>
+  </div>
   <div class="review-actions">
     <button class="review-submit" data-event="APPROVE">Approve</button>
     <button class="review-submit" data-event="COMMENT">Comment</button>
@@ -2147,8 +2153,8 @@ input[type="checkbox"]:checked::after {
         ? "Add a comment on line " + mark + end
         : "Add a comment on lines " + mark + start + "–" + mark + end;
 
-    composer.querySelector(".composer-body").value = "";
-    setTab("write");
+    bodyOf(composer).value = "";
+    setTab(composer, "write");
     composer.hidden = false;
 
     // Pinned under the last line it is about that is actually on screen. A row
@@ -2160,7 +2166,7 @@ input[type="checkbox"]:checked::after {
     }
     anchorLines = rows.map(function (row) { return row.querySelector(".text").textContent; });
     placeComposer();
-    composer.querySelector(".composer-body").focus();
+    bodyOf(composer).focus();
   }
 
   /**
@@ -2196,22 +2202,48 @@ input[type="checkbox"]:checked::after {
 
   /* ------------------------------------------------------- writing the words */
 
-  function setTab(which) {
-    if (!composer) return;
+  /** The field inside a box, whichever box it is. */
+  function bodyOf(root) {
+    return root && root.querySelector(".editor-body");
+  }
+
+  function setTab(root, which) {
+    if (!root) return;
     var writing = which !== "preview";
-    composer.querySelectorAll(".tab").forEach(function (tab) {
+    root.querySelectorAll(".tab").forEach(function (tab) {
       tab.classList.toggle("is-on", tab.dataset.tab === (writing ? "write" : "preview"));
     });
-    composer.querySelector(".composer-body").hidden = !writing;
-    var preview = composer.querySelector(".composer-preview");
+    var field = bodyOf(root);
+    var preview = root.querySelector(".editor-preview");
+    if (!field || !preview) return;
+
+    field.hidden = !writing;
     preview.hidden = writing;
     if (!writing) {
-      var text = composer.querySelector(".composer-body").value;
-      preview.innerHTML = text.trim()
-        ? renderMarkdown(text)
+      preview.innerHTML = field.value.trim()
+        ? renderMarkdown(field.value)
         : '<span class="empty">Nothing to preview</span>';
     }
   }
+
+  /** Wires one box: its two tabs and its markdown buttons. */
+  function initEditor(root) {
+    if (!root) return;
+    root.querySelectorAll(".tab").forEach(function (tab) {
+      tab.addEventListener("click", function (event) {
+        event.preventDefault();
+        setTab(root, tab.dataset.tab);
+      });
+    });
+    root.querySelectorAll(".md").forEach(function (button) {
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        applyMarkdown(root, button.dataset.md);
+      });
+    });
+  }
+
+  document.querySelectorAll(".editor").forEach(initEditor);
 
   /**
    * Markdown, as far as a comment box needs it.
@@ -2334,8 +2366,9 @@ input[type="checkbox"]:checked::after {
    * apply to every line the selection touches, because that is what someone
    * who has selected three lines and pressed the list button means.
    */
-  function applyMarkdown(kind) {
-    var field = composer.querySelector(".composer-body");
+  function applyMarkdown(root, kind) {
+    var field = bodyOf(root);
+    if (!field) return;
     var start = field.selectionStart;
     var end = field.selectionEnd;
     var value = field.value;
@@ -2386,17 +2419,10 @@ input[type="checkbox"]:checked::after {
     }
 
     field.focus();
-    setTab("write");
+    setTab(root, "write");
   }
 
   if (composer) {
-    composer.querySelectorAll(".tab").forEach(function (tab) {
-      tab.addEventListener("click", function () { setTab(tab.dataset.tab); });
-    });
-    composer.querySelectorAll(".md").forEach(function (button) {
-      button.addEventListener("click", function () { applyMarkdown(button.dataset.md); });
-    });
-
     composer.querySelector(".composer-cancel").addEventListener("click", function () {
       composer.hidden = true;
       pending = null;
@@ -2408,7 +2434,7 @@ input[type="checkbox"]:checked::after {
       // The fence, when there is one, is already in the text: the suggestion
       // button puts it there along with the lines it replaces, so what goes to
       // the forge is what the reviewer read back before pressing this.
-      var body = composer.querySelector(".composer-body").value.trim();
+      var body = bodyOf(composer).value.trim();
       if (!body || !pending) return;
 
       drafts.push({
@@ -2483,10 +2509,10 @@ input[type="checkbox"]:checked::after {
 
     panel.querySelectorAll(".review-submit").forEach(function (button) {
       button.addEventListener("click", function () {
-        var body = panel.querySelector(".review-body").value.trim();
+        var body = bodyOf(panel).value.trim();
         var event = button.dataset.event;
         if (event !== "APPROVE" && !body) {
-          panel.querySelector(".review-body").focus();
+          bodyOf(panel).focus();
           return;
         }
         // The host confirms before anything is sent; nothing leaves here on
@@ -2848,7 +2874,7 @@ input[type="checkbox"]:checked::after {
       drafts = [];
       if (panel) {
         panel.hidden = true;
-        panel.querySelector(".review-body").value = "";
+        bodyOf(panel).value = "";
       }
       if (message.comments) data.comments = message.comments;
       refreshReview();
@@ -3090,7 +3116,7 @@ input[type="checkbox"]:checked::after {
     var reply = threadBox.querySelector(".thread-reply");
     if (reply) {
       reply.hidden = !host;
-      reply.querySelector(".reply-body").value = "";
+      bodyOf(reply).value = "";
     }
 
     threadBox.hidden = false;
@@ -3218,7 +3244,7 @@ input[type="checkbox"]:checked::after {
     item("Copy link", function () { copyText(comment.url || ""); });
     item("Copy Markdown", function () { copyText(comment.body || ""); });
     item("Quote reply", function () {
-      var field = threadBox.querySelector(".reply-body");
+      var field = bodyOf(threadBox.querySelector(".thread-reply"));
       if (!field) return;
       var quoted = (comment.body || "")
         .split("\n")
@@ -3251,7 +3277,7 @@ input[type="checkbox"]:checked::after {
   /** Rewriting a remark reuses the reply box, which is already the right shape. */
   function startEdit(comment) {
     var reply = threadBox.querySelector(".thread-reply");
-    var field = reply && reply.querySelector(".reply-body");
+    var field = reply && bodyOf(reply);
     var send = reply && reply.querySelector(".reply-send");
     if (!field || !send) return;
 
@@ -3309,7 +3335,7 @@ input[type="checkbox"]:checked::after {
     var send = threadBox.querySelector(".reply-send");
     if (send) {
       send.addEventListener("click", function () {
-        var field = threadBox.querySelector(".reply-body");
+        var field = bodyOf(threadBox.querySelector(".thread-reply"));
         var text = field.value.trim();
         if (!text || !openThread) return;
         if (editing !== null) {

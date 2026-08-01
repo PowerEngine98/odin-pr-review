@@ -670,8 +670,8 @@ export const CLIENT_SCRIPT = String.raw`
         ? "Add a comment on line " + mark + end
         : "Add a comment on lines " + mark + start + "–" + mark + end;
 
-    composer.querySelector(".composer-body").value = "";
-    setTab("write");
+    bodyOf(composer).value = "";
+    setTab(composer, "write");
     composer.hidden = false;
 
     // Pinned under the last line it is about that is actually on screen. A row
@@ -683,7 +683,7 @@ export const CLIENT_SCRIPT = String.raw`
     }
     anchorLines = rows.map(function (row) { return row.querySelector(".text").textContent; });
     placeComposer();
-    composer.querySelector(".composer-body").focus();
+    bodyOf(composer).focus();
   }
 
   /**
@@ -719,22 +719,48 @@ export const CLIENT_SCRIPT = String.raw`
 
   /* ------------------------------------------------------- writing the words */
 
-  function setTab(which) {
-    if (!composer) return;
+  /** The field inside a box, whichever box it is. */
+  function bodyOf(root) {
+    return root && root.querySelector(".editor-body");
+  }
+
+  function setTab(root, which) {
+    if (!root) return;
     var writing = which !== "preview";
-    composer.querySelectorAll(".tab").forEach(function (tab) {
+    root.querySelectorAll(".tab").forEach(function (tab) {
       tab.classList.toggle("is-on", tab.dataset.tab === (writing ? "write" : "preview"));
     });
-    composer.querySelector(".composer-body").hidden = !writing;
-    var preview = composer.querySelector(".composer-preview");
+    var field = bodyOf(root);
+    var preview = root.querySelector(".editor-preview");
+    if (!field || !preview) return;
+
+    field.hidden = !writing;
     preview.hidden = writing;
     if (!writing) {
-      var text = composer.querySelector(".composer-body").value;
-      preview.innerHTML = text.trim()
-        ? renderMarkdown(text)
+      preview.innerHTML = field.value.trim()
+        ? renderMarkdown(field.value)
         : '<span class="empty">Nothing to preview</span>';
     }
   }
+
+  /** Wires one box: its two tabs and its markdown buttons. */
+  function initEditor(root) {
+    if (!root) return;
+    root.querySelectorAll(".tab").forEach(function (tab) {
+      tab.addEventListener("click", function (event) {
+        event.preventDefault();
+        setTab(root, tab.dataset.tab);
+      });
+    });
+    root.querySelectorAll(".md").forEach(function (button) {
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        applyMarkdown(root, button.dataset.md);
+      });
+    });
+  }
+
+  document.querySelectorAll(".editor").forEach(initEditor);
 
   /**
    * Markdown, as far as a comment box needs it.
@@ -857,8 +883,9 @@ export const CLIENT_SCRIPT = String.raw`
    * apply to every line the selection touches, because that is what someone
    * who has selected three lines and pressed the list button means.
    */
-  function applyMarkdown(kind) {
-    var field = composer.querySelector(".composer-body");
+  function applyMarkdown(root, kind) {
+    var field = bodyOf(root);
+    if (!field) return;
     var start = field.selectionStart;
     var end = field.selectionEnd;
     var value = field.value;
@@ -909,17 +936,10 @@ export const CLIENT_SCRIPT = String.raw`
     }
 
     field.focus();
-    setTab("write");
+    setTab(root, "write");
   }
 
   if (composer) {
-    composer.querySelectorAll(".tab").forEach(function (tab) {
-      tab.addEventListener("click", function () { setTab(tab.dataset.tab); });
-    });
-    composer.querySelectorAll(".md").forEach(function (button) {
-      button.addEventListener("click", function () { applyMarkdown(button.dataset.md); });
-    });
-
     composer.querySelector(".composer-cancel").addEventListener("click", function () {
       composer.hidden = true;
       pending = null;
@@ -931,7 +951,7 @@ export const CLIENT_SCRIPT = String.raw`
       // The fence, when there is one, is already in the text: the suggestion
       // button puts it there along with the lines it replaces, so what goes to
       // the forge is what the reviewer read back before pressing this.
-      var body = composer.querySelector(".composer-body").value.trim();
+      var body = bodyOf(composer).value.trim();
       if (!body || !pending) return;
 
       drafts.push({
@@ -1006,10 +1026,10 @@ export const CLIENT_SCRIPT = String.raw`
 
     panel.querySelectorAll(".review-submit").forEach(function (button) {
       button.addEventListener("click", function () {
-        var body = panel.querySelector(".review-body").value.trim();
+        var body = bodyOf(panel).value.trim();
         var event = button.dataset.event;
         if (event !== "APPROVE" && !body) {
-          panel.querySelector(".review-body").focus();
+          bodyOf(panel).focus();
           return;
         }
         // The host confirms before anything is sent; nothing leaves here on
@@ -1371,7 +1391,7 @@ export const CLIENT_SCRIPT = String.raw`
       drafts = [];
       if (panel) {
         panel.hidden = true;
-        panel.querySelector(".review-body").value = "";
+        bodyOf(panel).value = "";
       }
       if (message.comments) data.comments = message.comments;
       refreshReview();
@@ -1613,7 +1633,7 @@ export const CLIENT_SCRIPT = String.raw`
     var reply = threadBox.querySelector(".thread-reply");
     if (reply) {
       reply.hidden = !host;
-      reply.querySelector(".reply-body").value = "";
+      bodyOf(reply).value = "";
     }
 
     threadBox.hidden = false;
@@ -1741,7 +1761,7 @@ export const CLIENT_SCRIPT = String.raw`
     item("Copy link", function () { copyText(comment.url || ""); });
     item("Copy Markdown", function () { copyText(comment.body || ""); });
     item("Quote reply", function () {
-      var field = threadBox.querySelector(".reply-body");
+      var field = bodyOf(threadBox.querySelector(".thread-reply"));
       if (!field) return;
       var quoted = (comment.body || "")
         .split("\n")
@@ -1774,7 +1794,7 @@ export const CLIENT_SCRIPT = String.raw`
   /** Rewriting a remark reuses the reply box, which is already the right shape. */
   function startEdit(comment) {
     var reply = threadBox.querySelector(".thread-reply");
-    var field = reply && reply.querySelector(".reply-body");
+    var field = reply && bodyOf(reply);
     var send = reply && reply.querySelector(".reply-send");
     if (!field || !send) return;
 
@@ -1832,7 +1852,7 @@ export const CLIENT_SCRIPT = String.raw`
     var send = threadBox.querySelector(".reply-send");
     if (send) {
       send.addEventListener("click", function () {
-        var field = threadBox.querySelector(".reply-body");
+        var field = bodyOf(threadBox.querySelector(".thread-reply"));
         var text = field.value.trim();
         if (!text || !openThread) return;
         if (editing !== null) {
