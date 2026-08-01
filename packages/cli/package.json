@@ -1,0 +1,16 @@
+{
+  "name": "@odin/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "odin": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@odin/core": "0.1.0"
+  }
+}
