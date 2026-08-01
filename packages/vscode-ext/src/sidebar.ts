@@ -229,6 +229,13 @@ body {
    misses still in it, greyed, is longer than the list you started with. */
 .filtered-out { display: none !important; }
 
+/* The editor's own colour for a search hit in a list, so a match here looks
+   like a match anywhere else in the window. */
+.hit {
+  color: var(--vscode-list-highlightForeground, #2aaaff);
+  font-weight: 600;
+}
+
 .head .progress { color: var(--muted); }
 .head .progress .done {
   color: var(--vscode-progressBar-background, #0a84ff);
@@ -591,6 +598,46 @@ if (filter) {
  * Folders follow their contents. An empty one is not a result.
  */
 const treeFilter = document.getElementById("tree-filter");
+
+/**
+ * Marks the part of a label that matched.
+ *
+ * The original text is kept on the element the first time it is touched, so
+ * clearing the box restores exactly what was there rather than whatever the
+ * last search left behind. Every occurrence is marked, not just the first: a
+ * path can carry the same word twice and marking one of them reads as an
+ * accident.
+ */
+function markMatch(el, needle) {
+  if (!el) return;
+  if (el.dataset.text === undefined) el.dataset.text = el.textContent;
+  const text = el.dataset.text;
+
+  if (!needle) { el.textContent = text; return; }
+
+  const lower = text.toLowerCase();
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const found = lower.indexOf(needle, at);
+    if (found < 0) break;
+    out += escapeText(text.slice(at, found)) +
+      '<span class="hit">' + escapeText(text.slice(found, found + needle.length)) + "</span>";
+    at = found + needle.length;
+  }
+  if (at === 0) { el.textContent = text; return; }
+  el.innerHTML = out + escapeText(text.slice(at));
+}
+
+/* The text is a path or a symbol from the repository, not from a person, but
+   it is being written as markup — so it is escaped anyway. */
+function escapeText(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 if (treeFilter) {
   treeFilter.addEventListener("input", () => {
     const needle = treeFilter.value.trim().toLowerCase();
@@ -607,6 +654,7 @@ if (treeFilter) {
       const self = !searching || row.dataset.search.includes(needle);
       const keep = self || matchingRefs.length > 0;
       row.classList.toggle("filtered-out", !keep);
+      markMatch(row.querySelector(".name"), searching ? needle : "");
 
       if (refs && refs.classList.contains("refs")) {
         refs.querySelectorAll(".ref").forEach((ref) => {
@@ -614,6 +662,8 @@ if (treeFilter) {
           // the file that was asked for, not a subset of what it points at.
           const show = !searching || self || ref.dataset.search.includes(needle);
           ref.classList.toggle("filtered-out", !show);
+          markMatch(ref.querySelector(".symbol"), searching ? needle : "");
+          markMatch(ref.querySelector(".where"), searching ? needle : "");
         });
         // Opened while searching so a match inside is not hidden behind a
         // twisty the reader would have to guess at.

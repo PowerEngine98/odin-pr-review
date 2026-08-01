@@ -215,7 +215,9 @@ an author, a commit count and two ref names. The forge half is asked of the `gh`
 command line, so it inherits whatever authentication you already have, and its
 absence changes nothing else. `--pr` does the same on the command line.
 
-A filter box sits under the progress bar. A file matches on its path, a
+A filter box sits under the progress bar, and what matched is marked in the
+editor's own highlight colour — every occurrence, not just the first, since a
+path can carry the same word twice. A file matches on its path, a
 reference on the symbol it resolves to and the file and line it lands in — so
 searching a function name finds both the files that call it and the calls
 themselves, with the matching file's references opened rather than left behind a
