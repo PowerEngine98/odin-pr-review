@@ -4,6 +4,7 @@ import { parseUnifiedDiff } from "../src/diff/parse.js";
 import { toSvg } from "../src/export/svg.js";
 import { addPhantomNodes, buildGraph, sortGraph } from "../src/graph/build.js";
 import {
+  anchorRowForLine,
   cardTitle,
   displayRows,
   rowForLine,
@@ -300,7 +301,7 @@ describe("truncating a tall card", () => {
     expect(card.rows).toHaveLength(500);
   });
 
-  it("does not anchor an arrow to a row the card is not showing", () => {
+  it("points an arrow at the bar that would reveal its row", () => {
     const base = bigGraph(500);
     const node = base.nodes[0]!;
     const other = buildGraph(parseUnifiedDiff([
@@ -324,8 +325,32 @@ describe("truncating a tall card", () => {
     const placed = layoutGraph(graph);
     const arrow = placed.edges[0]!;
     const card = placed.nodes.find((n) => n.id === node.id)!;
-    expect(arrow.toRow).toBeUndefined();
-    expect(arrow.to.y).toBe(card.y + card.height / 2);
+
+    // Line 400 is past the cap, so the arrow lands on the "show more" bar
+    // rather than in the middle of unrelated code.
+    expect(arrow.toRow).toBe(card.visibleRows);
+    expect(arrow.to.y).toBe(card.y + rowOffset(card.visibleRows, placed.metrics));
+  });
+});
+
+describe("anchoring into a fold", () => {
+  it("points at the band standing in for the run", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    const rows = displayRows(node, [
+      { side: "head", startLine: 20, lines: Array.from({ length: 12 }, (_, i) => `line ${i}`) },
+    ]);
+    const gapIndex = rows.findIndex((r) => r.kind === "gap");
+
+    // A line inside the collapsed run resolves to the band, not to nothing.
+    expect(anchorRowForLine(rows, "head", 25, rows.length)).toBe(gapIndex);
+  });
+
+  it("still prefers the row itself when it is on screen", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    const rows = displayRows(node);
+    expect(anchorRowForLine(rows, "head", 2, rows.length)).toBe(
+      rowForLine(rows, "head", 2),
+    );
   });
 });
 

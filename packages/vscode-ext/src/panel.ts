@@ -35,9 +35,10 @@ export class GraphPanel {
     graph: ChangeGraph,
     layout: GraphLayout,
     repo: string,
+    withTests?: GraphLayout,
   ): GraphPanel {
     if (GraphPanel.current) {
-      GraphPanel.current.update(graph, layout, repo);
+      GraphPanel.current.update(graph, layout, repo, withTests);
       GraphPanel.current.panel.reveal(vscode.ViewColumn.One);
       return GraphPanel.current;
     }
@@ -55,7 +56,7 @@ export class GraphPanel {
       },
     );
 
-    GraphPanel.current = new GraphPanel(panel, graph, layout, repo);
+    GraphPanel.current = new GraphPanel(panel, graph, layout, repo, withTests);
     return GraphPanel.current;
   }
 
@@ -81,15 +82,19 @@ export class GraphPanel {
     await GraphPanel.current?.reveal(target.toPath, target.toLine, target.toSide);
   }
 
+  private withTests: GraphLayout | undefined;
+
   private constructor(
     panel: vscode.WebviewPanel,
     graph: ChangeGraph,
     layout: GraphLayout,
     repo: string,
+    withTests?: GraphLayout,
   ) {
     this.panel = panel;
     this.graph = graph;
     this.repo = repo;
+    this.withTests = withTests;
 
     this.render(layout);
 
@@ -112,9 +117,15 @@ export class GraphPanel {
 
   private layout!: GraphLayout;
 
-  update(graph: ChangeGraph, layout: GraphLayout, repo: string): void {
+  update(
+    graph: ChangeGraph,
+    layout: GraphLayout,
+    repo: string,
+    withTests?: GraphLayout,
+  ): void {
     this.graph = graph;
     this.repo = repo;
+    this.withTests = withTests;
     this.render(layout);
   }
 
@@ -128,6 +139,7 @@ export class GraphPanel {
     this.panel.webview.html = renderHtml(this.graph, layout, {
       theme: dark ? DARK_THEME : LIGHT_THEME,
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
+      ...(this.withTests ? { withTests: this.withTests } : {}),
     });
   }
 

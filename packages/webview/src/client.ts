@@ -408,8 +408,8 @@ export const CLIENT_SCRIPT = String.raw`
       '<div class="meta">' + escapeHtml(name(edge.fromPath)) + ":" + edge.fromLine +
       ' <span class="arrow">&rarr;</span> ' +
       escapeHtml(name(edge.toPath)) + ":" + edge.toLine + "</div>" +
-      '<div class="meta">' + edge.change + " &middot; " + edge.kind +
-      " &middot; " + edge.confidence + "</div>";
+      '<div class="facts"><span class="' + edge.change + '">' + edge.change +
+      "</span> &middot; " + edge.kind + " &middot; " + edge.confidence + "</div>";
     tooltip.title = edge.fromPath + " → " + edge.toPath;
     // The arrow in the tooltip is the arrow under the cursor, so it carries the
     // same colour: green for a reference the change introduced, red for one it

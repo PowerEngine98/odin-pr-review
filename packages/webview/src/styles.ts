@@ -400,6 +400,20 @@ html, body {
 .tooltip .target { color: var(--text); }
 .tooltip .meta { color: var(--muted); }
 
+/* What the reference is says something different from where it goes, so it is
+   set apart rather than run on as a third line of the same grey. */
+.tooltip .facts {
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--gutter);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+.tooltip .facts .added { color: var(--added); }
+.tooltip .facts .removed { color: var(--removed); }
+.tooltip .facts .unchanged { color: var(--unchanged); }
+
 .hint {
   position: fixed;
   right: 14px;

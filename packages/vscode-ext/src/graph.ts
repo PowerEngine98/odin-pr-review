@@ -4,6 +4,7 @@ import {
   collectProbes,
   CompositeResolver,
   languageLookup,
+  withoutTests,
   enrichSnippets,
   graphFromRepo,
   layoutGraph,
@@ -31,8 +32,14 @@ export interface BuildRequest {
 }
 
 export interface BuiltGraph {
+  /** Everything, so the sidebar can list what the canvas is hiding. */
   graph: ChangeGraph;
+  /** The default arrangement, with test files left out. */
   layout: GraphLayout;
+  /** The arrangement the tests checkbox switches to. */
+  layoutWithTests: GraphLayout;
+  /** The graph the default arrangement was laid out from. */
+  shown: ChangeGraph;
 }
 
 /**
@@ -118,7 +125,17 @@ export async function buildGraphForRepo(
 
     report("Laying out…");
     const snippets = await enrichSnippets(graph, { cwd: request.cwd });
-    return { graph, layout: layoutGraph(graph, { snippets }) };
+
+    // Tests are hidden by default and the checkbox swaps arrangements, so both
+    // are laid out here — the webview has no layout engine to compute the
+    // second one for itself.
+    const shown = withoutTests(graph);
+    return {
+      graph,
+      shown,
+      layout: layoutGraph(shown, { snippets }),
+      layoutWithTests: layoutGraph(graph, { snippets }),
+    };
   } finally {
     for (const checkout of checkouts) checkout.dispose();
   }

@@ -1,9 +1,9 @@
 import { sortGraph } from "../graph/build.js";
 import type { ChangeGraph, Edge, FileNode, Side } from "../model/types.js";
 import {
+  anchorRowForLine,
   cardTitle,
   displayRows,
-  rowForLine,
   titleLength,
   type DisplayRow,
   type Snippet,
@@ -363,7 +363,9 @@ function assignCoordinates(
 
       const sum = links.reduce((total, edge) => {
         const source = byId.get(edge.from.nodeId)!;
-        const sourceRow = visibleRow(source, rowForLine(source.rows, edge.from.side, edge.from.line));
+        const sourceRow = anchorRowForLine(
+          source.rows, edge.from.side, edge.from.line, source.visibleRows,
+        );
         const sourceY =
           source.y +
           (sourceRow === undefined
@@ -372,7 +374,7 @@ function assignCoordinates(
         const fileLevel = edge.kind === "import";
         const targetRow = fileLevel
           ? undefined
-          : visibleRow(node, rowForLine(node.rows, edge.to.side, edge.to.line));
+          : anchorRowForLine(node.rows, edge.to.side, edge.to.line, node.visibleRows);
         const offset = anchorOffset(node, targetRow, fileLevel, metrics);
         return total + (sourceY - offset);
       }, 0);
@@ -408,10 +410,12 @@ function routeEdges(
 
     // The call site of an import is a real line; its target is the file itself.
     const fileLevel = edge.kind === "import";
-    const fromRow = visibleRow(source, rowForLine(source.rows, edge.from.side, edge.from.line));
+    const fromRow = anchorRowForLine(
+      source.rows, edge.from.side, edge.from.line, source.visibleRows,
+    );
     const toRow = fileLevel
       ? undefined
-      : visibleRow(target, rowForLine(target.rows, edge.to.side, edge.to.line));
+      : anchorRowForLine(target.rows, edge.to.side, edge.to.line, target.visibleRows);
 
     const fromY = source.y + anchorOffset(source, fromRow, false, metrics);
     const toY = target.y + anchorOffset(target, toRow, fileLevel, metrics);
@@ -453,17 +457,6 @@ function anchorOffset(
 ): number {
   if (fileLevel) return metrics.titleHeight / 2;
   return row === undefined ? node.height / 2 : rowOffset(row, metrics);
-}
-
-/**
- * Keeps an anchor only while its row is on screen.
- *
- * A truncated card must not sprout an arrow from a line it is not showing; the
- * arrow falls back to the card edge, which says which file without claiming a
- * position it cannot point to.
- */
-function visibleRow(node: PlacedNode, row: number | undefined): number | undefined {
-  return row !== undefined && row < node.visibleRows ? row : undefined;
 }
 
 function groupByRank(nodes: PlacedNode[]): PlacedNode[][] {

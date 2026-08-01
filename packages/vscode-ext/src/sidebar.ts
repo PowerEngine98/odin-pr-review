@@ -10,6 +10,8 @@ import {
 } from "@odin/core";
 import * as vscode from "vscode";
 
+import { buildTree, type Folder } from "./tree-model.js";
+
 const STATUS_LABEL: Record<FileStatus, string> = {
   added: "A",
   modified: "M",
@@ -82,7 +84,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
 
 function html(graph: ChangeGraph | undefined, theme: Theme): string {
   const body = graph
-    ? graph.nodes.map((node) => fileRow(node, graph)).join("")
+    ? renderTree(buildTree(graph.nodes), graph, 0)
     : `<p class="empty">Review this branch to see its files here.</p>
        <button id="review">Review Pull Request</button>`;
 
@@ -115,6 +117,23 @@ body {
   cursor: pointer;
   white-space: nowrap;
 }
+
+/* Folders start open: the point of the grouping is to show the shape of the
+   project, which a closed tree hides. */
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.92em;
+}
+.folder:hover { background: var(--vscode-list-hoverBackground); }
+.folder .dir { overflow: hidden; text-overflow: ellipsis; }
+.folder-body { display: block; }
+.folder:not(.open) + .folder-body { display: none; }
 .row:hover { background: var(--vscode-list-hoverBackground); }
 .twisty {
   width: 12px;
@@ -189,6 +208,14 @@ ${body}
 <script>
 const vscodeApi = acquireVsCodeApi();
 
+document.querySelectorAll(".folder").forEach((folder) => {
+  folder.addEventListener("click", () => {
+    folder.classList.toggle("open");
+    const twisty = folder.querySelector(".twisty");
+    if (twisty) twisty.textContent = folder.classList.contains("open") ? "▾" : "▸";
+  });
+});
+
 document.querySelectorAll(".row").forEach((row) => {
   row.addEventListener("click", (event) => {
     // The twisty folds; anywhere else opens the file.
@@ -213,7 +240,23 @@ if (review) review.addEventListener("click", () => vscodeApi.postMessage({ type:
 </script></body></html>`;
 }
 
-function fileRow(node: FileNode, graph: ChangeGraph): string {
+function renderTree(folder: Folder, graph: ChangeGraph, depth: number): string {
+  const inner =
+    folder.folders.map((f) => renderTree(f, graph, depth + 1)).join("") +
+    folder.files.map((node) => fileRow(node, graph, depth)).join("");
+
+  if (folder.label === "") return inner;
+
+  const indent = depth * 10;
+  return (
+    `<div class="folder open" style="padding-left:${8 + indent}px">` +
+    `<span class="twisty">▾</span>` +
+    `<span class="dir">${escapeHtml(folder.label)}</span>` +
+    `</div><div class="folder-body">${inner}</div>`
+  );
+}
+
+function fileRow(node: FileNode, graph: ChangeGraph, depth = 0): string {
   const title = cardTitle(node);
   const outgoing = graph.edges.filter((e) => e.from.nodeId === node.id);
 
@@ -234,6 +277,7 @@ function fileRow(node: FileNode, graph: ChangeGraph): string {
 
   return (
     `<div class="row status-${node.status}" data-path="${escapeHtml(node.path)}" ` +
+    `style="padding-left:${8 + (depth + 1) * 10}px" ` +
     `title="${escapeHtml(node.path)}">` +
     `<span class="twisty${outgoing.length ? "" : " none"}">▸</span>` +
     `<span class="badge">${STATUS_LABEL[node.status]}</span>` +

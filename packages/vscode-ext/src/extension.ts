@@ -72,7 +72,7 @@ async function review(baseRef?: string): Promise<void> {
     { location: vscode.ProgressLocation.Notification, title: "Odin" },
     async (progress) => {
       try {
-        const { graph, layout } = await buildGraphForRepo({
+        const { graph, shown, layout, layoutWithTests } = await buildGraphForRepo({
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
@@ -87,7 +87,7 @@ async function review(baseRef?: string): Promise<void> {
           return;
         }
 
-        GraphPanel.show(graph, layout, repo);
+        GraphPanel.show(shown, layout, repo, layoutWithTests);
         sidebar.setGraph(graph);
         last = { repo, ...(base ? { baseRef: base } : {}) };
       } catch (error) {

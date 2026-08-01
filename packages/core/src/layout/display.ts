@@ -426,6 +426,81 @@ function basename(path: string): string {
 // ------------------------------------------------------------------- lookup
 
 /**
+ * Where an arrow for a given line should meet the card.
+ *
+ * The row itself when it is on screen. Otherwise the thing that would reveal
+ * it: the band standing in for the run it belongs to, or the bar at the foot
+ * of a truncated card. Pointing at the card's middle instead — as this used to
+ * — puts the arrow next to unrelated code and gives the reader nothing to act
+ * on, when the answer is "open this fold".
+ */
+export function anchorRowForLine(
+  rows: DisplayRow[],
+  side: Side,
+  line: number,
+  visibleRows: number,
+): number | undefined {
+  const exact = rowForLine(rows, side, line);
+  if (exact !== undefined) {
+    return exact < visibleRows ? exact : truncationBar(rows, visibleRows);
+  }
+
+  // Walk the visible rows, tracking the last concrete line, so each band's
+  // stand-in range can be read off its neighbours.
+  let previous = 0;
+  for (let i = 0; i < Math.min(visibleRows, rows.length); i++) {
+    const row = rows[i]!;
+
+    if (row.kind === "gap") {
+      const covered = coveredRange(row, previous, rows, i, side);
+      if (covered && line >= covered[0] && line <= covered[1]) return i;
+      previous = covered ? covered[1] : previous;
+      continue;
+    }
+
+    const value = side === "base" ? row.oldLine : row.newLine;
+    if (value !== undefined) previous = value;
+  }
+
+  return truncationBar(rows, visibleRows);
+}
+
+/** The index of the "show more" bar, when the card has one. */
+function truncationBar(
+  rows: DisplayRow[],
+  visibleRows: number,
+): number | undefined {
+  return rows.length > visibleRows ? visibleRows : undefined;
+}
+
+/** The line range a band stands in for. */
+function coveredRange(
+  row: Extract<DisplayRow, { kind: "gap" }>,
+  previous: number,
+  rows: DisplayRow[],
+  index: number,
+  side: Side,
+): [number, number] | undefined {
+  if (row.rows && row.rows.length > 0) {
+    const numbers = row.rows
+      .map((r) => (r.kind === "gap" ? undefined : side === "base" ? r.oldLine : r.newLine))
+      .filter((n): n is number => n !== undefined);
+    if (numbers.length > 0) {
+      return [Math.min(...numbers), Math.max(...numbers)];
+    }
+  }
+
+  // No material behind it, so infer the range from what surrounds it.
+  for (let i = index + 1; i < rows.length; i++) {
+    const next = rows[i]!;
+    if (next.kind === "gap") continue;
+    const value = side === "base" ? next.oldLine : next.newLine;
+    if (value !== undefined) return [previous + 1, value - 1];
+  }
+  return [previous + 1, previous + row.hidden];
+}
+
+/**
  * Index of the row showing a given line, or undefined when the line is not on
  * screen. Callers fall back to the card edge, which is honest: the arrow still
  * says which file, it just cannot say where.
