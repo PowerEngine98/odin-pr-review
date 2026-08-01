@@ -20,16 +20,40 @@ Every picture in this README is generated from the same fixture by
 ```sh
 yarn install
 yarn build
+ln -sf "$PWD/packages/cli/dist/main.js" ~/.local/bin/odin   # or call it by path
 
-# Open the change graph in a browser
-node packages/cli/dist/main.js graph --base main --resolve --format html -o graph.html
+# Render the change under review and print the url to open
+odin view
 
 # Human-readable overview
-node packages/cli/dist/main.js graph --base main --resolve --summary
+odin graph --summary
 
 # The graph itself
-node packages/cli/dist/main.js graph --base main --resolve -o graph.json
+odin graph --resolve -o graph.json
 ```
+
+`view` is the one command worth remembering. It renders what the editor shows —
+references resolved, the pull request's own comments marked against their lines
+— writes it beside the repository and prints a `file://` url. The file name
+comes from the repository and the branch pair, so reopening the same review
+reopens the same address; `--serve [port]` hands back an `http://127.0.0.1` one
+instead, for the callers a file url cannot reach.
+
+The page it writes cannot post anything back — there is nothing behind a file to
+post through. Writing is the command line's own job:
+
+```sh
+odin comments                                  # what has already been said
+odin review --event comment --body "notes" \
+  --comment "src/Dao.kt:180-185:this reads twice" --dry-run
+odin approve
+```
+
+Everything that touches the forge goes through `gh`, so it acts as whoever is
+authenticated and this program stores no credentials of its own. `--dry-run`
+prints the exact payload and sends nothing, which is where a malformed comment
+gets caught — the forge rejects a whole review for one bad range, taking every
+other remark in it down as well.
 
 Try it against the built-in fixture, which reproduces the design sketch:
 
@@ -284,11 +308,31 @@ the tool exists to build.
 | `@odin/resolver-ts` | Reference resolution through the TypeScript compiler API. |
 | `@odin/resolver-kotlin` | Kotlin reference resolution by symbol index. |
 | `@odin/webview` | The interactive renderer, emitted as one self-contained document. |
-| `@odin/cli` | `odin graph` — build and render a change graph from the terminal. |
+| `@odin/cli` | `odin` — render a change graph, and review through it, from the terminal. |
 | `odin-pr-review` | The VS Code extension. Bundled to CommonJS, since the editor loads extensions that way. |
 
 Reference resolution sits behind an interface, so the same graph can be produced
 headlessly by the compiler API or inside the editor by a language server.
+
+## For coding agents
+
+`.claude/` carries skills and commands so an agent can install and drive the
+tool without being told how each time.
+
+| Skill | For |
+| --- | --- |
+| `odin-setup` | Building it, putting `odin` on PATH, installing the extension, and the three failures that actually happen. |
+| `odin-graph` | Rendering a review and getting a url; which format answers which question. |
+| `odin-review` | Reading the comments already on a pull request, and writing new ones. |
+
+Two slash commands sit on top: `/odin` renders the current branch and hands back
+a url, `/odin-review` reads a pull request and drafts feedback.
+
+The review skill is deliberately restrictive. A review is visible to the whole
+team and cannot be withdrawn from here, so it tells the agent to dry-run first,
+to wait for the user to say yes, and never to approve unless approval is what
+was asked for. Reading needs no such ceremony — `odin comments` and
+`odin graph --summary` cost nothing and answer most questions.
 
 ## Status
 

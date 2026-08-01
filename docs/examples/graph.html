@@ -129,7 +129,52 @@ html, body {
   user-select: none;
 }
 .toolbar label:hover { color: var(--text); }
-.toolbar input { accent-color: var(--status-renamed); margin: 0; }
+.toolbar input { margin: 0; }
+
+/* Every box in the page is drawn rather than left to the platform. A native
+   checkbox is stark white on a dark page — it outshines the code it sits
+   beside, and an unticked one shouts louder than a ticked one, which is
+   backwards. Same shape as the sidebar's, so the two halves of the tool agree
+   about what a checkbox looks like. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1px solid color-mix(in srgb, var(--text) 32%, transparent);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  border-radius: 3px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 100ms ease, border-color 100ms ease;
+}
+input[type="checkbox"]:hover {
+  border-color: color-mix(in srgb, var(--text) 55%, transparent);
+}
+input[type="checkbox"]:checked {
+  background: var(--status-renamed);
+  border-color: var(--status-renamed);
+}
+/* Centred by the box model rather than by hand. The nudge is optical: a tick's
+   mass sits low and right of its bounding box, so squaring it to the box
+   leaves it looking dropped. */
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 3.5px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: translate(-0.5px, -1px) rotate(45deg) scale(0);
+  transform-origin: center;
+  transition: transform 90ms ease;
+}
+input[type="checkbox"]:checked::after {
+  transform: translate(-0.5px, -1px) rotate(45deg) scale(1);
+}
 
 .toolbar button {
   font: inherit;
@@ -288,6 +333,18 @@ html, body {
 }
 .row.add { background: var(--add-bg); color: var(--added); }
 .row.del { background: var(--del-bg); color: var(--removed); }
+
+/* A run of changed lines is one block of colour, not a stack of them.
+   Row heights are whole CSS pixels, but the canvas is scaled by a fraction, so
+   two rows that share an edge land it between device pixels and the compositor
+   antialiases both sides of it — a hairline of the page showing through every
+   boundary. Each row paints one pixel up into its own kind of neighbour, which
+   closes the seam without touching layout: a shadow occupies no space, so
+   nothing that measures rows can notice. Adjacency does the work of a wrapper
+   element, which would break the sibling rules that open and close gaps. */
+.row.add + .row.add { box-shadow: 0 -1px 0 0 var(--add-bg); }
+.row.del + .row.del { box-shadow: 0 -1px 0 0 var(--del-bg); }
+.row.gap + .row.gap { box-shadow: 0 -1px 0 0 var(--gap-bg); }
 
 /* A collapsed run of untouched code, banded the way a diff viewer marks the
    part of a file it is not showing. */
@@ -596,7 +653,15 @@ html, body {
   padding: 6px;
   resize: vertical;
 }
-.composer-suggest { display: block; margin: 6px 0; color: var(--muted); }
+.composer-suggest {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+.composer-suggest:hover { color: var(--text); }
 .composer-actions, .review-actions {
   display: flex;
   gap: 6px;
