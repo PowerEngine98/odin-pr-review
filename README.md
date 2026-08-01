@@ -154,10 +154,15 @@ instead of a mark per line, and a suggestion written against a span replaces
 the whole block. Comments already on the pull request keep their
 own spans, including the ones the branch has since moved out from under.
 
-Where the branch has an open pull request, its number and title appear in the
-toolbar, linked to the forge. This is asked of the `gh` command line, so it
-inherits whatever authentication you already have — and its absence changes
-nothing else. `--pr` does the same on the command line.
+Above the graph is the header the pull request has on the forge: its state, its
+title and number, who is merging what into where, how much of it you have read,
+and the button that sends the review. A reviewer arriving here has just come
+from that page or is about to go back to it, and answering "what am I looking
+at" in a second shape would mean learning a second shape for nothing. It renders
+without a pull request too — a branch compared against another branch still has
+an author, a commit count and two ref names. The forge half is asked of the `gh`
+command line, so it inherits whatever authentication you already have, and its
+absence changes nothing else. `--pr` does the same on the command line.
 
 Odin gets its own activity bar entry. The sidebar lists every changed file with
 its status, and expands to show the references leaving it — the graph as a list,
@@ -308,6 +313,7 @@ the tool exists to build.
 | `@odin/resolver-ts` | Reference resolution through the TypeScript compiler API. |
 | `@odin/resolver-kotlin` | Kotlin reference resolution by symbol index. |
 | `@odin/webview` | The interactive renderer, emitted as one self-contained document. |
+| `@odin/highlight` | Syntax colouring, from VS Code's own grammars by way of Shiki. |
 | `@odin/cli` | `odin` — render a change graph, and review through it, from the terminal. |
 | `odin-pr-review` | The VS Code extension. Bundled to CommonJS, since the editor loads extensions that way. |
 
@@ -363,6 +369,18 @@ toolbar names the gap, and `meta.coverage` records it in the JSON. A card with
 no arrows would otherwise be indistinguishable from a file that genuinely
 references nothing, and a reviewer who cannot tell those apart will read a
 blind spot as a clean bill of health.
+
+![Syntax colouring inside a card](docs/highlighting.png)
+
+Colouring is a separate question from resolution, and a wider one. The code in
+a card is highlighted by VS Code's own TextMate grammars, through
+[Shiki](https://shiki.style), so a Kotlin file reads the same here as in the
+editor beside it; nothing is written by hand and nothing runs in the browser,
+since the colouring happens where the page is built. Thirty grammars ship with
+the tool — the ones teams actually review — rather than the two hundred Shiki
+carries, and a language outside that list is said out loud in the toolbar
+(`no highlighting for dart`) instead of appearing as a card that is quietly
+grey. Adding one is a line in `packages/highlight`.
 
 Kotlin edges are marked `heuristic` because they come from matching call sites
 against an index of the repository's declarations rather than from a compiler.

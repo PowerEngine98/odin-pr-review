@@ -11,6 +11,9 @@
       "path": "./packages/resolver-kotlin"
     },
     {
+      "path": "./packages/highlight"
+    },
+    {
       "path": "./packages/webview"
     },
     {

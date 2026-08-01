@@ -19,6 +19,9 @@
     },
     {
       "path": "../resolver-kotlin"
+    },
+    {
+      "path": "../highlight"
     }
   ]
 }

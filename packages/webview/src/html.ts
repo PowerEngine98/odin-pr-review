@@ -41,6 +41,28 @@ export interface RenderOptions {
   comments?: ReviewComment[];
   /** Whether the host can post a review; without it the composer is pointless. */
   canReview?: boolean;
+  /**
+   * Syntax colouring, already loaded for the languages in this change.
+   *
+   * Structural on purpose: the renderer needs no dependency on whatever
+   * produces the tokens, and a caller with none simply leaves it out and gets
+   * the plain text it has always had.
+   */
+  highlight?: CodeHighlighter;
+}
+
+export interface CodeToken {
+  text: string;
+  color?: string;
+  /** 1 italic, 2 bold, 4 underline. */
+  fontStyle?: number;
+}
+
+export interface CodeHighlighter {
+  supports(language: string): boolean;
+  tokenize(language: string, code: string): CodeToken[][];
+  /** Languages in the change that nothing could colour. */
+  readonly missing: readonly string[];
 }
 
 /**
@@ -134,6 +156,14 @@ export function renderHtml(
 
   const nonce = options.csp ? ` nonce="${options.csp.nonce}"` : "";
 
+  // Cards first: colouring them is what fills the palette, and the palette has
+  // to be in the head before anything it names is used.
+  const palette = new Palette();
+  const cards = full.nodes
+    .map((node) => card(node, full, options.highlight, palette))
+    .join("\n");
+  const colours = palette.stylesheet();
+
   return [
     `<!doctype html>`,
     `<html lang="en"><head><meta charset="utf-8">`,
@@ -141,17 +171,18 @@ export function renderHtml(
     ...(options.csp ? [contentSecurityPolicy(options.csp)] : []),
     `<title>${escapeHtml(title)}</title>`,
     `<style>${stylesheet(theme, layout.metrics)}</style>`,
+    ...(colours ? [`<style>${colours}</style>`] : []),
     `</head><body>`,
     // One fixed block, so the two rows cannot drift apart and the canvas has a
     // single height to make room for.
     `<div class="chrome">`,
     prBar(graph),
-    toolbar(graph, layout),
+    toolbar(graph, layout, options.highlight),
     `</div>`,
     `<div class="viewport">`,
     `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
     edgeLayer(full),
-    full.nodes.map((node) => card(node, full)).join("\n"),
+    cards,
     `</div></div>`,
     `<div class="tooltip"></div>`,
     composer(),
@@ -179,7 +210,34 @@ function contentSecurityPolicy(csp: { nonce: string; source: string }): string {
   return `<meta http-equiv="Content-Security-Policy" content="${policy}">`;
 }
 
-function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
+/**
+ * Languages present in the change that nothing could colour.
+ *
+ * Said out loud rather than left as a card that is quietly grey. Odin bundles
+ * grammars for the languages it lists, not for all two hundred Shiki carries,
+ * and a reviewer looking at uncoloured code deserves to know which of the two
+ * reasons they are looking at.
+ */
+function paint(highlight: CodeHighlighter | undefined): string {
+  const missing = highlight?.missing ?? [];
+  if (missing.length === 0) return "";
+
+  const names = missing.length > 3
+    ? `${missing.slice(0, 3).join(", ")} and ${missing.length - 3} more`
+    : missing.join(", ");
+  return (
+    `<span class="paint" title="Odin ships VS Code's own grammars for the ` +
+    `languages it supports. These are not among them, so their code is shown ` +
+    `uncoloured; adding one is a line in @odin/highlight.">` +
+    `no highlighting for ${escapeHtml(names)}</span>`
+  );
+}
+
+function toolbar(
+  graph: ChangeGraph,
+  layout: GraphLayout,
+  highlight?: CodeHighlighter,
+): string {
   const gaps = describeGaps(graph.meta.coverage);
   const counts = layout.nodes.reduce<Record<string, number>>((acc, n) => {
     acc[n.node.status] = (acc[n.node.status] ?? 0) + 1;
@@ -197,6 +255,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
   return `<div class="toolbar">
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
+  ${paint(highlight)}
   <span class="spacer"></span>
   <span class="filters">
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
@@ -350,7 +409,94 @@ function hint(): string {
 </div>`;
 }
 
-function card(node: PlacedNode, layout: GraphLayout): string {
+/**
+ * Colours a card's code, one contiguous run at a time.
+ *
+ * Runs matter: a line taken on its own cannot be told apart from the middle of
+ * a block comment, so the largest genuinely adjacent stretch is handed over at
+ * once. Lines hidden inside an expandable gap are part of the stretch — they
+ * are the file's own lines, just folded — while a gap that knows nothing about
+ * what it hides ends it, since the next row is somewhere else in the file.
+ */
+function colourRows(
+  node: PlacedNode,
+  highlight: CodeHighlighter | undefined,
+): Map<DisplayRow, CodeToken[]> {
+  const coloured = new Map<DisplayRow, CodeToken[]>();
+  const language = node.node.language;
+  if (!highlight || !language || !highlight.supports(language)) return coloured;
+
+  let run: DisplayRow[] = [];
+  const flush = () => {
+    if (run.length === 0) return;
+    const lines = highlight.tokenize(language, run.map((r) => r.text).join("\n"));
+    run.forEach((row, i) => {
+      const line = lines[i];
+      if (line) coloured.set(row, line);
+    });
+    run = [];
+  };
+
+  const walk = (rows: readonly DisplayRow[]): void => {
+    for (const row of rows) {
+      if (row.kind === "gap") {
+        if (row.rows) walk(row.rows);
+        else flush();
+        continue;
+      }
+      run.push(row);
+    }
+  };
+
+  walk(node.rows);
+  flush();
+  return coloured;
+}
+
+/**
+ * The colours a page ended up using, as classes.
+ *
+ * A style attribute per token would be most of the document: a large card runs
+ * to thousands of tokens and a theme uses a dozen colours. Collecting them
+ * turns thirty bytes a token into three.
+ */
+class Palette {
+  private readonly names = new Map<string, string>();
+
+  classFor(token: CodeToken): string {
+    if (!token.color && !token.fontStyle) return "";
+    const key = `${token.color ?? ""}|${token.fontStyle ?? 0}`;
+    let name = this.names.get(key);
+    if (!name) {
+      name = `t${this.names.size}`;
+      this.names.set(key, name);
+    }
+    return name;
+  }
+
+  stylesheet(): string {
+    const rules: string[] = [];
+    for (const [key, name] of this.names) {
+      const [color, style] = key.split("|");
+      const bits = Number(style);
+      const parts = [
+        color ? `color:${color}` : "",
+        bits & 1 ? "font-style:italic" : "",
+        bits & 2 ? "font-weight:bold" : "",
+        bits & 4 ? "text-decoration:underline" : "",
+      ].filter(Boolean);
+      rules.push(`.${name}{${parts.join(";")}}`);
+    }
+    return rules.join("");
+  }
+}
+
+function card(
+  node: PlacedNode,
+  layout: GraphLayout,
+  highlight?: CodeHighlighter,
+  palette?: Palette,
+): string {
   const { metrics } = layout;
   const style =
     `left:${node.x}px;top:${node.y}px;` +
@@ -375,8 +521,9 @@ function card(node: PlacedNode, layout: GraphLayout): string {
   // Every row is written into the document, including the ones the card starts
   // out hiding. Expanding is then a matter of revealing markup that is already
   // there, and the browser's own search still finds code inside a closed gap.
+  const coloured = colourRows(node, highlight);
   const body = node.rows
-    .map((row, i) => renderRow(row, i >= node.visibleRows))
+    .map((row, i) => renderRow(row, i >= node.visibleRows, coloured, palette))
     .join("");
   const more =
     node.hiddenRows > 0
@@ -394,7 +541,12 @@ function card(node: PlacedNode, layout: GraphLayout): string {
 </div>`;
 }
 
-function renderRow(row: DisplayRow, beyondCap = false): string {
+function renderRow(
+  row: DisplayRow,
+  beyondCap = false,
+  coloured?: Map<DisplayRow, CodeToken[]>,
+  palette?: Palette,
+): string {
   const overflow = beyondCap ? " beyond-cap" : "";
 
   if (row.kind === "gap") {
@@ -403,7 +555,7 @@ function renderRow(row: DisplayRow, beyondCap = false): string {
     const expandable = row.rows ? " expandable" : "";
     const imports = row.imports ? " imports" : "";
     const hidden = (row.rows ?? [])
-      .map((inner) => renderRow(inner, beyondCap).replace(
+      .map((inner) => renderRow(inner, beyondCap, coloured, palette).replace(
         'class="row ', 'class="row in-gap ',
       ))
       .join("");
@@ -435,7 +587,7 @@ function renderRow(row: DisplayRow, beyondCap = false): string {
     `<span class="marker">${marker}</span>` +
     `<span class="num old${row.oldLine === undefined ? " anchor" : ""}">` +
       `${left ?? ""}</span>` +
-    `<span class="text">${escapeHtml(row.text)}</span>` +
+    `<span class="text">${code(row, coloured?.get(row), palette)}</span>` +
     `<span class="num new${row.newLine === undefined ? " anchor" : ""}">` +
       `${right ?? ""}</span></div>`;
 }
@@ -483,6 +635,27 @@ function pathOf(layout: GraphLayout, nodeId: string): string {
 
 function cssId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/**
+ * One line of code, coloured if anything could colour it.
+ *
+ * The characters are the file's, untouched — only spans are added around them.
+ * That matters for more than looks: the browser's own search still finds a
+ * string inside a card, and the width the layout engine measured is still the
+ * width the line takes.
+ */
+function code(row: DisplayRow, tokens?: CodeToken[], palette?: Palette): string {
+  if (!tokens || tokens.length === 0 || !palette) return escapeHtml(row.text);
+
+  return tokens
+    .map((token) => {
+      const name = palette.classFor(token);
+      return name
+        ? `<span class="${name}">${escapeHtml(token.text)}</span>`
+        : escapeHtml(token.text);
+    })
+    .join("");
 }
 
 function escapeHtml(value: string): string {

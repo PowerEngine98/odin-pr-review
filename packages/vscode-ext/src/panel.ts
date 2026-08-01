@@ -9,6 +9,7 @@ import {
   type ReviewComment,
   type ReviewEvent,
 } from "@odin/core";
+import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { renderHtml } from "@odin/webview";
 import * as vscode from "vscode";
 
@@ -58,8 +59,10 @@ export class GraphPanel {
     repo: string,
     withTests?: GraphLayout,
     viewed?: ViewedStore,
+    highlight?: Highlighter,
   ): GraphPanel {
     if (GraphPanel.current) {
+      GraphPanel.current.highlight = highlight;
       GraphPanel.current.update(graph, layout, repo, withTests, viewed);
       GraphPanel.current.panel.reveal(vscode.ViewColumn.One);
       return GraphPanel.current;
@@ -78,7 +81,9 @@ export class GraphPanel {
       },
     );
 
-    GraphPanel.current = new GraphPanel(panel, graph, layout, repo, withTests, viewed);
+    GraphPanel.current = new GraphPanel(
+      panel, graph, layout, repo, withTests, viewed, highlight,
+    );
     return GraphPanel.current;
   }
 
@@ -107,6 +112,8 @@ export class GraphPanel {
   private withTests: GraphLayout | undefined;
   private viewed: ViewedStore | undefined;
   private comments: ReviewComment[] = [];
+  /** Loaded before the first paint, so the code is never briefly grey. */
+  private highlight: Highlighter | undefined;
 
   /** Comments already on the pull request, shown against their lines. */
   setComments(comments: ReviewComment[]): void {
@@ -189,12 +196,14 @@ export class GraphPanel {
     repo: string,
     withTests?: GraphLayout,
     viewed?: ViewedStore,
+    highlight?: Highlighter,
   ) {
     this.panel = panel;
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;
     this.viewed = viewed;
+    this.highlight = highlight;
 
     this.render(layout);
 
@@ -259,6 +268,7 @@ export class GraphPanel {
       theme: dark ? DARK_THEME : LIGHT_THEME,
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
       ...(this.withTests ? { withTests: this.withTests } : {}),
+      ...(this.highlight ? { highlight: this.highlight } : {}),
       comments: this.comments,
       canReview: Boolean(this.graph.meta.pullRequest),
     });

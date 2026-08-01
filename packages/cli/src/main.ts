@@ -21,6 +21,7 @@ import {
   type ChangeGraph,
   type ReviewComment,
 } from "@odin/core";
+import { loadHighlighter } from "@odin/highlight";
 import { renderHtml } from "@odin/webview";
 
 import { parseArgs, USAGE, type GraphOptions } from "./args.js";
@@ -158,10 +159,18 @@ async function render(
         ? await pullRequestComments(opts.cwd)
         : [];
 
+      // Only the languages this change contains, so a two-file review does not
+      // pay for thirty grammars it will never look at.
+      const highlight = await loadHighlighter(
+        everything.nodes.map((n) => n.language ?? "plaintext"),
+        { dark: !opts.light },
+      );
+
       return renderHtml(graph, layout, {
         theme,
         withTests: layoutGraph(everything, { snippets }),
         ...(comments.length ? { comments } : {}),
+        highlight,
       });
     }
   }

@@ -7,6 +7,7 @@ import {
   listReviewComments,
   serializeGraph,
 } from "@odin/core";
+import { loadHighlighter } from "@odin/highlight";
 import { execFile } from "node:child_process";
 
 import * as vscode from "vscode";
@@ -16,6 +17,15 @@ import { buildGraphForRepo } from "./graph.js";
 import { GraphPanel } from "./panel.js";
 import { ChangeSidebar } from "./sidebar.js";
 import { ViewedStore } from "./viewed.js";
+
+/** The editor's own theme, which the grammars' colours have to match. */
+function isDark(): boolean {
+  const kind = vscode.window.activeColorTheme.kind;
+  return (
+    kind === vscode.ColorThemeKind.Dark ||
+    kind === vscode.ColorThemeKind.HighContrast
+  );
+}
 
 /** Which files the reviewer has marked off, shared by both views. */
 let viewed: ViewedStore;
@@ -185,7 +195,19 @@ async function review(baseRef?: string): Promise<void> {
         }
 
         viewed.open(repo, graph.meta.baseRef, graph.meta.headRef);
-        const panel = GraphPanel.show(shown, layout, repo, layoutWithTests, viewed);
+
+        // Loaded before the first paint. Colouring the code a beat after it
+        // appears would redraw the whole page and take the reviewer's scroll
+        // position with it.
+        progress.report({ message: "colouring" });
+        const highlight = await loadHighlighter(
+          graph.nodes.map((n) => n.language ?? "plaintext"),
+          { dark: isDark() },
+        );
+
+        const panel = GraphPanel.show(
+          shown, layout, repo, layoutWithTests, viewed, highlight,
+        );
 
         // Fetched after the graph is on screen: the picture is the point, and
         // waiting on the forge before showing it would be the wrong order.
