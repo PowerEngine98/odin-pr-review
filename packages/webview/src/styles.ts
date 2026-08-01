@@ -34,12 +34,11 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
   --line-number-right: ${metrics.lineNumberRight}px;
   --gap-bg: ${theme.gapBackground};
   --warning: ${theme.warning};
-  /* The one colour in the page that means "do the thing". The contrast comes
-     from the ink rather than the fill: white on a green this bright is about
-     two to one and was the weakest pairing in the page, while near-black on it
-     is about ten. */
-  --action: #41DB6D;
-  --action-ink: #06230F;
+  /* The one colour in the page that means "do the thing". Dark enough to carry
+     white at about five and a half to one, where the diff's own green — chosen
+     to sit behind code rather than under text — managed two. */
+  --action: #007C36;
+  --action-ink: #ffffff;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
