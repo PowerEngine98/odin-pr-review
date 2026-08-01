@@ -12,7 +12,7 @@ import { basePath } from "./probes.js";
 import type { ProbeResult } from "./types.js";
 
 export interface AttachOptions {
-  /** Which component produced these results; recorded on every edge. */
+  /** Fallback for results that do not name their own producer. */
   resolver: Edge["resolver"];
   /**
    * Keep references whose target lives in the same file as the call site.
@@ -89,7 +89,9 @@ export function attachEdges(
         change: CHANGE_BY_LINE[probe.changeKind],
         kind: target.kind,
         confidence: target.confidence,
-        resolver: options.resolver,
+        // Several resolvers may contribute to one graph, and their accuracy
+        // differs, so an edge records the one that actually produced it.
+        resolver: target.resolver ?? options.resolver,
       };
       if (target.label) edge.label = target.label;
       edges.set(id, edge);

@@ -4,6 +4,21 @@
     "rootDir": "./src",
     "outDir": "./dist"
   },
-  "include": ["src/**/*.ts"],
-  "references": [{ "path": "../core" }, { "path": "../resolver-ts" }, { "path": "../webview" }]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../resolver-ts"
+    },
+    {
+      "path": "../webview"
+    },
+    {
+      "path": "../resolver-kotlin"
+    }
+  ]
 }

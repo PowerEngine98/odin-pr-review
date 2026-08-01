@@ -154,6 +154,25 @@ html, body {
 .card-title .was { color: var(--muted); font-size: calc(var(--font-size) - 1px); }
 .card-title .stats { color: var(--muted); font-size: calc(var(--font-size) - 2px); }
 
+/* A file nothing could read. Marked rather than left blank, because a card
+   with no arrows otherwise looks like a file that references nothing. */
+.card-title .note {
+  color: var(--muted);
+  font-size: calc(var(--font-size) - 2px);
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 999px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.card.unresolved { border-style: dashed; }
+
+.toolbar .gaps {
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
 .card-body { padding: var(--padding) 0; }
 
 .row {

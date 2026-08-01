@@ -7,7 +7,18 @@
     "baseSha": "bbb36260ba9519af421a19335d93fa825090d753",
     "headSha": "795d1caa6c46efbb0084bd1320ed6a8d7e4c5bb7",
     "mergeBase": "bbb36260ba9519af421a19335d93fa825090d753",
-    "generator": "odin-pr-review/0.1.0"
+    "generator": "odin-pr-review/0.1.0",
+    "coverage": {
+      "analysed": 6,
+      "languages": [
+        {
+          "language": "typescript",
+          "files": 6,
+          "supported": true
+        }
+      ],
+      "unsupported": 0
+    }
   },
   "nodes": [
     {
@@ -111,7 +122,8 @@
           ]
         }
       ],
-      "symbols": []
+      "symbols": [],
+      "resolution": "analysed"
     },
     {
       "id": "n:a5d65acaa45a",
@@ -174,7 +186,8 @@
           ]
         }
       ],
-      "symbols": []
+      "symbols": [],
+      "resolution": "analysed"
     },
     {
       "id": "n:b2a4cf4d702e",
@@ -262,7 +275,8 @@
           ]
         }
       ],
-      "symbols": []
+      "symbols": [],
+      "resolution": "analysed"
     },
     {
       "id": "n:7ca9a636a596",
@@ -275,7 +289,8 @@
         "deletions": 0
       },
       "hunks": [],
-      "symbols": []
+      "symbols": [],
+      "resolution": "untouched"
     },
     {
       "id": "n:5353548f9372",
@@ -397,7 +412,8 @@
           ]
         }
       ],
-      "symbols": []
+      "symbols": [],
+      "resolution": "analysed"
     },
     {
       "id": "n:d26c6859c04e",
@@ -411,7 +427,8 @@
         "deletions": 0
       },
       "hunks": [],
-      "symbols": []
+      "symbols": [],
+      "resolution": "analysed"
     },
     {
       "id": "n:c14920f42f50",
@@ -530,7 +547,8 @@
           ]
         }
       ],
-      "symbols": []
+      "symbols": [],
+      "resolution": "analysed"
     }
   ],
   "edges": [

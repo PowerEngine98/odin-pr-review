@@ -1,4 +1,10 @@
-import type { Confidence, EdgeKind, LineKind, Side } from "../model/types.js";
+import type {
+  Confidence,
+  EdgeKind,
+  LineKind,
+  ResolverId,
+  Side,
+} from "../model/types.js";
 
 /**
  * A request to find outgoing references on one line of one file.
@@ -42,6 +48,8 @@ export interface ResolvedTarget {
   fromSymbolName?: string;
   /** Trimmed source text of the reference, for hover labels. */
   label?: string;
+  /** Which resolver produced this, when several are in play. */
+  resolver?: ResolverId;
 }
 
 export interface ProbeResult {
@@ -59,6 +67,14 @@ export interface ProbeResult {
  */
 export interface ReferenceResolver {
   readonly id: string;
+  /**
+   * Languages this resolver can answer for, as VS Code language ids.
+   *
+   * Declared rather than discovered so the graph can say which files nothing
+   * was able to look at. A file with no arrows is ambiguous otherwise: it might
+   * reference nothing, or nothing might have been able to tell.
+   */
+  readonly languages: readonly string[];
   resolve(probes: LineProbe[]): Promise<ProbeResult[]>;
   dispose?(): void | Promise<void>;
 }

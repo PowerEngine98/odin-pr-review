@@ -80,10 +80,16 @@ export class ChangeTreeProvider implements vscode.TreeDataProvider<Item> {
       colour ? new vscode.ThemeColor(colour) : undefined,
     );
 
-    treeItem.description =
+    const stats =
       node.status === "phantom"
         ? "untouched"
         : `+${node.stats.additions} −${node.stats.deletions}`;
+    // Without this a file nothing could read is indistinguishable from one that
+    // genuinely references nothing.
+    treeItem.description =
+      node.resolution === "unsupported"
+        ? `${stats} · no ${node.language} resolver`
+        : stats;
 
     treeItem.tooltip = new vscode.MarkdownString(
       [

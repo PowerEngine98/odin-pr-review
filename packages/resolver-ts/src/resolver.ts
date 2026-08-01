@@ -43,6 +43,12 @@ interface SideContext {
  */
 export class TsResolver implements ReferenceResolver {
   readonly id = "ts";
+  readonly languages = [
+    "typescript",
+    "typescriptreact",
+    "javascript",
+    "javascriptreact",
+  ] as const;
 
   private readonly options: TsResolverOptions;
   private readonly contexts = new Map<Side, SideContext | null>();
@@ -103,6 +109,7 @@ export class TsResolver implements ReferenceResolver {
       symbolName: nameText(nameNode, declaration),
       kind: site.kind,
       confidence: "resolved",
+      resolver: "ts",
       fromColumn: site.column,
       label: site.label,
     };

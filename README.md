@@ -230,6 +230,7 @@ the tool exists to build.
 | --- | --- |
 | `@odin/core` | Diff parsing, graph model, layout, validation, exporters. No editor dependency. |
 | `@odin/resolver-ts` | Reference resolution through the TypeScript compiler API. |
+| `@odin/resolver-kotlin` | Kotlin reference resolution by symbol index. |
 | `@odin/webview` | The interactive renderer, emitted as one self-contained document. |
 | `@odin/cli` | `odin graph` — build and render a change graph from the terminal. |
 | `odin-pr-review` | The VS Code extension. Bundled to CommonJS, since the editor loads extensions that way. |
@@ -251,21 +252,43 @@ headlessly by the compiler API or inside the editor by a language server.
 - [ ] Layout pinning so a file keeps its place across pushes
 - [ ] Syntax highlighting inside cards
 
+## Language support
+
+| Language | Resolver | Confidence | Both sides |
+| --- | --- | --- | --- |
+| TypeScript, JavaScript | TypeScript compiler API | `resolved` | yes |
+| Kotlin | symbol index | `heuristic` | yes |
+| anything else | — | — | — |
+
+A file in an unsupported language still becomes a card with its diff — it just
+has no arrows. That is reported rather than left to inference: the card is
+outlined with a dashed border and labelled `no <language> resolver`, the
+toolbar names the gap, and `meta.coverage` records it in the JSON. A card with
+no arrows would otherwise be indistinguishable from a file that genuinely
+references nothing, and a reviewer who cannot tell those apart will read a
+blind spot as a clean bill of health.
+
+Kotlin edges are marked `heuristic` because they come from matching call sites
+against an index of the repository's declarations rather than from a compiler.
+Ambiguity is declined rather than guessed: where two declarations share a name
+and neither the imports nor the package can separate them, no arrow is drawn.
+A missing arrow is recoverable; one that sends you to the wrong file is not.
+
 ### Known gaps
 
 - In a monorepo where packages import each other through built type
   declarations, cross-package edges are dropped: the definition resolves into a
   `.d.ts`, which the domain filter treats as third-party. Following declaration
   maps back to source would recover them.
-- Only TypeScript and JavaScript resolve today. Other languages produce vertices
-  but no edges until the editor-backed resolver lands.
+- A file with hundreds of added lines becomes a very tall card, since there is
+  nothing unchanged in it to collapse.
 - Large pull requests render every card at once. Virtualisation is needed before
   this is comfortable past a few hundred files.
 
 ## Development
 
 ```sh
-yarn test                      # 98 unit tests
+yarn test                      # 117 unit tests
 yarn test:integration          # 6 tests inside a real VS Code extension host
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples

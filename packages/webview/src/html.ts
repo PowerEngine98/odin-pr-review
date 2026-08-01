@@ -1,6 +1,7 @@
 import {
   DARK_THEME,
   cardTitle,
+  describeGaps,
   type ChangeGraph,
   type DisplayRow,
   type GraphLayout,
@@ -118,6 +119,7 @@ function contentSecurityPolicy(csp: { nonce: string; source: string }): string {
 }
 
 function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
+  const gaps = describeGaps(graph.meta.coverage);
   const counts = layout.nodes.reduce<Record<string, number>>((acc, n) => {
     acc[n.node.status] = (acc[n.node.status] ?? 0) + 1;
     return acc;
@@ -134,6 +136,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
   return `<div class="toolbar">
   <span class="refs"><strong>${escapeHtml(graph.meta.baseRef)}</strong> → <strong>${escapeHtml(graph.meta.headRef)}</strong></span>
   <span class="legend">${legend}</span>
+  ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
   <span class="spacer"></span>
   <label><input type="checkbox" id="filter-imports" checked> imports</label>
   <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
@@ -157,13 +160,17 @@ function card(node: PlacedNode, layout: GraphLayout): string {
   const title = cardTitle(node.node);
   const was = title.was ? `<span class="was">${escapeHtml(title.was)}</span>` : "";
   const stats = `<span class="stats">${escapeHtml(title.stats)}</span>`;
+  const note = title.note
+    ? `<span class="note" title="Odin could not look for references in this file">${escapeHtml(title.note)}</span>`
+    : "";
 
   void metrics;
   const body = node.rows.map(renderRow).join("");
 
-  return `<div class="card status-${node.node.status}" id="card-${cssId(node.id)}" ` +
+  const unresolved = title.note ? " unresolved" : "";
+  return `<div class="card status-${node.node.status}${unresolved}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
-  <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}</div>
+  <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}</div>
   <div class="card-body">${body}</div>
 </div>`;
 }

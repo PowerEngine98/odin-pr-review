@@ -234,6 +234,14 @@ export interface CardTitle {
   was: string;
   /** `+3 −1`, or `untouched` for a file the diff never mentioned. */
   stats: string;
+  /**
+   * Why this card has no arrows, when the reason is not "it has none".
+   *
+   * Shown because a bare card is otherwise indistinguishable from a file that
+   * genuinely references nothing, and a reviewer who cannot tell them apart
+   * will read a blind spot as a clean bill of health.
+   */
+  note: string;
 }
 
 export function cardTitle(node: FileNode): CardTitle {
@@ -244,6 +252,12 @@ export function cardTitle(node: FileNode): CardTitle {
       node.status === "phantom"
         ? "untouched"
         : `+${node.stats.additions} −${node.stats.deletions}`,
+    note:
+      node.resolution === "unsupported"
+        ? `no ${node.language} resolver`
+        : node.resolution === "binary"
+          ? "binary"
+          : "",
   };
 }
 
@@ -255,7 +269,7 @@ export function cardTitle(node: FileNode): CardTitle {
  * clip the text, it overflows the card and reads as missing padding.
  */
 export function titleLength(title: CardTitle): number {
-  const parts = [title.name, title.was, title.stats].filter(Boolean);
+  const parts = [title.name, title.was, title.stats, title.note].filter(Boolean);
   // One space of separation between parts, as the renderers lay them out.
   return parts.join("  ").length;
 }

@@ -27,6 +27,23 @@ export type FileStatus =
   /** Not part of the diff at all; pulled in because an edge points at it. */
   | "phantom";
 
+/**
+ * Why a file does or does not have edges.
+ *
+ * Absence of arrows is ambiguous on its own — it could mean the change touches
+ * nothing else, or that nothing was able to look. A reviewer has to be able to
+ * tell those apart, so it is recorded rather than left to inference.
+ */
+export type ResolutionStatus =
+  /** A resolver ran over this file's changed lines. */
+  | "analysed"
+  /** No resolver handles this language; the file has diff lines but no edges. */
+  | "unsupported"
+  /** Binary content; there is nothing to parse. */
+  | "binary"
+  /** Pulled in by an edge, never analysed in its own right. */
+  | "untouched";
+
 /** Which side of the comparison a position refers to. */
 export type Side = "base" | "head";
 
@@ -57,7 +74,13 @@ export type Confidence = "resolved" | "heuristic" | "guess";
  *  - `ts`   the TypeScript compiler API, running headlessly
  *  - `lsp`  a language server, via the editor
  */
-export type ResolverId = "ts" | "lsp" | "tree-sitter" | "regex" | "manual";
+export type ResolverId =
+  | "ts"
+  | "kotlin"
+  | "lsp"
+  | "tree-sitter"
+  | "regex"
+  | "manual";
 
 /** One physical line inside a hunk. */
 export interface DiffLine {
@@ -116,6 +139,8 @@ export interface FileNode {
   hunks: Hunk[];
   /** Populated by a resolver; empty until symbol information is available. */
   symbols: SymbolRef[];
+  /** Whether anything was able to look for references in this file. */
+  resolution?: ResolutionStatus;
 }
 
 /** One end of an edge: a precise position inside a node. */
@@ -162,6 +187,22 @@ export interface GraphMeta {
   generator: string;
   /** ISO-8601. Opt-in only, since it breaks byte-for-byte reproducibility. */
   generatedAt?: string;
+  /** What the resolvers could and could not reach. */
+  coverage?: Coverage;
+}
+
+/** A summary of how much of the change anything was able to analyse. */
+export interface Coverage {
+  analysed: number;
+  unsupported: number;
+  /** Languages present in the change, and whether a resolver handles each. */
+  languages: LanguageCoverage[];
+}
+
+export interface LanguageCoverage {
+  language: string;
+  files: number;
+  supported: boolean;
 }
 
 /** The whole document. This is what gets serialised to JSON. */

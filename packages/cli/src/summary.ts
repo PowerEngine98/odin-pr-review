@@ -1,4 +1,4 @@
-import type { ChangeGraph, FileStatus } from "@odin/core";
+import { describeGaps, type ChangeGraph, type FileStatus } from "@odin/core";
 
 const BADGE: Record<FileStatus, string> = {
   added: "A",
@@ -27,6 +27,11 @@ export function summarize(graph: ChangeGraph): string {
 
   out.push("");
   out.push(`${graph.nodes.length} nodes, ${graph.edges.length} edges`);
+
+  // Say what nothing was able to read, so an absence of arrows is never
+  // mistaken for an absence of relationships.
+  const gaps = describeGaps(graph.meta.coverage);
+  if (gaps) out.push(gaps);
 
   if (graph.edges.length > 0) {
     const byId = new Map(graph.nodes.map((n) => [n.id, n.path]));

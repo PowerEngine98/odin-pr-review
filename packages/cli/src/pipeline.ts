@@ -1,11 +1,16 @@
 import {
+  annotateCoverage,
   attachEdges,
   collectProbes,
+  CompositeResolver,
+  languageLookup,
   materializeTree,
   revParse,
   type ChangeGraph,
   type Checkout,
+  type ReferenceResolver,
 } from "@odin/core";
+import { KotlinResolver } from "@odin/resolver-kotlin";
 import { TsResolver } from "@odin/resolver-ts";
 
 export interface ResolveRequest {
@@ -17,13 +22,7 @@ export interface ResolveRequest {
   includeImports?: boolean;
 }
 
-/** Languages the TypeScript resolver can answer for. */
-const SUPPORTED = [
-  "typescript",
-  "typescriptreact",
-  "javascript",
-  "javascriptreact",
-];
+
 
 /**
  * Adds edges to a change graph.
@@ -37,11 +36,25 @@ export async function resolveEdges(
   graph: ChangeGraph,
   request: ResolveRequest,
 ): Promise<ChangeGraph> {
+  // Built before probing so the language list is known, and so coverage can be
+  // reported even when nothing resolves.
+  const build = (roots: { head: string; base?: string }): ReferenceResolver[] => [
+    new TsResolver({
+      roots,
+      ...(request.includeImports === false ? { includeImports: false } : {}),
+    }),
+    new KotlinResolver({
+      roots,
+      ...(request.includeImports === false ? { includeImports: false } : {}),
+    }),
+  ];
+  const languages = build({ head: request.cwd }).flatMap((r) => [...r.languages]);
+
   const probes = collectProbes(graph, {
-    languages: SUPPORTED,
+    languages,
     ...(request.includeContext ? { includeContext: true } : {}),
   });
-  if (probes.length === 0) return graph;
+  if (probes.length === 0) return annotateCoverage(graph, languages);
 
   const needsBase = probes.some((p) => p.side === "base");
   const checkouts: Checkout[] = [];
@@ -69,16 +82,15 @@ export async function resolveEdges(
       headRoot = checkout.dir;
     }
 
-    const resolver = new TsResolver({
-      roots: { head: headRoot, ...(baseRoot ? { base: baseRoot } : {}) },
-      ...(request.includeImports === false ? { includeImports: false } : {}),
-    });
+    const roots = { head: headRoot, ...(baseRoot ? { base: baseRoot } : {}) };
+    const resolver = new CompositeResolver(build(roots), languageLookup(graph));
 
     try {
       const results = await resolver.resolve(probes);
-      return attachEdges(graph, results, { resolver: "ts" });
+      const withEdges = attachEdges(graph, results, { resolver: "ts" });
+      return annotateCoverage(withEdges, languages);
     } finally {
-      resolver.dispose();
+      await resolver.dispose();
     }
   } finally {
     for (const checkout of checkouts) checkout.dispose();

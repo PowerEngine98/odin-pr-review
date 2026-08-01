@@ -1,6 +1,9 @@
 import {
+  annotateCoverage,
   attachEdges,
   collectProbes,
+  CompositeResolver,
+  languageLookup,
   enrichSnippets,
   graphFromRepo,
   layoutGraph,
@@ -11,15 +14,10 @@ import {
   type Checkout,
   type GraphLayout,
 } from "@odin/core";
+import { KotlinResolver } from "@odin/resolver-kotlin";
 import { TsResolver } from "@odin/resolver-ts";
 
-/** Languages the bundled resolver can answer for. */
-const SUPPORTED = [
-  "typescript",
-  "typescriptreact",
-  "javascript",
-  "javascriptreact",
-];
+
 
 export interface BuildRequest {
   /** Repository root. */
@@ -60,8 +58,20 @@ export async function buildGraphForRepo(
     headRef,
   });
 
+  const build = (roots: { head: string; base?: string }) => [
+    new TsResolver({
+      roots,
+      ...(request.includeImports ? {} : { includeImports: false }),
+    }),
+    new KotlinResolver({
+      roots,
+      ...(request.includeImports ? {} : { includeImports: false }),
+    }),
+  ];
+  const languages = build({ head: request.cwd }).flatMap((r) => [...r.languages]);
+
   const probes = collectProbes(graph, {
-    languages: SUPPORTED,
+    languages,
     ...(request.includeContext ? { includeContext: true } : {}),
   });
 
@@ -91,18 +101,20 @@ export async function buildGraphForRepo(
       }
 
       report("Resolving references…");
-      const resolver = new TsResolver({
-        roots: { head: headRoot, ...(baseRoot ? { base: baseRoot } : {}) },
-        ...(request.includeImports ? {} : { includeImports: false }),
-      });
+      const resolver = new CompositeResolver(
+        build({ head: headRoot, ...(baseRoot ? { base: baseRoot } : {}) }),
+        languageLookup(graph),
+      );
       try {
         graph = attachEdges(graph, await resolver.resolve(probes), {
           resolver: "ts",
         });
       } finally {
-        resolver.dispose();
+        await resolver.dispose();
       }
     }
+
+    graph = annotateCoverage(graph, languages);
 
     report("Laying out…");
     const snippets = await enrichSnippets(graph, { cwd: request.cwd });

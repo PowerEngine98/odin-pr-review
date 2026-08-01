@@ -68,7 +68,9 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
   );
 
   const title = cardTitle(node.node);
-  const heading = [title.name, title.was, title.stats].filter(Boolean).join("  ");
+  const heading = [title.name, title.was, title.stats, title.note]
+    .filter(Boolean)
+    .join("  ");
   parts.push(
     `<text x="${node.x + node.width / 2}" y="${node.y + metrics.titleHeight - 12}" ` +
       `fill="${stroke}" font-size="${metrics.fontSize + 1}" text-anchor="middle">` +

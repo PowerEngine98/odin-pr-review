@@ -16,6 +16,8 @@ export * from "./layout/theme.js";
 export * from "./resolve/types.js";
 export * from "./resolve/probes.js";
 export * from "./resolve/attach.js";
+export * from "./resolve/coverage.js";
+export * from "./resolve/composite.js";
 export * from "./export/svg.js";
 export * from "./export/mermaid.js";
 export * from "./export/dot.js";
