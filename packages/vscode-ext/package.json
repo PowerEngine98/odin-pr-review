@@ -34,7 +34,7 @@
       },
       {
         "command": "odin.reviewAgainst",
-        "title": "Review Against a Different Base\u2026",
+        "title": "Review Against a Different Base…",
         "category": "Odin"
       },
       {
@@ -71,6 +71,12 @@
         "title": "Refresh",
         "category": "Odin",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "odin.chooser",
+        "title": "Choose Another Pull Request",
+        "category": "Odin",
+        "icon": "$(arrow-left)"
       },
       {
         "command": "odin.checkout",
@@ -121,12 +127,17 @@
     "viewsWelcome": [
       {
         "view": "odin.changes",
-        "contents": "Review this branch as a graph: every changed file becomes a card, every call-site reference becomes an arrow.\n\n[Review Pull Request](command:odin.review)\n[Choose a base branch\u2026](command:odin.reviewAgainst)\n\nThe diff is taken from the merge base, not the branch tip.",
+        "contents": "Review this branch as a graph: every changed file becomes a card, every call-site reference becomes an arrow.\n\n[Review Pull Request](command:odin.review)\n[Choose a base branch…](command:odin.reviewAgainst)\n\nThe diff is taken from the merge base, not the branch tip.",
         "when": "workspaceFolderCount != 0"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "odin.chooser",
+          "when": "view == odin.changes && odin.hasGraph",
+          "group": "navigation@0"
+        },
         {
           "command": "odin.showGraph",
           "when": "view == odin.changes",
@@ -147,10 +158,10 @@
   },
   "dependencies": {
     "@odin/core": "0.1.0",
-    "@odin/resolver-ts": "0.1.0",
-    "@odin/webview": "0.1.0",
+    "@odin/highlight": "0.1.0",
     "@odin/resolver-kotlin": "0.1.0",
-    "@odin/highlight": "0.1.0"
+    "@odin/resolver-ts": "0.1.0",
+    "@odin/webview": "0.1.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

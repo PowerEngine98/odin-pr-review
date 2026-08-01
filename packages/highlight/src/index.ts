@@ -2,6 +2,7 @@ import {
   createHighlighterCore,
   type HighlighterCore,
   type LanguageInput,
+  type ThemeRegistrationRaw,
 } from "@shikijs/core";
 import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
 
@@ -143,7 +144,18 @@ const LABELS: Record<string, string> = {
  */
 export async function loadHighlighter(
   languages: Iterable<string>,
-  options: { dark?: boolean } = {},
+  options: {
+    dark?: boolean;
+    /**
+     * The reviewer's own theme, as a VS Code theme file.
+     *
+     * Given one, the code in a card is coloured by the same rules colouring it
+     * in the editor beside it — which is the whole claim this package makes.
+     * Without one it falls back to VS Code's default, a close relative of most
+     * themes and far better than no colour.
+     */
+    theme?: Record<string, unknown>;
+  } = {},
 ): Promise<Highlighter> {
   const wanted = new Set<string>();
   const missing: string[] = [];
@@ -156,10 +168,19 @@ export async function loadHighlighter(
   }
   missing.sort();
 
-  const themeName = options.dark === false ? "light-plus" : "dark-plus";
-  const theme = options.dark === false
-    ? await import("@shikijs/themes/light-plus")
-    : await import("@shikijs/themes/dark-plus");
+  const supplied = options.theme && Array.isArray(options.theme.tokenColors)
+    ? (options.theme as unknown as ThemeRegistrationRaw)
+    : undefined;
+
+  const fallback = options.dark === false ? "light-plus" : "dark-plus";
+  const themeName = supplied
+    ? String((supplied as { name?: string }).name || "editor")
+    : fallback;
+  const theme = supplied
+    ? { ...supplied, name: themeName }
+    : options.dark === false
+      ? await import("@shikijs/themes/light-plus")
+      : await import("@shikijs/themes/dark-plus");
 
   let core: HighlighterCore | undefined;
   if (wanted.size > 0) {

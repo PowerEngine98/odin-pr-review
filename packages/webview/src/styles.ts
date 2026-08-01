@@ -34,6 +34,10 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
   --line-number-right: ${metrics.lineNumberRight}px;
   --gap-bg: ${theme.gapBackground};
   --warning: ${theme.warning};
+  /* The one colour in the page that means "do the thing", rather than
+     describing a diff. Kept out of the theme's diff palette on purpose: green
+     and red are already spoken for by added and removed. */
+  --action: #7C36FF;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -193,7 +197,9 @@ html, body {
 .prbar .tag.muted { color: var(--muted); }
 
 /* Sending a review is the one irreversible thing this page can do, so it is
-   the one control drawn as a filled button. */
+   the one control drawn as a filled button. White on the diff's own green was
+   the weakest contrast in the page — that green is chosen to sit behind code,
+   not under text — so the action takes a colour of its own. */
 .prbar .submit {
   display: inline-flex;
   align-items: center;
@@ -202,8 +208,8 @@ html, body {
   font: inherit;
   font-weight: 600;
   color: #fff;
-  background: var(--status-added);
-  border: 1px solid color-mix(in srgb, #000 18%, var(--status-added));
+  background: var(--action);
+  border: 1px solid color-mix(in srgb, #000 22%, var(--action));
   border-radius: 6px;
   padding: 5px 12px;
   cursor: pointer;
@@ -928,8 +934,8 @@ input[type="checkbox"]:checked::after {
 .composer .md:hover { color: var(--text); }
 .composer button.primary {
   color: #fff;
-  background: var(--status-added);
-  border-color: color-mix(in srgb, #000 18%, var(--status-added));
+  background: var(--action);
+  border-color: color-mix(in srgb, #000 22%, var(--action));
   font-weight: 600;
 }
 .composer button.primary:hover { color: #fff; filter: brightness(1.08); }
@@ -982,7 +988,13 @@ input[type="checkbox"]:checked::after {
   white-space: nowrap;
 }
 .review-item .drop { padding: 0 6px; font-size: 11px; }
-.review-submit[data-event="APPROVE"] { color: var(--added); border-color: var(--added); }
+.review-submit[data-event="APPROVE"] {
+  color: #fff;
+  background: var(--action);
+  border-color: color-mix(in srgb, #000 22%, var(--action));
+  font-weight: 600;
+}
+.review-submit[data-event="APPROVE"]:hover { color: #fff; filter: brightness(1.08); }
 .review-submit[data-event="REQUEST_CHANGES"] { color: var(--removed); border-color: var(--removed); }
 
 .toolbar #action-review {

@@ -393,7 +393,13 @@ Colouring is a separate question from resolution, and a wider one. The code in
 a card is highlighted by VS Code's own TextMate grammars, through
 [Shiki](https://shiki.style), so a Kotlin file reads the same here as in the
 editor beside it; nothing is written by hand and nothing runs in the browser,
-since the colouring happens where the page is built. Thirty grammars ship with
+since the colouring happens where the page is built. Inside the editor it uses
+**your** theme, not an approximation of it: the extension finds whichever one
+`workbench.colorTheme` names, reads it the way the editor does — following the
+`include` chain, since a theme is usually a thin file over a thick one — and
+hands it to Shiki. A theme it cannot find or parse falls back to VS Code's
+default rather than to no colour. On the command line there is no editor to ask,
+so the default is what you get. Thirty grammars ship with
 the tool — the ones teams actually review — rather than the two hundred Shiki
 carries, and a language outside that list is said out loud in the toolbar
 (`no highlighting for dart`) instead of appearing as a card that is quietly

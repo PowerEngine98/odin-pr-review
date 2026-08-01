@@ -16,6 +16,7 @@ import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo } from "./graph.js";
 import { GraphPanel } from "./panel.js";
 import { ChangeSidebar } from "./sidebar.js";
+import { activeTheme } from "./theme.js";
 import { ViewedStore } from "./viewed.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
@@ -53,6 +54,7 @@ export function activate(context: vscode.ExtensionContext): void {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     vscode.commands.registerCommand("odin.showGraph", () => GraphPanel.revealCurrent()),
+    vscode.commands.registerCommand("odin.chooser", () => sidebar.showChooser()),
     vscode.commands.registerCommand("odin.refresh", () =>
       review(last?.baseRef),
     ),
@@ -200,9 +202,10 @@ async function review(baseRef?: string): Promise<void> {
         // appears would redraw the whole page and take the reviewer's scroll
         // position with it.
         progress.report({ message: "colouring" });
+        const theme = await activeTheme();
         const highlight = await loadHighlighter(
           graph.nodes.map((n) => n.language ?? "plaintext"),
-          { dark: isDark() },
+          { dark: isDark(), ...(theme ? { theme } : {}) },
         );
 
         const panel = GraphPanel.show(

@@ -14,6 +14,7 @@ import { renderHtml } from "@odin/webview";
 import * as vscode from "vscode";
 
 import { baseUri } from "./baseContent.js";
+import { activeTheme } from "./theme.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
 
@@ -215,8 +216,11 @@ export class GraphPanel {
 
     // The graph is themed from the editor, so it has to be redrawn when the
     // editor's theme flips between light and dark.
+    // A new theme means new token colours as well as new chrome, and the
+    // grammars are loaded against a theme. Re-reading it is a moment's work
+    // and the alternative is a page in one theme's colours and another's.
     vscode.window.onDidChangeActiveColorTheme(
-      () => this.render(this.layout),
+      () => void this.recolour(),
       undefined,
       this.disposables,
     );
@@ -238,6 +242,25 @@ export class GraphPanel {
     this.withTests = withTests;
     this.viewed = viewed;
     this.render(layout);
+  }
+
+  /** Reloads the highlighter against the theme now in use, then redraws. */
+  private async recolour(): Promise<void> {
+    const languages = this.graph.nodes.map((n) => n.language ?? "plaintext");
+    const dark =
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
+
+    try {
+      const theme = await activeTheme();
+      this.highlight = await loadHighlighter(languages, {
+        dark,
+        ...(theme ? { theme } : {}),
+      });
+    } catch {
+      // Keep whatever colours we had rather than losing them to a bad theme.
+    }
+    this.render(this.layout);
   }
 
   private render(layout: GraphLayout): void {

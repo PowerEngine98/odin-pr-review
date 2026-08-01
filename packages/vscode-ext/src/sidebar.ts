@@ -27,12 +27,6 @@ const CHEVRON =
   '<path fill="currentColor" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/>' +
   "</svg>";
 
-/** The way back to the chooser. The editor's own back arrow, same weight. */
-const BACK =
-  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
-  '<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" ' +
-  'stroke-linejoin="round" d="M9.5 3.5L5 8l4.5 4.5"/></svg>';
-
 /**
  * The glyph inside each status box.
  *
@@ -121,7 +115,18 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
 
   setGraph(graph: ChangeGraph | undefined): void {
     this.graph = graph;
+    // The way back only exists when there is something to go back from, and
+    // the title bar decides that from this key rather than from the markup.
+    void vscode.commands.executeCommand("setContext", "odin.hasGraph", Boolean(graph));
     this.render();
+  }
+
+  /** Back to the list of pull requests, from the view's own title bar. */
+  showChooser(): void {
+    // Only this view forgets the graph. The panel keeps the one it is showing,
+    // so stepping back to look at the list does not throw away the reading it
+    // took to get here.
+    this.setGraph(undefined);
   }
 
   /** The pull requests to choose from before a graph has been built. */
@@ -216,29 +221,6 @@ body {
 }
 .head .stats .spacer { flex: 1; }
 
-/* The way back to the list of pull requests. Reviewing one is rarely the whole
-   morning, and without this the only route to the next one is a command. */
-.head .back {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  align-self: center;
-  width: 20px;
-  height: 18px;
-  margin: -2px 0 -2px -2px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-foreground);
-  opacity: 0.65;
-  cursor: pointer;
-}
-.head .back:hover {
-  opacity: 1;
-  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
-}
 .head .progress { color: var(--muted); }
 .head .progress .done {
   color: var(--vscode-progressBar-background, #0a84ff);
@@ -570,9 +552,6 @@ document.querySelectorAll(".ref").forEach((ref) => {
 const review = document.getElementById("review");
 if (review) review.addEventListener("click", () => vscodeApi.postMessage({ type: "review" }));
 
-const chooser = document.getElementById("chooser");
-if (chooser) chooser.addEventListener("click", () => vscodeApi.postMessage({ type: "chooser" }));
-
 document.querySelectorAll(".pull").forEach((pull) => {
   pull.addEventListener("click", () => {
     vscodeApi.postMessage({ type: "checkout", number: Number(pull.dataset.number) });
@@ -660,7 +639,6 @@ function header(graph: ChangeGraph, viewed: ViewedStore): string {
   return `<div class="head">
   <div class="bar"><div class="fill" style="width:${p.percent}%"></div></div>
   <div class="stats">
-    <button id="chooser" class="back" title="Choose another pull request">${BACK}</button>
     <span class="progress"><b class="done">${p.done}</b>/<span class="total">${p.total}</span><span class="pct">${p.percent}%</span></span>
     <span class="spacer"></span>
     ${p.additions > 0 ? `<span class="added">+${p.additions}</span>` : ""}
