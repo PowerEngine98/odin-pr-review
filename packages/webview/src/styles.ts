@@ -1092,5 +1092,163 @@ input[type="checkbox"]:checked::after {
   line-height: 1.7;
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------------ remarks
+
+   Comments already on the pull request, shown beside the file rather than in
+   it. A remark is about a line but it is not part of the code, and threading it
+   through the diff pushes the code around to make room for something the reader
+   may not want to read yet. The mark sits in the margin, at the height of the
+   line it belongs to, and opens on being asked. */
+.mark {
+  position: absolute;
+  z-index: 6;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+}
+/* A pointer back to the line, so the mark belongs to something rather than
+   floating beside the card. */
+.mark .tail {
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  margin-top: -5px;
+  border: 5px solid transparent;
+  border-right-color: color-mix(in srgb, var(--text) 34%, transparent);
+}
+.mark .face {
+  display: block;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--text) 34%, transparent);
+  box-sizing: border-box;
+}
+/* No picture: the author's initials, which say who without pretending to be a
+   photograph. */
+.mark .face.initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+.mark:hover .face { border-color: var(--status-renamed); }
+.mark.is-open .face { border-color: var(--status-renamed); }
+
+/* How many remarks are on the thread, when there is more than one. */
+.mark .bubble {
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--status-renamed);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* The thread itself, under the mark that opened it. Fixed rather than placed on
+   the canvas: prose at a tenth of its size is not readable, and a comment is
+   not part of the drawing. */
+.thread {
+  position: fixed;
+  z-index: 41;
+  width: 380px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+  font-size: 12px;
+}
+.thread-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+.thread-where { font-family: var(--mono); }
+.thread .thread-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -4px -4px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.thread .thread-close:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.remark { display: flex; gap: 8px; padding: 7px 0; }
+.remark + .remark { border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
+.remark .face { width: 22px; height: 22px; flex: 0 0 auto; }
+.remark .said { min-width: 0; flex: 1 1 auto; }
+.remark .who { color: var(--text); font-weight: 600; }
+.remark .when { color: var(--muted); margin-left: 6px; font-size: 11px; }
+.remark .outdated {
+  margin-left: 6px;
+  color: var(--warning);
+  font-size: 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+.remark .text { margin-top: 3px; line-height: 1.5; overflow-wrap: anywhere; }
+.remark .text p { margin: 0 0 6px; }
+.remark .text pre {
+  margin: 0 0 6px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow-x: auto;
+}
+.remark .text code { font-family: var(--mono); font-size: 11px; }
+.remark .text :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.remark .text .suggestion { border: 1px solid color-mix(in srgb, var(--added) 45%, transparent); }
+.remark .text .suggestion .label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--added);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.remark .text ul, .remark .text ol { margin: 0 0 6px; padding-left: 18px; }
+.remark .text blockquote {
+  margin: 0 0 6px;
+  padding-left: 9px;
+  border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
+  color: var(--muted);
+}
 `;
 }

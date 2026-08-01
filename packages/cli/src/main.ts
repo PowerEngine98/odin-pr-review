@@ -6,6 +6,7 @@ import {
   currentBranch,
   enrichSnippets,
   graphFromRepo,
+  inlineAvatars,
   layoutGraph,
   listReviewComments,
   parseUnifiedDiff,
@@ -122,7 +123,10 @@ async function pullRequestComments(cwd: string): Promise<ReviewComment[]> {
   if (!branch) return [];
   const pull = await readPullRequest(branch, { cwd }).catch(() => undefined);
   if (!pull) return [];
-  return listReviewComments(pull.number, { cwd }).catch(() => []);
+  const comments = await listReviewComments(pull.number, { cwd }).catch(() => []);
+  // Inlined here rather than fetched by the page: a rendered graph is one file
+  // with no network access, and a mark with a picture in it has to carry it.
+  return inlineAvatars(comments).catch(() => comments);
 }
 
 async function render(

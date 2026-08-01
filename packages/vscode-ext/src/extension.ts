@@ -4,6 +4,7 @@ import {
   git,
   listPullRequests,
   listRefs,
+  inlineAvatars,
   listReviewComments,
   serializeGraph,
 } from "@odin/core";
@@ -219,9 +220,11 @@ async function review(baseRef?: string): Promise<void> {
         // waiting on the forge before showing it would be the wrong order.
         const pull = graph.meta.pullRequest;
         if (pull) {
-          void listReviewComments(pull.number, { cwd: repo }).then((comments) => {
-            if (comments.length > 0) panel.setComments(comments);
-          });
+          void listReviewComments(pull.number, { cwd: repo })
+            .then((found) => inlineAvatars(found).catch(() => found))
+            .then((comments) => {
+              if (comments.length > 0) panel.setComments(comments);
+            });
         }
         sidebar.setGraph(graph);
         last = { repo, ...(base ? { baseRef: base } : {}) };

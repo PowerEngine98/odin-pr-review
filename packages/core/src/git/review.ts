@@ -14,6 +14,8 @@ export interface ReviewComment {
   side: "LEFT" | "RIGHT";
   body: string;
   author: string;
+  /** The author's picture, inlined by the caller so no page fetches anything. */
+  avatarUrl?: string;
   createdAt: string;
   url: string;
   /** Set when this is a reply within a thread. */
@@ -100,7 +102,7 @@ export function parseComments(json: string): ReviewComment[] {
       original_start_line?: number | null;
       side: string | null;
       body: string;
-      user?: { login?: string };
+      user?: { login?: string; avatar_url?: string };
       created_at: string;
       html_url: string;
       in_reply_to_id?: number;
@@ -124,6 +126,7 @@ export function parseComments(json: string): ReviewComment[] {
         side: c.side === "LEFT" ? "LEFT" : "RIGHT",
         body: c.body,
         author: c.user?.login ?? "",
+        ...(c.user?.avatar_url ? { avatarUrl: c.user.avatar_url } : {}),
         createdAt: c.created_at,
         url: c.html_url,
         outdated: c.line === null,
@@ -330,4 +333,69 @@ function write(
       child.stdin?.end(input);
     }
   });
+}
+
+/**
+ * Replaces every avatar url with the picture itself.
+ *
+ * The rendered page is one file with no network access — that is the whole
+ * point of it — so a picture it is going to show has to be carried inside it.
+ * Small on purpose: forty pixels is what the mark is drawn at, and a page
+ * holding thirty full-size avatars would be several megabytes of nothing.
+ *
+ * Best-effort throughout. An avatar that cannot be fetched leaves the comment
+ * without one, and the page falls back to the author's initials.
+ */
+export async function inlineAvatars(
+  comments: ReviewComment[],
+  options: { timeoutMs?: number } = {},
+): Promise<ReviewComment[]> {
+  const urls = new Set(
+    comments.map((c) => c.avatarUrl).filter((u): u is string => Boolean(u)),
+  );
+  if (urls.size === 0) return comments;
+
+  const inlined = new Map<string, string>();
+  await Promise.all(
+    [...urls].map(async (url) => {
+      const data = await fetchImage(sized(url), options.timeoutMs ?? 4000);
+      if (data) inlined.set(url, data);
+    }),
+  );
+
+  return comments.map((c) => {
+    const data = c.avatarUrl ? inlined.get(c.avatarUrl) : undefined;
+    if (!data) {
+      const { avatarUrl: _dropped, ...rest } = c;
+      return rest;
+    }
+    return { ...c, avatarUrl: data };
+  });
+}
+
+/** Ask the forge for the size actually drawn rather than the original. */
+function sized(url: string): string {
+  return url.includes("?") ? `${url}&s=80` : `${url}?s=80`;
+}
+
+async function fetchImage(url: string, timeoutMs: number): Promise<string | undefined> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: abort.signal });
+    if (!response.ok) return undefined;
+
+    const type = response.headers.get("content-type") ?? "image/png";
+    if (!type.startsWith("image/")) return undefined;
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    // A picture larger than this is not the forty-pixel avatar we asked for,
+    // and is not worth carrying in the document.
+    if (bytes.byteLength > 256 * 1024) return undefined;
+    return `data:${type};base64,${bytes.toString("base64")}`;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
 }

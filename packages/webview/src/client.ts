@@ -44,8 +44,10 @@ export const CLIENT_SCRIPT = String.raw`
   function paint() {
     canvas.style.transform =
       "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
-    // An open composer belongs to a line, so it travels with it.
+    // An open composer belongs to a line, so it travels with it, and so does
+    // an open thread.
     placeComposer();
+    placeThread();
   }
 
   function rest() {
@@ -260,6 +262,7 @@ export const CLIENT_SCRIPT = String.raw`
     if (event.target.closest(".card") || event.target.closest("path.hit")) return;
     clearHighlight();
     clearSelection();
+    closeThread();
     tooltip.classList.remove("visible");
   });
 
@@ -381,6 +384,7 @@ export const CLIENT_SCRIPT = String.raw`
     }
 
     rerouteEdges();
+    placeMarks();
   }
 
   function nodeFor(id) {
@@ -595,6 +599,12 @@ export const CLIENT_SCRIPT = String.raw`
         marked[0].classList.add("span-start");
         marked[marked.length - 1].classList.add("span-end");
       }
+
+      // A remark already on the pull request has a mark of its own beside the
+      // card now, so the row keeps the bracket that says which lines are being
+      // discussed and gives up the badge. Drafts keep theirs: they exist
+      // nowhere else yet.
+      if (!drafted) return;
 
       var where = span.start === span.end
         ? String(span.end)
@@ -1354,6 +1364,7 @@ export const CLIENT_SCRIPT = String.raw`
       }
       if (message.comments) data.comments = message.comments;
       refreshReview();
+      buildMarks();
       return;
     }
     // Clicking a file in the sidebar brings its card to the middle. The list
@@ -1380,6 +1391,214 @@ export const CLIENT_SCRIPT = String.raw`
     var input = document.getElementById(id);
     if (input) input.addEventListener("change", refreshFilters);
   });
+
+  /* ------------------------------------------------------------- the remarks */
+
+  /*
+   * Comments already on the pull request, drawn beside the file.
+   *
+   * A remark is about a line but it is not part of the code: threading it
+   * through the diff pushes the code around to make room for something the
+   * reader has not asked to read yet. The mark sits in the margin at the height
+   * of its line, and the thread opens under it when asked.
+   *
+   * Marks live on the canvas, so they pan and zoom with the file they belong
+   * to; the thread does not, because prose at a tenth of its size is not prose.
+   */
+  var threadBox = document.querySelector(".thread");
+  var marks = [];
+  var openMark = null;
+
+  function threadsOf(comments) {
+    var byId = {};
+    comments.forEach(function (c) { byId[c.id] = c; });
+
+    // A reply belongs to whatever it answers, however deep the chain goes.
+    var rootOf = function (c) {
+      var seen = {};
+      var current = c;
+      while (current.inReplyTo && byId[current.inReplyTo] && !seen[current.id]) {
+        seen[current.id] = true;
+        current = byId[current.inReplyTo];
+      }
+      return current;
+    };
+
+    var groups = {};
+    var order = [];
+    comments.forEach(function (c) {
+      var root = rootOf(c);
+      if (!groups[root.id]) { groups[root.id] = { root: root, comments: [] }; order.push(root.id); }
+      groups[root.id].comments.push(c);
+    });
+
+    return order.map(function (id) {
+      var group = groups[id];
+      group.comments.sort(function (a, b) {
+        return String(a.createdAt).localeCompare(String(b.createdAt));
+      });
+      return group;
+    });
+  }
+
+  function buildMarks() {
+    marks.forEach(function (m) { m.el.remove(); });
+    marks = [];
+    if (!canvas || !(data.comments || []).length) return;
+
+    threadsOf(data.comments).forEach(function (thread) {
+      var node = data.nodes.find(function (n) { return n.path === thread.root.path; });
+      if (!node) return;
+
+      var el = document.createElement("div");
+      el.className = "mark";
+      el.title = thread.root.author + ": " + thread.root.body.slice(0, 120);
+      el.appendChild(chrome("tail", ""));
+      el.appendChild(face(thread.root, "face"));
+      if (thread.comments.length > 1) {
+        el.appendChild(chrome("bubble", String(thread.comments.length)));
+      }
+
+      el.addEventListener("click", function (event) {
+        event.stopPropagation();
+        showThread(thread, el);
+      });
+
+      canvas.appendChild(el);
+      marks.push({ el: el, thread: thread, nodeId: node.id });
+    });
+
+    placeMarks();
+  }
+
+  /** The author's picture, or their initials when the page has none. */
+  function face(comment, className) {
+    if (comment.avatar) {
+      var img = document.createElement("img");
+      img.className = className;
+      img.src = comment.avatar;
+      img.alt = comment.author;
+      return img;
+    }
+    var span = document.createElement("span");
+    span.className = className + " initials";
+    span.textContent = (comment.author || "?")
+      .replace(/[^a-zA-Z0-9]/g, " ")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map(function (part) { return part.charAt(0).toUpperCase(); })
+      .join("");
+    return span;
+  }
+
+  /**
+   * Puts every mark beside the line it is about.
+   *
+   * Positions come from the same anchoring the arrows use, so a remark on a
+   * folded line lands on the band standing in for it rather than guessing.
+   */
+  function placeMarks() {
+    marks.forEach(function (mark) {
+      var node = nodeFor(mark.nodeId);
+      var card = document.getElementById("card-" + cssId(mark.nodeId));
+      if (!node || !card) return;
+
+      var hidden = card.classList.contains("hidden") ||
+        card.classList.contains("viewed-hidden");
+      mark.el.hidden = hidden;
+      if (hidden) return;
+
+      var side = mark.thread.root.side === "LEFT" ? "base" : "head";
+      var anchor = anchorFor(mark.nodeId, side, mark.thread.root.line, false);
+      if (!anchor) return;
+
+      mark.el.style.left = (node.x + node.width + 14) + "px";
+      mark.el.style.top = (anchor.y - 13) + "px";
+    });
+  }
+
+  function showThread(thread, el) {
+    if (!threadBox) return;
+    if (openMark) openMark.classList.remove("is-open");
+    openMark = el;
+    el.classList.add("is-open");
+
+    var root = thread.root;
+    var where = root.path.split("/").pop() +
+      ":" + (root.startLine && root.startLine < root.line
+        ? root.startLine + "–" + root.line
+        : root.line);
+    threadBox.querySelector(".thread-where").textContent = where;
+
+    var body = threadBox.querySelector(".thread-body");
+    body.innerHTML = "";
+    thread.comments.forEach(function (comment) {
+      var remark = document.createElement("div");
+      remark.className = "remark";
+      remark.appendChild(face(comment, "face"));
+
+      var said = document.createElement("div");
+      said.className = "said";
+      var head = document.createElement("div");
+      head.appendChild(chrome("who", comment.author || "?"));
+      head.appendChild(chrome("when", ago(comment.createdAt)));
+      if (comment.outdated) head.appendChild(chrome("outdated", "outdated"));
+      said.appendChild(head);
+
+      var text = document.createElement("div");
+      text.className = "text";
+      text.innerHTML = renderMarkdown(comment.body || "");
+      said.appendChild(text);
+
+      remark.appendChild(said);
+      body.appendChild(remark);
+    });
+
+    threadBox.hidden = false;
+    placeThread();
+  }
+
+  /** Under the mark that opened it, and inside the window. */
+  function placeThread() {
+    if (!threadBox || threadBox.hidden || !openMark) return;
+    var mark = openMark.getBoundingClientRect();
+    var box = threadBox.getBoundingClientRect();
+    var left = Math.min(Math.max(8, mark.left - 8), window.innerWidth - box.width - 8);
+    var below = mark.bottom + 8;
+    var top = below + box.height > window.innerHeight - 8
+      ? Math.max(8, mark.top - box.height - 8)
+      : below;
+    threadBox.style.left = Math.round(left) + "px";
+    threadBox.style.top = Math.round(top) + "px";
+  }
+
+  function closeThread() {
+    if (!threadBox) return;
+    threadBox.hidden = true;
+    if (openMark) openMark.classList.remove("is-open");
+    openMark = null;
+  }
+
+  if (threadBox) {
+    threadBox.addEventListener("click", function (event) { event.stopPropagation(); });
+    threadBox.querySelector(".thread-close").addEventListener("click", closeThread);
+    // Anywhere else puts it away. The thread and the marks stop their own
+    // clicks, so this only ever fires for a click that meant something else.
+    document.addEventListener("click", closeThread);
+  }
+
+  /** How long ago, said the way a reader would say it. */
+  function ago(iso) {
+    var then = Date.parse(iso);
+    if (!then) return "";
+    var days = Math.floor((Date.now() - then) / 86400000);
+    if (days <= 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 30) return days + "d ago";
+    var months = Math.round(days / 30);
+    return months + "mo ago";
+  }
 
   /* ------------------------------------------------------- the draft state */
 
@@ -1455,7 +1674,7 @@ export const CLIENT_SCRIPT = String.raw`
       return;
     }
     if (event.key === "f") fit();
-    if (event.key === "Escape") { clearHighlight(); clearSelection(); }
+    if (event.key === "Escape") { clearHighlight(); clearSelection(); closeThread(); }
   });
 
   /* ------------------------------------------------------------ host bridge */
@@ -1485,6 +1704,7 @@ export const CLIENT_SCRIPT = String.raw`
 
   refreshFilters();
   refreshReview();
+  buildMarks();
   fit();
   window.addEventListener("resize", fit);
 })();

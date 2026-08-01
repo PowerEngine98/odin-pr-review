@@ -1,5 +1,6 @@
 import {
   DARK_THEME,
+  inlineAvatars,
   LIGHT_THEME,
   listReviewComments,
   setDraft,
@@ -190,7 +191,8 @@ export class GraphPanel {
     }
 
     vscode.window.showInformationMessage(`Odin: review posted on #${pull.number}.`);
-    this.comments = await listReviewComments(pull.number, { cwd: this.repo });
+    const posted = await listReviewComments(pull.number, { cwd: this.repo });
+    this.comments = await inlineAvatars(posted).catch(() => posted);
     void this.panel.webview.postMessage({
       type: "reviewSubmitted",
       comments: this.comments,

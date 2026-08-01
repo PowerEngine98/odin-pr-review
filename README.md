@@ -153,6 +153,17 @@ you are on is marked down its left edge. Checking out refuses outright while
 the working tree is dirty, since carrying uncommitted changes onto another
 branch is not a decision to make on someone's behalf.
 
+![A thread beside the file](docs/thread.png)
+
+Comments already on the pull request appear beside the file rather than inside
+it: the author's picture in the margin, at the height of the line it is about,
+pointing back at it. A remark belongs to a line but is not part of the code, and
+threading it through the diff pushes the code around to make room for something
+the reader may not want to read yet. Clicking opens the thread under the mark,
+with a count on the mark where a thread has more than one remark. Pictures are
+inlined into the document, so a page that fetches nothing still shows them, and
+an author whose picture could not be fetched gets their initials.
+
 Comments already on the pull request are marked against the lines they belong
 to. Clicking a line writes a new one, optionally as a suggestion; they collect
 into a pending review rather than being posted one at a time, and go out

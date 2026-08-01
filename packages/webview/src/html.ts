@@ -149,6 +149,9 @@ export function renderHtml(
       side: c.side,
       body: c.body,
       author: c.author,
+      ...(c.avatarUrl ? { avatar: c.avatarUrl } : {}),
+      createdAt: c.createdAt,
+      ...(c.inReplyTo ? { inReplyTo: c.inReplyTo } : {}),
       url: c.url,
       outdated: c.outdated,
     })),
@@ -185,6 +188,10 @@ export function renderHtml(
     cards,
     `</div></div>`,
     `<div class="tooltip"></div>`,
+    `<div class="thread" hidden><div class="thread-head">` +
+      `<span class="thread-where"></span>` +
+      `<button class="thread-close" title="Close" aria-label="Close">${CLOSE_ICON}</button>` +
+      `</div><div class="thread-body"></div></div>`,
     composer(),
     reviewPanel(),
     hint(),
