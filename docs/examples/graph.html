@@ -101,7 +101,9 @@ html, body {
   color: #fff;
   background: var(--muted);
 }
-.prbar .state.open { background: var(--status-added); }
+/* The same green the actions use, for the same reason: white on the diff's own
+   green is the weakest pairing in the page. */
+.prbar .state.open { background: var(--action); color: #fff; }
 
 /* The state is where a draft stops being a draft, so it is a button — with a
    caret, because a control that acts on the pull request should say that it
@@ -1254,17 +1256,22 @@ input[type="checkbox"]:checked::after {
 .reactions .add {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  height: 22px;
-  padding: 0 8px;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
+/* Room for the face, and no more: it is one glyph, not a label. */
+.reactions .add { width: 34px; padding: 0; }
+.reactions .add svg { display: block; }
+.reactions .pill .emoji { font-size: 13px; line-height: 1; }
 .reactions .pill:hover,
 .reactions .add:hover {
   color: var(--text);
@@ -3060,7 +3067,9 @@ input[type="checkbox"]:checked::after {
       said.className = "said";
       var head = document.createElement("div");
       head.appendChild(chrome("who", comment.author || "?"));
-      head.appendChild(chrome("when", ago(comment.createdAt)));
+      var when = chrome("when", ago(comment.createdAt));
+      when.title = exactly(comment.createdAt);
+      head.appendChild(when);
       if (comment.outdated) head.appendChild(chrome("outdated", "outdated"));
       said.appendChild(head);
 
@@ -3113,7 +3122,10 @@ input[type="checkbox"]:checked::after {
       var add = document.createElement("button");
       add.className = "add";
       add.title = "Leave a reaction";
-      add.textContent = "☺";
+      // Drawn rather than typed: the smiley character renders at whatever size
+      // and weight the font feels like, which beside a 14-pixel emoji is a
+      // speck. Static markup, no text from anywhere in it.
+      add.innerHTML = SMILEY;
       add.addEventListener("click", function (event) {
         event.stopPropagation();
         showPicker(comment, add);
@@ -3122,6 +3134,14 @@ input[type="checkbox"]:checked::after {
     }
     return row;
   }
+
+  var SMILEY =
+    '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">' +
+    '<circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.4"/>' +
+    '<circle cx="5.8" cy="6.6" r="0.95" fill="currentColor"/>' +
+    '<circle cx="10.2" cy="6.6" r="0.95" fill="currentColor"/>' +
+    '<path d="M5.2 9.6a3.2 3.2 0 0 0 5.6 0" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.4" stroke-linecap="round"/></svg>';
 
   var EMOJI = {
     "+1": "👍", "-1": "👎", laugh: "😄", hooray: "🎉",
@@ -3307,16 +3327,36 @@ input[type="checkbox"]:checked::after {
     document.addEventListener("click", closeThread);
   }
 
-  /** How long ago, said the way a reader would say it. */
+  /**
+   * How long ago, said the way a reader would say it.
+   *
+   * Minutes matter in a conversation: "today" on a remark written four minutes
+   * ago tells you nothing about whether the person is still there. The exact
+   * time goes on the title, for when the relative one is not enough.
+   */
   function ago(iso) {
     var then = Date.parse(iso);
     if (!then) return "";
-    var days = Math.floor((Date.now() - then) / 86400000);
-    if (days <= 0) return "today";
+    var seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+
+    if (seconds < 45) return "just now";
+    var minutes = Math.round(seconds / 60);
+    if (minutes < 60) return minutes + (minutes === 1 ? " minute ago" : " minutes ago");
+    var hours = Math.round(minutes / 60);
+    if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+    var days = Math.round(hours / 24);
     if (days === 1) return "yesterday";
-    if (days < 30) return days + "d ago";
+    if (days < 30) return days + " days ago";
     var months = Math.round(days / 30);
-    return months + "mo ago";
+    if (months < 12) return months + (months === 1 ? " month ago" : " months ago");
+    var years = Math.round(months / 12);
+    return years + (years === 1 ? " year ago" : " years ago");
+  }
+
+  /** The moment itself, in the reader's own locale. */
+  function exactly(iso) {
+    var then = new Date(iso);
+    return isNaN(then.getTime()) ? "" : then.toLocaleString();
   }
 
   /* ------------------------------------------------------- the draft state */

@@ -375,13 +375,19 @@ export async function inlineAvatars(
   );
   if (urls.size === 0) return comments;
 
-  const inlined = new Map<string, string>();
+  // Kept between calls. The comments are re-read after every reaction and every
+  // reply, and refetching a dozen pictures each time is both slow and a way to
+  // lose them: one timeout and a face turns back into initials in front of the
+  // reader, for no reason they can see.
   await Promise.all(
-    [...urls].map(async (url) => {
-      const data = await fetchImage(sized(url), options.timeoutMs ?? 4000);
-      if (data) inlined.set(url, data);
-    }),
+    [...urls]
+      .filter((url) => !avatarCache.has(url))
+      .map(async (url) => {
+        const data = await fetchImage(sized(url), options.timeoutMs ?? 4000);
+        if (data) avatarCache.set(url, data);
+      }),
   );
+  const inlined = avatarCache;
 
   return comments.map((c) => {
     const data = c.avatarUrl ? inlined.get(c.avatarUrl) : undefined;
@@ -392,6 +398,9 @@ export async function inlineAvatars(
     return { ...c, avatarUrl: data };
   });
 }
+
+/** Pictures already fetched, by their url. Small, and the process is short. */
+const avatarCache = new Map<string, string>();
 
 /** Ask the forge for the size actually drawn rather than the original. */
 function sized(url: string): string {

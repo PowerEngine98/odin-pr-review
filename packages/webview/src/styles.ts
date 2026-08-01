@@ -107,7 +107,9 @@ html, body {
   color: #fff;
   background: var(--muted);
 }
-.prbar .state.open { background: var(--status-added); }
+/* The same green the actions use, for the same reason: white on the diff's own
+   green is the weakest pairing in the page. */
+.prbar .state.open { background: var(--action); color: #fff; }
 
 /* The state is where a draft stops being a draft, so it is a button — with a
    caret, because a control that acts on the pull request should say that it

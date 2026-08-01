@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseComments, reviewPayload } from "../src/git/review.js";
+import { inlineAvatars, parseComments, reviewPayload } from "../src/git/review.js";
 
 function raw(overrides: Record<string, unknown>): string {
   return JSON.stringify([
@@ -110,5 +110,74 @@ describe("the review sent to the forge", () => {
     expect(reviewPayload({ number: 7, event: "APPROVE", body: "", comments: [] })).toEqual({
       event: "APPROVE",
     });
+  });
+});
+
+describe("carrying the pictures", () => {
+  it("fetches an avatar once and keeps it", async () => {
+    // The comments are re-read after every reaction and every reply. Refetching
+    // each time is slow, and one timeout turns a face back into initials in
+    // front of the reader for no reason they can see.
+    const real = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      if (calls > 1) throw new Error("network");
+      return {
+        ok: true,
+        headers: { get: () => "image/png" },
+        arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      };
+    }) as unknown as typeof fetch;
+
+    const comment = {
+      id: 1,
+      path: "a.ts",
+      line: 1,
+      side: "RIGHT" as const,
+      body: "",
+      author: "ada",
+      avatarUrl: "https://example.test/only-once.png",
+      createdAt: "",
+      url: "",
+      outdated: false,
+    };
+
+    try {
+      const first = await inlineAvatars([comment]);
+      const second = await inlineAvatars([comment]);
+      expect(calls).toBe(1);
+      expect(first[0]!.avatarUrl?.startsWith("data:")).toBe(true);
+      expect(second[0]!.avatarUrl?.startsWith("data:")).toBe(true);
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it("leaves a comment without one rather than half a picture", async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error("no network");
+    }) as unknown as typeof fetch;
+
+    try {
+      const out = await inlineAvatars([
+        {
+          id: 2,
+          path: "a.ts",
+          line: 1,
+          side: "RIGHT" as const,
+          body: "",
+          author: "grace",
+          avatarUrl: "https://example.test/never.png",
+          createdAt: "",
+          url: "",
+          outdated: false,
+        },
+      ]);
+      expect(out[0]!.avatarUrl).toBeUndefined();
+    } finally {
+      globalThis.fetch = real;
+    }
   });
 });

@@ -1590,7 +1590,9 @@ export const CLIENT_SCRIPT = String.raw`
       said.className = "said";
       var head = document.createElement("div");
       head.appendChild(chrome("who", comment.author || "?"));
-      head.appendChild(chrome("when", ago(comment.createdAt)));
+      var when = chrome("when", ago(comment.createdAt));
+      when.title = exactly(comment.createdAt);
+      head.appendChild(when);
       if (comment.outdated) head.appendChild(chrome("outdated", "outdated"));
       said.appendChild(head);
 
@@ -1848,16 +1850,36 @@ export const CLIENT_SCRIPT = String.raw`
     document.addEventListener("click", closeThread);
   }
 
-  /** How long ago, said the way a reader would say it. */
+  /**
+   * How long ago, said the way a reader would say it.
+   *
+   * Minutes matter in a conversation: "today" on a remark written four minutes
+   * ago tells you nothing about whether the person is still there. The exact
+   * time goes on the title, for when the relative one is not enough.
+   */
   function ago(iso) {
     var then = Date.parse(iso);
     if (!then) return "";
-    var days = Math.floor((Date.now() - then) / 86400000);
-    if (days <= 0) return "today";
+    var seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+
+    if (seconds < 45) return "just now";
+    var minutes = Math.round(seconds / 60);
+    if (minutes < 60) return minutes + (minutes === 1 ? " minute ago" : " minutes ago");
+    var hours = Math.round(minutes / 60);
+    if (hours < 24) return hours + (hours === 1 ? " hour ago" : " hours ago");
+    var days = Math.round(hours / 24);
     if (days === 1) return "yesterday";
-    if (days < 30) return days + "d ago";
+    if (days < 30) return days + " days ago";
     var months = Math.round(days / 30);
-    return months + "mo ago";
+    if (months < 12) return months + (months === 1 ? " month ago" : " months ago");
+    var years = Math.round(months / 12);
+    return years + (years === 1 ? " year ago" : " years ago");
+  }
+
+  /** The moment itself, in the reader's own locale. */
+  function exactly(iso) {
+    var then = new Date(iso);
+    return isNaN(then.getTime()) ? "" : then.toLocaleString();
   }
 
   /* ------------------------------------------------------- the draft state */
