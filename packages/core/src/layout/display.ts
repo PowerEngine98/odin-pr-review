@@ -165,12 +165,26 @@ function foldImports(
     run = [];
   };
 
+  // Lines an arrow lands on, which must survive folding for the same reason
+  // they survive collapsing: an arrow pointing at a band says which file but
+  // not where, and where is what the graph is for.
+  const anchored = new Set(
+    (options.anchors ?? []).map((a) => `${a.side}:${a.line}`),
+  );
+  const isAnchored = (row: DisplayRow): boolean => {
+    if (row.kind === "gap") return false;
+    return (
+      (row.oldLine !== undefined && anchored.has(`base:${row.oldLine}`)) ||
+      (row.newLine !== undefined && anchored.has(`head:${row.newLine}`))
+    );
+  };
+
   for (const row of rows) {
     // An import the change added or removed is a change, and folding it away
     // would hide the very thing the card exists to show. It breaks the run
     // instead, so the untouched imports around it still fold and it stays on
-    // screen between them.
-    const changed = row.kind === "add" || row.kind === "del";
+    // screen between them. So does one an arrow points at.
+    const changed = row.kind === "add" || row.kind === "del" || isAnchored(row);
     if (!changed && row.kind !== "gap" && IMPORT_LINE.test(row.text)) {
       run.push(row);
       continue;
@@ -192,6 +206,8 @@ function foldImports(
 // ------------------------------------------------------------------ assembly
 
 interface Segment {
+  /** Rows correspond one to one with lines, so the segment can be cut. */
+  trimmable?: boolean;
   start: number;
   end: number;
   /** Header shown on the gap that precedes this segment. */
@@ -225,6 +241,10 @@ function assemble(node: FileNode, snippets: Snippet[], side: Side): DisplayRow[]
     segments.push({
       start,
       end,
+      // One row per line, which is what lets the tail of an overlapping
+      // snippet be kept below. A hunk cannot be trimmed the same way: its
+      // rows and its line numbers do not correspond one to one.
+      trimmable: true,
       rows: snippet.lines.map((text, i) => ({
         kind: "ctx" as const,
         text,
@@ -238,9 +258,21 @@ function assemble(node: FileNode, snippets: Snippet[], side: Side): DisplayRow[]
   const rows: DisplayRow[] = [];
   let previousEnd: number | undefined;
 
-  for (const segment of segments) {
+  for (let segment of segments) {
     if (previousEnd !== undefined) {
-      if (segment.start <= previousEnd) continue; // covered by an earlier one
+      // Overlapping, but not necessarily covered. Fetched material routinely
+      // starts a line or two inside the hunk above it, and dropping the whole
+      // thing for that took the lines past the overlap with it — including,
+      // often, the very line an arrow was pointing at.
+      if (segment.start <= previousEnd) {
+        if (segment.end <= previousEnd || !segment.trimmable) continue;
+        const drop = previousEnd - segment.start + 1;
+        segment = {
+          ...segment,
+          start: previousEnd + 1,
+          rows: segment.rows.slice(drop),
+        };
+      }
       const hidden = segment.start - previousEnd - 1;
       if (hidden > 0) {
         rows.push(

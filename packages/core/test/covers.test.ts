@@ -142,3 +142,88 @@ describe("what a band may hide", () => {
     expect(bands.length).toBeGreaterThan(0);
   });
 });
+
+describe("a line an arrow points at", () => {
+  /** One hunk covering 10–14, and fetched material from 13 to 17. */
+  const overlapping = (): FileNode => ({
+    id: "n:src/Dao.kt",
+    path: "src/Dao.kt",
+    status: "modified",
+    language: "kotlin",
+    binary: false,
+    stats: { additions: 1, deletions: 0 },
+    symbols: [],
+    hunks: [
+      {
+        oldStart: 10,
+        oldLines: 4,
+        newStart: 10,
+        newLines: 5,
+        header: "class Dao",
+        lines: [
+          { kind: "context", text: "  fun a() {", oldLine: 10, newLine: 10 },
+          { kind: "add", text: "    log()", newLine: 11 },
+          { kind: "context", text: "  }", oldLine: 11, newLine: 12 },
+          { kind: "context", text: "", oldLine: 12, newLine: 13 },
+          { kind: "context", text: "  fun b() {", oldLine: 13, newLine: 14 },
+        ],
+      },
+    ],
+  });
+
+  const snippet = {
+    side: "head" as const,
+    startLine: 13,
+    lines: ["", "  fun b() {", "    return 1", "  }", ""],
+  };
+
+  it("keeps the part of a snippet the hunk does not already show", () => {
+    // The material a reference needs routinely starts a line or two inside the
+    // hunk above it. Dropping the whole snippet for that overlap took the lines
+    // past it too — including, often, the very line being pointed at.
+    const rows = displayRows(overlapping(), [snippet], {
+      anchors: [{ side: "head", line: 16 }],
+    });
+    const target = rows.find((r) => r.kind !== "gap" && r.newLine === 16);
+    expect(target).toBeDefined();
+    expect(target!.text).toBe("  }");
+  });
+
+  it("does not repeat the lines the hunk already showed", () => {
+    const rows = displayRows(overlapping(), [snippet], {
+      anchors: [{ side: "head", line: 16 }],
+    });
+    const fourteens = rows.filter((r) => r.kind !== "gap" && r.newLine === 14);
+    expect(fourteens).toHaveLength(1);
+  });
+
+  it("survives the import fold", () => {
+    // An anchored import is still an anchor: an arrow into a folded band says
+    // which file and not where, which is the precision the graph exists for.
+    const node: FileNode = {
+      ...overlapping(),
+      hunks: [
+        {
+          oldStart: 1,
+          oldLines: 5,
+          newStart: 1,
+          newLines: 6,
+          header: "",
+          lines: [
+            { kind: "context", text: "import a.b.C", oldLine: 1, newLine: 1 },
+            { kind: "context", text: "import a.b.D", oldLine: 2, newLine: 2 },
+            { kind: "context", text: "import a.b.E", oldLine: 3, newLine: 3 },
+            { kind: "context", text: "import a.b.F", oldLine: 4, newLine: 4 },
+            { kind: "add", text: "class Dao {", newLine: 5 },
+          ],
+        },
+      ],
+    };
+    const rows = displayRows(node, [], {
+      anchors: [{ side: "head", line: 3 }],
+      contextRadius: 99,
+      collapseThreshold: 99,
+    });
+    expect(rows.some((r) => r.kind !== "gap" && r.newLine === 3)).toBe(true);
+  });
+});

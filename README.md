@@ -126,10 +126,16 @@ change here, one test file accounted for 23 of the 35 edges and buried
 everything else. They are hidden rather than dropped, because sometimes the
 tests *are* the change. `--tests` does the same on the command line.
 
-Cards stop at 42 rows and offer the rest behind a bar, so one 500-line addition
-cannot set the height of the whole drawing. An arrow never points at a row a
-card is not showing — it falls back to the card edge, which says which file
-without claiming a position it cannot point to.
+A line an arrow points at is always shown. It survives the untouched-code
+collapse, it survives the import fold, and the source around it is fetched when
+the diff itself does not reach that far — material that overlaps the hunk above
+it is trimmed to the part that is new rather than dropped whole, which used to
+take the pointed-at line with it. On a 164-edge Kotlin branch every target now
+lands on its own line.
+
+Cards still stop at 42 rows and offer the rest behind a bar, so one 500-line
+addition cannot set the height of the whole drawing. An arrow into the part a
+card is not yet showing lands on that bar, which reveals it.
 
 An import names a file rather than a position in it, so those arrows meet the
 card at its title instead of landing on whatever line one happens to hold.
