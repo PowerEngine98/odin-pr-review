@@ -210,16 +210,52 @@ body {
 .status-renamed .box  { color: var(--status-renamed); background: color-mix(in srgb, var(--status-renamed) 16%, transparent); }
 .status-phantom .box  { color: var(--status-phantom); background: transparent; }
 
+/* Drawn rather than left to the platform: a native checkbox is stark white on
+   a dark editor and drags the eye away from the file names, which are the
+   point of the list. Colours come from the editor's own checkbox tokens, so
+   this follows whatever theme is in use. */
 input.seen {
+  appearance: none;
+  -webkit-appearance: none;
   flex: 0 0 auto;
-  margin: 0 2px 0 0;
+  margin: 0 0 0 10px;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-contrastBorder, #6b6b6b));
+  background: var(--vscode-checkbox-background, transparent);
+  border-radius: 3px;
+  position: relative;
   cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 100ms ease;
 }
+.row:hover input.seen,
+.folder:hover input.seen,
+input.seen:checked,
+input.seen:indeterminate { opacity: 1; }
+
+input.seen:checked,
+input.seen:indeterminate {
+  border-color: var(--vscode-focusBorder, currentColor);
+}
+input.seen::after {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
+}
+input.seen:checked::after { content: "✓"; }
+input.seen:indeterminate::after { content: "–"; }
 .row.seen-marked .name,
 .row.seen-marked .counts { opacity: 0.45; }
 .row.seen-marked .name { text-decoration: line-through; }
 
 .name { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.row .seen, .folder .seen { margin-left: auto; }
 .status-phantom .name { color: var(--muted); }
 
 .counts { flex: 0 0 auto; font-size: 0.9em; }
@@ -384,9 +420,10 @@ function renderTree(
   const indent = depth * 10;
   return (
     `<div class="folder open" style="padding-left:${8 + indent}px">` +
-    `<input type="checkbox" class="seen" title="Mark everything below as reviewed">` +
     `<span class="twisty">${CHEVRON}</span>` +
     `<span class="dir">${escapeHtml(folder.label)}</span>` +
+    `<input type="checkbox" class="seen" ` +
+    `title="Mark everything below as reviewed">` +
     `</div><div class="folder-body">${inner}</div>`
   );
 }
@@ -420,13 +457,13 @@ function fileRow(
     `data-path="${escapeHtml(node.path)}" ` +
     `style="padding-left:${8 + (depth + 1) * 10}px" ` +
     `title="${escapeHtml(node.path)}">` +
-    `<input type="checkbox" class="seen"${viewed?.has(node.path) ? " checked" : ""} ` +
-    `title="Mark as reviewed">` +
     `<span class="twisty${outgoing.length ? "" : " none"}">${CHEVRON}</span>` +
     `<span class="box">${STATUS_GLYPH[node.status]}</span>` +
     `<span class="name">${escapeHtml(title.name)}</span>` +
     `<span class="counts">${counts}</span>` +
     note +
+    `<input type="checkbox" class="seen"${viewed?.has(node.path) ? " checked" : ""} ` +
+    `title="Mark as reviewed">` +
     `</div>` +
     `<div class="refs">${outgoing.map((e) => refRow(e, graph)).join("")}</div>`
   );
