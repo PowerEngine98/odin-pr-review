@@ -6,11 +6,14 @@ import {
   graphFromRepo,
   parseUnifiedDiff,
   serializeGraph,
+  toDot,
+  toMermaid,
   validateGraph,
   type ChangeGraph,
 } from "@odin/core";
 
-import { parseArgs, USAGE } from "./args.js";
+import { parseArgs, USAGE, type OutputFormat } from "./args.js";
+import { resolveEdges } from "./pipeline.js";
 import { summarize } from "./summary.js";
 
 async function main(argv: string[]): Promise<number> {
@@ -25,7 +28,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const graph = opts.patchFile
+  let graph = opts.patchFile
     ? await graphFromPatchFile(opts.patchFile, opts.baseRef, opts.headRef)
     : await graphFromRepo({
         cwd: opts.cwd,
@@ -36,6 +39,21 @@ async function main(argv: string[]): Promise<number> {
         ...(opts.pathspecs.length ? { pathspecs: opts.pathspecs } : {}),
       });
 
+  if (opts.resolve) {
+    if (opts.patchFile) {
+      process.stderr.write(
+        "odin: --resolve needs a repository; it cannot run on a bare patch file\n",
+      );
+      return 2;
+    }
+    graph = await resolveEdges(graph, {
+      cwd: opts.cwd,
+      headRef: opts.headRef,
+      includeImports: opts.imports,
+      includeContext: opts.withContext,
+    });
+  }
+
   const issues = validateGraph(graph);
   if (issues.length > 0) {
     for (const issue of issues) {
@@ -44,16 +62,24 @@ async function main(argv: string[]): Promise<number> {
     if (opts.strict) return 1;
   }
 
-  if (opts.summary) {
-    process.stdout.write(summarize(graph));
-    return 0;
-  }
-
-  const json = serializeGraph(graph);
-  if (opts.out) await writeFile(opts.out, json, "utf8");
-  else process.stdout.write(json);
+  const rendered = render(graph, opts.format, opts.imports);
+  if (opts.out) await writeFile(opts.out, rendered, "utf8");
+  else process.stdout.write(rendered);
 
   return 0;
+}
+
+function render(
+  graph: ChangeGraph,
+  format: OutputFormat,
+  includeImports: boolean,
+): string {
+  switch (format) {
+    case "summary": return summarize(graph);
+    case "mermaid": return toMermaid(graph, { includeImports });
+    case "dot": return toDot(graph, { includeImports });
+    case "json": return serializeGraph(graph);
+  }
 }
 
 /** Offline path: parse a `.patch` file with no repository present. */

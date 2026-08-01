@@ -8,14 +8,21 @@ Options:
   -H, --head <ref>      branch under review                   (default: HEAD)
   -C, --cwd <dir>       repository directory                  (default: .)
   -p, --patch <file>    read a .patch file instead of a repo
-  -o, --out <file>      write JSON here                       (default: stdout)
+  -o, --out <file>      write output here                     (default: stdout)
+  -f, --format <fmt>    json | mermaid | dot | summary        (default: json)
   -U, --context <n>     diff context lines                    (default: 3)
-      --summary         print a human-readable summary instead of JSON
+  -r, --resolve         resolve call-site references into edges
+      --no-imports      with --resolve, skip import statements
+      --with-context    with --resolve, probe unchanged lines too
+      --summary         shorthand for --format summary
       --stamp           record generation time (breaks reproducible output)
       --strict          exit non-zero when validation reports an issue
   -h, --help            show this message
 
 Everything after -- is treated as git pathspecs.`;
+
+export const OUTPUT_FORMATS = ["json", "mermaid", "dot", "summary"] as const;
+export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
 export interface GraphOptions {
   kind: "graph";
@@ -26,9 +33,12 @@ export interface GraphOptions {
   out?: string;
   context: number;
   pathspecs: string[];
-  summary: boolean;
+  format: OutputFormat;
   stamp: boolean;
   strict: boolean;
+  resolve: boolean;
+  imports: boolean;
+  withContext: boolean;
 }
 
 export type ParseResult =
@@ -44,9 +54,12 @@ export function parseArgs(argv: string[]): ParseResult {
     headRef: "HEAD",
     context: 3,
     pathspecs: [],
-    summary: false,
+    format: "json",
     stamp: false,
     strict: false,
+    resolve: false,
+    imports: true,
+    withContext: false,
   };
 
   let i = 0;
@@ -69,9 +82,12 @@ export function parseArgs(argv: string[]): ParseResult {
 
     switch (arg) {
       case "-h": case "--help": return { kind: "help" };
-      case "--summary": opts.summary = true; continue;
+      case "--summary": opts.format = "summary"; continue;
       case "--stamp": opts.stamp = true; continue;
       case "--strict": opts.strict = true; continue;
+      case "-r": case "--resolve": opts.resolve = true; continue;
+      case "--no-imports": opts.imports = false; continue;
+      case "--with-context": opts.withContext = true; continue;
     }
 
     const value = need(arg);
@@ -85,6 +101,16 @@ export function parseArgs(argv: string[]): ParseResult {
       case "-C": case "--cwd": opts.cwd = value; break;
       case "-p": case "--patch": opts.patchFile = value; break;
       case "-o": case "--out": opts.out = value; break;
+      case "-f": case "--format": {
+        if (!(OUTPUT_FORMATS as readonly string[]).includes(value)) {
+          return {
+            kind: "error",
+            message: `unknown format '${value}', expected one of ${OUTPUT_FORMATS.join(", ")}`,
+          };
+        }
+        opts.format = value as OutputFormat;
+        break;
+      }
       case "-U": case "--context": {
         const n = Number.parseInt(value, 10);
         if (!Number.isInteger(n) || n < 0) {

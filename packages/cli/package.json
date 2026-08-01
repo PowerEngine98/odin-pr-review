@@ -11,6 +11,7 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@odin/core": "0.1.0"
+    "@odin/core": "0.1.0",
+    "@odin/resolver-ts": "0.1.0"
   }
 }

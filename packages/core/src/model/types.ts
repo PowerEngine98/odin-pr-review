@@ -52,8 +52,12 @@ export type EdgeKind =
  */
 export type Confidence = "resolved" | "heuristic" | "guess";
 
-/** Identifier of the component that produced an edge. */
-export type ResolverId = "lsp" | "tree-sitter" | "regex" | "manual";
+/**
+ * Identifier of the component that produced an edge.
+ *  - `ts`   the TypeScript compiler API, running headlessly
+ *  - `lsp`  a language server, via the editor
+ */
+export type ResolverId = "ts" | "lsp" | "tree-sitter" | "regex" | "manual";
 
 /** One physical line inside a hunk. */
 export interface DiffLine {
