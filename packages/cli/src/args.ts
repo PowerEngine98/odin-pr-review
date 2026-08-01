@@ -9,7 +9,8 @@ Options:
   -C, --cwd <dir>       repository directory                  (default: .)
   -p, --patch <file>    read a .patch file instead of a repo
   -o, --out <file>      write output here                     (default: stdout)
-  -f, --format <fmt>    json | mermaid | dot | summary        (default: json)
+  -f, --format <fmt>    json | svg | mermaid | dot | summary  (default: json)
+      --light           render SVG on a light background
   -U, --context <n>     diff context lines                    (default: 3)
   -r, --resolve         resolve call-site references into edges
       --no-imports      with --resolve, skip import statements
@@ -21,7 +22,7 @@ Options:
 
 Everything after -- is treated as git pathspecs.`;
 
-export const OUTPUT_FORMATS = ["json", "mermaid", "dot", "summary"] as const;
+export const OUTPUT_FORMATS = ["json", "svg", "mermaid", "dot", "summary"] as const;
 export type OutputFormat = (typeof OUTPUT_FORMATS)[number];
 
 export interface GraphOptions {
@@ -39,6 +40,7 @@ export interface GraphOptions {
   resolve: boolean;
   imports: boolean;
   withContext: boolean;
+  light: boolean;
 }
 
 export type ParseResult =
@@ -60,6 +62,7 @@ export function parseArgs(argv: string[]): ParseResult {
     resolve: false,
     imports: true,
     withContext: false,
+    light: false,
   };
 
   let i = 0;
@@ -88,6 +91,7 @@ export function parseArgs(argv: string[]): ParseResult {
       case "-r": case "--resolve": opts.resolve = true; continue;
       case "--no-imports": opts.imports = false; continue;
       case "--with-context": opts.withContext = true; continue;
+      case "--light": opts.light = true; continue;
     }
 
     const value = need(arg);

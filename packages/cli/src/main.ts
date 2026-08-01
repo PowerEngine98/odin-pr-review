@@ -3,16 +3,21 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import {
   buildGraph,
+  enrichSnippets,
   graphFromRepo,
+  layoutGraph,
   parseUnifiedDiff,
   serializeGraph,
   toDot,
   toMermaid,
+  toSvg,
   validateGraph,
+  DARK_THEME,
+  LIGHT_THEME,
   type ChangeGraph,
 } from "@odin/core";
 
-import { parseArgs, USAGE, type OutputFormat } from "./args.js";
+import { parseArgs, USAGE, type GraphOptions } from "./args.js";
 import { resolveEdges } from "./pipeline.js";
 import { summarize } from "./summary.js";
 
@@ -62,23 +67,32 @@ async function main(argv: string[]): Promise<number> {
     if (opts.strict) return 1;
   }
 
-  const rendered = render(graph, opts.format, opts.imports);
+  const rendered = await render(graph, opts);
   if (opts.out) await writeFile(opts.out, rendered, "utf8");
   else process.stdout.write(rendered);
 
   return 0;
 }
 
-function render(
-  graph: ChangeGraph,
-  format: OutputFormat,
-  includeImports: boolean,
-): string {
-  switch (format) {
+async function render(graph: ChangeGraph, opts: GraphOptions): Promise<string> {
+  const includeImports = opts.imports;
+
+  switch (opts.format) {
     case "summary": return summarize(graph);
     case "mermaid": return toMermaid(graph, { includeImports });
     case "dot": return toDot(graph, { includeImports });
     case "json": return serializeGraph(graph);
+    case "svg": {
+      // Arrows need somewhere to land, so pull in the source around each
+      // target that the diff itself does not show.
+      const snippets = opts.patchFile
+        ? new Map()
+        : await enrichSnippets(graph, { cwd: opts.cwd });
+      return toSvg(layoutGraph(graph, { snippets }), {
+        includeImports,
+        theme: opts.light ? LIGHT_THEME : DARK_THEME,
+      });
+    }
   }
 }
 
