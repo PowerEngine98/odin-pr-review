@@ -301,7 +301,7 @@ describe("truncating a tall card", () => {
     expect(card.rows).toHaveLength(500);
   });
 
-  it("points an arrow at the bar that would reveal its row", () => {
+  it("grows to reach the line an arrow points at", () => {
     const base = bigGraph(500);
     const node = base.nodes[0]!;
     const other = buildGraph(parseUnifiedDiff([
@@ -326,10 +326,21 @@ describe("truncating a tall card", () => {
     const arrow = placed.edges[0]!;
     const card = placed.nodes.find((n) => n.id === node.id)!;
 
-    // Line 400 is past the cap, so the arrow lands on the "show more" bar
-    // rather than in the middle of unrelated code.
-    expect(arrow.toRow).toBe(card.visibleRows);
-    expect(arrow.to.y).toBe(card.y + rowOffset(card.visibleRows, placed.metrics));
+    // The cap stops one enormous addition setting the height of the drawing,
+    // but a line something points at is exactly the line worth the height: an
+    // arrow into the part a card has not unrolled says which file and not
+    // where.
+    const row = card.rows.findIndex((r) => r.kind !== "gap" && r.newLine === 400);
+    expect(row).toBeGreaterThanOrEqual(0);
+    expect(card.visibleRows).toBeGreaterThan(row);
+    expect(arrow.toRow).toBe(row);
+    expect(arrow.to.y).toBe(card.y + rowOffset(row, placed.metrics));
+  });
+
+  it("still truncates a card nothing points into", () => {
+    const card = layoutGraph(bigGraph(500)).nodes[0]!;
+    expect(card.visibleRows).toBeLessThan(card.rows.length);
+    expect(card.hiddenRows).toBeGreaterThan(0);
   });
 });
 

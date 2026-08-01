@@ -133,9 +133,11 @@ it is trimmed to the part that is new rather than dropped whole, which used to
 take the pointed-at line with it. On a 164-edge Kotlin branch every target now
 lands on its own line.
 
-Cards still stop at 42 rows and offer the rest behind a bar, so one 500-line
-addition cannot set the height of the whole drawing. An arrow into the part a
-card is not yet showing lands on that bar, which reveals it.
+Cards stop at 42 rows and offer the rest behind a bar, so one 500-line addition
+cannot set the height of the whole drawing — but a card grows past that to reach
+any line something points at. The cap exists to keep a file nobody is looking at
+from dominating the picture; a line an arrow lands on is precisely the line
+worth the height.
 
 An import names a file rather than a position in it, so those arrows meet the
 card at its title instead of landing on whatever line one happens to hold.

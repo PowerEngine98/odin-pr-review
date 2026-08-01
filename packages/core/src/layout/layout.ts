@@ -119,7 +119,15 @@ function measureNodes(
       metrics.minCardWidth,
       metrics.maxCardWidth,
     );
-    const visibleRows = Math.min(rows.length, metrics.maxCardRows);
+    // The cap keeps one 500-line addition from setting the height of the whole
+    // drawing, but it must never hide a line something points at: an arrow into
+    // the part a card has not unrolled says which file and not where, which is
+    // the precision this tool exists for. The card grows to reach the last one.
+    const reach = lastAnchoredRow(rows, anchors.get(node.id) ?? []);
+    const visibleRows = Math.min(
+      rows.length,
+      Math.max(metrics.maxCardRows, reach + 1),
+    );
     const hiddenRows = rows.length - visibleRows;
     // The truncation bar occupies a row of its own, so it is part of the height.
     const drawnRows = visibleRows + (hiddenRows > 0 ? 1 : 0);
@@ -152,6 +160,27 @@ function measureNodes(
  * survive, or the arrow would have nowhere to land and would fall back to the
  * card edge — losing exactly the precision the graph is for.
  */
+/** How far down a card an arrow reaches, as a row index, or -1 for none. */
+function lastAnchoredRow(
+  rows: DisplayRow[],
+  anchors: { side: Side; line: number }[],
+): number {
+  if (anchors.length === 0) return -1;
+
+  const wanted = new Set(anchors.map((a) => `${a.side}:${a.line}`));
+  let last = -1;
+  rows.forEach((row, index) => {
+    if (row.kind === "gap") return;
+    if (
+      (row.oldLine !== undefined && wanted.has(`base:${row.oldLine}`)) ||
+      (row.newLine !== undefined && wanted.has(`head:${row.newLine}`))
+    ) {
+      last = index;
+    }
+  });
+  return last;
+}
+
 function collectAnchors(graph: ChangeGraph): Map<string, { side: Side; line: number }[]> {
   const anchors = new Map<string, { side: Side; line: number }[]>();
 
