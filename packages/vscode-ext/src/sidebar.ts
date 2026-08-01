@@ -151,11 +151,14 @@ body {
   font-size: var(--vscode-font-size);
   color: var(--vscode-foreground);
 }
+/* The right padding is generous on purpose: the reviewed box sits at the end
+   of the row, and the editor draws its scrollbar over the last few pixels of
+   the view. Without the clearance the box ends up under it. */
 .row {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 10px 2px 8px;
+  padding: 2px 20px 2px 8px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -166,7 +169,7 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px 2px 8px;
+  padding: 3px 20px 2px 8px;
   cursor: pointer;
   white-space: nowrap;
   color: var(--muted);
@@ -231,11 +234,9 @@ input.seen {
 }
 .row:hover input.seen,
 .folder:hover input.seen,
-input.seen:checked,
-input.seen:indeterminate { opacity: 1; }
+input.seen:checked { opacity: 1; }
 
-input.seen:checked,
-input.seen:indeterminate {
+input.seen:checked {
   border-color: var(--vscode-focusBorder, currentColor);
 }
 input.seen::after {
@@ -249,13 +250,12 @@ input.seen::after {
   color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
 }
 input.seen:checked::after { content: "✓"; }
-input.seen:indeterminate::after { content: "–"; }
 .row.seen-marked .name,
 .row.seen-marked .counts { opacity: 0.45; }
 .row.seen-marked .name { text-decoration: line-through; }
 
 .name { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
-.row .seen, .folder .seen { margin-left: auto; }
+.row .seen { margin-left: auto; }
 .status-phantom .name { color: var(--muted); }
 
 .counts { flex: 0 0 auto; font-size: 0.9em; }
@@ -279,7 +279,7 @@ input.seen:indeterminate::after { content: "–"; }
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 1px 10px 1px 34px;
+  padding: 1px 20px 1px 8px;
   cursor: pointer;
   white-space: nowrap;
   font-size: 0.95em;
@@ -315,29 +315,6 @@ document.querySelectorAll(".folder").forEach((folder) => {
   });
 });
 
-/** The file rows a folder heading governs. */
-function rowsUnder(folder) {
-  const body = folder.nextElementSibling;
-  return body ? [...body.querySelectorAll(".row")] : [];
-}
-
-/**
- * Reflects the state of the files below each folder.
- *
- * Some-but-not-all is shown as indeterminate rather than as unchecked, so a
- * folder never claims nothing in it has been read.
- */
-function refreshFolders() {
-  document.querySelectorAll(".folder").forEach((folder) => {
-    const boxes = rowsUnder(folder).map((r) => r.querySelector(".seen"));
-    const checked = boxes.filter((b) => b && b.checked).length;
-    const box = folder.querySelector(".seen");
-    if (!box) return;
-    box.checked = boxes.length > 0 && checked === boxes.length;
-    box.indeterminate = checked > 0 && checked < boxes.length;
-  });
-}
-
 function markRow(row, marked) {
   const box = row.querySelector(".seen");
   if (box) box.checked = marked;
@@ -355,19 +332,7 @@ document.querySelectorAll(".row .seen").forEach((box) => {
   box.addEventListener("change", () => {
     const row = box.closest(".row");
     markRow(row, box.checked);
-    refreshFolders();
     announce([row.dataset.path], box.checked);
-  });
-});
-
-document.querySelectorAll(".folder .seen").forEach((box) => {
-  box.addEventListener("click", (event) => event.stopPropagation());
-  box.addEventListener("change", () => {
-    // A folder speaks for everything beneath it, however deep.
-    const rows = rowsUnder(box.closest(".folder"));
-    rows.forEach((row) => markRow(row, box.checked));
-    refreshFolders();
-    announce(rows.map((r) => r.dataset.path), box.checked);
   });
 });
 
@@ -378,7 +343,6 @@ window.addEventListener("message", (event) => {
   document.querySelectorAll(".row").forEach((row) => {
     if (wanted.has(row.dataset.path)) markRow(row, message.viewed === true);
   });
-  refreshFolders();
 });
 
 document.querySelectorAll(".row").forEach((row) => {
@@ -398,8 +362,6 @@ document.querySelectorAll(".ref").forEach((ref) => {
   });
 });
 
-refreshFolders();
-
 const review = document.getElementById("review");
 if (review) review.addEventListener("click", () => vscodeApi.postMessage({ type: "review" }));
 </script></body></html>`;
@@ -418,12 +380,13 @@ function renderTree(
   if (folder.label === "") return inner;
 
   const indent = depth * 10;
+  // Folders carry no box of their own. One would have to show a partial state
+  // whenever some of its files were read and some were not, and a checkbox
+  // that means "some" is harder to read at a glance than the files themselves.
   return (
     `<div class="folder open" style="padding-left:${8 + indent}px">` +
     `<span class="twisty">${CHEVRON}</span>` +
     `<span class="dir">${escapeHtml(folder.label)}</span>` +
-    `<input type="checkbox" class="seen" ` +
-    `title="Mark everything below as reviewed">` +
     `</div><div class="folder-body">${inner}</div>`
   );
 }
@@ -462,14 +425,22 @@ function fileRow(
     `<span class="name">${escapeHtml(title.name)}</span>` +
     `<span class="counts">${counts}</span>` +
     note +
-    `<input type="checkbox" class="seen"${viewed?.has(node.path) ? " checked" : ""} ` +
-    `title="Mark as reviewed">` +
+    // A file the diff never touched has nothing to review, so it gets no box.
+    (node.status === "phantom"
+      ? ""
+      : `<input type="checkbox" class="seen"${viewed?.has(node.path) ? " checked" : ""} ` +
+        `title="Mark as reviewed">`) +
     `</div>` +
-    `<div class="refs">${outgoing.map((e) => refRow(e, graph)).join("")}</div>`
+    // References line up under the file they leave, not at a fixed indent:
+    // a fixed one puts a deeply nested file's references out at the margin,
+    // where they read as siblings of the folders rather than as its contents.
+    `<div class="refs">${outgoing
+      .map((e) => refRow(e, graph, depth))
+      .join("")}</div>`
   );
 }
 
-function refRow(edge: Edge, graph: ChangeGraph): string {
+function refRow(edge: Edge, graph: ChangeGraph, depth = 0): string {
   const target = graph.nodes.find((n) => n.id === edge.to.nodeId);
   const where = target
     ? `${basename(target.path)}:${edge.to.line}`
@@ -477,6 +448,7 @@ function refRow(edge: Edge, graph: ChangeGraph): string {
 
   return (
     `<div class="ref ${edge.change}" data-id="${escapeHtml(edge.id)}" ` +
+    `style="padding-left:${8 + (depth + 1) * 10 + 22}px" ` +
     `title="${escapeHtml(edge.label ?? "")}">` +
     `<span class="arrow">→</span>` +
     `<span class="symbol">${escapeHtml(edge.to.symbolName ?? "reference")}</span>` +

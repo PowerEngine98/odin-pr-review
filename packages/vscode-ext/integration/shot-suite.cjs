@@ -18,6 +18,6 @@ exports.run = async function () {
   } catch {
     execFileSync("osascript", ["-e", 'tell application "Visual Studio Code" to activate']);
   }
-  await new Promise((r) => setTimeout(r, 1500));
+  await new Promise((r) => setTimeout(r, 2500));
   execFileSync("screencapture", ["-x", "-o", `${process.env.SP}/sidebar.png`]);
 };

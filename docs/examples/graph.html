@@ -713,51 +713,113 @@ html, body {
     tooltip.classList.remove("visible");
   });
 
-  /* ------------------------------------------------------------ expanding */
+  /* ----------------------------------------------------------- positioning */
 
-  // Card geometry arrives already computed, and expanding is the one thing that
-  // changes it. Rather than duplicate the layout engine here, the card is grown
-  // in place, the cards below it in the same column are pushed down by the same
-  // amount, and every arrow is re-anchored from where its row actually sits.
-  // Row heights are fixed by the stylesheet, so measuring is exact.
+  /**
+   * Places every card from scratch.
+   *
+   * Positions are a function of three things: the arrangement in force, which
+   * cards are hidden, and how tall each one currently is. Computing them fresh
+   * every time is the whole point — the previous approach nudged cards by a
+   * delta per action, and any action that reset positions (switching
+   * arrangements) left those nudges recorded but no longer applied, so the next
+   * one subtracted the same space twice and stacked cards on top of each other.
+   *
+   * The arrangement's own coordinates are treated as immutable and never
+   * written back to, so there is exactly one source of truth to drift from.
+   */
+  function recompute() {
+    var showTests = document.getElementById("filter-tests").checked;
+    var hideViewed = document.getElementById("filter-viewed").checked;
+    var arrangement = data.arrangements[showTests ? "withTests" : "withoutTests"];
+
+    var columns = {};
+
+    data.nodes.forEach(function (node) {
+      var card = document.getElementById("card-" + cssId(node.id));
+      if (!card) return;
+
+      var placed = arrangement.nodes[node.id];
+      if (!placed) {
+        card.classList.add("hidden");
+        return;
+      }
+
+      card.classList.remove("hidden");
+      node.x = placed.x;
+      node.column = placed.column;
+      card.style.left = node.x + "px";
+
+      var bucket = columns[placed.column] || (columns[placed.column] = []);
+      bucket.push({ node: node, card: card, placed: placed });
+    });
+
+    Object.keys(columns).forEach(function (key) {
+      var entries = columns[key].sort(function (a, b) {
+        return a.placed.y - b.placed.y;
+      });
+
+      // Cards keep the positions the layout aimed them at; only the difference
+      // made by expanding or hiding is carried down the column. A running floor
+      // enforces the same clearance the layout engine does, because the shift
+      // alone does not: hiding a card subtracts space, and if something above
+      // it has grown, the two can meet in the middle.
+      var shift = 0;
+      var floor = -Infinity;
+      entries.forEach(function (entry) {
+        var hidden = hideViewed && isViewed(entry.node.id);
+        entry.card.classList.toggle("viewed-hidden", hidden);
+        entry.card.classList.toggle("is-viewed", isViewed(entry.node.id));
+
+        var box = entry.card.querySelector(".viewed-box");
+        if (box) box.checked = isViewed(entry.node.id);
+
+        if (hidden) {
+          shift -= entry.placed.height + data.rowGap;
+          return;
+        }
+
+        var title = entry.card.querySelector(".card-title");
+        var body = entry.card.querySelector(".card-body");
+        var height = body
+          ? (title ? title.offsetHeight : 0) + body.scrollHeight
+          : entry.placed.height;
+
+        var wanted = entry.placed.y + shift;
+        entry.node.y = Math.max(wanted, floor);
+        entry.node.height = height;
+        entry.card.style.top = entry.node.y + "px";
+        entry.card.style.height = height + "px";
+
+        floor = entry.node.y + height + data.rowGap;
+        shift += height - entry.placed.height;
+      });
+    });
+
+    var tallest = 0;
+    data.nodes.forEach(function (node) {
+      var card = document.getElementById("card-" + cssId(node.id));
+      if (!card || card.classList.contains("hidden") ||
+          card.classList.contains("viewed-hidden")) return;
+      tallest = Math.max(tallest, node.y + node.height);
+    });
+
+    data.height = tallest + 48;
+    canvas.style.height = data.height + "px";
+    data.width = arrangement.width;
+    canvas.style.width = data.width + "px";
+
+    var svg = document.getElementById("edges");
+    if (svg) {
+      svg.setAttribute("width", data.width);
+      svg.setAttribute("height", data.height);
+    }
+
+    rerouteEdges();
+  }
 
   function nodeFor(id) {
     return data.nodes.find(function (n) { return n.id === id; });
-  }
-
-  function reflow(card, delta) {
-    if (!delta) return;
-    var node = nodeFor(card.dataset.id);
-    if (!node) return;
-
-    node.height += delta;
-    card.style.height = node.height + "px";
-    Object.keys(data.arrangements).forEach(function (name) {
-      var placed = data.arrangements[name].nodes[node.id];
-      if (placed) placed.height += delta;
-    });
-
-    // Only this column moves: columns are laid out side by side, so nothing in
-    // another one can collide with a card that grew.
-    data.nodes.forEach(function (other) {
-      if (other.id === node.id) return;
-      if (other.column !== node.column) return;
-      if (other.y < node.y) return;
-      other.y += delta;
-      Object.keys(data.arrangements).forEach(function (name) {
-        var placed = data.arrangements[name].nodes[other.id];
-        if (placed && placed.y > node.y) placed.y += delta;
-      });
-      var el = document.getElementById("card-" + cssId(other.id));
-      if (el) el.style.top = other.y + "px";
-    });
-
-    data.height += delta;
-    canvas.style.height = data.height + "px";
-    var svg = document.getElementById("edges");
-    if (svg) svg.setAttribute("height", data.height);
-
-    rerouteEdges();
   }
 
   function anchorFor(nodeId, side, line, fileLevel) {
@@ -773,10 +835,15 @@ html, body {
 
     var attribute = side === "base" ? "data-old" : "data-new";
     var row = card.querySelector('.row[' + attribute + '="' + line + '"]');
-    // A row inside a closed gap, or below the cap, has no position to point at.
+
+    // A row inside a closed gap, or below the cap, has no position to point at;
+    // the fold that would reveal it does.
     if (!row || row.offsetParent === null) {
-      return { y: node.y + node.height / 2, node: node };
+      var fold = foldFor(card, row);
+      if (!fold) return { y: node.y + node.height / 2, node: node };
+      row = fold;
     }
+
     // The card is the positioned ancestor, so offsetTop already counts the
     // title. Adding the body's offset as well put every arrow a title-height
     // too low — about two rows, which is close enough to look plausible.
@@ -784,6 +851,19 @@ html, body {
       y: node.y + row.offsetTop + row.offsetHeight / 2,
       node: node,
     };
+  }
+
+  /** The visible band or bar standing in for a row that is not on screen. */
+  function foldFor(card, row) {
+    if (row) {
+      for (var previous = row.previousElementSibling; previous;
+           previous = previous.previousElementSibling) {
+        if (previous.classList.contains("gap") && previous.offsetParent !== null) {
+          return previous;
+        }
+      }
+    }
+    return card.querySelector(".row.more");
   }
 
   function rerouteEdges() {
@@ -810,6 +890,8 @@ html, body {
     });
   }
 
+  /* ------------------------------------------------------------ expanding */
+
   /** Opens or closes one band, without measuring or moving anything. */
   function setGapOpen(band, open) {
     band.classList.toggle("open", open);
@@ -823,7 +905,6 @@ html, body {
   function expand(trigger) {
     var card = trigger.closest(".card");
     if (!card) return;
-    var before = card.querySelector(".card-body").scrollHeight;
 
     if (trigger.classList.contains("more")) {
       card.classList.add("expanded");
@@ -834,35 +915,7 @@ html, body {
       setGapOpen(trigger, !trigger.classList.contains("open"));
     }
 
-    var after = card.querySelector(".card-body").scrollHeight;
-    reflow(card, after - before);
-  }
-
-  /**
-   * Applies a height change to every card at once.
-   *
-   * Cards are settled from the top of each column down, because growing one
-   * pushes everything below it, and doing them out of order would compound the
-   * shifts onto cards that had already moved.
-   */
-  function settle(measure) {
-    var pending = [];
-    cards.forEach(function (card) {
-      var body = card.querySelector(".card-body");
-      if (!body) return;
-      var before = body.scrollHeight;
-      measure(card);
-      pending.push({ card: card, delta: body.scrollHeight - before });
-    });
-
-    pending
-      .filter(function (entry) { return entry.delta !== 0; })
-      .sort(function (a, b) {
-        var na = nodeFor(a.card.dataset.id);
-        var nb = nodeFor(b.card.dataset.id);
-        return na.x - nb.x || na.y - nb.y;
-      })
-      .forEach(function (entry) { reflow(entry.card, entry.delta); });
+    recompute();
   }
 
   document.querySelectorAll(".row.more, .row.gap.expandable").forEach(function (trigger) {
@@ -875,100 +928,6 @@ html, body {
       event.preventDefault();
       expand(trigger);
     });
-  });
-
-  /* ---------------------------------------------------------------- viewed */
-
-  // Which files the reader has marked off. Kept here rather than in the graph:
-  // it is a note about the reader's progress, not a fact about the change.
-  var viewed = {};
-
-  function isViewed(nodeId) {
-    return viewed[nodeId] === true;
-  }
-
-  /**
-   * Hides or reveals a reviewed card, closing the space it leaves.
-   *
-   * Left in place it would punch a hole in its column, and a graph read as a
-   * shape is worse for having gaps in it. Cards below shift by exactly the
-   * height that went away, which is the same move an expansion makes in
-   * reverse.
-   */
-  function applyViewed(card, hide) {
-    var node = nodeFor(card.dataset.id);
-    if (!node) return;
-    var alreadyHidden = card.classList.contains("viewed-hidden");
-    if (hide === alreadyHidden) return;
-
-    var span = node.height + data.rowGap;
-    card.classList.toggle("viewed-hidden", hide);
-
-    data.nodes.forEach(function (other) {
-      if (other.id === node.id) return;
-      if (other.column !== node.column) return;
-      if (other.y <= node.y) return;
-      other.y += hide ? -span : span;
-      var el = document.getElementById("card-" + cssId(other.id));
-      if (el) el.style.top = other.y + "px";
-    });
-  }
-
-  function refreshViewed() {
-    var hideViewed = document.getElementById("filter-viewed").checked;
-
-    cards.forEach(function (card) {
-      var marked = isViewed(card.dataset.id);
-      card.classList.toggle("is-viewed", marked);
-      var box = card.querySelector(".viewed-box");
-      if (box) box.checked = marked;
-      applyViewed(card, marked && hideViewed);
-    });
-
-    edgeGroups.forEach(function (g) {
-      var edge = data.edges.find(function (e) { return e.id === g.dataset.id; });
-      if (!edge) return;
-      var touchesHidden =
-        hideViewed && (isViewed(edge.from) || isViewed(edge.to));
-      g.classList.toggle("viewed-hidden", touchesHidden);
-    });
-
-    rerouteEdges();
-  }
-
-  /** Sets one file's state, from a click here or from the host. */
-  function setViewed(nodeId, marked, tell) {
-    viewed[nodeId] = marked;
-    refreshViewed();
-    if (tell) {
-      var node = nodeFor(nodeId);
-      if (node) notifyHost("viewed", { path: node.path, viewed: marked });
-    }
-  }
-
-  cards.forEach(function (card) {
-    var box = card.querySelector(".viewed-box");
-    if (!box) return;
-    box.addEventListener("click", function (event) { event.stopPropagation(); });
-    box.addEventListener("change", function () {
-      setViewed(card.dataset.id, box.checked, true);
-    });
-  });
-
-  var viewedFilter = document.getElementById("filter-viewed");
-  if (viewedFilter) viewedFilter.addEventListener("change", refreshViewed);
-
-  // The sidebar and the canvas show the same marks, so the host keeps them
-  // in step.
-  window.addEventListener("message", function (event) {
-    var message = event.data;
-    if (!message || message.type !== "setViewed") return;
-    var byPath = {};
-    data.nodes.forEach(function (n) { byPath[n.path] = n.id; });
-    (message.paths || []).forEach(function (path) {
-      if (byPath[path]) viewed[byPath[path]] = message.viewed === true;
-    });
-    refreshViewed();
   });
 
   /* --------------------------------------------------------------- tooltip */
@@ -1029,70 +988,89 @@ html, body {
 
   /* --------------------------------------------------------------- filters */
 
+  // Which files the reader has marked off. Kept here rather than in the graph:
+  // it is a note about the reader's progress, not a fact about the change.
+  var viewed = {};
+
+  function isViewed(nodeId) {
+    return viewed[nodeId] === true;
+  }
+
+  /**
+   * Applies every switch, then lets the layout be worked out from scratch.
+   *
+   * This function decides only what is shown; where it goes is recompute's
+   * business. Keeping the two apart is what stopped the cards colliding: when
+   * this also moved them, each switch left its own adjustments recorded, and
+   * the next one applied them a second time.
+   */
   function refreshFilters() {
     var showImports = document.getElementById("filter-imports").checked;
     var showUnchanged = document.getElementById("filter-unchanged").checked;
     var showTests = document.getElementById("filter-tests").checked;
+    var hideViewed = document.getElementById("filter-viewed").checked;
 
     // The imports switch governs the statements as well as the arrows: showing
     // one without the other leaves arrows pointing into a folded band.
-    settle(function (card) {
+    cards.forEach(function (card) {
       card.querySelectorAll(".row.gap.imports").forEach(function (band) {
         setGapOpen(band, showImports);
       });
     });
 
-    // Positions come from whichever arrangement was computed for this choice;
-    // there is no layout engine here to work them out.
     var arrangement = data.arrangements[showTests ? "withTests" : "withoutTests"];
-    var hiddenNodes = {};
-
-    data.nodes.forEach(function (node) {
-      var placed = arrangement.nodes[node.id];
-      var card = document.getElementById("card-" + cssId(node.id));
-      if (!card) return;
-
-      if (!placed) {
-        hiddenNodes[node.id] = true;
-        card.classList.add("hidden");
-        return;
-      }
-
-      card.classList.remove("hidden");
-      node.x = placed.x;
-      node.y = placed.y;
-      node.column = placed.column;
-      card.style.left = node.x + "px";
-      card.style.top = node.y + "px";
-    });
-
-    data.width = arrangement.width;
-    data.height = arrangement.height;
-    canvas.style.width = data.width + "px";
-    canvas.style.height = data.height + "px";
-    var svg = document.getElementById("edges");
-    if (svg) {
-      svg.setAttribute("width", data.width);
-      svg.setAttribute("height", data.height);
-    }
 
     edgeGroups.forEach(function (g) {
       var edge = data.edges.find(function (e) { return e.id === g.dataset.id; });
       var isImport = g.classList.contains("import");
       var isUnchanged = g.classList.contains("unchanged");
-      var touchesHidden =
-        edge && (hiddenNodes[edge.from] || hiddenNodes[edge.to]);
-      var hidden =
-        (isImport && !showImports) ||
-        (isUnchanged && !showUnchanged) ||
-        Boolean(touchesHidden);
-      g.classList.toggle("hidden", hidden);
+      var gone =
+        edge &&
+        (!arrangement.nodes[edge.from] ||
+          !arrangement.nodes[edge.to] ||
+          (hideViewed && (isViewed(edge.from) || isViewed(edge.to))));
+      g.classList.toggle(
+        "hidden",
+        (isImport && !showImports) || (isUnchanged && !showUnchanged) || Boolean(gone),
+      );
     });
 
-    rerouteEdges();
+    recompute();
   }
 
-  ["filter-imports", "filter-unchanged", "filter-tests"].forEach(function (id) {
+  /** Sets one file's state, from a click here or from the host. */
+  function setViewed(nodeId, marked, tell) {
+    viewed[nodeId] = marked;
+    refreshFilters();
+    if (tell) {
+      var node = nodeFor(nodeId);
+      if (node) notifyHost("viewed", { path: node.path, viewed: marked });
+    }
+  }
+
+  cards.forEach(function (card) {
+    var box = card.querySelector(".viewed-box");
+    if (!box) return;
+    box.addEventListener("click", function (event) { event.stopPropagation(); });
+    box.addEventListener("change", function () {
+      setViewed(card.dataset.id, box.checked, true);
+    });
+  });
+
+  // The sidebar and the canvas show the same marks, so the host keeps them
+  // in step.
+  window.addEventListener("message", function (event) {
+    var message = event.data;
+    if (!message || message.type !== "setViewed") return;
+    var byPath = {};
+    data.nodes.forEach(function (n) { byPath[n.path] = n.id; });
+    (message.paths || []).forEach(function (path) {
+      if (byPath[path]) viewed[byPath[path]] = message.viewed === true;
+    });
+    refreshFilters();
+  });
+
+  ["filter-imports", "filter-unchanged", "filter-tests", "filter-viewed"].forEach(function (id) {
     var input = document.getElementById(id);
     if (input) input.addEventListener("change", refreshFilters);
   });
@@ -1118,7 +1096,6 @@ html, body {
   }
 
   refreshFilters();
-  refreshViewed();
   fit();
   window.addEventListener("resize", fit);
 })();
