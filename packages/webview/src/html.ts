@@ -372,14 +372,53 @@ const RING =
  */
 function composer(): string {
   return `<div class="composer" hidden>
-  <div class="composer-where"></div>
-  <textarea class="composer-body" rows="4" placeholder="Leave a comment"></textarea>
-  <label class="composer-suggest"><input type="checkbox" class="as-suggestion"> suggest a replacement</label>
+  <div class="composer-head"><span class="composer-where"></span></div>
+  <div class="composer-box">
+    <div class="composer-tabs">
+      <button class="tab is-on" data-tab="write">Write</button>
+      <button class="tab" data-tab="preview">Preview</button>
+      <span class="md-tools">${MD_TOOLS}</span>
+    </div>
+    <textarea class="composer-body" rows="5" placeholder="Leave a comment"></textarea>
+    <div class="composer-preview" hidden></div>
+  </div>
   <div class="composer-actions">
     <button class="composer-cancel">Cancel</button>
-    <button class="composer-add primary">Add to review</button>
+    <button class="composer-add primary">Start a review</button>
   </div>
 </div>`;
+}
+
+/**
+ * The markdown buttons, in the order GitHub puts them.
+ *
+ * Drawn here rather than fetched, like every other glyph in the page. The last
+ * one has no equivalent there because it is ours: it fills a suggestion block
+ * with the lines being commented on, which is the version of that gesture worth
+ * having — a suggestion has to be the whole replacement for the lines it covers,
+ * and typing them out again from memory is how the wrong indentation gets in.
+ */
+const MD_TOOLS = [
+  tool("heading", "Heading", "M4 3v10M12 3v10M4 8h8"),
+  tool("bold", "Bold", "M5 3h4a2.5 2.5 0 0 1 0 5H5zM5 8h4.5a2.5 2.5 0 0 1 0 5H5z"),
+  tool("italic", "Italic", "M10 3H6.5M9.5 13H6M9 3l-2 10"),
+  tool("quote", "Quote", "M3 4v8M6 5h7M6 8h7M6 11h4"),
+  tool("code", "Code", "M6 4L2.5 8 6 12M10 4l3.5 4-3.5 4"),
+  tool("link", "Link", "M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.7.7M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.7-.7"),
+  tool("ul", "Bulleted list", "M6 4h8M6 8h8M6 12h8M3 4h.01M3 8h.01M3 12h.01"),
+  tool("ol", "Numbered list", "M6 4h8M6 8h8M6 12h8M2 3h1v3M2 12h2M2 10h2v.01"),
+  tool("task", "Task list", "M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5"),
+  tool("suggest", "Suggest a replacement", "M8 3v10M3 8h10"),
+].join("");
+
+function tool(kind: string, label: string, path: string): string {
+  return (
+    `<button class="md" data-md="${kind}" title="${escapeHtml(label)}" ` +
+    `aria-label="${escapeHtml(label)}">` +
+    `<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">` +
+    `<path d="${path}" fill="none" stroke="currentColor" stroke-width="1.5" ` +
+    `stroke-linecap="round" stroke-linejoin="round"/></svg></button>`
+  );
 }
 
 /**

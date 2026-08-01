@@ -44,6 +44,8 @@ export const CLIENT_SCRIPT = String.raw`
   function paint() {
     canvas.style.transform =
       "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
+    // An open composer belongs to a line, so it travels with it.
+    placeComposer();
   }
 
   function rest() {
@@ -496,6 +498,9 @@ export const CLIENT_SCRIPT = String.raw`
   var panel = document.querySelector(".review");
   var reviewButton = document.getElementById("action-review");
   var pending = null;
+  /** The row the composer is pinned under, and the code it is about. */
+  var anchorRow = null;
+  var anchorLines = [];
 
   /**
    * Marks the lines that already carry a comment, and the ones drafted here.
@@ -605,21 +610,266 @@ export const CLIENT_SCRIPT = String.raw`
     var end = Math.max.apply(null, lines);
 
     pending = { path: node.path, line: end, startLine: start, side: side };
+
+    // The forge's own way of saying where: R for the head side, L for the base,
+    // which is the only notation that distinguishes line 40 of the file as it
+    // was from line 40 of the file as it will be.
+    var mark = side === "RIGHT" ? "R" : "L";
     composer.querySelector(".composer-where").textContent =
-      node.path.split("/").pop() + ":" + (start === end ? end : start + "–" + end);
+      start === end
+        ? "Add a comment on line " + mark + end
+        : "Add a comment on lines " + mark + start + "–" + mark + end;
+
     composer.querySelector(".composer-body").value = "";
-    composer.querySelector(".as-suggestion").checked = false;
+    setTab("write");
     composer.hidden = false;
 
-    var box = composer.getBoundingClientRect();
-    composer.style.left =
-      Math.min(event.clientX + 16, window.innerWidth - box.width - 16) + "px";
-    composer.style.top =
-      Math.min(event.clientY, window.innerHeight - box.height - 16) + "px";
+    // Pinned under the last line it is about that is actually on screen. A row
+    // folded inside a closed gap has no position, and hanging the box off one
+    // would put it wherever zero happens to be.
+    anchorRow = rows[rows.length - 1];
+    for (var r = rows.length - 1; r >= 0; r--) {
+      if (rows[r].getBoundingClientRect().height > 0) { anchorRow = rows[r]; break; }
+    }
+    anchorLines = rows.map(function (row) { return row.querySelector(".text").textContent; });
+    placeComposer();
     composer.querySelector(".composer-body").focus();
   }
 
+  /**
+   * Puts the composer under the line it belongs to, and keeps it there.
+   *
+   * Called on every view change rather than once, because the canvas moves and
+   * a box that stayed where it was would end up talking about whatever line had
+   * drifted under it. Its own size does not scale with the canvas: text that
+   * shrinks to nothing at low zoom is not a comment field.
+   */
+  function placeComposer() {
+    if (!composer || composer.hidden || !anchorRow) return;
+    var card = anchorRow.closest(".card");
+    if (!card) return;
+
+    var row = anchorRow.getBoundingClientRect();
+    var box = card.getBoundingClientRect();
+    var size = composer.getBoundingClientRect();
+
+    // Wide enough for the tools to sit in one row, and no wider than the file
+    // it belongs to unless that file is narrower than the tools.
+    var width = Math.max(520, Math.min(box.width, 680));
+    composer.style.width = width + "px";
+    composer.style.left =
+      Math.round(Math.min(Math.max(8, box.left), window.innerWidth - width - 8)) + "px";
+    // Below the line where there is room for it, above where there is not.
+    var below = row.bottom + 6;
+    var top = below + size.height > window.innerHeight - 8
+      ? Math.max(8, row.top - size.height - 6)
+      : below;
+    composer.style.top = Math.round(top) + "px";
+  }
+
+  /* ------------------------------------------------------- writing the words */
+
+  function setTab(which) {
+    if (!composer) return;
+    var writing = which !== "preview";
+    composer.querySelectorAll(".tab").forEach(function (tab) {
+      tab.classList.toggle("is-on", tab.dataset.tab === (writing ? "write" : "preview"));
+    });
+    composer.querySelector(".composer-body").hidden = !writing;
+    var preview = composer.querySelector(".composer-preview");
+    preview.hidden = writing;
+    if (!writing) {
+      var text = composer.querySelector(".composer-body").value;
+      preview.innerHTML = text.trim()
+        ? renderMarkdown(text)
+        : '<span class="empty">Nothing to preview</span>';
+    }
+  }
+
+  /**
+   * Markdown, as far as a comment box needs it.
+   *
+   * A deliberately small subset, and everything is escaped before any of it is
+   * applied — the text comes from a person, and this page renders it. Anything
+   * unrecognised stays the characters that were typed, which is what the forge
+   * will store; a plain line is a better answer than a confident wrong
+   * rendering of one.
+   */
+  function renderMarkdown(source) {
+    var lines = source.split("\n");
+    var out = [];
+    var i = 0;
+
+    while (i < lines.length) {
+      var line = lines[i];
+
+      // Fenced blocks first: nothing inside one is markdown.
+      var fence = /^\s*(\`{3,})(.*)$/.exec(line);
+      if (fence) {
+        var lang = fence[2].trim();
+        var body = [];
+        i++;
+        while (i < lines.length && !new RegExp("^\\s*" + fence[1]).test(lines[i])) {
+          body.push(lines[i]);
+          i++;
+        }
+        i++;
+        var label = lang === "suggestion"
+          ? '<span class="label">suggested change</span>'
+          : "";
+        out.push(
+          '<pre class="' + (lang === "suggestion" ? "suggestion" : "") + '">' +
+          label + "<code>" + escapeHtml(body.join("\n")) + "</code></pre>",
+        );
+        continue;
+      }
+
+      var heading = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (heading) {
+        var level = Math.min(3, heading[1].length);
+        out.push("<h" + level + ">" + inline(heading[2]) + "</h" + level + ">");
+        i++;
+        continue;
+      }
+
+      if (/^\s*>\s?/.test(line)) {
+        var quoted = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+          quoted.push(lines[i].replace(/^\s*>\s?/, ""));
+          i++;
+        }
+        out.push("<blockquote>" + inline(quoted.join(" ")) + "</blockquote>");
+        continue;
+      }
+
+      if (/^\s*(?:[-*]|\d+\.)\s+/.test(line)) {
+        var ordered = /^\s*\d+\./.test(line);
+        var items = [];
+        while (i < lines.length && /^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])) {
+          var item = lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, "");
+          var task = /^\[([ xX])\]\s*/.exec(item);
+          if (task) {
+            item = item.slice(task[0].length);
+            items.push(
+              "<li>" +
+              (task[1] === " " ? "☐ " : "☑ ") +
+              inline(item) + "</li>",
+            );
+          } else {
+            items.push("<li>" + inline(item) + "</li>");
+          }
+          i++;
+        }
+        out.push(
+          (ordered ? "<ol>" : "<ul>") + items.join("") + (ordered ? "</ol>" : "</ul>"),
+        );
+        continue;
+      }
+
+      if (line.trim() === "") { i++; continue; }
+
+      var para = [];
+      while (
+        i < lines.length &&
+        lines[i].trim() !== "" &&
+        !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i]) &&
+        !/^\s*>/.test(lines[i]) &&
+        !/^\s*\`{3,}/.test(lines[i]) &&
+        !/^#{1,6}\s/.test(lines[i])
+      ) {
+        para.push(lines[i]);
+        i++;
+      }
+      out.push("<p>" + inline(para.join(" ")) + "</p>");
+    }
+
+    return out.join("");
+  }
+
+  /** Escape first, then mark up: nothing typed can become markup by accident. */
+  function inline(text) {
+    var safe = escapeHtml(text);
+    safe = safe.replace(/\`([^\`]+)\`/g, "<code>$1</code>");
+    safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    safe = safe.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+    safe = safe.replace(/_([^_]+)_/g, "<em>$1</em>");
+    // Links are rendered as their text and their target, never as an anchor:
+    // a comment box is not a place to make something clickable that a reader
+    // has not looked at.
+    safe = safe.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 (<code>$2</code>)");
+    return safe;
+  }
+
+  /**
+   * What each markdown button does to the field.
+   *
+   * Wrapping styles keep the selection selected afterwards, and prefixing ones
+   * apply to every line the selection touches, because that is what someone
+   * who has selected three lines and pressed the list button means.
+   */
+  function applyMarkdown(kind) {
+    var field = composer.querySelector(".composer-body");
+    var start = field.selectionStart;
+    var end = field.selectionEnd;
+    var value = field.value;
+    var selected = value.slice(start, end);
+
+    var wrap = function (before, after) {
+      var text = selected || "";
+      field.value = value.slice(0, start) + before + text + after + value.slice(end);
+      field.selectionStart = start + before.length;
+      field.selectionEnd = start + before.length + text.length;
+    };
+
+    var prefix = function (make) {
+      var from = value.lastIndexOf("\n", start - 1) + 1;
+      var to = value.indexOf("\n", end);
+      if (to === -1) to = value.length;
+      var block = value.slice(from, to) || "";
+      var marked = block.split("\n").map(make).join("\n");
+      field.value = value.slice(0, from) + marked + value.slice(to);
+      field.selectionStart = from;
+      field.selectionEnd = from + marked.length;
+    };
+
+    if (kind === "bold") wrap("**", "**");
+    else if (kind === "italic") wrap("_", "_");
+    else if (kind === "code") {
+      var tick = "\u0060";
+      var fence3 = tick + tick + tick;
+      if (selected.indexOf("\n") >= 0) wrap(fence3 + "\n", "\n" + fence3);
+      else wrap(tick, tick);
+    } else if (kind === "link") wrap("[", "](url)");
+    else if (kind === "heading") prefix(function (line) { return "### " + line; });
+    else if (kind === "quote") prefix(function (line) { return "> " + line; });
+    else if (kind === "ul") prefix(function (line) { return "- " + line; });
+    else if (kind === "task") prefix(function (line) { return "- [ ] " + line; });
+    else if (kind === "ol") {
+      var n = 0;
+      prefix(function (line) { n++; return n + ". " + line; });
+    } else if (kind === "suggest") {
+      // Filled with the lines being commented on. A suggestion has to be the
+      // whole replacement for the span it covers, and retyping it from memory
+      // is how the wrong indentation gets in.
+      var fence = "\u0060\u0060\u0060";
+      var block = fence + "suggestion\n" + anchorLines.join("\n") + "\n" + fence;
+      var body = field.value.trim();
+      field.value = body ? body + "\n\n" + block : block;
+      field.selectionStart = field.selectionEnd = field.value.length;
+    }
+
+    field.focus();
+    setTab("write");
+  }
+
   if (composer) {
+    composer.querySelectorAll(".tab").forEach(function (tab) {
+      tab.addEventListener("click", function () { setTab(tab.dataset.tab); });
+    });
+    composer.querySelectorAll(".md").forEach(function (button) {
+      button.addEventListener("click", function () { applyMarkdown(button.dataset.md); });
+    });
+
     composer.querySelector(".composer-cancel").addEventListener("click", function () {
       composer.hidden = true;
       pending = null;
@@ -628,16 +878,11 @@ export const CLIENT_SCRIPT = String.raw`
     });
 
     composer.querySelector(".composer-add").addEventListener("click", function () {
-      var text = composer.querySelector(".composer-body").value.trim();
-      if (!text || !pending) return;
-
-      // A suggestion is an ordinary comment in a fenced block the forge knows
-      // how to offer as a one-click change.
-      var suggest = composer.querySelector(".as-suggestion").checked;
-      // Written with escapes because this whole script lives inside a template
-      // literal, which a literal fence would end.
-      var fence = "\u0060\u0060\u0060";
-      var body = suggest ? fence + "suggestion\n" + text + "\n" + fence : text;
+      // The fence, when there is one, is already in the text: the suggestion
+      // button puts it there along with the lines it replaces, so what goes to
+      // the forge is what the reviewer read back before pressing this.
+      var body = composer.querySelector(".composer-body").value.trim();
+      if (!body || !pending) return;
 
       drafts.push({
         path: pending.path,
@@ -656,6 +901,13 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   function refreshReview() {
+    // The forge's wording, and it earns its place: the first remark starts
+    // something, the rest join it, and a reviewer who has forgotten whether
+    // they already have a review going can read the answer off the button.
+    var add = composer && composer.querySelector(".composer-add");
+    if (add) {
+      add.textContent = drafts.length === 0 ? "Start a review" : "Add review comment";
+    }
     if (reviewButton) {
       // Present from the start, the way the forge's own button is: hiding it
       // until something is drafted keeps the one thing a reviewer came to do

@@ -744,6 +744,11 @@ input[type="checkbox"]:checked::after {
 }
 .pick-plus:hover { filter: brightness(1.15); }
 
+/* The composer is pinned under the line it is about, at the card's own left
+   edge — the way an inline comment box sits in a diff, rather than floating
+   where the cursor happened to be. A remark belongs to a passage of code, and a
+   box that hides that passage or drifts away from it makes the reviewer hold
+   the connection in their head instead of seeing it. */
 .composer, .review {
   position: fixed;
   z-index: 40;
@@ -754,9 +759,85 @@ input[type="checkbox"]:checked::after {
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   font-size: 12px;
 }
+.composer {
+  width: 520px;
+  padding: 12px;
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+}
 .composer[hidden], .review[hidden] { display: none; }
 
-.composer-where { color: var(--muted); margin-bottom: 6px; }
+.composer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.composer-where { color: var(--text); font-weight: 600; font-size: 13px; }
+
+/* One frame around the tabs, the tools and the field, so they read as a single
+   control rather than three stacked ones. */
+.composer-box {
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 7px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+}
+.composer-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  background: color-mix(in srgb, var(--bg) 60%, var(--text) 5%);
+}
+.composer .tab {
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 0;
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--muted);
+}
+.composer .tab.is-on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  border-bottom: 1px solid color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  margin-bottom: -1px;
+}
+
+.md-tools {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+  padding: 0 6px;
+}
+.composer .md {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+}
+.composer .md:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+/* A rule before the list group and before the suggestion, as the forge has:
+   the tools are three kinds of thing, not ten of one. */
+.composer .md[data-md="ul"],
+.composer .md[data-md="suggest"] {
+  margin-left: 7px;
+  border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 0 5px 5px 0;
+  padding-left: 7px;
+  width: 33px;
+}
+
 .composer-body, .review-body {
   width: 100%;
   box-sizing: border-box;
@@ -769,15 +850,65 @@ input[type="checkbox"]:checked::after {
   padding: 6px;
   resize: vertical;
 }
-.composer-suggest {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 8px 0;
-  color: var(--muted);
-  cursor: pointer;
+.composer-body {
+  display: block;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 10px;
+  min-height: 96px;
 }
-.composer-suggest:hover { color: var(--text); }
+.composer-body:focus { outline: none; }
+
+/* Preview renders a deliberately small subset. Whatever it does not know how to
+   draw is shown as the text that was typed, which is what the forge will store
+   anyway — better a plain line than a confident wrong rendering. */
+.composer-preview {
+  padding: 10px;
+  min-height: 96px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.composer-preview .empty { color: var(--muted); }
+.composer-preview p { margin: 0 0 8px; }
+.composer-preview ul, .composer-preview ol { margin: 0 0 8px; padding-left: 20px; }
+.composer-preview blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
+  color: var(--muted);
+}
+.composer-preview pre {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow-x: auto;
+}
+.composer-preview code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.composer-preview :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.composer-preview h1, .composer-preview h2, .composer-preview h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.composer-preview .suggestion {
+  border: 1px solid color-mix(in srgb, var(--added) 45%, transparent);
+}
+.composer-preview .suggestion .label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--added);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .composer-actions, .review-actions {
   display: flex;
   gap: 6px;
@@ -794,11 +925,16 @@ input[type="checkbox"]:checked::after {
   cursor: pointer;
 }
 .composer button:hover, .review button:hover { color: var(--text); }
+.composer .md:hover { color: var(--text); }
 .composer button.primary {
-  color: var(--bg);
-  background: var(--status-renamed);
-  border-color: var(--status-renamed);
+  color: #fff;
+  background: var(--status-added);
+  border-color: color-mix(in srgb, #000 18%, var(--status-added));
+  font-weight: 600;
 }
+.composer button.primary:hover { color: #fff; filter: brightness(1.08); }
+.composer-actions { align-items: center; }
+.composer-actions .composer-cancel { font-weight: 600; color: var(--text); }
 
 /* The panel sits at a corner rather than following the cursor: it is a summary
    of everything pending, not a remark about one line. */

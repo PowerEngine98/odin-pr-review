@@ -738,6 +738,11 @@ input[type="checkbox"]:checked::after {
 }
 .pick-plus:hover { filter: brightness(1.15); }
 
+/* The composer is pinned under the line it is about, at the card's own left
+   edge — the way an inline comment box sits in a diff, rather than floating
+   where the cursor happened to be. A remark belongs to a passage of code, and a
+   box that hides that passage or drifts away from it makes the reviewer hold
+   the connection in their head instead of seeing it. */
 .composer, .review {
   position: fixed;
   z-index: 40;
@@ -748,9 +753,85 @@ input[type="checkbox"]:checked::after {
   border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   font-size: 12px;
 }
+.composer {
+  width: 520px;
+  padding: 12px;
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+}
 .composer[hidden], .review[hidden] { display: none; }
 
-.composer-where { color: var(--muted); margin-bottom: 6px; }
+.composer-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+.composer-where { color: var(--text); font-weight: 600; font-size: 13px; }
+
+/* One frame around the tabs, the tools and the field, so they read as a single
+   control rather than three stacked ones. */
+.composer-box {
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 7px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+}
+.composer-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  background: color-mix(in srgb, var(--bg) 60%, var(--text) 5%);
+}
+.composer .tab {
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 0;
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--muted);
+}
+.composer .tab.is-on {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  border-bottom: 1px solid color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  margin-bottom: -1px;
+}
+
+.md-tools {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+  padding: 0 6px;
+}
+.composer .md {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+}
+.composer .md:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+/* A rule before the list group and before the suggestion, as the forge has:
+   the tools are three kinds of thing, not ten of one. */
+.composer .md[data-md="ul"],
+.composer .md[data-md="suggest"] {
+  margin-left: 7px;
+  border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 0 5px 5px 0;
+  padding-left: 7px;
+  width: 33px;
+}
+
 .composer-body, .review-body {
   width: 100%;
   box-sizing: border-box;
@@ -763,15 +844,65 @@ input[type="checkbox"]:checked::after {
   padding: 6px;
   resize: vertical;
 }
-.composer-suggest {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 8px 0;
-  color: var(--muted);
-  cursor: pointer;
+.composer-body {
+  display: block;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 10px;
+  min-height: 96px;
 }
-.composer-suggest:hover { color: var(--text); }
+.composer-body:focus { outline: none; }
+
+/* Preview renders a deliberately small subset. Whatever it does not know how to
+   draw is shown as the text that was typed, which is what the forge will store
+   anyway — better a plain line than a confident wrong rendering. */
+.composer-preview {
+  padding: 10px;
+  min-height: 96px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.composer-preview .empty { color: var(--muted); }
+.composer-preview p { margin: 0 0 8px; }
+.composer-preview ul, .composer-preview ol { margin: 0 0 8px; padding-left: 20px; }
+.composer-preview blockquote {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
+  color: var(--muted);
+}
+.composer-preview pre {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow-x: auto;
+}
+.composer-preview code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.composer-preview :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.composer-preview h1, .composer-preview h2, .composer-preview h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.composer-preview .suggestion {
+  border: 1px solid color-mix(in srgb, var(--added) 45%, transparent);
+}
+.composer-preview .suggestion .label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--added);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .composer-actions, .review-actions {
   display: flex;
   gap: 6px;
@@ -788,11 +919,16 @@ input[type="checkbox"]:checked::after {
   cursor: pointer;
 }
 .composer button:hover, .review button:hover { color: var(--text); }
+.composer .md:hover { color: var(--text); }
 .composer button.primary {
-  color: var(--bg);
-  background: var(--status-renamed);
-  border-color: var(--status-renamed);
+  color: #fff;
+  background: var(--status-added);
+  border-color: color-mix(in srgb, #000 18%, var(--status-added));
+  font-weight: 600;
 }
+.composer button.primary:hover { color: #fff; filter: brightness(1.08); }
+.composer-actions { align-items: center; }
+.composer-actions .composer-cancel { font-weight: 600; color: var(--text); }
 
 /* The panel sits at a corner rather than following the cursor: it is a summary
    of everything pending, not a remark about one line. */
@@ -897,12 +1033,19 @@ input[type="checkbox"]:checked::after {
 </div></div>
 <div class="tooltip"></div>
 <div class="composer" hidden>
-  <div class="composer-where"></div>
-  <textarea class="composer-body" rows="4" placeholder="Leave a comment"></textarea>
-  <label class="composer-suggest"><input type="checkbox" class="as-suggestion"> suggest a replacement</label>
+  <div class="composer-head"><span class="composer-where"></span></div>
+  <div class="composer-box">
+    <div class="composer-tabs">
+      <button class="tab is-on" data-tab="write">Write</button>
+      <button class="tab" data-tab="preview">Preview</button>
+      <span class="md-tools"><button class="md" data-md="heading" title="Heading" aria-label="Heading"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M4 3v10M12 3v10M4 8h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="bold" title="Bold" aria-label="Bold"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M5 3h4a2.5 2.5 0 0 1 0 5H5zM5 8h4.5a2.5 2.5 0 0 1 0 5H5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="italic" title="Italic" aria-label="Italic"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M10 3H6.5M9.5 13H6M9 3l-2 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="quote" title="Quote" aria-label="Quote"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 4v8M6 5h7M6 8h7M6 11h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="code" title="Code" aria-label="Code"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4L2.5 8 6 12M10 4l3.5 4-3.5 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="link" title="Link" aria-label="Link"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6.5 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.7.7M9.5 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.7-.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ul" title="Bulleted list" aria-label="Bulleted list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M3 4h.01M3 8h.01M3 12h.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="ol" title="Numbered list" aria-label="Numbered list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 4h8M6 8h8M6 12h8M2 3h1v3M2 12h2M2 10h2v.01" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="task" title="Task list" aria-label="Task list"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="md" data-md="suggest" title="Suggest a replacement" aria-label="Suggest a replacement"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>
+    </div>
+    <textarea class="composer-body" rows="5" placeholder="Leave a comment"></textarea>
+    <div class="composer-preview" hidden></div>
+  </div>
   <div class="composer-actions">
     <button class="composer-cancel">Cancel</button>
-    <button class="composer-add primary">Add to review</button>
+    <button class="composer-add primary">Start a review</button>
   </div>
 </div>
 <div class="review" hidden>
@@ -958,6 +1101,8 @@ input[type="checkbox"]:checked::after {
   function paint() {
     canvas.style.transform =
       "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
+    // An open composer belongs to a line, so it travels with it.
+    placeComposer();
   }
 
   function rest() {
@@ -1410,6 +1555,9 @@ input[type="checkbox"]:checked::after {
   var panel = document.querySelector(".review");
   var reviewButton = document.getElementById("action-review");
   var pending = null;
+  /** The row the composer is pinned under, and the code it is about. */
+  var anchorRow = null;
+  var anchorLines = [];
 
   /**
    * Marks the lines that already carry a comment, and the ones drafted here.
@@ -1519,21 +1667,266 @@ input[type="checkbox"]:checked::after {
     var end = Math.max.apply(null, lines);
 
     pending = { path: node.path, line: end, startLine: start, side: side };
+
+    // The forge's own way of saying where: R for the head side, L for the base,
+    // which is the only notation that distinguishes line 40 of the file as it
+    // was from line 40 of the file as it will be.
+    var mark = side === "RIGHT" ? "R" : "L";
     composer.querySelector(".composer-where").textContent =
-      node.path.split("/").pop() + ":" + (start === end ? end : start + "–" + end);
+      start === end
+        ? "Add a comment on line " + mark + end
+        : "Add a comment on lines " + mark + start + "–" + mark + end;
+
     composer.querySelector(".composer-body").value = "";
-    composer.querySelector(".as-suggestion").checked = false;
+    setTab("write");
     composer.hidden = false;
 
-    var box = composer.getBoundingClientRect();
-    composer.style.left =
-      Math.min(event.clientX + 16, window.innerWidth - box.width - 16) + "px";
-    composer.style.top =
-      Math.min(event.clientY, window.innerHeight - box.height - 16) + "px";
+    // Pinned under the last line it is about that is actually on screen. A row
+    // folded inside a closed gap has no position, and hanging the box off one
+    // would put it wherever zero happens to be.
+    anchorRow = rows[rows.length - 1];
+    for (var r = rows.length - 1; r >= 0; r--) {
+      if (rows[r].getBoundingClientRect().height > 0) { anchorRow = rows[r]; break; }
+    }
+    anchorLines = rows.map(function (row) { return row.querySelector(".text").textContent; });
+    placeComposer();
     composer.querySelector(".composer-body").focus();
   }
 
+  /**
+   * Puts the composer under the line it belongs to, and keeps it there.
+   *
+   * Called on every view change rather than once, because the canvas moves and
+   * a box that stayed where it was would end up talking about whatever line had
+   * drifted under it. Its own size does not scale with the canvas: text that
+   * shrinks to nothing at low zoom is not a comment field.
+   */
+  function placeComposer() {
+    if (!composer || composer.hidden || !anchorRow) return;
+    var card = anchorRow.closest(".card");
+    if (!card) return;
+
+    var row = anchorRow.getBoundingClientRect();
+    var box = card.getBoundingClientRect();
+    var size = composer.getBoundingClientRect();
+
+    // Wide enough for the tools to sit in one row, and no wider than the file
+    // it belongs to unless that file is narrower than the tools.
+    var width = Math.max(520, Math.min(box.width, 680));
+    composer.style.width = width + "px";
+    composer.style.left =
+      Math.round(Math.min(Math.max(8, box.left), window.innerWidth - width - 8)) + "px";
+    // Below the line where there is room for it, above where there is not.
+    var below = row.bottom + 6;
+    var top = below + size.height > window.innerHeight - 8
+      ? Math.max(8, row.top - size.height - 6)
+      : below;
+    composer.style.top = Math.round(top) + "px";
+  }
+
+  /* ------------------------------------------------------- writing the words */
+
+  function setTab(which) {
+    if (!composer) return;
+    var writing = which !== "preview";
+    composer.querySelectorAll(".tab").forEach(function (tab) {
+      tab.classList.toggle("is-on", tab.dataset.tab === (writing ? "write" : "preview"));
+    });
+    composer.querySelector(".composer-body").hidden = !writing;
+    var preview = composer.querySelector(".composer-preview");
+    preview.hidden = writing;
+    if (!writing) {
+      var text = composer.querySelector(".composer-body").value;
+      preview.innerHTML = text.trim()
+        ? renderMarkdown(text)
+        : '<span class="empty">Nothing to preview</span>';
+    }
+  }
+
+  /**
+   * Markdown, as far as a comment box needs it.
+   *
+   * A deliberately small subset, and everything is escaped before any of it is
+   * applied — the text comes from a person, and this page renders it. Anything
+   * unrecognised stays the characters that were typed, which is what the forge
+   * will store; a plain line is a better answer than a confident wrong
+   * rendering of one.
+   */
+  function renderMarkdown(source) {
+    var lines = source.split("\n");
+    var out = [];
+    var i = 0;
+
+    while (i < lines.length) {
+      var line = lines[i];
+
+      // Fenced blocks first: nothing inside one is markdown.
+      var fence = /^\s*(\`{3,})(.*)$/.exec(line);
+      if (fence) {
+        var lang = fence[2].trim();
+        var body = [];
+        i++;
+        while (i < lines.length && !new RegExp("^\\s*" + fence[1]).test(lines[i])) {
+          body.push(lines[i]);
+          i++;
+        }
+        i++;
+        var label = lang === "suggestion"
+          ? '<span class="label">suggested change</span>'
+          : "";
+        out.push(
+          '<pre class="' + (lang === "suggestion" ? "suggestion" : "") + '">' +
+          label + "<code>" + escapeHtml(body.join("\n")) + "</code></pre>",
+        );
+        continue;
+      }
+
+      var heading = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (heading) {
+        var level = Math.min(3, heading[1].length);
+        out.push("<h" + level + ">" + inline(heading[2]) + "</h" + level + ">");
+        i++;
+        continue;
+      }
+
+      if (/^\s*>\s?/.test(line)) {
+        var quoted = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+          quoted.push(lines[i].replace(/^\s*>\s?/, ""));
+          i++;
+        }
+        out.push("<blockquote>" + inline(quoted.join(" ")) + "</blockquote>");
+        continue;
+      }
+
+      if (/^\s*(?:[-*]|\d+\.)\s+/.test(line)) {
+        var ordered = /^\s*\d+\./.test(line);
+        var items = [];
+        while (i < lines.length && /^\s*(?:[-*]|\d+\.)\s+/.test(lines[i])) {
+          var item = lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, "");
+          var task = /^\[([ xX])\]\s*/.exec(item);
+          if (task) {
+            item = item.slice(task[0].length);
+            items.push(
+              "<li>" +
+              (task[1] === " " ? "☐ " : "☑ ") +
+              inline(item) + "</li>",
+            );
+          } else {
+            items.push("<li>" + inline(item) + "</li>");
+          }
+          i++;
+        }
+        out.push(
+          (ordered ? "<ol>" : "<ul>") + items.join("") + (ordered ? "</ol>" : "</ul>"),
+        );
+        continue;
+      }
+
+      if (line.trim() === "") { i++; continue; }
+
+      var para = [];
+      while (
+        i < lines.length &&
+        lines[i].trim() !== "" &&
+        !/^\s*(?:[-*]|\d+\.)\s+/.test(lines[i]) &&
+        !/^\s*>/.test(lines[i]) &&
+        !/^\s*\`{3,}/.test(lines[i]) &&
+        !/^#{1,6}\s/.test(lines[i])
+      ) {
+        para.push(lines[i]);
+        i++;
+      }
+      out.push("<p>" + inline(para.join(" ")) + "</p>");
+    }
+
+    return out.join("");
+  }
+
+  /** Escape first, then mark up: nothing typed can become markup by accident. */
+  function inline(text) {
+    var safe = escapeHtml(text);
+    safe = safe.replace(/\`([^\`]+)\`/g, "<code>$1</code>");
+    safe = safe.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    safe = safe.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+    safe = safe.replace(/_([^_]+)_/g, "<em>$1</em>");
+    // Links are rendered as their text and their target, never as an anchor:
+    // a comment box is not a place to make something clickable that a reader
+    // has not looked at.
+    safe = safe.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 (<code>$2</code>)");
+    return safe;
+  }
+
+  /**
+   * What each markdown button does to the field.
+   *
+   * Wrapping styles keep the selection selected afterwards, and prefixing ones
+   * apply to every line the selection touches, because that is what someone
+   * who has selected three lines and pressed the list button means.
+   */
+  function applyMarkdown(kind) {
+    var field = composer.querySelector(".composer-body");
+    var start = field.selectionStart;
+    var end = field.selectionEnd;
+    var value = field.value;
+    var selected = value.slice(start, end);
+
+    var wrap = function (before, after) {
+      var text = selected || "";
+      field.value = value.slice(0, start) + before + text + after + value.slice(end);
+      field.selectionStart = start + before.length;
+      field.selectionEnd = start + before.length + text.length;
+    };
+
+    var prefix = function (make) {
+      var from = value.lastIndexOf("\n", start - 1) + 1;
+      var to = value.indexOf("\n", end);
+      if (to === -1) to = value.length;
+      var block = value.slice(from, to) || "";
+      var marked = block.split("\n").map(make).join("\n");
+      field.value = value.slice(0, from) + marked + value.slice(to);
+      field.selectionStart = from;
+      field.selectionEnd = from + marked.length;
+    };
+
+    if (kind === "bold") wrap("**", "**");
+    else if (kind === "italic") wrap("_", "_");
+    else if (kind === "code") {
+      var tick = "\u0060";
+      var fence3 = tick + tick + tick;
+      if (selected.indexOf("\n") >= 0) wrap(fence3 + "\n", "\n" + fence3);
+      else wrap(tick, tick);
+    } else if (kind === "link") wrap("[", "](url)");
+    else if (kind === "heading") prefix(function (line) { return "### " + line; });
+    else if (kind === "quote") prefix(function (line) { return "> " + line; });
+    else if (kind === "ul") prefix(function (line) { return "- " + line; });
+    else if (kind === "task") prefix(function (line) { return "- [ ] " + line; });
+    else if (kind === "ol") {
+      var n = 0;
+      prefix(function (line) { n++; return n + ". " + line; });
+    } else if (kind === "suggest") {
+      // Filled with the lines being commented on. A suggestion has to be the
+      // whole replacement for the span it covers, and retyping it from memory
+      // is how the wrong indentation gets in.
+      var fence = "\u0060\u0060\u0060";
+      var block = fence + "suggestion\n" + anchorLines.join("\n") + "\n" + fence;
+      var body = field.value.trim();
+      field.value = body ? body + "\n\n" + block : block;
+      field.selectionStart = field.selectionEnd = field.value.length;
+    }
+
+    field.focus();
+    setTab("write");
+  }
+
   if (composer) {
+    composer.querySelectorAll(".tab").forEach(function (tab) {
+      tab.addEventListener("click", function () { setTab(tab.dataset.tab); });
+    });
+    composer.querySelectorAll(".md").forEach(function (button) {
+      button.addEventListener("click", function () { applyMarkdown(button.dataset.md); });
+    });
+
     composer.querySelector(".composer-cancel").addEventListener("click", function () {
       composer.hidden = true;
       pending = null;
@@ -1542,16 +1935,11 @@ input[type="checkbox"]:checked::after {
     });
 
     composer.querySelector(".composer-add").addEventListener("click", function () {
-      var text = composer.querySelector(".composer-body").value.trim();
-      if (!text || !pending) return;
-
-      // A suggestion is an ordinary comment in a fenced block the forge knows
-      // how to offer as a one-click change.
-      var suggest = composer.querySelector(".as-suggestion").checked;
-      // Written with escapes because this whole script lives inside a template
-      // literal, which a literal fence would end.
-      var fence = "\u0060\u0060\u0060";
-      var body = suggest ? fence + "suggestion\n" + text + "\n" + fence : text;
+      // The fence, when there is one, is already in the text: the suggestion
+      // button puts it there along with the lines it replaces, so what goes to
+      // the forge is what the reviewer read back before pressing this.
+      var body = composer.querySelector(".composer-body").value.trim();
+      if (!body || !pending) return;
 
       drafts.push({
         path: pending.path,
@@ -1570,6 +1958,13 @@ input[type="checkbox"]:checked::after {
   }
 
   function refreshReview() {
+    // The forge's wording, and it earns its place: the first remark starts
+    // something, the rest join it, and a reviewer who has forgotten whether
+    // they already have a review going can read the answer off the button.
+    var add = composer && composer.querySelector(".composer-add");
+    if (add) {
+      add.textContent = drafts.length === 0 ? "Start a review" : "Add review comment";
+    }
     if (reviewButton) {
       // Present from the start, the way the forge's own button is: hiding it
       // until something is drafted keeps the one thing a reviewer came to do

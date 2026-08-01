@@ -143,9 +143,26 @@ together as **Approve**, **Comment** or **Request changes** — behind a
 confirmation that names the verdict, since a review is visible to everyone and
 cannot be taken back from here.
 
+![Writing a comment](docs/composer.png)
+
+The composer is pinned under the last line it is about, at that file's own left
+edge, the way an inline comment box sits in a diff — a remark belongs to a
+passage, and a box that floats where the cursor happened to be makes the reader
+hold the connection in their head. It carries the forge's own furniture: Write
+and Preview, the markdown buttons, and a primary that says *Start a review*
+until there is one and *Add review comment* after. Preview renders a deliberately
+small subset of markdown and escapes everything first — the text comes from a
+person and this page draws it, so nothing typed can become markup by accident.
+
+The last button has no equivalent on the forge because it is ours: it opens a
+suggestion block already filled with the lines being commented on. A suggestion
+has to be the complete replacement for the lines it covers, and retyping them
+from memory is how the wrong indentation gets in.
+
 Most remarks are about a passage rather than a line, so a comment can cover
 one: drag down the card, or click a line and shift-click another, and the
-composer says which lines it is about. The pick is drawn the way a diff viewer
+composer says which lines it is about in the forge's own notation — `R164–R166`
+for the head side, `L` for the base. The pick is drawn the way a diff viewer
 draws one — the lines washed, an edge down where the code starts, and a handle
 at each end — and it survives cancelling the composer, since changing the
 wording is not changing your mind about the lines. Escape or a click away
