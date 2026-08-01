@@ -1,6 +1,8 @@
 import type { ChangeGraph, Edge, FileNode, FileStatus } from "@odin/core";
 import * as vscode from "vscode";
 
+import { decorationUri } from "./decorations.js";
+
 /** A row in the sidebar: either a changed file or one reference leaving it. */
 type Item =
   | { kind: "file"; node: FileNode }
@@ -91,11 +93,19 @@ export class ChangeTreeProvider implements vscode.TreeDataProvider<Item> {
         ? `${stats} · no ${node.language} resolver`
         : stats;
 
+    // Lets the decoration provider tint the row when nothing could read it.
+    if (node.resolution === "unsupported") {
+      treeItem.resourceUri = decorationUri(node.path);
+    }
+
     treeItem.tooltip = new vscode.MarkdownString(
       [
         `**${node.path}**`,
         node.prevPath ? `renamed from \`${node.prevPath}\`` : undefined,
         `${node.status} · ${node.language}`,
+        node.resolution === "unsupported"
+          ? `⚠ no ${node.language} resolver — this file has no references`
+          : undefined,
       ]
         .filter(Boolean)
         .join("\n\n"),

@@ -84,7 +84,7 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
         `<tspan fill="${theme.change.added}">${escape(title.additions)}</tspan>` +
         `<tspan fill="${theme.mutedText}"> </tspan>` +
         `<tspan fill="${theme.change.removed}">${escape(title.deletions)}</tspan>` +
-        `<tspan fill="${theme.mutedText}">${escape(tail)}</tspan></text>`,
+        `<tspan fill="${theme.warning}">${escape(tail)}</tspan></text>`,
     );
   } else {
     parts.push(

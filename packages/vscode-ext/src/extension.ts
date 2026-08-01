@@ -4,10 +4,14 @@ import * as vscode from "vscode";
 import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo } from "./graph.js";
 import { GraphPanel } from "./panel.js";
+import { UnreadableDecorationProvider } from "./decorations.js";
 import { ChangeTreeProvider } from "./tree.js";
 
 /** The sidebar's view of the most recent review. */
 const tree = new ChangeTreeProvider();
+
+/** Tints rows for files nothing could read. */
+const decorations = new UnreadableDecorationProvider();
 
 /** Enough of the last review to act on it without rebuilding. */
 let last: { repo: string; baseRef?: string } | undefined;
@@ -15,6 +19,7 @@ let last: { repo: string; baseRef?: string } | undefined;
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider("odin.changes", tree),
+    vscode.window.registerFileDecorationProvider(decorations),
     vscode.commands.registerCommand("odin.showGraph", () => GraphPanel.revealCurrent()),
     vscode.commands.registerCommand("odin.refresh", () =>
       review(last?.baseRef),
@@ -87,6 +92,7 @@ async function review(baseRef?: string): Promise<void> {
 
         GraphPanel.show(graph, layout, repo);
         tree.setGraph(graph);
+        decorations.setGraph(graph);
         last = { repo, ...(base ? { baseRef: base } : {}) };
       } catch (error) {
         await reportFailure(repo, error);

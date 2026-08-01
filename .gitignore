@@ -6,3 +6,6 @@ dist/
 fixtures/generated/
 out/
 *.vsix
+
+# Editors downloaded by the integration harness
+.vscode-test/

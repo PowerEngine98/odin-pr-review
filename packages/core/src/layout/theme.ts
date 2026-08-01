@@ -15,6 +15,13 @@ export interface Theme {
   gutter: string;
   /** Band behind a collapsed run of unchanged code. */
   gapBackground: string;
+  /**
+   * Something the reviewer should know is missing.
+   *
+   * Reserved for gaps in Odin's own coverage — a file it could not read —
+   * rather than anything about the change itself, which uses the diff colours.
+   */
+  warning: string;
   status: Record<FileStatus, string>;
   change: Record<EdgeChange, string>;
   lineBackground: { add: string; del: string };
@@ -27,6 +34,7 @@ export const DARK_THEME: Theme = {
   mutedText: "#6b7280",
   gutter: "#3f3f46",
   gapBackground: "#17171b",
+  warning: "#e2b341",
   status: {
     added: "#4ade80",
     modified: "#d4d4d8",
@@ -52,6 +60,7 @@ export const LIGHT_THEME: Theme = {
   mutedText: "#71717a",
   gutter: "#d4d4d8",
   gapBackground: "#f1f1f4",
+  warning: "#a1730a",
   status: {
     added: "#16a34a",
     modified: "#52525b",

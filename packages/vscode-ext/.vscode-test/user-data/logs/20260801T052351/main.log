@@ -1,7 +1,0 @@
-2026-08-01 05:23:51.510 [info] StorageMainService: creating application shared storage
-2026-08-01 05:23:51.510 [info] [shared storage] Creating shared storage database at ':memory:' (wasCreated: true)
-2026-08-01 05:23:51.510 [info] [shared storage] Initializing fallback application storage (path: in-memory)
-2026-08-01 05:23:51.513 [info] [shared storage] Fallback application storage initialized with 3 items
-2026-08-01 05:23:51.513 [info] update#setState disabled
-2026-08-01 05:23:51.513 [info] update#ctor - updates are disabled by the environment
-2026-08-01 05:23:54.442 [info] Extension host with pid 87526 exited with code: 0, signal: unknown.

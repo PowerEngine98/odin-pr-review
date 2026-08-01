@@ -33,6 +33,7 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
   --right-gutter-width: ${metrics.rightGutterWidth}px;
   --line-number-right: ${metrics.lineNumberRight}px;
   --gap-bg: ${theme.gapBackground};
+  --warning: ${theme.warning};
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -159,9 +160,10 @@ html, body {
 /* A file nothing could read. Marked rather than left blank, because a card
    with no arrows otherwise looks like a file that references nothing. */
 .card-title .note {
-  color: var(--muted);
+  color: var(--warning);
   font-size: calc(var(--font-size) - 2px);
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
   border-radius: 999px;
   padding: 0 6px;
   white-space: nowrap;
@@ -169,8 +171,9 @@ html, body {
 .card.unresolved { border-style: dashed; }
 
 .toolbar .gaps {
-  color: var(--muted);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
   border-radius: 999px;
   padding: 1px 8px;
 }
