@@ -68,11 +68,14 @@ html, body {
   font-size: 12px;
 }
 
+/* Stacking the rest of the toolbar into columns freed a great deal of width,
+   so branch names get most of it. Real ones are long and the tail is the part
+   that identifies them. */
 .toolbar .refs {
   color: var(--muted);
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 180px;
+  max-width: 46ch;
   line-height: 1.35;
 }
 .toolbar .refs strong {
