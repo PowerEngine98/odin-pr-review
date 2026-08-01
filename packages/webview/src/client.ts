@@ -740,6 +740,7 @@ export const CLIENT_SCRIPT = String.raw`
       preview.innerHTML = field.value.trim()
         ? renderMarkdown(field.value)
         : '<span class="empty">Nothing to preview</span>';
+      colourBlocks(preview);
     }
   }
 
@@ -792,10 +793,16 @@ export const CLIENT_SCRIPT = String.raw`
         i++;
         var label = lang === "suggestion"
           ? '<span class="label">suggested change</span>'
-          : "";
+          : lang && lang !== "suggestion"
+            ? '<span class="lang">' + escapeHtml(lang) + "</span>"
+            : "";
+        // Marked for colouring, which happens after the block is in the
+        // document: the grammars live with the host, so this is a round trip.
+        var id = ++blockCounter;
         out.push(
           '<pre class="' + (lang === "suggestion" ? "suggestion" : "") + '">' +
-          label + "<code>" + escapeHtml(body.join("\n")) + "</code></pre>",
+          label + '<code data-block="' + id + '" data-lang="' + escapeHtml(lang) +
+          '">' + escapeHtml(body.join("\n")) + "</code></pre>",
         );
         continue;
       }
@@ -815,6 +822,40 @@ export const CLIENT_SCRIPT = String.raw`
           i++;
         }
         out.push("<blockquote>" + inline(quoted.join(" ")) + "</blockquote>");
+        continue;
+      }
+
+      // A rule, which the forge draws and which otherwise reads as a heading.
+      if (/^\s*(?:---+|\*\*\*+|___+)\s*$/.test(line)) {
+        out.push("<hr>");
+        i++;
+        continue;
+      }
+
+      // A table: a header row, a row of dashes, then the body. Recognised by
+      // the dashes, because a line with pipes in it is usually just a line.
+      if (line.indexOf("|") >= 0 && i + 1 < lines.length &&
+          /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(lines[i + 1])) {
+        var cells = function (row) {
+          return row.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|")
+            .map(function (cell) { return inline(cell.trim()); });
+        };
+        var head = cells(line);
+        i += 2;
+        var rows = [];
+        while (i < lines.length && lines[i].indexOf("|") >= 0 && lines[i].trim() !== "") {
+          rows.push(cells(lines[i]));
+          i++;
+        }
+        out.push(
+          "<table><thead><tr>" +
+          head.map(function (c) { return "<th>" + c + "</th>"; }).join("") +
+          "</tr></thead><tbody>" +
+          rows.map(function (r) {
+            return "<tr>" + r.map(function (c) { return "<td>" + c + "</td>"; }).join("") + "</tr>";
+          }).join("") +
+          "</tbody></table>",
+        );
         continue;
       }
 
@@ -872,8 +913,59 @@ export const CLIENT_SCRIPT = String.raw`
     // Links are rendered as their text and their target, never as an anchor:
     // a comment box is not a place to make something clickable that a reader
     // has not looked at.
+    safe = safe.replace(/~~([^~]+)~~/g, "<del>$1</del>");
     safe = safe.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1 (<code>$2</code>)");
+    // A bare address is shown as itself. Nothing here becomes clickable: a
+    // comment box is not a place to make something a reader has not looked at
+    // one click away.
+    safe = safe.replace(/(^|\s)(https?:\/\/[^\s<]+)/g, "$1<code>$2</code>");
     return safe;
+  }
+
+  var blockCounter = 0;
+  var pendingBlocks = {};
+
+  /**
+   * Colours the code blocks in some rendered markdown.
+   *
+   * The grammars and the theme live with the host — they are the same ones the
+   * cards are drawn with, which is the point: a Kotlin snippet in a comment
+   * should look like Kotlin in the file above it. So this is a round trip, and
+   * a page with no host simply keeps the plain text it already has.
+   */
+  function colourBlocks(root) {
+    if (!host || !root) return;
+    root.querySelectorAll("code[data-block]").forEach(function (block) {
+      var lang = block.dataset.lang || "";
+      if (!lang || lang === "suggestion") return;
+      pendingBlocks[block.dataset.block] = block;
+      notifyHost("highlight", {
+        id: Number(block.dataset.block),
+        lang: lang,
+        code: block.textContent,
+      });
+    });
+  }
+
+  /** Tokens coming back from the host, turned into spans. */
+  function paintBlock(id, lines) {
+    var block = pendingBlocks[id];
+    if (!block) return;
+    delete pendingBlocks[id];
+    if (!lines || lines.length === 0) return;
+
+    block.innerHTML = lines
+      .map(function (tokens) {
+        return tokens
+          .map(function (token) {
+            var text = escapeHtml(token.text);
+            return token.color
+              ? '<span style="color:' + token.color.replace(/[^#\w(),.% ]/g, "") + '">' + text + "</span>"
+              : text;
+          })
+          .join("");
+      })
+      .join("\n");
   }
 
   /**
@@ -1435,6 +1527,10 @@ export const CLIENT_SCRIPT = String.raw`
     // Clicking a file in the sidebar brings its card to the middle. The list
     // and the picture are two views of one change, and choosing a file in one
     // should not leave the other showing somewhere else entirely.
+    if (message && message.type === "highlighted") {
+      paintBlock(message.id, message.lines);
+      return;
+    }
     if (message && message.type === "comments") {
       data.comments = message.comments || [];
       var was = openThread && openThread.root.id;
@@ -1655,6 +1751,7 @@ export const CLIENT_SCRIPT = String.raw`
       var text = document.createElement("div");
       text.className = "text";
       text.innerHTML = renderMarkdown(comment.body || "");
+      colourBlocks(text);
       said.appendChild(text);
       said.appendChild(reactionRow(comment));
 

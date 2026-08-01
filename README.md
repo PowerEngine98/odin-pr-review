@@ -197,9 +197,13 @@ and Preview, the markdown buttons, and a primary that says *Start a review*
 until there is one and *Add review comment* after. The same box writes a reply
 and a review summary — a line comment, an answer and a verdict are one act with
 three destinations, and giving two of them a bare textarea taught two habits for
-one job. Preview renders a deliberately
-small subset of markdown and escapes everything first — the text comes from a
-person and this page draws it, so nothing typed can become markup by accident.
+one job. Preview renders headings, lists, task
+lists, quotes, tables, rules, strikethrough and fenced code, and escapes
+everything first — the text comes from a person and this page draws it, so
+nothing typed can become markup by accident. A fenced block is coloured by the
+same grammars and theme the cards use, so a Kotlin snippet in a remark looks
+like the Kotlin in the file above it; the grammars live with the extension, so a
+page opened from disk keeps the plain text instead.
 
 The last button has no equivalent on the forge because it is ours: it opens a
 suggestion block already filled with the lines being commented on. A suggestion

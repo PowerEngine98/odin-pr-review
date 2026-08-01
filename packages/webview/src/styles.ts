@@ -986,6 +986,40 @@ input[type="checkbox"]:checked::after {
 .editor-preview .suggestion {
   border: 1px solid color-mix(in srgb, var(--added) 45%, transparent);
 }
+/* The language a block declares, so an uncoloured one still says what it is. */
+.editor-preview pre .lang,
+.remark .text pre .lang {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.editor-preview table,
+.remark .text table {
+  border-collapse: collapse;
+  margin: 0 0 8px;
+  font-size: 11px;
+}
+.editor-preview th, .editor-preview td,
+.remark .text th, .remark .text td {
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  padding: 3px 8px;
+  text-align: left;
+}
+.editor-preview th, .remark .text th {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  font-weight: 600;
+}
+.editor-preview hr, .remark .text hr {
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  margin: 8px 0;
+}
+.editor-preview del, .remark .text del { color: var(--muted); }
+
 .editor-preview .suggestion .label {
   display: block;
   margin-bottom: 4px;

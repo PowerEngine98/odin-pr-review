@@ -56,6 +56,12 @@ interface DraftMessage {
   payload: { draft: boolean };
 }
 
+/** A code block in a comment, asking to be coloured. */
+interface HighlightMessage {
+  type: "highlight";
+  payload: { id: number; lang: string; code: string };
+}
+
 /** Acting on one remark in a thread. */
 interface RemarkMessage {
   type: "react" | "reply" | "editComment" | "deleteComment";
@@ -68,7 +74,8 @@ type Message =
   | ViewedMessage
   | SubmitMessage
   | DraftMessage
-  | RemarkMessage;
+  | RemarkMessage
+  | HighlightMessage;
 
 export class GraphPanel {
   private static current: GraphPanel | undefined;
@@ -218,6 +225,26 @@ export class GraphPanel {
     void this.panel.webview.postMessage({
       type: "reviewSubmitted",
       comments: this.comments,
+    });
+  }
+
+  /**
+   * Colours a code block inside a comment.
+   *
+   * With the same grammars and the same theme the cards use, because a Kotlin
+   * snippet in a remark should look like the Kotlin in the file above it. The
+   * highlighter is loaded for the languages in the change; one named in a
+   * comment that is not among them comes back plain, which is the honest
+   * answer rather than a guess at the colours.
+   */
+  private colour(request: { id: number; lang: string; code: string }): void {
+    const lines = this.highlight?.supports(request.lang)
+      ? this.highlight.tokenize(request.lang, request.code)
+      : [];
+    void this.panel.webview.postMessage({
+      type: "highlighted",
+      id: request.id,
+      lines,
     });
   }
 
@@ -467,6 +494,10 @@ export class GraphPanel {
       }
       if (message.type === "setDraft") {
         await this.setDraftState(message.payload.draft);
+        return;
+      }
+      if (message.type === "highlight") {
+        this.colour(message.payload);
         return;
       }
       if (
