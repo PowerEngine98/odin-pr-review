@@ -411,6 +411,12 @@ const MD_TOOLS = [
   tool("suggest", "Suggest a replacement", "M8 3v10M3 8h10"),
 ].join("");
 
+/** Putting the panel away. Nothing pending is lost by closing it. */
+const CLOSE_ICON =
+  `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.6" stroke-linecap="round"/></svg>`;
+
 function tool(kind: string, label: string, path: string): string {
   return (
     `<button class="md" data-md="${kind}" title="${escapeHtml(label)}" ` +
@@ -430,7 +436,8 @@ function tool(kind: string, label: string, path: string): string {
  */
 function reviewPanel(): string {
   return `<div class="review" hidden>
-  <div class="review-head">Pending review · <span class="review-count">0</span></div>
+  <div class="review-head"><span>Pending review · <span class="review-count">0</span></span>` +
+    `<button class="review-close" title="Close" aria-label="Close">${CLOSE_ICON}</button></div>
   <div class="review-list"></div>
   <textarea class="review-body" rows="3" placeholder="Summary (required to comment or request changes)"></textarea>
   <div class="review-actions">

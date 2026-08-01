@@ -949,6 +949,11 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   if (panel) {
+    var close = panel.querySelector(".review-close");
+    if (close) {
+      close.addEventListener("click", function () { panel.hidden = true; });
+    }
+
     panel.querySelectorAll(".review-submit").forEach(function (button) {
       button.addEventListener("click", function () {
         var body = panel.querySelector(".review-body").value.trim();

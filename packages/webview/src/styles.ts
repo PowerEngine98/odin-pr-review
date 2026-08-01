@@ -939,7 +939,33 @@ input[type="checkbox"]:checked::after {
 /* The panel sits at a corner rather than following the cursor: it is a summary
    of everything pending, not a remark about one line. */
 .review { right: 16px; top: 96px; }
-.review-head { color: var(--muted); margin-bottom: 6px; }
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+/* A way out that is not the button that opened it. Closing keeps every draft:
+   this panel is a view of what is pending, not the pending itself. */
+.review .review-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -4px -4px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+}
+.review .review-close:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
 .review-list { max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
 .review-item {
   display: flex;
