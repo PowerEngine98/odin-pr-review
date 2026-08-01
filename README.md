@@ -435,6 +435,7 @@ was asked for. Reading needs no such ceremony — `odin comments` and
 | Language | Resolver | Confidence | Both sides |
 | --- | --- | --- | --- |
 | TypeScript, JavaScript | TypeScript compiler API | `resolved` | yes |
+| React (`.tsx`, `.jsx`) | TypeScript compiler API | `resolved` | yes |
 | Kotlin | symbol index | `heuristic` | yes |
 | anything else | — | — | — |
 
@@ -463,6 +464,14 @@ the tool — the ones teams actually review — rather than the two hundred Shik
 carries, and a language outside that list is said out loud in the toolbar
 (`no highlighting for dart`) instead of appearing as a card that is quietly
 grey. Adding one is a line in `packages/highlight`.
+
+A component written into a page is a call: `<Header />` runs `Header`, and gets
+the same arrow a function call does — on a React codebase that is most of them,
+and a page rendering six components would otherwise show none. `<Icons.Chevron />`
+resolves the same way a property call does. Plain HTML is skipped: `<div>`
+resolves into React's own intrinsic-element declarations, which is not somewhere
+a reviewer can usefully be sent, and the capital letter that tells them apart is
+the convention the compiler itself uses.
 
 Kotlin edges are marked `heuristic` because they come from matching call sites
 against an index of the repository's declarations rather than from a compiler.

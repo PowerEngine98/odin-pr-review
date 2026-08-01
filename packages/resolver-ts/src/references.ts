@@ -56,6 +56,18 @@ function classify(node: ts.Node): Omit<ReferenceSite, "column"> | undefined {
     return undefined;
   }
 
+  // A component written into a page is a call: `<Header />` runs Header. The
+  // arrow is worth as much as any other, and on a React codebase it is most of
+  // them — a file that renders six components and calls two functions would
+  // otherwise show two.
+  if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+    const tag = componentTag(node.tagName);
+    if (tag) {
+      return { node: tag, kind: "instantiation", label: `<${text(node.tagName)}>` };
+    }
+    return undefined;
+  }
+
   if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
     const specifier = node.moduleSpecifier;
     if (specifier && ts.isStringLiteral(specifier)) {
@@ -71,6 +83,26 @@ function classify(node: ts.Node): Omit<ReferenceSite, "column"> | undefined {
     return { node: name, kind: "type", label: text(node) };
   }
 
+  return undefined;
+}
+
+/**
+ * The identifier a JSX tag names, when it names a component at all.
+ *
+ * `<div>` is not a reference to anything a reviewer can open: it resolves into
+ * React's own intrinsic-element declarations, which is noise. The convention
+ * that tells them apart is the capital letter, and it is the same convention
+ * the compiler itself uses.
+ */
+function componentTag(tag: ts.JsxTagNameExpression): ts.Node | undefined {
+  if (ts.isIdentifier(tag)) {
+    const first = tag.text.charAt(0);
+    return first && first === first.toUpperCase() && first !== first.toLowerCase()
+      ? tag
+      : undefined;
+  }
+  // `<Icons.Chevron />` names Chevron, the same way a property call does.
+  if (ts.isPropertyAccessExpression(tag)) return tag.name;
   return undefined;
 }
 
