@@ -406,6 +406,57 @@ describe("gaps that can be opened", () => {
   });
 });
 
+describe("cards never overlap", () => {
+  /** Any pair whose rectangles intersect. */
+  function collisions(layout: ReturnType<typeof layoutGraph>) {
+    const found: string[] = [];
+    for (let i = 0; i < layout.nodes.length; i++) {
+      for (let j = i + 1; j < layout.nodes.length; j++) {
+        const a = layout.nodes[i]!;
+        const b = layout.nodes[j]!;
+        const apart =
+          a.x + a.width <= b.x ||
+          b.x + b.width <= a.x ||
+          a.y + a.height <= b.y ||
+          b.y + b.height <= a.y;
+        if (!apart) found.push(`${a.path} × ${b.path}`);
+      }
+    }
+    return found;
+  }
+
+  it("keeps every card clear of every other", () => {
+    expect(collisions(layoutGraph(graph()))).toEqual([]);
+  });
+
+  it("holds when cards in one column differ wildly in size", () => {
+    // Cards are centred in their column, so a column of mixed widths is where
+    // an off-by-one in the placement shows up.
+    const files = [
+      { name: "tiny.ts", lines: 1 },
+      { name: "huge.ts", lines: 120 },
+      { name: "middling.ts", lines: 12 },
+      { name: "wide.ts", lines: 3 },
+    ];
+    const patch = files
+      .flatMap(({ name, lines }) => [
+        `diff --git a/src/${name} b/src/${name}`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/src/${name}`,
+        `@@ -0,0 +1,${lines} @@`,
+        ...Array.from({ length: lines }, (_, i) =>
+          name === "wide.ts" ? `+${"x".repeat(200)}` : `+line ${i}`,
+        ),
+      ])
+      .join("\n");
+
+    const layout = layoutGraph(buildGraph(parseUnifiedDiff(patch), { meta: META }));
+    expect(layout.nodes).toHaveLength(4);
+    expect(collisions(layout)).toEqual([]);
+  });
+});
+
 describe("row offsets", () => {
   it("measures a row from the top of the card, title included", () => {
     const m = DEFAULT_METRICS;

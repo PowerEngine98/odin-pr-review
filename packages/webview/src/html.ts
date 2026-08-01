@@ -56,11 +56,18 @@ export function renderHtml(
     `${graph.meta.baseRef} → ${graph.meta.headRef} · Odin`;
 
   const full = options.withTests ?? layout;
+  // Column identity belongs to the arrangement, not to the file: hiding the
+  // tests changes the graph, which changes the ranking. Carrying it from one
+  // arrangement while taking positions from another is how cards end up
+  // believing they are in a column they are not, and collide.
   const place = (l: GraphLayout) => ({
     width: l.width,
     height: l.height,
     nodes: Object.fromEntries(
-      l.nodes.map((n) => [n.id, { x: n.x, y: n.y, height: n.height }]),
+      l.nodes.map((n) => [
+        n.id,
+        { x: n.x, y: n.y, height: n.height, column: n.rank },
+      ]),
     ),
   });
 
@@ -77,6 +84,10 @@ export function renderHtml(
       y: n.y,
       width: n.width,
       height: n.height,
+      // Which column the card belongs to. Cards are centred within a column,
+      // so two in the same one rarely share an x — comparing x to decide what
+      // moves together leaves the odd-width cards behind, and they collide.
+      column: n.rank,
       isTest: n.node.isTest === true,
     })),
     arrangements: { withTests: place(full), withoutTests: place(layout) },

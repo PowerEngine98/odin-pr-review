@@ -250,11 +250,11 @@ export const CLIENT_SCRIPT = String.raw`
       if (placed) placed.height += delta;
     });
 
-    // Only this column moves: ranks are horizontal, so nothing in another
-    // column can collide with a card that grew.
+    // Only this column moves: columns are laid out side by side, so nothing in
+    // another one can collide with a card that grew.
     data.nodes.forEach(function (other) {
       if (other.id === node.id) return;
-      if (other.x !== node.x) return;
+      if (other.column !== node.column) return;
       if (other.y < node.y) return;
       other.y += delta;
       Object.keys(data.arrangements).forEach(function (name) {
@@ -419,7 +419,7 @@ export const CLIENT_SCRIPT = String.raw`
 
     data.nodes.forEach(function (other) {
       if (other.id === node.id) return;
-      if (other.x !== node.x) return;
+      if (other.column !== node.column) return;
       if (other.y <= node.y) return;
       other.y += hide ? -span : span;
       var el = document.getElementById("card-" + cssId(other.id));
@@ -574,6 +574,7 @@ export const CLIENT_SCRIPT = String.raw`
       card.classList.remove("hidden");
       node.x = placed.x;
       node.y = placed.y;
+      node.column = placed.column;
       card.style.left = node.x + "px";
       card.style.top = node.y + "px";
     });

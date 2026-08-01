@@ -14,6 +14,19 @@ import { buildTree, type Folder } from "./tree-model.js";
 import type { ViewedStore } from "./viewed.js";
 
 /**
+ * The editor's own chevron.
+ *
+ * Drawn from the codicon path rather than a typographic triangle so the
+ * sidebar folds look like every other tree in VS Code. Inlined instead of
+ * loading the codicon font, which a webview would have to be granted access to
+ * and ship a copy of.
+ */
+const CHEVRON =
+  '<svg class="chev" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
+  '<path fill="currentColor" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/>' +
+  "</svg>";
+
+/**
  * The glyph inside each status box.
  *
  * Follows GitHub Desktop: a small filled square carrying a mark, rather than a
@@ -165,12 +178,18 @@ body {
 .folder:not(.open) + .folder-body { display: none; }
 .row:hover { background: var(--vscode-list-hoverBackground); }
 .twisty {
-  width: 12px;
-  color: var(--muted);
+  width: 16px;
+  height: 16px;
+  color: var(--vscode-icon-foreground, var(--muted));
   flex: 0 0 auto;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .twisty.none { visibility: hidden; }
+.twisty .chev { transition: transform 100ms ease; }
+.row.open .twisty .chev,
+.folder.open .twisty .chev { transform: rotate(90deg); }
 /* A filled square with a mark in it, as GitHub Desktop draws them. */
 .box {
   width: 14px;
@@ -257,8 +276,6 @@ document.querySelectorAll(".folder").forEach((folder) => {
   folder.addEventListener("click", (event) => {
     if (event.target.closest(".seen")) return;
     folder.classList.toggle("open");
-    const twisty = folder.querySelector(".twisty");
-    if (twisty) twisty.textContent = folder.classList.contains("open") ? "▾" : "▸";
   });
 });
 
@@ -333,8 +350,6 @@ document.querySelectorAll(".row").forEach((row) => {
     // The twisty folds; anywhere else opens the file.
     if (event.target.closest(".twisty")) {
       row.classList.toggle("open");
-      const twisty = row.querySelector(".twisty");
-      if (twisty) twisty.textContent = row.classList.contains("open") ? "▾" : "▸";
       return;
     }
     vscodeApi.postMessage({ type: "open", path: row.dataset.path });
@@ -370,7 +385,7 @@ function renderTree(
   return (
     `<div class="folder open" style="padding-left:${8 + indent}px">` +
     `<input type="checkbox" class="seen" title="Mark everything below as reviewed">` +
-    `<span class="twisty">▾</span>` +
+    `<span class="twisty">${CHEVRON}</span>` +
     `<span class="dir">${escapeHtml(folder.label)}</span>` +
     `</div><div class="folder-body">${inner}</div>`
   );
@@ -407,7 +422,7 @@ function fileRow(
     `title="${escapeHtml(node.path)}">` +
     `<input type="checkbox" class="seen"${viewed?.has(node.path) ? " checked" : ""} ` +
     `title="Mark as reviewed">` +
-    `<span class="twisty${outgoing.length ? "" : " none"}">▸</span>` +
+    `<span class="twisty${outgoing.length ? "" : " none"}">${CHEVRON}</span>` +
     `<span class="box">${STATUS_GLYPH[node.status]}</span>` +
     `<span class="name">${escapeHtml(title.name)}</span>` +
     `<span class="counts">${counts}</span>` +
