@@ -56,6 +56,13 @@ in an editor, but without losing your place.
 
 ![Following a reference](docs/interactive-focus.png)
 
+Cards show the change, not the file. A run of untouched code that no arrow
+reaches collapses into a single band carrying the hunk header, so a card stays
+the size of its change rather than the size of its file. Line numbers run in two
+columns — base on the left beside the +/− marker, head on the right — because a
+single shared column interleaves the two numbering schemes and reads as nonsense
+on any file that both gained and lost lines.
+
 | Gesture | Effect |
 | --- | --- |
 | Hover an arrow | Isolate it, show the resolved reference and its confidence |
@@ -81,18 +88,24 @@ to what" rather than "what changed where".
 
 ```mermaid
 flowchart LR
-  n0["addedFile.ts<br/><small>+11 −0</small>"]:::added
+  n0["addedFile.ts<br/><small>+16 −0</small>"]:::added
   n1["consumer.ts<br/><small>+1 −1</small>"]:::modified
   n2["deletedFile.ts<br/><small>+0 −13</small>"]:::deleted
   n3["logger.ts<br/><small>untouched</small>"]:::phantom
   n4["myService.ts<br/><small>+4 −5</small>"]:::modified
   n5["renamedFile.ts<br/><i>was oldName.ts</i><br/><small>+0 −0</small>"]:::renamed
-  n0 -->|"function1"| n4
+  n6["repository.ts<br/><small>+2 −1</small>"]:::modified
+  n4 -.->|"DeletedFile"| n2
+  n4 -.->|"anotherFunction2"| n2
   n0 -->|"log"| n3
+  n0 -->|"function1"| n4
+  n0 -->|"clear"| n6
   n1 -->|"function3"| n4
   n1 -.->|"function2"| n4
   n2 -.->|"function2"| n4
-  n4 -.->|"anotherFunction2"| n2
+  n6 -.->|"log"| n3
+  n6 -->|"log"| n3
+  n6 -->|"log"| n3
 
   classDef added stroke:#4ade80,color:#4ade80,fill:transparent;
   classDef modified stroke:#e5e7eb,color:#e5e7eb,fill:transparent;
@@ -113,22 +126,24 @@ Source: [`docs/examples/graph.dot`](docs/examples/graph.dot).
 
 ```
 main...feature/graph
-merge-base b8aafb392392
+merge-base bbb36260ba95
 
-A  src/addedFile.ts    +11 -0
+A  src/addedFile.ts    +16 -0
 M  src/consumer.ts    +1 -1
 D  src/deletedFile.ts    +0 -13
 ~  src/logger.ts    +0 -0
 M  src/myService.ts    +4 -5
 R  src/renamedFile.ts  (was src/oldName.ts)    +0 -0
+M  src/repository.ts    +2 -1
 
-6 nodes, 11 edges
+7 nodes, 16 edges
 
-+ src/addedFile.ts:9 -> src/myService.ts:2 function1 [resolved]
+- src/myService.ts:12 -> src/deletedFile.ts:10 anotherFunction2 [resolved]
++ src/addedFile.ts:13 -> src/myService.ts:2 function1 [resolved]
++ src/addedFile.ts:14 -> src/repository.ts:43 clear [resolved]
 + src/consumer.ts:7 -> src/myService.ts:10 function3 [resolved]
 - src/consumer.ts:7 -> src/myService.ts:10 function2 [resolved]
 - src/deletedFile.ts:7 -> src/myService.ts:10 function2 [resolved]
-- src/myService.ts:12 -> src/deletedFile.ts:10 anotherFunction2 [resolved]
 ```
 
 Note the two `src/consumer.ts:7` lines. One call site, edited in place, resolving
@@ -187,6 +202,7 @@ headlessly by the compiler API or inside the editor by a language server.
 - [x] Deterministic layered layout with line-level arrow anchors
 - [x] Interactive renderer: follow an arrow, isolate a file, pan and zoom
 - [x] SVG, Mermaid, Graphviz and terminal output
+- [x] Collapsed gaps for untouched code, with base/head line-number columns
 - [ ] VS Code extension: open the real file at the line an arrow points at
 - [ ] Layout pinning so a file keeps its place across pushes
 - [ ] Syntax highlighting inside cards
@@ -205,7 +221,7 @@ headlessly by the compiler API or inside the editor by a language server.
 ## Development
 
 ```sh
-yarn test                      # 69 tests: parser, graph, layout, resolver
+yarn test                      # 75 tests: parser, graph, layout, resolver
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples
 ```

@@ -97,6 +97,55 @@ export class Consumer {
 }
 EOF
 
+cat > src/repository.ts <<'EOF'
+import { log } from "./logger";
+
+/**
+ * Deliberately long, and edited in two places far apart, so that a card has to
+ * collapse the untouched middle instead of showing the whole file.
+ */
+export class Repository {
+  private readonly items = new Map<string, string>();
+
+  save(key: string, value: string): void {
+    log("saving " + key);
+    this.items.set(key, value);
+  }
+
+  load(key: string): string | undefined {
+    return this.items.get(key);
+  }
+
+  has(key: string): boolean {
+    return this.items.has(key);
+  }
+
+  size(): number {
+    return this.items.size;
+  }
+
+  keys(): string[] {
+    return [...this.items.keys()];
+  }
+
+  values(): string[] {
+    return [...this.items.values()];
+  }
+
+  entries(): [string, string][] {
+    return [...this.items.entries()];
+  }
+
+  remove(key: string): boolean {
+    return this.items.delete(key);
+  }
+
+  clear(): void {
+    this.items.clear();
+  }
+}
+EOF
+
 cat > src/oldName.ts <<'EOF'
 /** Renamed wholesale on the feature branch; contents are untouched. */
 export class OldName {
@@ -141,16 +190,71 @@ export class Consumer {
 }
 EOF
 
+cat > src/repository.ts <<'EOF'
+import { log } from "./logger";
+
+/**
+ * Deliberately long, and edited in two places far apart, so that a card has to
+ * collapse the untouched middle instead of showing the whole file.
+ */
+export class Repository {
+  private readonly items = new Map<string, string>();
+
+  save(key: string, value: string): void {
+    log("saving " + key + " (" + value.length + " bytes)");
+    this.items.set(key, value);
+  }
+
+  load(key: string): string | undefined {
+    return this.items.get(key);
+  }
+
+  has(key: string): boolean {
+    return this.items.has(key);
+  }
+
+  size(): number {
+    return this.items.size;
+  }
+
+  keys(): string[] {
+    return [...this.items.keys()];
+  }
+
+  values(): string[] {
+    return [...this.items.values()];
+  }
+
+  entries(): [string, string][] {
+    return [...this.items.entries()];
+  }
+
+  remove(key: string): boolean {
+    return this.items.delete(key);
+  }
+
+  clear(): void {
+    log("clearing " + this.items.size + " items");
+    this.items.clear();
+  }
+}
+EOF
+
 cat > src/addedFile.ts <<'EOF'
 import { log } from "./logger";
 import type { MyService } from "./myService";
+import type { Repository } from "./repository";
 
 export class AddedFile {
-  constructor(private readonly myService: MyService) {}
+  constructor(
+    private readonly myService: MyService,
+    private readonly repository: Repository,
+  ) {}
 
   myNewFunction(): void {
     log("starting");
     this.myService.function1();
+    this.repository.clear();
   }
 }
 EOF

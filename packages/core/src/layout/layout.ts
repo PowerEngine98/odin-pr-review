@@ -1,6 +1,13 @@
 import { sortGraph } from "../graph/build.js";
-import type { ChangeGraph, Edge, FileNode } from "../model/types.js";
-import { displayRows, rowForLine, type DisplayRow, type Snippet } from "./display.js";
+import type { ChangeGraph, Edge, FileNode, Side } from "../model/types.js";
+import {
+  cardTitle,
+  displayRows,
+  rowForLine,
+  titleLength,
+  type DisplayRow,
+  type Snippet,
+} from "./display.js";
 import { DEFAULT_METRICS, type LayoutMetrics } from "./metrics.js";
 
 export interface PlacedNode {
@@ -88,13 +95,20 @@ function measureNodes(
   metrics: LayoutMetrics,
   snippets?: Map<string, Snippet[]>,
 ): PlacedNode[] {
+  const anchors = collectAnchors(graph);
+
   return graph.nodes.map((node) => {
-    const rows = displayRows(node, snippets?.get(node.id) ?? []);
+    const rows = displayRows(node, snippets?.get(node.id) ?? [], {
+      anchors: anchors.get(node.id) ?? [],
+    });
     const widest = rows.reduce((max, row) => Math.max(max, row.text.length), 0);
     const contentWidth =
-      widest * metrics.charWidth + metrics.gutterWidth + metrics.padding * 2;
+      widest * metrics.charWidth +
+      metrics.gutterWidth +
+      metrics.rightGutterWidth +
+      metrics.padding * 2;
     const titleWidth =
-      node.path.length * (metrics.charWidth * 0.95) + metrics.padding * 2;
+      titleLength(cardTitle(node)) * metrics.charWidth + metrics.padding * 4;
 
     const width = clamp(
       Math.max(contentWidth, titleWidth),
@@ -119,6 +133,30 @@ function measureNodes(
       order: 0,
     };
   });
+}
+
+/**
+ * Every position an arrow touches, grouped by the card it lands in.
+ *
+ * Collapsing needs this before rows exist: a line that an arrow points at must
+ * survive, or the arrow would have nowhere to land and would fall back to the
+ * card edge — losing exactly the precision the graph is for.
+ */
+function collectAnchors(graph: ChangeGraph): Map<string, { side: Side; line: number }[]> {
+  const anchors = new Map<string, { side: Side; line: number }[]>();
+
+  const add = (nodeId: string, side: Side, line: number) => {
+    const list = anchors.get(nodeId) ?? [];
+    list.push({ side, line });
+    anchors.set(nodeId, list);
+  };
+
+  for (const edge of graph.edges) {
+    add(edge.from.nodeId, edge.from.side, edge.from.line);
+    add(edge.to.nodeId, edge.to.side, edge.to.line);
+  }
+
+  return anchors;
 }
 
 /** Vertical offset of a row's centre from the top of its card. */

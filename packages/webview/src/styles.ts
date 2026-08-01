@@ -30,6 +30,9 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
   --title-height: ${metrics.titleHeight}px;
   --padding: ${metrics.padding}px;
   --gutter-width: ${metrics.gutterWidth}px;
+  --right-gutter-width: ${metrics.rightGutterWidth}px;
+  --line-number-right: ${metrics.lineNumberRight}px;
+  --gap-bg: ${theme.gapBackground};
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -134,6 +137,7 @@ html, body {
 
 .card-title {
   height: var(--title-height);
+  padding: 0 var(--padding);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -161,19 +165,39 @@ html, body {
 }
 .row.add { background: var(--add-bg); color: var(--added); }
 .row.del { background: var(--del-bg); color: var(--removed); }
-.row.gap { color: var(--muted); font-size: calc(var(--font-size) - 1px); }
+
+/* A collapsed run of untouched code, banded the way a diff viewer marks the
+   part of a file it is not showing. */
+.row.gap {
+  background: var(--gap-bg);
+  color: var(--muted);
+  font-size: calc(var(--font-size) - 1px);
+  padding: 0 var(--padding);
+  justify-content: space-between;
+  gap: 12px;
+}
+.row.gap .header {
+  color: var(--gutter);
+  font-size: calc(var(--font-size) - 2px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .row .marker {
-  width: calc(var(--gutter-width) - 34px);
+  width: calc(var(--gutter-width) - var(--line-number-right));
   padding-left: var(--padding);
   color: var(--gutter);
 }
 .row .num {
-  width: 30px;
-  text-align: right;
-  padding-right: 8px;
   color: var(--gutter);
   font-size: calc(var(--font-size) - 1px);
+  text-align: right;
+  user-select: none;
+}
+.row .num.old { width: calc(var(--line-number-right) - var(--padding)); }
+.row .num.new {
+  width: var(--right-gutter-width);
+  padding-right: var(--padding);
 }
 .row.add .marker, .row.del .marker { color: inherit; }
 .row .text { flex: 1; }

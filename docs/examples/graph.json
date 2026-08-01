@@ -4,9 +4,9 @@
     "repo": "<fixture>",
     "baseRef": "main",
     "headRef": "feature/graph",
-    "baseSha": "b8aafb392392951d60aa08be16053a9d21e806bd",
-    "headSha": "5c36f2677b1bc1a7fc6a40c27700303cf9f76035",
-    "mergeBase": "b8aafb392392951d60aa08be16053a9d21e806bd",
+    "baseSha": "bbb36260ba9519af421a19335d93fa825090d753",
+    "headSha": "795d1caa6c46efbb0084bd1320ed6a8d7e4c5bb7",
+    "mergeBase": "bbb36260ba9519af421a19335d93fa825090d753",
     "generator": "odin-pr-review/0.1.0"
   },
   "nodes": [
@@ -17,7 +17,7 @@
       "language": "typescript",
       "binary": false,
       "stats": {
-        "additions": 11,
+        "additions": 16,
         "deletions": 0
       },
       "hunks": [
@@ -26,7 +26,7 @@
           "oldStart": 0,
           "oldLines": 0,
           "newStart": 1,
-          "newLines": 11,
+          "newLines": 16,
           "lines": [
             {
               "kind": "add",
@@ -40,48 +40,73 @@
             },
             {
               "kind": "add",
-              "text": "",
+              "text": "import type { Repository } from \"./repository\";",
               "newLine": 3
             },
             {
               "kind": "add",
-              "text": "export class AddedFile {",
+              "text": "",
               "newLine": 4
             },
             {
               "kind": "add",
-              "text": "  constructor(private readonly myService: MyService) {}",
+              "text": "export class AddedFile {",
               "newLine": 5
             },
             {
               "kind": "add",
-              "text": "",
+              "text": "  constructor(",
               "newLine": 6
             },
             {
               "kind": "add",
-              "text": "  myNewFunction(): void {",
+              "text": "    private readonly myService: MyService,",
               "newLine": 7
             },
             {
               "kind": "add",
-              "text": "    log(\"starting\");",
+              "text": "    private readonly repository: Repository,",
               "newLine": 8
             },
             {
               "kind": "add",
-              "text": "    this.myService.function1();",
+              "text": "  ) {}",
               "newLine": 9
             },
             {
               "kind": "add",
-              "text": "  }",
+              "text": "",
               "newLine": 10
             },
             {
               "kind": "add",
-              "text": "}",
+              "text": "  myNewFunction(): void {",
               "newLine": 11
+            },
+            {
+              "kind": "add",
+              "text": "    log(\"starting\");",
+              "newLine": 12
+            },
+            {
+              "kind": "add",
+              "text": "    this.myService.function1();",
+              "newLine": 13
+            },
+            {
+              "kind": "add",
+              "text": "    this.repository.clear();",
+              "newLine": 14
+            },
+            {
+              "kind": "add",
+              "text": "  }",
+              "newLine": 15
+            },
+            {
+              "kind": "add",
+              "text": "}",
+              "newLine": 16
             }
           ]
         }
@@ -387,6 +412,125 @@
       },
       "hunks": [],
       "symbols": []
+    },
+    {
+      "id": "n:c14920f42f50",
+      "path": "src/repository.ts",
+      "status": "modified",
+      "language": "typescript",
+      "binary": false,
+      "stats": {
+        "additions": 2,
+        "deletions": 1
+      },
+      "hunks": [
+        {
+          "header": "export class Repository {",
+          "oldStart": 8,
+          "oldLines": 7,
+          "newStart": 8,
+          "newLines": 7,
+          "lines": [
+            {
+              "kind": "ctx",
+              "text": "  private readonly items = new Map<string, string>();",
+              "oldLine": 8,
+              "newLine": 8
+            },
+            {
+              "kind": "ctx",
+              "text": "",
+              "oldLine": 9,
+              "newLine": 9
+            },
+            {
+              "kind": "ctx",
+              "text": "  save(key: string, value: string): void {",
+              "oldLine": 10,
+              "newLine": 10
+            },
+            {
+              "kind": "del",
+              "text": "    log(\"saving \" + key);",
+              "oldLine": 11
+            },
+            {
+              "kind": "add",
+              "text": "    log(\"saving \" + key + \" (\" + value.length + \" bytes)\");",
+              "newLine": 11
+            },
+            {
+              "kind": "ctx",
+              "text": "    this.items.set(key, value);",
+              "oldLine": 12,
+              "newLine": 12
+            },
+            {
+              "kind": "ctx",
+              "text": "  }",
+              "oldLine": 13,
+              "newLine": 13
+            },
+            {
+              "kind": "ctx",
+              "text": "",
+              "oldLine": 14,
+              "newLine": 14
+            }
+          ]
+        },
+        {
+          "header": "export class Repository {",
+          "oldStart": 41,
+          "oldLines": 6,
+          "newStart": 41,
+          "newLines": 7,
+          "lines": [
+            {
+              "kind": "ctx",
+              "text": "  }",
+              "oldLine": 41,
+              "newLine": 41
+            },
+            {
+              "kind": "ctx",
+              "text": "",
+              "oldLine": 42,
+              "newLine": 42
+            },
+            {
+              "kind": "ctx",
+              "text": "  clear(): void {",
+              "oldLine": 43,
+              "newLine": 43
+            },
+            {
+              "kind": "add",
+              "text": "    log(\"clearing \" + this.items.size + \" items\");",
+              "newLine": 44
+            },
+            {
+              "kind": "ctx",
+              "text": "    this.items.clear();",
+              "oldLine": 44,
+              "newLine": 45
+            },
+            {
+              "kind": "ctx",
+              "text": "  }",
+              "oldLine": 45,
+              "newLine": 46
+            },
+            {
+              "kind": "ctx",
+              "text": "}",
+              "oldLine": 46,
+              "newLine": 47
+            }
+          ]
+        }
+      ],
+      "symbols": []
     }
   ],
   "edges": [
@@ -498,12 +642,33 @@
       "label": "./myService"
     },
     {
-      "id": "e:ddaad06429fb",
+      "id": "e:3c2011e2a987",
+      "kind": "import",
+      "from": {
+        "side": "head",
+        "nodeId": "n:9518c3291d8e",
+        "line": 3,
+        "column": 32
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:c14920f42f50",
+        "line": 1,
+        "column": 0,
+        "symbolName": "repository.ts"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "./repository"
+    },
+    {
+      "id": "e:f3f1cbbe79f8",
       "kind": "call",
       "from": {
         "side": "head",
         "nodeId": "n:9518c3291d8e",
-        "line": 8,
+        "line": 12,
         "column": 4,
         "symbolName": "myNewFunction"
       },
@@ -520,12 +685,12 @@
       "label": "log(\"starting\")"
     },
     {
-      "id": "e:2250e38133dd",
+      "id": "e:d88552d7e3b6",
       "kind": "call",
       "from": {
         "side": "head",
         "nodeId": "n:9518c3291d8e",
-        "line": 9,
+        "line": 13,
         "column": 19,
         "symbolName": "myNewFunction"
       },
@@ -540,6 +705,28 @@
       "confidence": "resolved",
       "resolver": "ts",
       "label": "this.myService.function1()"
+    },
+    {
+      "id": "e:2545469b3a16",
+      "kind": "call",
+      "from": {
+        "side": "head",
+        "nodeId": "n:9518c3291d8e",
+        "line": 14,
+        "column": 20,
+        "symbolName": "myNewFunction"
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:c14920f42f50",
+        "line": 43,
+        "column": 2,
+        "symbolName": "clear"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "this.repository.clear()"
     },
     {
       "id": "e:21cfb5caf93f",
@@ -627,6 +814,72 @@
       "confidence": "resolved",
       "resolver": "ts",
       "label": "this.myService.function2()"
+    },
+    {
+      "id": "e:affa1ceb6246",
+      "kind": "call",
+      "from": {
+        "side": "base",
+        "nodeId": "n:c14920f42f50",
+        "line": 11,
+        "column": 4,
+        "symbolName": "save"
+      },
+      "to": {
+        "side": "base",
+        "nodeId": "n:7ca9a636a596",
+        "line": 1,
+        "column": 16,
+        "symbolName": "log"
+      },
+      "change": "removed",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "log(\"saving \" + key)"
+    },
+    {
+      "id": "e:c7e801e84905",
+      "kind": "call",
+      "from": {
+        "side": "head",
+        "nodeId": "n:c14920f42f50",
+        "line": 11,
+        "column": 4,
+        "symbolName": "save"
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:7ca9a636a596",
+        "line": 1,
+        "column": 16,
+        "symbolName": "log"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"
+    },
+    {
+      "id": "e:0d1169c0c130",
+      "kind": "call",
+      "from": {
+        "side": "head",
+        "nodeId": "n:c14920f42f50",
+        "line": 44,
+        "column": 4,
+        "symbolName": "clear"
+      },
+      "to": {
+        "side": "head",
+        "nodeId": "n:7ca9a636a596",
+        "line": 1,
+        "column": 16,
+        "symbolName": "log"
+      },
+      "change": "added",
+      "confidence": "resolved",
+      "resolver": "ts",
+      "label": "log(\"clearing \" + this.items.size + \" items\")"
     }
   ]
 }

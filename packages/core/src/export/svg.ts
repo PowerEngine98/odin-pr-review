@@ -1,4 +1,5 @@
 import type { GraphLayout, PlacedEdge, PlacedNode } from "../layout/layout.js";
+import { cardTitle } from "../layout/display.js";
 import { rowOffset } from "../layout/layout.js";
 import { DARK_THEME, type Theme } from "../layout/theme.js";
 import type { EdgeChange } from "../model/types.js";
@@ -66,13 +67,12 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
       `stroke-width="1.5"${dashed}/>`,
   );
 
-  const title = node.node.prevPath
-    ? `${basename(node.path)} ← ${basename(node.node.prevPath)}`
-    : basename(node.path);
+  const title = cardTitle(node.node);
+  const heading = [title.name, title.was, title.stats].filter(Boolean).join("  ");
   parts.push(
     `<text x="${node.x + node.width / 2}" y="${node.y + metrics.titleHeight - 12}" ` +
       `fill="${stroke}" font-size="${metrics.fontSize + 1}" text-anchor="middle">` +
-      `${escape(title)}</text>`,
+      `${escape(heading)}</text>`,
   );
 
   const textX = node.x + metrics.padding + metrics.gutterWidth;
@@ -80,10 +80,24 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
     const y = node.y + rowOffset(i, metrics) + metrics.fontSize / 2 - 2;
 
     if (row.kind === "gap") {
+      // A banded row, the way a diff viewer marks the part of a file it is not
+      // showing. The header keeps the hidden region attributable.
       parts.push(
-        `<text x="${textX}" y="${y}" fill="${theme.mutedText}" ` +
+        `<rect x="${node.x + 2}" y="${node.y + rowOffset(i, metrics) - metrics.lineHeight / 2}" ` +
+          `width="${node.width - 4}" height="${metrics.lineHeight}" ` +
+          `fill="${theme.gapBackground}"/>`,
+      );
+      parts.push(
+        `<text x="${node.x + metrics.padding}" y="${y}" fill="${theme.mutedText}" ` +
           `font-size="${metrics.fontSize - 1}">${escape(row.text)}</text>`,
       );
+      if (row.header) {
+        parts.push(
+          `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
+            `fill="${theme.gutter}" font-size="${metrics.fontSize - 2}" ` +
+            `text-anchor="end">${escape(row.header)}</text>`,
+        );
+      }
       return;
     }
 
@@ -102,17 +116,27 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
           ? theme.change.removed
           : theme.text;
     const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : " ";
-    const number = row.newLine ?? row.oldLine;
 
     parts.push(
       `<text x="${node.x + metrics.padding}" y="${y}" fill="${theme.gutter}" ` +
         `font-size="${metrics.fontSize}">${marker}</text>`,
     );
-    if (number !== undefined) {
+
+    // Base number on the left, head number on the right. One shared column
+    // would interleave the two numbering schemes and read as nonsense on any
+    // file where lines were both added and removed.
+    if (row.oldLine !== undefined) {
       parts.push(
         `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
           `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
-          `text-anchor="end">${number}</text>`,
+          `text-anchor="end">${row.oldLine}</text>`,
+      );
+    }
+    if (row.newLine !== undefined) {
+      parts.push(
+        `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
+          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+          `text-anchor="end">${row.newLine}</text>`,
       );
     }
     parts.push(
@@ -143,10 +167,6 @@ function arrow(placed: PlacedEdge, theme: Theme): string {
     `<path d="${d}" fill="none" stroke="${colour}" stroke-width="1.8"${dash} ` +
     `marker-end="url(#arrow-${placed.edge.change})" opacity="0.9"/>`
   );
-}
-
-function basename(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1);
 }
 
 function escape(value: string): string {

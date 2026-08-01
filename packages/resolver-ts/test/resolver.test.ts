@@ -60,7 +60,7 @@ describe("TsResolver on the demo repository", () => {
 
   it("resolves the added call from the new file", () => {
     expect(describeEdges(graph)).toContain(
-      "added src/addedFile.ts:9 -> src/myService.ts:2 function1",
+      "added src/addedFile.ts:13 -> src/myService.ts:2 function1",
     );
   });
 
@@ -88,7 +88,7 @@ describe("TsResolver on the demo repository", () => {
     const logger = graph.nodes.find((n) => n.path === "src/logger.ts");
     expect(logger?.status).toBe("phantom");
     expect(describeEdges(graph)).toContain(
-      "added src/addedFile.ts:8 -> src/logger.ts:1 log",
+      "added src/addedFile.ts:12 -> src/logger.ts:1 log",
     );
   });
 

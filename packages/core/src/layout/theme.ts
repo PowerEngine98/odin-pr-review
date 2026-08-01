@@ -13,6 +13,8 @@ export interface Theme {
   text: string;
   mutedText: string;
   gutter: string;
+  /** Band behind a collapsed run of unchanged code. */
+  gapBackground: string;
   status: Record<FileStatus, string>;
   change: Record<EdgeChange, string>;
   lineBackground: { add: string; del: string };
@@ -24,6 +26,7 @@ export const DARK_THEME: Theme = {
   text: "#e5e7eb",
   mutedText: "#6b7280",
   gutter: "#3f3f46",
+  gapBackground: "#17171b",
   status: {
     added: "#4ade80",
     modified: "#d4d4d8",
@@ -48,6 +51,7 @@ export const LIGHT_THEME: Theme = {
   text: "#18181b",
   mutedText: "#71717a",
   gutter: "#d4d4d8",
+  gapBackground: "#f1f1f4",
   status: {
     added: "#16a34a",
     modified: "#52525b",

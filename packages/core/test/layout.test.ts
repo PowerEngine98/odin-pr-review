@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { parseUnifiedDiff } from "../src/diff/parse.js";
 import { toSvg } from "../src/export/svg.js";
-import { buildGraph, sortGraph } from "../src/graph/build.js";
-import { displayRows, rowForLine } from "../src/layout/display.js";
+import { addPhantomNodes, buildGraph, sortGraph } from "../src/graph/build.js";
+import {
+  cardTitle,
+  displayRows,
+  rowForLine,
+  titleLength,
+} from "../src/layout/display.js";
 import { layoutGraph } from "../src/layout/layout.js";
-import { edgeId } from "../src/model/ids.js";
+import { DEFAULT_METRICS } from "../src/layout/metrics.js";
+import { edgeId, nodeId } from "../src/model/ids.js";
 import type { ChangeGraph, Edge, Endpoint } from "../src/model/types.js";
 
 const META = { baseRef: "main", headRef: "feature", generator: "test" };
@@ -92,6 +98,59 @@ describe("displayRows", () => {
       { side: "head", startLine: 2, lines: ["  target.newWay();"] },
     ]);
     expect(rows).toHaveLength(4);
+  });
+
+  it("collapses a long run of untouched code no arrow reaches", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    const rows = displayRows(node, [
+      { side: "head", startLine: 20, lines: Array.from({ length: 12 }, (_, i) => `line ${i}`) },
+    ]);
+
+    // The run sits far from any change and nothing points at it, so it becomes
+    // one band rather than twelve rows of noise.
+    const gaps = rows.filter((r) => r.kind === "gap");
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]!.kind === "gap" && gaps[0]!.hidden).toBe(27);
+    expect(rows.some((r) => r.text === "line 6")).toBe(false);
+  });
+
+  it("keeps a line an arrow lands on, and its neighbours", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    const rows = displayRows(
+      node,
+      [{ side: "head", startLine: 20, lines: Array.from({ length: 12 }, (_, i) => `line ${i}`) }],
+      { anchors: [{ side: "head", line: 26 }] },
+    );
+
+    expect(rows.some((r) => r.text === "line 6")).toBe(true);
+    expect(rowForLine(rows, "head", 26)).toBeDefined();
+    // Two lines of context on each side of the anchor survive with it.
+    expect(rows.some((r) => r.text === "line 4")).toBe(true);
+    expect(rows.some((r) => r.text === "line 8")).toBe(true);
+    expect(rows.some((r) => r.text === "line 0")).toBe(false);
+  });
+
+  it("labels a gap with the hunk header it opens", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    node.hunks[0]!.newStart = 40;
+    node.hunks[0]!.oldStart = 40;
+    node.hunks[0]!.header = "export function run()";
+    const first = displayRows(node)[0]!;
+    expect(first.kind).toBe("gap");
+    expect(first.kind === "gap" && first.header).toBe(
+      "@@ -40,4 +40,4 @@ export function run()",
+    );
+  });
+
+  it("never emits two gaps in a row", () => {
+    const node = graph().nodes.find((n) => n.path === "src/caller.ts")!;
+    const rows = displayRows(node, [
+      { side: "head", startLine: 30, lines: Array.from({ length: 8 }, () => "x") },
+      { side: "head", startLine: 60, lines: Array.from({ length: 8 }, () => "y") },
+    ]);
+    for (let i = 1; i < rows.length; i++) {
+      expect(rows[i]!.kind === "gap" && rows[i - 1]!.kind === "gap").toBe(false);
+    }
   });
 
   it("finds the row for a line on the side the card shows", () => {
@@ -187,18 +246,53 @@ describe("layoutGraph", () => {
     expect(layout.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
   });
 
-  it("sizes cards to their widest line", () => {
+  it("sizes cards to their widest line plus both gutters", () => {
     const layout = layoutGraph(graph());
+    const { charWidth, gutterWidth, rightGutterWidth, padding, maxCardWidth } =
+      layout.metrics;
+
     for (const node of layout.nodes) {
       const widest = node.rows.reduce((max, r) => Math.max(max, r.text.length), 0);
       const needed =
-        widest * layout.metrics.charWidth +
-        layout.metrics.gutterWidth +
-        layout.metrics.padding * 2;
+        widest * charWidth + gutterWidth + rightGutterWidth + padding * 2;
       expect(node.width).toBeGreaterThanOrEqual(
-        Math.min(needed, layout.metrics.maxCardWidth) - 1,
+        Math.min(needed, maxCardWidth) - 1,
       );
     }
+  });
+});
+
+describe("card titles", () => {
+  it("measures the whole header, not just the path", () => {
+    const base = graph();
+    const renamePatch = [
+      "diff --git a/src/a.ts b/src/some-considerably-longer-name.ts",
+      "similarity index 100%",
+      "rename from src/a.ts",
+      "rename to src/some-considerably-longer-name.ts",
+      "",
+    ].join("\n");
+    const renamed = buildGraph(parseUnifiedDiff(renamePatch), { meta: META });
+    const node = renamed.nodes[0]!;
+
+    // The card also shows "← a.ts" and the line counts; measuring the path
+    // alone would overflow the header and read as missing padding.
+    const title = cardTitle(node);
+    expect(title.was).toBe("← a.ts");
+    expect(titleLength(title)).toBeGreaterThan(node.path.length);
+
+    const card = layoutGraph(renamed).nodes[0]!;
+    const needed = titleLength(title) * DEFAULT_METRICS.charWidth;
+    expect(card.width).toBeGreaterThan(needed);
+    void base;
+  });
+
+  it("labels an untouched file rather than showing zero counts", () => {
+    const withPhantom = addPhantomNodes(graph(), [
+      { nodeId: nodeId("src/never.ts"), path: "src/never.ts" },
+    ]);
+    const phantom = withPhantom.nodes.find((n) => n.path === "src/never.ts")!;
+    expect(cardTitle(phantom).stats).toBe("untouched");
   });
 });
 

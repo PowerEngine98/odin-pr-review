@@ -1,5 +1,6 @@
 import {
   DARK_THEME,
+  cardTitle,
   type ChangeGraph,
   type DisplayRow,
   type GraphLayout,
@@ -119,36 +120,36 @@ function card(node: PlacedNode, layout: GraphLayout): string {
     `left:${node.x}px;top:${node.y}px;` +
     `width:${node.width}px;height:${node.height}px`;
 
-  const was = node.node.prevPath
-    ? `<span class="was">← ${escapeHtml(basename(node.node.prevPath))}</span>`
-    : "";
-  const stats =
-    node.node.status === "phantom"
-      ? `<span class="stats">untouched</span>`
-      : `<span class="stats">+${node.node.stats.additions} −${node.node.stats.deletions}</span>`;
+  const title = cardTitle(node.node);
+  const was = title.was ? `<span class="was">${escapeHtml(title.was)}</span>` : "";
+  const stats = `<span class="stats">${escapeHtml(title.stats)}</span>`;
 
   void metrics;
   const body = node.rows.map(renderRow).join("");
 
   return `<div class="card status-${node.node.status}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
-  <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(basename(node.path))}${was}${stats}</div>
+  <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}</div>
   <div class="card-body">${body}</div>
 </div>`;
 }
 
 function renderRow(row: DisplayRow): string {
   if (row.kind === "gap") {
-    return `<div class="row gap"><span class="marker"></span><span class="num"></span>` +
-      `<span class="text">${escapeHtml(row.text)}</span></div>`;
+    return `<div class="row gap" title="${escapeHtml(row.header ?? "")}">` +
+      `<span class="text">${escapeHtml(row.text)}</span>` +
+      `<span class="header">${escapeHtml(row.header ?? "")}</span></div>`;
   }
 
   const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : "";
-  const number = row.newLine ?? row.oldLine ?? "";
+  // Base number on the left, head number on the right. A single shared column
+  // interleaves the two numbering schemes and reads as nonsense on any file
+  // where lines were both added and removed.
   return `<div class="row ${row.kind}">` +
     `<span class="marker">${marker}</span>` +
-    `<span class="num">${number}</span>` +
-    `<span class="text">${escapeHtml(row.text)}</span></div>`;
+    `<span class="num old">${row.oldLine ?? ""}</span>` +
+    `<span class="text">${escapeHtml(row.text)}</span>` +
+    `<span class="num new">${row.newLine ?? ""}</span></div>`;
 }
 
 function edgeLayer(layout: GraphLayout): string {
@@ -190,10 +191,6 @@ function curve(edge: PlacedEdge): string {
 
 function pathOf(layout: GraphLayout, nodeId: string): string {
   return layout.nodes.find((n) => n.id === nodeId)?.path ?? nodeId;
-}
-
-function basename(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1);
 }
 
 function cssId(id: string): string {
