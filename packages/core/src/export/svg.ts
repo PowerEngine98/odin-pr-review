@@ -73,7 +73,7 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
     .join("  ");
   const y = node.y + metrics.titleHeight - 12;
 
-  if (title.additions) {
+  if (title.additions || title.deletions) {
     // One text element with coloured spans, so the counts read like the diff.
     const lead = [title.name, title.was].filter(Boolean).join("  ");
     const tail = title.note ? `  ${title.note}` : "";
@@ -81,9 +81,15 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
       `<text x="${node.x + node.width / 2}" y="${y}" ` +
         `font-size="${metrics.fontSize + 1}" text-anchor="middle">` +
         `<tspan fill="${stroke}">${escape(lead)}  </tspan>` +
-        `<tspan fill="${theme.change.added}">${escape(title.additions)}</tspan>` +
-        `<tspan fill="${theme.mutedText}"> </tspan>` +
-        `<tspan fill="${theme.change.removed}">${escape(title.deletions)}</tspan>` +
+        (title.additions
+          ? `<tspan fill="${theme.change.added}">${escape(title.additions)}</tspan>`
+          : "") +
+        (title.additions && title.deletions
+          ? `<tspan fill="${theme.mutedText}"> </tspan>`
+          : "") +
+        (title.deletions
+          ? `<tspan fill="${theme.change.removed}">${escape(title.deletions)}</tspan>`
+          : "") +
         `<tspan fill="${theme.warning}">${escape(tail)}</tspan></text>`,
     );
   } else {

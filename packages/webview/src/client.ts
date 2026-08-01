@@ -282,8 +282,11 @@ export const CLIENT_SCRIPT = String.raw`
     if (!row || row.offsetParent === null) {
       return { y: node.y + node.height / 2, node: node };
     }
+    // The card is the positioned ancestor, so offsetTop already counts the
+    // title. Adding the body's offset as well put every arrow a title-height
+    // too low — about two rows, which is close enough to look plausible.
     return {
-      y: node.y + row.offsetTop + card.querySelector(".card-body").offsetTop + row.offsetHeight / 2,
+      y: node.y + row.offsetTop + row.offsetHeight / 2,
       node: node,
     };
   }

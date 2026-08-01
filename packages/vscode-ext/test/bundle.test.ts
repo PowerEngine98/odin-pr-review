@@ -75,8 +75,7 @@ function createStub(): Stub {
     },
     window: {
       registerUriHandler: () => disposable,
-      registerTreeDataProvider: () => disposable,
-      registerFileDecorationProvider: () => disposable,
+      registerWebviewViewProvider: () => disposable,
       showErrorMessage: () => Promise.resolve(),
       showInformationMessage: () => Promise.resolve(),
       showQuickPick: () => Promise.resolve(undefined),
@@ -157,10 +156,9 @@ describe("the built extension", () => {
       await import("../package.json", { with: { type: "json" } })
     ).default as { contributes: { commands: { command: string }[] } };
 
-    // Every command, plus the content provider, the URI handler, the tree view
-    // and the decoration provider. Anything registered but not collected here
-    // leaks on reload.
-    const nonCommands = 4;
+    // Every command, plus the content provider, the URI handler and the
+    // sidebar. Anything registered but not collected here leaks on reload.
+    const nonCommands = 3;
     expect(subscriptions).toHaveLength(
       manifest.contributes.commands.length + nonCommands,
     );

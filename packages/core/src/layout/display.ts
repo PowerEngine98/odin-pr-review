@@ -381,15 +381,22 @@ export interface CardTitle {
 }
 
 export function cardTitle(node: FileNode): CardTitle {
+  // A count of zero says nothing. "+54 −0" reads as though something was
+  // removed and invites a second look at a file that only gained lines.
+  const untouched = node.status === "phantom";
+  const additions =
+    !untouched && node.stats.additions > 0 ? `+${node.stats.additions}` : "";
+  const deletions =
+    !untouched && node.stats.deletions > 0 ? `−${node.stats.deletions}` : "";
+
   return {
     name: basename(node.path),
     was: node.prevPath ? `← ${basename(node.prevPath)}` : "",
-    stats:
-      node.status === "phantom"
-        ? "untouched"
-        : `+${node.stats.additions} −${node.stats.deletions}`,
-    additions: node.status === "phantom" ? "" : `+${node.stats.additions}`,
-    deletions: node.status === "phantom" ? "" : `−${node.stats.deletions}`,
+    stats: untouched
+      ? "untouched"
+      : [additions, deletions].filter(Boolean).join(" "),
+    additions,
+    deletions,
     note:
       node.resolution === "unsupported"
         ? `no ${node.language} resolver`

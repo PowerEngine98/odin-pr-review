@@ -18,8 +18,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const EXTENSION_ROOT = join(HERE, "..");
 const REPO_ROOT = join(EXTENSION_ROOT, "..", "..");
 
-const INSTALLED =
-  "/Applications/Visual Studio Code.app/Contents/MacOS/Electron";
+// The binary is named after the product, not after Electron. Getting this
+// wrong is silent: the harness simply downloads a whole editor instead, which
+// is how 900MB of it ended up in the working tree.
+const INSTALLED = "/Applications/Visual Studio Code.app/Contents/MacOS/Code";
 
 const workspace = mkdtempSync(join(tmpdir(), "odin-it-"));
 
@@ -29,6 +31,12 @@ try {
     [join(REPO_ROOT, "fixtures", "make-demo-repo-ts.sh"), workspace],
     { cwd: REPO_ROOT, stdio: "inherit" },
   );
+
+  if (!existsSync(INSTALLED)) {
+    console.warn(
+      `no editor at ${INSTALLED}; one will be downloaded into .vscode-test`,
+    );
+  }
 
   await runTests({
     ...(existsSync(INSTALLED) ? { vscodeExecutablePath: INSTALLED } : {}),

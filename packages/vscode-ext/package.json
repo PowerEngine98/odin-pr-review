@@ -107,6 +107,7 @@
         {
           "id": "odin.changes",
           "name": "Change Graph",
+          "type": "webview",
           "icon": "media/odin.svg"
         }
       ]

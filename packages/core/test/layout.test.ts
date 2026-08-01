@@ -9,7 +9,7 @@ import {
   rowForLine,
   titleLength,
 } from "../src/layout/display.js";
-import { fitText, layoutGraph, textCapacity } from "../src/layout/layout.js";
+import { fitText, layoutGraph, rowOffset, textCapacity } from "../src/layout/layout.js";
 import { DEFAULT_METRICS } from "../src/layout/metrics.js";
 import { edgeId, nodeId } from "../src/model/ids.js";
 import type { ChangeGraph, Edge, Endpoint } from "../src/model/types.js";
@@ -381,6 +381,16 @@ describe("gaps that can be opened", () => {
   });
 });
 
+describe("row offsets", () => {
+  it("measures a row from the top of the card, title included", () => {
+    const m = DEFAULT_METRICS;
+    // The browser measures rows against the card, which already contains the
+    // title. Anything that adds the title again lands two rows low.
+    expect(rowOffset(0, m)).toBe(m.titleHeight + m.padding + m.lineHeight / 2);
+    expect(rowOffset(3, m) - rowOffset(0, m)).toBe(3 * m.lineHeight);
+  });
+});
+
 describe("card titles", () => {
   it("measures the whole header, not just the path", () => {
     const base = graph();
@@ -404,6 +414,25 @@ describe("card titles", () => {
     const needed = titleLength(title) * DEFAULT_METRICS.charWidth;
     expect(card.width).toBeGreaterThan(needed);
     void base;
+  });
+
+  it("omits a count of zero rather than printing +0", () => {
+    // "+54 −0" reads as though something was removed.
+    const patch = [
+      "diff --git a/src/only-added.ts b/src/only-added.ts",
+      "new file mode 100644",
+      "--- /dev/null",
+      "+++ b/src/only-added.ts",
+      "@@ -0,0 +1,2 @@",
+      "+a",
+      "+b",
+      "",
+    ].join("\n");
+    const node = buildGraph(parseUnifiedDiff(patch), { meta: META }).nodes[0]!;
+    const title = cardTitle(node);
+    expect(title.additions).toBe("+2");
+    expect(title.deletions).toBe("");
+    expect(title.stats).toBe("+2");
   });
 
   it("labels an untouched file rather than showing zero counts", () => {

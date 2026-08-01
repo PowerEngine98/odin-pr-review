@@ -182,9 +182,12 @@ function card(node: PlacedNode, layout: GraphLayout): string {
   const title = cardTitle(node.node);
   const was = title.was ? `<span class="was">${escapeHtml(title.was)}</span>` : "";
   // Counts carry the diff's own colours, so the card header reads at a glance.
-  const stats = title.additions
-    ? `<span class="stats"><span class="added">${escapeHtml(title.additions)}</span>` +
-      ` <span class="removed">${escapeHtml(title.deletions)}</span></span>`
+  const counts = [
+    title.additions ? `<span class="added">${escapeHtml(title.additions)}</span>` : "",
+    title.deletions ? `<span class="removed">${escapeHtml(title.deletions)}</span>` : "",
+  ].filter(Boolean).join(" ");
+  const stats = counts
+    ? `<span class="stats">${counts}</span>`
     : `<span class="stats">${escapeHtml(title.stats)}</span>`;
   const note = title.note
     ? `<span class="note" title="Odin could not look for references in this file">${escapeHtml(title.note)}</span>`
