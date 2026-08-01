@@ -199,15 +199,23 @@ export const CLIENT_SCRIPT = String.raw`
     if (!title) return;
     title.addEventListener("click", function (event) {
       event.stopPropagation();
+
+      // Plain click isolates; a modifier opens the file. Opening an editor on
+      // every filename click would fight the reviewer for the screen.
+      if (event.metaKey || event.ctrlKey) {
+        notifyHost("open", { path: card.dataset.path });
+        return;
+      }
+
       if (card.classList.contains("active")) clearHighlight();
       else highlightNode(card.dataset.id);
-      notifyHost("open", { path: card.dataset.path });
     });
   });
 
   viewport.addEventListener("click", function (event) {
     if (event.target.closest(".card") || event.target.closest("path.hit")) return;
     clearHighlight();
+    tooltip.classList.remove("visible");
   });
 
   /* --------------------------------------------------------------- tooltip */

@@ -1,0 +1,71 @@
+{
+  "name": "odin-pr-review",
+  "displayName": "Odin PR Review",
+  "description": "Review a pull request as a graph: files are vertices, call-site references are edges.",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "publisher": "odin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PowerEngine98/odin-pr-review"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["SCM Providers", "Visualization"],
+  "keywords": ["pull request", "code review", "diff", "graph", "call hierarchy"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "odin.review",
+        "title": "Review Pull Request as a Graph",
+        "category": "Odin"
+      },
+      {
+        "command": "odin.reviewAgainst",
+        "title": "Review Against a Different Base…",
+        "category": "Odin"
+      },
+      {
+        "command": "odin.exportGraph",
+        "title": "Export Change Graph as JSON",
+        "category": "Odin"
+      }
+    ],
+    "configuration": {
+      "title": "Odin PR Review",
+      "properties": {
+        "odin.baseRef": {
+          "type": "string",
+          "default": "main",
+          "description": "Branch a pull request is compared against. The diff is taken from the merge base, not the branch tip."
+        },
+        "odin.includeImports": {
+          "type": "boolean",
+          "default": true,
+          "description": "Draw an edge for import statements as well as call sites."
+        },
+        "odin.includeContext": {
+          "type": "boolean",
+          "default": false,
+          "description": "Resolve references on unchanged lines too. Shows pre-existing relationships, at the cost of a much busier graph."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "package": "vsce package --no-dependencies --out ../../dist/odin-pr-review-0.1.0.vsix"
+  },
+  "dependencies": {
+    "@odin/core": "0.1.0",
+    "@odin/resolver-ts": "0.1.0",
+    "@odin/webview": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0"
+  }
+}

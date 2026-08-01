@@ -15,6 +15,17 @@ import { stylesheet } from "./styles.js";
 export interface RenderOptions {
   theme?: Theme;
   title?: string;
+  /**
+   * Content policy for an editor webview, which refuses inline scripts without
+   * one. Omitted for a standalone file, where the document is opened directly
+   * from disk and no policy applies.
+   */
+  csp?: {
+    /** Per-load random value; the host must generate a fresh one each time. */
+    nonce: string;
+    /** The host's resource origin, e.g. `webview.cspSource`. */
+    source: string;
+  };
 }
 
 /**
@@ -54,6 +65,10 @@ export function renderHtml(
       toPath: pathOf(layout, e.edge.to.nodeId),
       fromLine: e.edge.from.line,
       toLine: e.edge.to.line,
+      // Which checkout each end lives in. A host that opens files needs this:
+      // a removed reference points at the merge base, not the working tree.
+      fromSide: e.edge.from.side,
+      toSide: e.edge.to.side,
       change: e.edge.change,
       kind: e.edge.kind,
       confidence: e.edge.confidence,
@@ -62,10 +77,13 @@ export function renderHtml(
     })),
   };
 
+  const nonce = options.csp ? ` nonce="${options.csp.nonce}"` : "";
+
   return [
     `<!doctype html>`,
     `<html lang="en"><head><meta charset="utf-8">`,
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
+    ...(options.csp ? [contentSecurityPolicy(options.csp)] : []),
     `<title>${escapeHtml(title)}</title>`,
     `<style>${stylesheet(theme, layout.metrics)}</style>`,
     `</head><body>`,
@@ -77,10 +95,26 @@ export function renderHtml(
     `</div></div>`,
     `<div class="tooltip"></div>`,
     hint(),
-    `<script>window.__ODIN__=${jsonForScript(viewModel)};</script>`,
-    `<script>${CLIENT_SCRIPT}</script>`,
+    `<script${nonce}>window.__ODIN__=${jsonForScript(viewModel)};</script>`,
+    `<script${nonce}>${CLIENT_SCRIPT}</script>`,
     `</body></html>`,
   ].join("\n");
+}
+
+/**
+ * Locks the page down to what it actually needs: its own inline styles, the two
+ * nonced scripts, and nothing else. There is no network access to grant, since
+ * the document embeds everything it uses.
+ */
+function contentSecurityPolicy(csp: { nonce: string; source: string }): string {
+  const policy = [
+    `default-src 'none'`,
+    `style-src ${csp.source} 'unsafe-inline'`,
+    `script-src 'nonce-${csp.nonce}'`,
+    `img-src ${csp.source} data:`,
+    `font-src ${csp.source}`,
+  ].join("; ");
+  return `<meta http-equiv="Content-Security-Policy" content="${policy}">`;
 }
 
 function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
@@ -109,7 +143,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
 
 function hint(): string {
   return `<div class="hint">
-  click an arrow to follow it &middot; click a filename to isolate<br>
+  click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
   scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
 </div>`;
 }

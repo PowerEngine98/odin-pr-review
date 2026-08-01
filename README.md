@@ -73,6 +73,32 @@ on any file that both gained and lost lines.
 
 Source: [`docs/examples/graph.html`](docs/examples/graph.html).
 
+### VS Code extension
+
+Install the packaged build and review without leaving the editor:
+
+```sh
+code --install-extension dist/odin-pr-review-0.1.0.vsix
+```
+
+Then run **Odin: Review Pull Request as a Graph** from the command palette.
+
+Clicking an arrow opens its destination beside the graph without taking focus,
+so you can trace a change without losing your place. A removed reference points
+at code that is no longer in your working tree, so it opens as a read-only view
+of the merge-base revision, served from git rather than written to disk.
+⌘/Ctrl-click a filename to open it as a diff against the base.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `odin.baseRef` | `main` | Branch to compare against |
+| `odin.includeImports` | `true` | Draw arrows for import statements |
+| `odin.includeContext` | `false` | Also resolve references on unchanged lines |
+
+The extension reuses the same compiler-API resolver the command line uses, so
+the picture in the editor is the picture `odin graph` produces — which matters,
+because the layout is meant to be something you remember.
+
 ### Static — `--format svg`
 
 The same layout, frozen. Useful for attaching to a pull request, and as a
@@ -189,6 +215,7 @@ the tool exists to build.
 | `@odin/resolver-ts` | Reference resolution through the TypeScript compiler API. |
 | `@odin/webview` | The interactive renderer, emitted as one self-contained document. |
 | `@odin/cli` | `odin graph` — build and render a change graph from the terminal. |
+| `odin-pr-review` | The VS Code extension. Bundled to CommonJS, since the editor loads extensions that way. |
 
 Reference resolution sits behind an interface, so the same graph can be produced
 headlessly by the compiler API or inside the editor by a language server.
@@ -203,7 +230,7 @@ headlessly by the compiler API or inside the editor by a language server.
 - [x] Interactive renderer: follow an arrow, isolate a file, pan and zoom
 - [x] SVG, Mermaid, Graphviz and terminal output
 - [x] Collapsed gaps for untouched code, with base/head line-number columns
-- [ ] VS Code extension: open the real file at the line an arrow points at
+- [x] VS Code extension: open the real file at the line an arrow points at
 - [ ] Layout pinning so a file keeps its place across pushes
 - [ ] Syntax highlighting inside cards
 
@@ -221,7 +248,7 @@ headlessly by the compiler API or inside the editor by a language server.
 ## Development
 
 ```sh
-yarn test                      # 75 tests: parser, graph, layout, resolver
+yarn test                      # 91 tests: parser, graph, layout, resolver, extension
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples
 ```
