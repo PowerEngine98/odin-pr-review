@@ -1111,26 +1111,27 @@ input[type="checkbox"]:checked::after {
 .mark {
   position: fixed;
   pointer-events: auto;
-  width: 26px;
-  height: 26px;
+  --mark-size: 26px;
+  width: var(--mark-size);
+  height: var(--mark-size);
   cursor: pointer;
 }
 /* A pointer back to the line, so the mark belongs to something rather than
    floating beside the card. */
 .mark .tail {
   position: absolute;
-  right: -7px;
+  right: calc(var(--mark-size) * -0.27);
   top: 50%;
   width: 0;
   height: 0;
-  margin-top: -5px;
-  border: 5px solid transparent;
+  margin-top: calc(var(--mark-size) * -0.19);
+  border: calc(var(--mark-size) * 0.19) solid transparent;
   border-left-color: color-mix(in srgb, var(--text) 34%, transparent);
 }
 .mark .face {
   display: block;
-  width: 26px;
-  height: 26px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
   background: color-mix(in srgb, var(--text) 14%, transparent);
@@ -1143,7 +1144,7 @@ input[type="checkbox"]:checked::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: calc(var(--mark-size) * 0.38);
   font-weight: 700;
   color: var(--text);
   letter-spacing: 0.02em;
@@ -1154,17 +1155,17 @@ input[type="checkbox"]:checked::after {
 /* How many remarks are on the thread, when there is more than one. */
 .mark .bubble {
   position: absolute;
-  right: -5px;
-  bottom: -4px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
+  right: calc(var(--mark-size) * -0.16);
+  bottom: calc(var(--mark-size) * -0.14);
+  min-width: calc(var(--mark-size) * 0.55);
+  height: calc(var(--mark-size) * 0.55);
+  padding: 0 calc(var(--mark-size) * 0.14);
   border-radius: 999px;
   background: var(--status-renamed);
   color: #fff;
-  font-size: 9px;
+  font-size: calc(var(--mark-size) * 0.34);
   font-weight: 700;
-  line-height: 15px;
+  line-height: calc(var(--mark-size) * 0.55);
   text-align: center;
   box-shadow: 0 0 0 2px var(--bg);
 }
@@ -1252,6 +1253,134 @@ input[type="checkbox"]:checked::after {
   letter-spacing: 0.04em;
 }
 .remark .text ul, .remark .text ol { margin: 0 0 6px; padding-left: 18px; }
+
+/* What was left on a remark, and the way to leave one. */
+.reactions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.reactions .pill,
+.reactions .add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.reactions .pill:hover,
+.reactions .add:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--status-renamed) 60%, transparent);
+}
+.reactions .pill .n { font-weight: 600; }
+
+/* The eight the forge offers, in the order it offers them. */
+.picker {
+  position: fixed;
+  z-index: 43;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
+}
+.picker button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.picker button:hover { background: color-mix(in srgb, var(--text) 14%, transparent); }
+
+/* One remark's own actions. Quiet until the remark is under the pointer, the
+   way the forge keeps them out of the way of the words. */
+.remark .more-actions {
+  margin-left: auto;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+.remark:hover .more-actions { opacity: 0.8; }
+.remark .more-actions:hover { opacity: 1; background: color-mix(in srgb, var(--text) 12%, transparent); }
+.remark .said > div:first-child { display: flex; align-items: center; gap: 2px; }
+
+.menu {
+  position: fixed;
+  z-index: 44;
+  min-width: 190px;
+  padding: 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
+}
+.menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+.menu button:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.menu button.danger { color: var(--removed); }
+.menu .divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+/* Answering in the thread, rather than starting another one beside it. */
+.thread-reply {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+.thread-reply textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-family: var(--mono);
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 6px;
+  padding: 7px 8px;
+  resize: vertical;
+}
+.reply-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+.thread-reply .primary {
+  font: inherit;
+  font-weight: 600;
+  color: var(--action-ink);
+  background: var(--action);
+  border: 1px solid color-mix(in srgb, #000 22%, var(--action));
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.thread-reply .primary:hover { filter: brightness(1.08); }
 .remark .text blockquote {
   margin: 0 0 6px;
   padding-left: 9px;

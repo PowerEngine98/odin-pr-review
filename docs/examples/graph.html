@@ -1105,26 +1105,27 @@ input[type="checkbox"]:checked::after {
 .mark {
   position: fixed;
   pointer-events: auto;
-  width: 26px;
-  height: 26px;
+  --mark-size: 26px;
+  width: var(--mark-size);
+  height: var(--mark-size);
   cursor: pointer;
 }
 /* A pointer back to the line, so the mark belongs to something rather than
    floating beside the card. */
 .mark .tail {
   position: absolute;
-  right: -7px;
+  right: calc(var(--mark-size) * -0.27);
   top: 50%;
   width: 0;
   height: 0;
-  margin-top: -5px;
-  border: 5px solid transparent;
+  margin-top: calc(var(--mark-size) * -0.19);
+  border: calc(var(--mark-size) * 0.19) solid transparent;
   border-left-color: color-mix(in srgb, var(--text) 34%, transparent);
 }
 .mark .face {
   display: block;
-  width: 26px;
-  height: 26px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
   background: color-mix(in srgb, var(--text) 14%, transparent);
@@ -1137,7 +1138,7 @@ input[type="checkbox"]:checked::after {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
+  font-size: calc(var(--mark-size) * 0.38);
   font-weight: 700;
   color: var(--text);
   letter-spacing: 0.02em;
@@ -1148,17 +1149,17 @@ input[type="checkbox"]:checked::after {
 /* How many remarks are on the thread, when there is more than one. */
 .mark .bubble {
   position: absolute;
-  right: -5px;
-  bottom: -4px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 4px;
+  right: calc(var(--mark-size) * -0.16);
+  bottom: calc(var(--mark-size) * -0.14);
+  min-width: calc(var(--mark-size) * 0.55);
+  height: calc(var(--mark-size) * 0.55);
+  padding: 0 calc(var(--mark-size) * 0.14);
   border-radius: 999px;
   background: var(--status-renamed);
   color: #fff;
-  font-size: 9px;
+  font-size: calc(var(--mark-size) * 0.34);
   font-weight: 700;
-  line-height: 15px;
+  line-height: calc(var(--mark-size) * 0.55);
   text-align: center;
   box-shadow: 0 0 0 2px var(--bg);
 }
@@ -1246,6 +1247,134 @@ input[type="checkbox"]:checked::after {
   letter-spacing: 0.04em;
 }
 .remark .text ul, .remark .text ol { margin: 0 0 6px; padding-left: 18px; }
+
+/* What was left on a remark, and the way to leave one. */
+.reactions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.reactions .pill,
+.reactions .add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.reactions .pill:hover,
+.reactions .add:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--status-renamed) 60%, transparent);
+}
+.reactions .pill .n { font-weight: 600; }
+
+/* The eight the forge offers, in the order it offers them. */
+.picker {
+  position: fixed;
+  z-index: 43;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
+}
+.picker button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.picker button:hover { background: color-mix(in srgb, var(--text) 14%, transparent); }
+
+/* One remark's own actions. Quiet until the remark is under the pointer, the
+   way the forge keeps them out of the way of the words. */
+.remark .more-actions {
+  margin-left: auto;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+.remark:hover .more-actions { opacity: 0.8; }
+.remark .more-actions:hover { opacity: 1; background: color-mix(in srgb, var(--text) 12%, transparent); }
+.remark .said > div:first-child { display: flex; align-items: center; gap: 2px; }
+
+.menu {
+  position: fixed;
+  z-index: 44;
+  min-width: 190px;
+  padding: 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
+}
+.menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+.menu button:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.menu button.danger { color: var(--removed); }
+.menu .divider {
+  height: 1px;
+  margin: 4px 2px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+/* Answering in the thread, rather than starting another one beside it. */
+.thread-reply {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+.thread-reply textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-family: var(--mono);
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 6px;
+  padding: 7px 8px;
+  resize: vertical;
+}
+.reply-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+.thread-reply .primary {
+  font: inherit;
+  font-weight: 600;
+  color: var(--action-ink);
+  background: var(--action);
+  border: 1px solid color-mix(in srgb, #000 22%, var(--action));
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.thread-reply .primary:hover { filter: brightness(1.08); }
 .remark .text blockquote {
   margin: 0 0 6px;
   padding-left: 9px;
@@ -1315,7 +1444,7 @@ input[type="checkbox"]:checked::after {
 </div></div>
 <div class="marks"></div>
 <div class="tooltip"></div>
-<div class="thread" hidden><div class="thread-head"><span class="thread-where"></span><button class="thread-close" title="Close" aria-label="Close"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><div class="thread-body"></div></div>
+<div class="thread" hidden><div class="thread-head"><span class="thread-where"></span><button class="thread-close" title="Close" aria-label="Close"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><div class="thread-body"></div><div class="thread-reply" hidden><textarea class="reply-body" rows="2" placeholder="Reply…"></textarea><div class="reply-actions"><button class="reply-send primary">Reply</button></div></div></div>
 <div class="composer" hidden>
   <div class="composer-head"><span class="composer-where"></span></div>
   <div class="composer-box">
@@ -1346,7 +1475,7 @@ input[type="checkbox"]:checked::after {
   click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
   scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
 </div>
-<script>window.__ODIN__={"width":2393,"height":971,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":78,"y":48,"width":470,"height":346,"column":0,"isTest":false,"untouched":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":450,"width":530,"height":202,"column":0,"isTest":false,"untouched":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":572,"width":530,"height":292,"column":2,"isTest":false,"untouched":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":218,"width":448,"height":112,"column":2,"isTest":false,"untouched":true},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":541,"width":530,"height":382,"column":1,"isTest":false,"untouched":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false,"untouched":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":67,"width":560,"height":418,"column":1,"isTest":false,"untouched":false}],"arrangements":{"withTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}},"withoutTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}],"canReview":false,"comments":[]};</script>
+<script>window.__ODIN__={"width":2393,"height":971,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":78,"y":48,"width":470,"height":346,"column":0,"isTest":false,"untouched":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":450,"width":530,"height":202,"column":0,"isTest":false,"untouched":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":572,"width":530,"height":292,"column":2,"isTest":false,"untouched":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":218,"width":448,"height":112,"column":2,"isTest":false,"untouched":true},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":541,"width":530,"height":382,"column":1,"isTest":false,"untouched":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"column":3,"isTest":false,"untouched":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":67,"width":560,"height":418,"column":1,"isTest":false,"untouched":false}],"arrangements":{"withTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}},"withoutTests":{"width":2393,"height":971,"nodes":{"n:9518c3291d8e":{"x":78,"y":48,"height":346,"column":0},"n:a5d65acaa45a":{"x":48,"y":450,"height":202,"column":0},"n:b2a4cf4d702e":{"x":1418,"y":572,"height":292,"column":2},"n:7ca9a636a596":{"x":1459,"y":218,"height":112,"column":2},"n:5353548f9372":{"x":733,"y":541,"height":382,"column":1},"n:d26c6859c04e":{"x":2088,"y":48,"height":120,"column":3},"n:c14920f42f50":{"x":718,"y":67,"height":418,"column":1}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}],"canReview":false,"viewer":"","comments":[]};</script>
 <script>
 (function () {
   var data = window.__ODIN__;
@@ -2722,6 +2851,18 @@ input[type="checkbox"]:checked::after {
     // Clicking a file in the sidebar brings its card to the middle. The list
     // and the picture are two views of one change, and choosing a file in one
     // should not leave the other showing somewhere else entirely.
+    if (message && message.type === "comments") {
+      data.comments = message.comments || [];
+      var was = openThread && openThread.root.id;
+      buildMarks();
+      // Back to the conversation the reader was in, now that it has changed.
+      if (was) {
+        var again = marks.find(function (m) { return m.thread.root.id === was; });
+        if (again) showThread(again.thread, again.el);
+        else closeThread();
+      }
+      return;
+    }
     if (message && message.type === "focus") {
       var target = data.nodes.find(function (n) { return n.path === message.path; });
       if (target) {
@@ -2761,6 +2902,7 @@ input[type="checkbox"]:checked::after {
   var markLayer = document.querySelector(".marks");
   var marks = [];
   var openMark = null;
+  var openThread = null;
 
   function threadsOf(comments) {
     var byId = {};
@@ -2874,6 +3016,12 @@ input[type="checkbox"]:checked::after {
       // the mark keeps its size and follows the card instead of scaling with
       // it. To the left of the file, because arrows leave a card on its right
       // and a mark over that traffic is both hard to see and hard to click.
+      // Between a legible minimum and a face, not a portrait. Reading a change
+      // closely is when a picture is worth its size; at the zoom a whole change
+      // is taken in at, the mark is a dot beside a file and should stay one.
+      var size = Math.max(26, Math.min(76, Math.round(28 * view.scale)));
+      mark.el.style.setProperty("--mark-size", size + "px");
+
       var box = card.getBoundingClientRect();
       var y = view.y + anchor.y * view.scale;
       var offScreen = y < ceiling || y > window.innerHeight ||
@@ -2881,14 +3029,16 @@ input[type="checkbox"]:checked::after {
       mark.el.hidden = offScreen;
       if (offScreen) return;
 
-      mark.el.style.left = Math.round(box.left - 34) + "px";
-      mark.el.style.top = Math.round(y - 13) + "px";
+      mark.el.style.left = Math.round(box.left - size - 8) + "px";
+      mark.el.style.top = Math.round(y - size / 2) + "px";
     });
   }
 
   function showThread(thread, el) {
     if (!threadBox) return;
+    closeMenus();
     if (openMark) openMark.classList.remove("is-open");
+    openThread = thread;
     openMark = el;
     el.classList.add("is-open");
 
@@ -2914,17 +3064,194 @@ input[type="checkbox"]:checked::after {
       if (comment.outdated) head.appendChild(chrome("outdated", "outdated"));
       said.appendChild(head);
 
+      if (host) said.firstChild.appendChild(actionsButton(comment, thread));
+
       var text = document.createElement("div");
       text.className = "text";
       text.innerHTML = renderMarkdown(comment.body || "");
       said.appendChild(text);
+      said.appendChild(reactionRow(comment));
 
       remark.appendChild(said);
       body.appendChild(remark);
     });
 
+    // Answering belongs to the thread, not to the line: a second remark beside
+    // the first is how one conversation becomes two.
+    var reply = threadBox.querySelector(".thread-reply");
+    if (reply) {
+      reply.hidden = !host;
+      reply.querySelector(".reply-body").value = "";
+    }
+
     threadBox.hidden = false;
     placeThread();
+  }
+
+  /** What is already on a remark, and the way to add to it. */
+  function reactionRow(comment) {
+    var row = document.createElement("div");
+    row.className = "reactions";
+
+    (comment.reactions || []).forEach(function (reaction) {
+      var pill = document.createElement("button");
+      pill.className = "pill";
+      pill.title = reaction.content;
+      pill.innerHTML = "";
+      pill.appendChild(chrome("emoji", EMOJI[reaction.content] || "?"));
+      pill.appendChild(chrome("n", String(reaction.count)));
+      if (host) {
+        pill.addEventListener("click", function (event) {
+          event.stopPropagation();
+          notifyHost("react", { id: comment.id, content: reaction.content });
+        });
+      }
+      row.appendChild(pill);
+    });
+
+    if (host) {
+      var add = document.createElement("button");
+      add.className = "add";
+      add.title = "Leave a reaction";
+      add.textContent = "☺";
+      add.addEventListener("click", function (event) {
+        event.stopPropagation();
+        showPicker(comment, add);
+      });
+      row.appendChild(add);
+    }
+    return row;
+  }
+
+  var EMOJI = {
+    "+1": "👍", "-1": "👎", laugh: "😄", hooray: "🎉",
+    confused: "😕", heart: "❤️", rocket: "🚀", eyes: "👀",
+  };
+
+  var picker = null;
+
+  function showPicker(comment, near) {
+    closeMenus();
+    picker = document.createElement("div");
+    picker.className = "picker";
+    Object.keys(EMOJI).forEach(function (content) {
+      var button = document.createElement("button");
+      button.textContent = EMOJI[content];
+      button.title = content;
+      button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        closeMenus();
+        notifyHost("react", { id: comment.id, content: content });
+      });
+      picker.appendChild(button);
+    });
+    picker.addEventListener("click", function (event) { event.stopPropagation(); });
+    document.body.appendChild(picker);
+
+    var at = near.getBoundingClientRect();
+    var box = picker.getBoundingClientRect();
+    picker.style.left =
+      Math.round(Math.min(at.left, window.innerWidth - box.width - 8)) + "px";
+    picker.style.top = Math.round(Math.max(8, at.top - box.height - 6)) + "px";
+  }
+
+  /**
+   * A remark's own actions.
+   *
+   * Copying and quoting happen here, because they need nothing from the forge.
+   * Editing and deleting are offered only on your own remarks — the forge would
+   * refuse anyone else's, and a menu item that always fails is worse than one
+   * that is not there.
+   */
+  function actionsButton(comment, thread) {
+    var button = document.createElement("button");
+    button.className = "more-actions";
+    button.title = "More actions";
+    button.setAttribute("aria-label", "More actions");
+    button.textContent = "···";
+    button.addEventListener("click", function (event) {
+      event.stopPropagation();
+      showMenu(comment, thread, button);
+    });
+    return button;
+  }
+
+  var menu = null;
+
+  function showMenu(comment, thread, near) {
+    closeMenus();
+    menu = document.createElement("div");
+    menu.className = "menu";
+
+    var item = function (label, run, danger) {
+      var entry = document.createElement("button");
+      entry.textContent = label;
+      if (danger) entry.className = "danger";
+      entry.addEventListener("click", function (event) {
+        event.stopPropagation();
+        closeMenus();
+        run();
+      });
+      menu.appendChild(entry);
+    };
+
+    item("Copy link", function () { copyText(comment.url || ""); });
+    item("Copy Markdown", function () { copyText(comment.body || ""); });
+    item("Quote reply", function () {
+      var field = threadBox.querySelector(".reply-body");
+      if (!field) return;
+      var quoted = (comment.body || "")
+        .split("\n")
+        .map(function (line) { return "> " + line; })
+        .join("\n");
+      field.value = quoted + "\n\n";
+      field.focus();
+      field.selectionStart = field.selectionEnd = field.value.length;
+    });
+
+    if (data.viewer && comment.author === data.viewer) {
+      menu.appendChild(chrome("divider", ""));
+      item("Edit", function () { startEdit(comment); });
+      item("Delete", function () {
+        notifyHost("deleteComment", { id: comment.id });
+      }, true);
+    }
+
+    menu.addEventListener("click", function (event) { event.stopPropagation(); });
+    document.body.appendChild(menu);
+
+    var at = near.getBoundingClientRect();
+    var box = menu.getBoundingClientRect();
+    menu.style.left =
+      Math.round(Math.min(at.right - box.width, window.innerWidth - box.width - 8)) + "px";
+    menu.style.top =
+      Math.round(Math.min(at.bottom + 4, window.innerHeight - box.height - 8)) + "px";
+  }
+
+  /** Rewriting a remark reuses the reply box, which is already the right shape. */
+  function startEdit(comment) {
+    var reply = threadBox.querySelector(".thread-reply");
+    var field = reply && reply.querySelector(".reply-body");
+    var send = reply && reply.querySelector(".reply-send");
+    if (!field || !send) return;
+
+    editing = comment.id;
+    field.value = comment.body || "";
+    send.textContent = "Save";
+    field.focus();
+  }
+
+  var editing = null;
+
+  function closeMenus() {
+    if (picker) { picker.remove(); picker = null; }
+    if (menu) { menu.remove(); menu = null; }
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () {});
+    }
   }
 
   /** Under the mark that opened it, and inside the window. */
@@ -2943,14 +3270,38 @@ input[type="checkbox"]:checked::after {
 
   function closeThread() {
     if (!threadBox) return;
+    closeMenus();
+    editing = null;
+    var send = threadBox.querySelector(".reply-send");
+    if (send) send.textContent = "Reply";
     threadBox.hidden = true;
     if (openMark) openMark.classList.remove("is-open");
     openMark = null;
   }
 
   if (threadBox) {
-    threadBox.addEventListener("click", function (event) { event.stopPropagation(); });
+    threadBox.addEventListener("click", function (event) {
+      event.stopPropagation();
+      closeMenus();
+    });
     threadBox.querySelector(".thread-close").addEventListener("click", closeThread);
+
+    var send = threadBox.querySelector(".reply-send");
+    if (send) {
+      send.addEventListener("click", function () {
+        var field = threadBox.querySelector(".reply-body");
+        var text = field.value.trim();
+        if (!text || !openThread) return;
+        if (editing !== null) {
+          notifyHost("editComment", { id: editing, body: text });
+          editing = null;
+          send.textContent = "Reply";
+        } else {
+          notifyHost("reply", { id: openThread.root.id, body: text });
+        }
+        field.value = "";
+      });
+    }
     // Anywhere else puts it away. The thread and the marks stop their own
     // clicks, so this only ever fires for a click that meant something else.
     document.addEventListener("click", closeThread);

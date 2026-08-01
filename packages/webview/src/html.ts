@@ -41,6 +41,8 @@ export interface RenderOptions {
   comments?: ReviewComment[];
   /** Whether the host can post a review; without it the composer is pointless. */
   canReview?: boolean;
+  /** Who the reader is signed in as, for deciding what they may edit. */
+  viewer?: string;
   /**
    * Syntax colouring, already loaded for the languages in this change.
    *
@@ -141,6 +143,7 @@ export function renderHtml(
       label: e.edge.label ?? "",
     })),
     canReview: options.canReview === true,
+    viewer: options.viewer ?? "",
     comments: comments.map((c) => ({
       id: c.id,
       path: c.path,
@@ -152,6 +155,7 @@ export function renderHtml(
       ...(c.avatarUrl ? { avatar: c.avatarUrl } : {}),
       createdAt: c.createdAt,
       ...(c.inReplyTo ? { inReplyTo: c.inReplyTo } : {}),
+      ...(c.reactions ? { reactions: c.reactions } : {}),
       url: c.url,
       outdated: c.outdated,
     })),
@@ -192,7 +196,11 @@ export function renderHtml(
     `<div class="thread" hidden><div class="thread-head">` +
       `<span class="thread-where"></span>` +
       `<button class="thread-close" title="Close" aria-label="Close">${CLOSE_ICON}</button>` +
-      `</div><div class="thread-body"></div></div>`,
+      `</div><div class="thread-body"></div>` +
+      `<div class="thread-reply" hidden>` +
+      `<textarea class="reply-body" rows="2" placeholder="Reply…"></textarea>` +
+      `<div class="reply-actions"><button class="reply-send primary">Reply</button></div>` +
+      `</div></div>`,
     composer(),
     reviewPanel(),
     hint(),

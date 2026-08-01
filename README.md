@@ -161,6 +161,14 @@ branch is not a decision to make on someone's behalf.
 
 ![A thread beside the file](docs/thread.png)
 
+A thread can be answered in place, reacted to with the forge's eight emoji, and
+each remark carries its own menu: copy its link or its markdown, quote it into a
+reply, and — on your own remarks only, since the forge would refuse anyone
+else's — edit or delete it. Deleting asks first, because the forge has no undo
+for it either. Everything is read back from the forge afterwards rather than
+guessed at locally, so what you see is what is actually there, including
+whatever someone else wrote while you were reading.
+
 Comments already on the pull request appear beside the file rather than inside
 it: the author's picture in the margin, at the height of the line it is about,
 pointing back at it. A remark belongs to a line but is not part of the code, and

@@ -1381,6 +1381,18 @@ export const CLIENT_SCRIPT = String.raw`
     // Clicking a file in the sidebar brings its card to the middle. The list
     // and the picture are two views of one change, and choosing a file in one
     // should not leave the other showing somewhere else entirely.
+    if (message && message.type === "comments") {
+      data.comments = message.comments || [];
+      var was = openThread && openThread.root.id;
+      buildMarks();
+      // Back to the conversation the reader was in, now that it has changed.
+      if (was) {
+        var again = marks.find(function (m) { return m.thread.root.id === was; });
+        if (again) showThread(again.thread, again.el);
+        else closeThread();
+      }
+      return;
+    }
     if (message && message.type === "focus") {
       var target = data.nodes.find(function (n) { return n.path === message.path; });
       if (target) {
@@ -1420,6 +1432,7 @@ export const CLIENT_SCRIPT = String.raw`
   var markLayer = document.querySelector(".marks");
   var marks = [];
   var openMark = null;
+  var openThread = null;
 
   function threadsOf(comments) {
     var byId = {};
@@ -1533,6 +1546,12 @@ export const CLIENT_SCRIPT = String.raw`
       // the mark keeps its size and follows the card instead of scaling with
       // it. To the left of the file, because arrows leave a card on its right
       // and a mark over that traffic is both hard to see and hard to click.
+      // Between a legible minimum and a face, not a portrait. Reading a change
+      // closely is when a picture is worth its size; at the zoom a whole change
+      // is taken in at, the mark is a dot beside a file and should stay one.
+      var size = Math.max(26, Math.min(76, Math.round(28 * view.scale)));
+      mark.el.style.setProperty("--mark-size", size + "px");
+
       var box = card.getBoundingClientRect();
       var y = view.y + anchor.y * view.scale;
       var offScreen = y < ceiling || y > window.innerHeight ||
@@ -1540,14 +1559,16 @@ export const CLIENT_SCRIPT = String.raw`
       mark.el.hidden = offScreen;
       if (offScreen) return;
 
-      mark.el.style.left = Math.round(box.left - 34) + "px";
-      mark.el.style.top = Math.round(y - 13) + "px";
+      mark.el.style.left = Math.round(box.left - size - 8) + "px";
+      mark.el.style.top = Math.round(y - size / 2) + "px";
     });
   }
 
   function showThread(thread, el) {
     if (!threadBox) return;
+    closeMenus();
     if (openMark) openMark.classList.remove("is-open");
+    openThread = thread;
     openMark = el;
     el.classList.add("is-open");
 
@@ -1573,17 +1594,194 @@ export const CLIENT_SCRIPT = String.raw`
       if (comment.outdated) head.appendChild(chrome("outdated", "outdated"));
       said.appendChild(head);
 
+      if (host) said.firstChild.appendChild(actionsButton(comment, thread));
+
       var text = document.createElement("div");
       text.className = "text";
       text.innerHTML = renderMarkdown(comment.body || "");
       said.appendChild(text);
+      said.appendChild(reactionRow(comment));
 
       remark.appendChild(said);
       body.appendChild(remark);
     });
 
+    // Answering belongs to the thread, not to the line: a second remark beside
+    // the first is how one conversation becomes two.
+    var reply = threadBox.querySelector(".thread-reply");
+    if (reply) {
+      reply.hidden = !host;
+      reply.querySelector(".reply-body").value = "";
+    }
+
     threadBox.hidden = false;
     placeThread();
+  }
+
+  /** What is already on a remark, and the way to add to it. */
+  function reactionRow(comment) {
+    var row = document.createElement("div");
+    row.className = "reactions";
+
+    (comment.reactions || []).forEach(function (reaction) {
+      var pill = document.createElement("button");
+      pill.className = "pill";
+      pill.title = reaction.content;
+      pill.innerHTML = "";
+      pill.appendChild(chrome("emoji", EMOJI[reaction.content] || "?"));
+      pill.appendChild(chrome("n", String(reaction.count)));
+      if (host) {
+        pill.addEventListener("click", function (event) {
+          event.stopPropagation();
+          notifyHost("react", { id: comment.id, content: reaction.content });
+        });
+      }
+      row.appendChild(pill);
+    });
+
+    if (host) {
+      var add = document.createElement("button");
+      add.className = "add";
+      add.title = "Leave a reaction";
+      add.textContent = "☺";
+      add.addEventListener("click", function (event) {
+        event.stopPropagation();
+        showPicker(comment, add);
+      });
+      row.appendChild(add);
+    }
+    return row;
+  }
+
+  var EMOJI = {
+    "+1": "👍", "-1": "👎", laugh: "😄", hooray: "🎉",
+    confused: "😕", heart: "❤️", rocket: "🚀", eyes: "👀",
+  };
+
+  var picker = null;
+
+  function showPicker(comment, near) {
+    closeMenus();
+    picker = document.createElement("div");
+    picker.className = "picker";
+    Object.keys(EMOJI).forEach(function (content) {
+      var button = document.createElement("button");
+      button.textContent = EMOJI[content];
+      button.title = content;
+      button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        closeMenus();
+        notifyHost("react", { id: comment.id, content: content });
+      });
+      picker.appendChild(button);
+    });
+    picker.addEventListener("click", function (event) { event.stopPropagation(); });
+    document.body.appendChild(picker);
+
+    var at = near.getBoundingClientRect();
+    var box = picker.getBoundingClientRect();
+    picker.style.left =
+      Math.round(Math.min(at.left, window.innerWidth - box.width - 8)) + "px";
+    picker.style.top = Math.round(Math.max(8, at.top - box.height - 6)) + "px";
+  }
+
+  /**
+   * A remark's own actions.
+   *
+   * Copying and quoting happen here, because they need nothing from the forge.
+   * Editing and deleting are offered only on your own remarks — the forge would
+   * refuse anyone else's, and a menu item that always fails is worse than one
+   * that is not there.
+   */
+  function actionsButton(comment, thread) {
+    var button = document.createElement("button");
+    button.className = "more-actions";
+    button.title = "More actions";
+    button.setAttribute("aria-label", "More actions");
+    button.textContent = "···";
+    button.addEventListener("click", function (event) {
+      event.stopPropagation();
+      showMenu(comment, thread, button);
+    });
+    return button;
+  }
+
+  var menu = null;
+
+  function showMenu(comment, thread, near) {
+    closeMenus();
+    menu = document.createElement("div");
+    menu.className = "menu";
+
+    var item = function (label, run, danger) {
+      var entry = document.createElement("button");
+      entry.textContent = label;
+      if (danger) entry.className = "danger";
+      entry.addEventListener("click", function (event) {
+        event.stopPropagation();
+        closeMenus();
+        run();
+      });
+      menu.appendChild(entry);
+    };
+
+    item("Copy link", function () { copyText(comment.url || ""); });
+    item("Copy Markdown", function () { copyText(comment.body || ""); });
+    item("Quote reply", function () {
+      var field = threadBox.querySelector(".reply-body");
+      if (!field) return;
+      var quoted = (comment.body || "")
+        .split("\n")
+        .map(function (line) { return "> " + line; })
+        .join("\n");
+      field.value = quoted + "\n\n";
+      field.focus();
+      field.selectionStart = field.selectionEnd = field.value.length;
+    });
+
+    if (data.viewer && comment.author === data.viewer) {
+      menu.appendChild(chrome("divider", ""));
+      item("Edit", function () { startEdit(comment); });
+      item("Delete", function () {
+        notifyHost("deleteComment", { id: comment.id });
+      }, true);
+    }
+
+    menu.addEventListener("click", function (event) { event.stopPropagation(); });
+    document.body.appendChild(menu);
+
+    var at = near.getBoundingClientRect();
+    var box = menu.getBoundingClientRect();
+    menu.style.left =
+      Math.round(Math.min(at.right - box.width, window.innerWidth - box.width - 8)) + "px";
+    menu.style.top =
+      Math.round(Math.min(at.bottom + 4, window.innerHeight - box.height - 8)) + "px";
+  }
+
+  /** Rewriting a remark reuses the reply box, which is already the right shape. */
+  function startEdit(comment) {
+    var reply = threadBox.querySelector(".thread-reply");
+    var field = reply && reply.querySelector(".reply-body");
+    var send = reply && reply.querySelector(".reply-send");
+    if (!field || !send) return;
+
+    editing = comment.id;
+    field.value = comment.body || "";
+    send.textContent = "Save";
+    field.focus();
+  }
+
+  var editing = null;
+
+  function closeMenus() {
+    if (picker) { picker.remove(); picker = null; }
+    if (menu) { menu.remove(); menu = null; }
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () {});
+    }
   }
 
   /** Under the mark that opened it, and inside the window. */
@@ -1602,14 +1800,38 @@ export const CLIENT_SCRIPT = String.raw`
 
   function closeThread() {
     if (!threadBox) return;
+    closeMenus();
+    editing = null;
+    var send = threadBox.querySelector(".reply-send");
+    if (send) send.textContent = "Reply";
     threadBox.hidden = true;
     if (openMark) openMark.classList.remove("is-open");
     openMark = null;
   }
 
   if (threadBox) {
-    threadBox.addEventListener("click", function (event) { event.stopPropagation(); });
+    threadBox.addEventListener("click", function (event) {
+      event.stopPropagation();
+      closeMenus();
+    });
     threadBox.querySelector(".thread-close").addEventListener("click", closeThread);
+
+    var send = threadBox.querySelector(".reply-send");
+    if (send) {
+      send.addEventListener("click", function () {
+        var field = threadBox.querySelector(".reply-body");
+        var text = field.value.trim();
+        if (!text || !openThread) return;
+        if (editing !== null) {
+          notifyHost("editComment", { id: editing, body: text });
+          editing = null;
+          send.textContent = "Reply";
+        } else {
+          notifyHost("reply", { id: openThread.root.id, body: text });
+        }
+        field.value = "";
+      });
+    }
     // Anywhere else puts it away. The thread and the marks stop their own
     // clicks, so this only ever fires for a click that meant something else.
     document.addEventListener("click", closeThread);

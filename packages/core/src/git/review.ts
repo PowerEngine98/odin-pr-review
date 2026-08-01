@@ -22,7 +22,21 @@ export interface ReviewComment {
   inReplyTo?: number;
   /** The forge no longer knows where this belongs; the code moved under it. */
   outdated: boolean;
+  /** Emoji left on this comment, most-used first. */
+  reactions?: Reaction[];
 }
+
+/** One kind of emoji on a comment, and how many people left it. */
+export interface Reaction {
+  /** The forge's name for it: `+1`, `heart`, `rocket`. */
+  content: string;
+  count: number;
+}
+
+/** The eight the forge offers, in the order it offers them. */
+export const REACTIONS = [
+  "+1", "-1", "laugh", "hooray", "confused", "heart", "rocket", "eyes",
+] as const;
 
 /**
  * A comment the reviewer has written but not yet sent.
@@ -103,6 +117,7 @@ export function parseComments(json: string): ReviewComment[] {
       side: string | null;
       body: string;
       user?: { login?: string; avatar_url?: string };
+      reactions?: Record<string, number> & { url?: string };
       created_at: string;
       html_url: string;
       in_reply_to_id?: number;
@@ -131,6 +146,11 @@ export function parseComments(json: string): ReviewComment[] {
         url: c.html_url,
         outdated: c.line === null,
       };
+
+      const reactions = REACTIONS
+        .map((content) => ({ content, count: Number(c.reactions?.[content] ?? 0) }))
+        .filter((r) => r.count > 0);
+      if (reactions.length > 0) comment.reactions = reactions;
       if (c.in_reply_to_id) comment.inReplyTo = c.in_reply_to_id;
       return comment;
     });
@@ -398,4 +418,135 @@ async function fetchImage(url: string, timeoutMs: number): Promise<string | unde
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Adds an emoji to a comment, or takes yours off it.
+ *
+ * The forge has no single call for this: leaving one is a POST, taking one back
+ * is a DELETE that needs the id of the reaction, and the id is only obtainable
+ * by listing them and finding your own. Hence the three steps — and the login
+ * lookup, which is cached because it cannot change between two clicks.
+ */
+export async function toggleReaction(
+  commentId: number,
+  content: string,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<void> {
+  const me = await viewerLogin(options);
+  const listed = await read(
+    [
+      "api",
+      `repos/{owner}/{repo}/pulls/comments/${commentId}/reactions`,
+      "--jq",
+      ".[] | [.id, .content, .user.login] | @tsv",
+    ],
+    options,
+  );
+
+  const mine = (listed ?? "")
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .find(([, kind, login]) => kind === content && login === me);
+
+  if (mine) {
+    await write(
+      [
+        "api", "--method", "DELETE",
+        `repos/{owner}/{repo}/pulls/comments/${commentId}/reactions/${mine[0]}`,
+      ],
+      undefined,
+      options,
+    );
+    return;
+  }
+
+  await write(
+    [
+      "api", "--method", "POST",
+      `repos/{owner}/{repo}/pulls/comments/${commentId}/reactions`,
+      "-f", `content=${content}`,
+    ],
+    undefined,
+    options,
+  );
+}
+
+let cachedLogin: string | undefined;
+
+/** Who the `gh` command line is signed in as, for deciding what can be edited. */
+export async function currentUser(
+  options: GitOptions & { timeoutMs?: number },
+): Promise<string> {
+  return viewerLogin(options);
+}
+
+async function viewerLogin(
+  options: GitOptions & { timeoutMs?: number },
+): Promise<string> {
+  if (cachedLogin) return cachedLogin;
+  const login = (await read(["api", "user", "--jq", ".login"], options))?.trim();
+  cachedLogin = login || "";
+  return cachedLogin;
+}
+
+/**
+ * Answers a comment in its own thread.
+ *
+ * A reply rather than a new remark on the same line: the forge keeps threads,
+ * and a second top-level comment beside the first is how a conversation turns
+ * into two conversations.
+ */
+export async function replyToComment(
+  number: number,
+  commentId: number,
+  body: string,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<void> {
+  await write(
+    [
+      "api", "--method", "POST",
+      `repos/{owner}/{repo}/pulls/${number}/comments/${commentId}/replies`,
+      "--input", "-",
+    ],
+    JSON.stringify({ body }),
+    options,
+  );
+}
+
+/** Rewrites a comment. Only its author may, which the forge enforces. */
+export async function editComment(
+  commentId: number,
+  body: string,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<void> {
+  await write(
+    [
+      "api", "--method", "PATCH",
+      `repos/{owner}/{repo}/pulls/comments/${commentId}`,
+      "--input", "-",
+    ],
+    JSON.stringify({ body }),
+    options,
+  );
+}
+
+/**
+ * Removes a comment.
+ *
+ * There is no undo on the forge either, so a caller with a person in front of
+ * it should ask first.
+ */
+export async function deleteComment(
+  commentId: number,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<void> {
+  await write(
+    [
+      "api", "--method", "DELETE",
+      `repos/{owner}/{repo}/pulls/comments/${commentId}`,
+    ],
+    undefined,
+    options,
+  );
 }

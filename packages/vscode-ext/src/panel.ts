@@ -2,8 +2,13 @@ import {
   DARK_THEME,
   inlineAvatars,
   LIGHT_THEME,
+  currentUser,
+  deleteComment,
+  editComment,
   listReviewComments,
+  replyToComment,
   setDraft,
+  toggleReaction,
   submitReview,
   type ChangeGraph,
   type DraftComment,
@@ -51,12 +56,19 @@ interface DraftMessage {
   payload: { draft: boolean };
 }
 
+/** Acting on one remark in a thread. */
+interface RemarkMessage {
+  type: "react" | "reply" | "editComment" | "deleteComment";
+  payload: { id: number; content?: string; body?: string };
+}
+
 type Message =
   | NavigateMessage
   | OpenMessage
   | ViewedMessage
   | SubmitMessage
-  | DraftMessage;
+  | DraftMessage
+  | RemarkMessage;
 
 export class GraphPanel {
   private static current: GraphPanel | undefined;
@@ -132,10 +144,20 @@ export class GraphPanel {
   private comments: ReviewComment[] = [];
   /** Loaded before the first paint, so the code is never briefly grey. */
   private highlight: Highlighter | undefined;
+  /** Who the reader is, so only their own remarks offer edit and delete. */
+  private viewer = "";
 
   /** Comments already on the pull request, shown against their lines. */
   setComments(comments: ReviewComment[]): void {
     this.comments = comments;
+    // Asked for once, alongside the comments that need it.
+    void currentUser({ cwd: this.repo })
+      .then((login) => {
+        if (!login || login === this.viewer) return;
+        this.viewer = login;
+        this.render(this.layout);
+      })
+      .catch(() => undefined);
     this.render(this.layout);
   }
 
@@ -195,6 +217,55 @@ export class GraphPanel {
     this.comments = await inlineAvatars(posted).catch(() => posted);
     void this.panel.webview.postMessage({
       type: "reviewSubmitted",
+      comments: this.comments,
+    });
+  }
+
+  /**
+   * Acting on one remark: an emoji, an answer, a rewrite, a removal.
+   *
+   * Every one of these changes what the team sees, so the comments are read
+   * back from the forge afterwards rather than guessed at locally — the page
+   * then shows what is actually there, including anything someone else wrote
+   * in the meantime.
+   */
+  private async remark(message: RemarkMessage): Promise<void> {
+    const pull = this.graph.meta.pullRequest;
+    if (!pull) return;
+    const { id, content, body } = message.payload;
+
+    // The one that cannot be taken back. The others can be edited or reacted
+    // to again; a deleted remark is gone from the conversation for everyone.
+    if (message.type === "deleteComment") {
+      const confirmed = await vscode.window.showWarningMessage(
+        "Delete this comment?",
+        { modal: true, detail: "It is removed from the pull request for everyone." },
+        "Delete",
+      );
+      if (confirmed !== "Delete") return;
+    }
+
+    try {
+      if (message.type === "react" && content) {
+        await toggleReaction(id, content, { cwd: this.repo });
+      } else if (message.type === "reply" && body) {
+        await replyToComment(pull.number, id, body, { cwd: this.repo });
+      } else if (message.type === "editComment" && body) {
+        await editComment(id, body, { cwd: this.repo });
+      } else if (message.type === "deleteComment") {
+        await deleteComment(id, { cwd: this.repo });
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Odin: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return;
+    }
+
+    const posted = await listReviewComments(pull.number, { cwd: this.repo });
+    this.comments = await inlineAvatars(posted).catch(() => posted);
+    void this.panel.webview.postMessage({
+      type: "comments",
       comments: this.comments,
     });
   }
@@ -361,6 +432,7 @@ export class GraphPanel {
       ...(this.highlight ? { highlight: this.highlight } : {}),
       comments: this.comments,
       canReview: Boolean(this.graph.meta.pullRequest),
+      ...(this.viewer ? { viewer: this.viewer } : {}),
     });
   }
 
@@ -395,6 +467,15 @@ export class GraphPanel {
       }
       if (message.type === "setDraft") {
         await this.setDraftState(message.payload.draft);
+        return;
+      }
+      if (
+        message.type === "react" ||
+        message.type === "reply" ||
+        message.type === "editComment" ||
+        message.type === "deleteComment"
+      ) {
+        await this.remark(message);
       }
     } catch (error) {
       vscode.window.showErrorMessage(
