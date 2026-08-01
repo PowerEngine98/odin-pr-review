@@ -146,8 +146,8 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
     // card. Where a line exists on one side only, the other shows the position
     // it occupies there rather than a line number it does not have, at reduced
     // opacity so the two can be told apart.
-    const old = row.oldLine ?? row.oldAnchor;
-    const fresh = row.newLine ?? row.newAnchor;
+    const old = row.oldLine ?? row.oldAnchor ?? row.newLine;
+    const fresh = row.newLine ?? row.newAnchor ?? row.oldLine;
     if (old !== undefined) {
       parts.push(
         `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +

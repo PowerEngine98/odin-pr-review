@@ -58,13 +58,15 @@ html, body {
   align-items: center;
   gap: 18px;
   padding: 10px 16px;
+  overflow-x: auto;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
   font-size: 12px;
 }
 
-.toolbar .refs { color: var(--muted); }
+.toolbar .refs { color: var(--muted); flex: 0 1 auto; min-width: 0; }
+.legend, .toolbar label, .toolbar button { flex: 0 0 auto; }
 .toolbar .refs strong { color: var(--text); font-weight: 600; }
 .toolbar .spacer { flex: 1; }
 
@@ -164,18 +166,24 @@ html, body {
   font-size: calc(var(--font-size) - 2px);
   border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
-  border-radius: 999px;
+  border-radius: 5px;
   padding: 0 6px;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
 .card.unresolved { border-style: dashed; }
 
+/* A pill radius on a box that has wrapped turns it into a circle, which is
+   what a narrow editor panel does to it. Fixed radius, one line, and let the
+   toolbar scroll instead. */
 .toolbar .gaps {
   color: var(--warning);
   border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
-  border-radius: 999px;
+  border-radius: 5px;
   padding: 1px 8px;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .card-body { padding: var(--padding) 0; }
@@ -208,11 +216,11 @@ html, body {
 .row.gap.open + .row.in-gap,
 .row.in-gap.open { display: flex; }
 
-/* An import band is opened and closed rather than opened once, so it keeps its
-   row instead of dissolving into what it revealed. */
-.row.gap.imports.open { color: var(--gutter); }
-.row.gap.imports.open .text::before { content: "▾ "; }
-.row.gap.imports:not(.open) .text::before { content: "▸ "; }
+/* Gaps open and close rather than opening once, so a band keeps its row
+   instead of dissolving into what it revealed and leaving no way back. */
+.row.gap.expandable.open { color: var(--gutter); }
+.row.gap.expandable.open .text::before { content: "▾ "; }
+.row.gap.expandable:not(.open) .text::before { content: "▸ "; }
 
 .row.gap.expandable,
 .row.more {
@@ -252,7 +260,7 @@ html, body {
   text-align: right;
   user-select: none;
 }
-.row .num.anchor { opacity: 0.42; }
+.row .num.anchor { opacity: 0.5; }
 .row .num.old {
   width: calc(var(--padding) + var(--line-number-right) - var(--padding) - 14px);
   flex: 0 0 auto;

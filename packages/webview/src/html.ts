@@ -245,13 +245,18 @@ function renderRow(row: DisplayRow, beyondCap = false): string {
   const anchors =
     (row.oldLine !== undefined ? ` data-old="${row.oldLine}"` : "") +
     (row.newLine !== undefined ? ` data-new="${row.newLine}"` : "");
+  // A wholly added or deleted file has a single numbering, so it is mirrored
+  // into the other gutter rather than leaving a column empty down the card.
+  const left = row.oldLine ?? row.oldAnchor ?? row.newLine;
+  const right = row.newLine ?? row.newAnchor ?? row.oldLine;
+
   return `<div class="row ${row.kind}${overflow}"${anchors}>` +
     `<span class="marker">${marker}</span>` +
     `<span class="num old${row.oldLine === undefined ? " anchor" : ""}">` +
-      `${row.oldLine ?? row.oldAnchor ?? ""}</span>` +
+      `${left ?? ""}</span>` +
     `<span class="text">${escapeHtml(row.text)}</span>` +
     `<span class="num new${row.newLine === undefined ? " anchor" : ""}">` +
-      `${row.newLine ?? row.newAnchor ?? ""}</span></div>`;
+      `${right ?? ""}</span></div>`;
 }
 
 function edgeLayer(layout: GraphLayout): string {

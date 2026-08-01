@@ -330,12 +330,10 @@ export const CLIENT_SCRIPT = String.raw`
     if (trigger.classList.contains("more")) {
       card.classList.add("expanded");
       trigger.remove();
-    } else if (trigger.classList.contains("imports")) {
-      // Import bands toggle both ways, so the band stays put.
-      setGapOpen(trigger, !trigger.classList.contains("open"));
     } else {
-      setGapOpen(trigger, true);
-      trigger.remove();
+      // Every band toggles both ways, so it stays put rather than dissolving
+      // into what it revealed and leaving no way to fold it back.
+      setGapOpen(trigger, !trigger.classList.contains("open"));
     }
 
     var after = card.querySelector(".card-body").scrollHeight;
