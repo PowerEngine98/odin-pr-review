@@ -912,16 +912,17 @@ input[type="checkbox"]:checked::after {
   color: var(--text);
   background: color-mix(in srgb, var(--text) 12%, transparent);
 }
-/* A rule before the list group and before the suggestion, as the forge has:
-   the tools are three kinds of thing, not ten of one. */
-.editor .md[data-md="ul"],
-.editor .md[data-md="suggest"] {
-  margin-left: 7px;
+/* Rules between the groups, as the forge has them: the suggestion stands alone,
+   then the marks, then the lists. Ten of one thing would be a wall. */
+.editor .md[data-md="heading"],
+.editor .md[data-md="ol"] {
+  margin-left: 6px;
   border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
   border-radius: 0 5px 5px 0;
-  padding-left: 7px;
-  width: 33px;
+  padding-left: 6px;
+  width: 30px;
 }
+.editor .md svg { display: block; }
 
 .editor-body {
   width: 100%;

@@ -877,6 +877,37 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   /**
+   * The lines a suggestion in this box would replace.
+   *
+   * The composer knows them from the pick. A reply knows them from the thread
+   * it belongs to, which names a file and a span — the rows are read back off
+   * that card rather than remembered, so they are whatever is on screen. A box
+   * with no lines behind it, like a review summary, gets an empty block to fill
+   * in: better an empty fence than a fence full of the wrong file.
+   */
+  function suggestionLines(root) {
+    if (composer && composer.contains(root)) return anchorLines;
+
+    if (threadBox && threadBox.contains(root) && openThread) {
+      var comment = openThread.root;
+      var node = data.nodes.find(function (n) { return n.path === comment.path; });
+      var card = node && document.getElementById("card-" + cssId(node.id));
+      if (!card) return [""];
+
+      var attribute = comment.side === "LEFT" ? "data-old" : "data-new";
+      var from = comment.startLine || comment.line;
+      var out = [];
+      for (var line = from; line <= comment.line; line++) {
+        var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+        if (row) out.push(row.querySelector(".text").textContent);
+      }
+      return out.length > 0 ? out : [""];
+    }
+
+    return [""];
+  }
+
+  /**
    * What each markdown button does to the field.
    *
    * Wrapping styles keep the selection selected afterwards, and prefixing ones
@@ -929,10 +960,13 @@ export const CLIENT_SCRIPT = String.raw`
       // whole replacement for the span it covers, and retyping it from memory
       // is how the wrong indentation gets in.
       var fence = "\u0060\u0060\u0060";
-      var block = fence + "suggestion\n" + anchorLines.join("\n") + "\n" + fence;
+      var lines = suggestionLines(root);
+      var block = fence + "suggestion\n" + lines.join("\n") + "\n" + fence;
       var body = field.value.trim();
       field.value = body ? body + "\n\n" + block : block;
-      field.selectionStart = field.selectionEnd = field.value.length;
+      // Inside the fence, where the replacement is written.
+      var caret = field.value.length - (fence.length + 1);
+      field.selectionStart = field.selectionEnd = caret;
     }
 
     field.focus();

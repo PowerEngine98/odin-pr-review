@@ -404,7 +404,7 @@ const RING =
 function composer(): string {
   return `<div class="composer" hidden>
   <div class="composer-head"><span class="composer-where"></span></div>
-  ${editor({ placeholder: "Leave a comment", rows: 5, suggest: true })}
+  ${editor({ placeholder: "Leave a comment", rows: 5 })}
   <div class="composer-actions">
     <button class="composer-cancel">Cancel</button>
     <button class="composer-add primary">Start a review</button>
@@ -422,16 +422,12 @@ function composer(): string {
  * The suggestion button is the exception: it fills itself with the lines being
  * commented on, so it only belongs where there are lines under the cursor.
  */
-function editor(options: {
-  placeholder: string;
-  rows: number;
-  suggest?: boolean;
-}): string {
+function editor(options: { placeholder: string; rows: number }): string {
   return `<div class="editor">
     <div class="editor-tabs">
       <button class="tab is-on" data-tab="write">Write</button>
       <button class="tab" data-tab="preview">Preview</button>
-      <span class="md-tools">${options.suggest ? MD_TOOLS : MD_TOOLS_PLAIN}</span>
+      <span class="md-tools">${MD_TOOLS}</span>
     </div>
     <textarea class="editor-body" rows="${options.rows}" ` +
       `placeholder="${escapeHtml(options.placeholder)}"></textarea>
@@ -448,8 +444,24 @@ function editor(options: {
  * having — a suggestion has to be the whole replacement for the lines it covers,
  * and typing them out again from memory is how the wrong indentation gets in.
  */
-const MD_TOOLS_PLAIN = plainTools();
-const MD_TOOLS = plainTools() + tool("suggest", "Suggest a replacement", "M8 3v10M3 8h10");
+/**
+ * The suggestion button, first and set apart, as the forge places it.
+ *
+ * A page with a plus and a minus on it: the same glyph the forge uses, because
+ * a reviewer who has seen it there should not have to work out what it is here.
+ */
+const SUGGEST_TOOL =
+  `<button class="md" data-md="suggest" title="Suggest a replacement" ` +
+  `aria-label="Suggest a replacement">` +
+  `<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">` +
+  `<path d="M4 2.75h5.2L12 5.4v7.85a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3.75a1 1 0 0 1 1-1z" ` +
+  `fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>` +
+  `<path d="M9.2 2.9V5.4H11.9" fill="none" stroke="currentColor" stroke-width="1.3" ` +
+  `stroke-linejoin="round"/>` +
+  `<path d="M7.5 7.1v2.3M6.35 8.25h2.3M6.35 11.5h2.3" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.3" stroke-linecap="round"/></svg></button>`;
+
+const MD_TOOLS = SUGGEST_TOOL + plainTools();
 
 function plainTools(): string {
   return [
