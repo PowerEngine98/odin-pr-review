@@ -63,6 +63,8 @@ export async function buildGraphForRepo(
     cwd: request.cwd,
     ...(request.baseRef ? { baseRef: request.baseRef } : {}),
     headRef,
+    // Best-effort: a missing or logged-out gh simply means no title.
+    pullRequest: true,
   });
 
   const build = (roots: { head: string; base?: string }) => [

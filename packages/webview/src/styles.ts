@@ -71,6 +71,32 @@ html, body {
 /* Stacking the rest of the toolbar into columns freed a great deal of width,
    so branch names get most of it. Real ones are long and the tail is the part
    that identifies them. */
+/* A rule between the groups, so the bar reads as sections rather than as one
+   long run of unrelated things. */
+.toolbar > .legend,
+.toolbar > .gaps,
+.toolbar > .pr,
+.toolbar > .filters,
+.toolbar > button {
+  border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  padding-left: 16px;
+}
+.toolbar > .gaps { border-left-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+
+.toolbar .pr {
+  color: var(--status-renamed);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46ch;
+  align-self: center;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.toolbar .pr:hover { text-decoration: underline; }
+.toolbar .pr .num { color: var(--muted); margin-right: 4px; }
+
 .toolbar .refs {
   color: var(--muted);
   flex: 0 1 auto;

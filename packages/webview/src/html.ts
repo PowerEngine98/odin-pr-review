@@ -173,6 +173,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
   <span class="refs" title="${escapeHtml(graph.meta.baseRef)} → ${escapeHtml(graph.meta.headRef)}"><strong>${escapeHtml(graph.meta.baseRef)}</strong><br><span class="to">→</span> <strong>${escapeHtml(graph.meta.headRef)}</strong></span>
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
+  ${title(graph)}
   <span class="spacer"></span>
   <span class="filters">
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
@@ -182,6 +183,23 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
   </span>
   <button id="action-fit">fit</button>
 </div>`;
+}
+
+/**
+ * The pull request's own title, linked to it.
+ *
+ * A branch name says what the change is called; the title says what it is for,
+ * and is usually the first thing a reviewer wants. Absent when there is no
+ * pull request — nothing here depends on a forge being involved.
+ */
+function title(graph: ChangeGraph): string {
+  const pull = graph.meta.pullRequest;
+  if (!pull) return "";
+  return (
+    `<a class="pr" href="${escapeHtml(pull.url)}" target="_blank" rel="noreferrer" ` +
+    `title="Open #${pull.number} in the browser">` +
+    `<span class="num">#${pull.number}</span> ${escapeHtml(pull.title)}</a>`
+  );
 }
 
 function hint(): string {

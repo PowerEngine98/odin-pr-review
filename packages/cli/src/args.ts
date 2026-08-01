@@ -16,6 +16,7 @@ Options:
       --imports         include import statements and their arrows
       --with-context    with --resolve, probe unchanged lines too
       --tests           include test files (hidden by default)
+      --pr              look up the pull request title with the gh CLI
       --summary         shorthand for --format summary
       --stamp           record generation time (breaks reproducible output)
       --strict          exit non-zero when validation reports an issue
@@ -44,6 +45,7 @@ export interface GraphOptions {
   imports: boolean;
   withContext: boolean;
   tests: boolean;
+  pullRequest: boolean;
   light: boolean;
 }
 
@@ -66,6 +68,7 @@ export function parseArgs(argv: string[]): ParseResult {
     imports: false,
     withContext: false,
     tests: false,
+    pullRequest: false,
     light: false,
   };
 
@@ -97,6 +100,7 @@ export function parseArgs(argv: string[]): ParseResult {
       case "--no-imports": opts.imports = false; continue;
       case "--with-context": opts.withContext = true; continue;
       case "--tests": opts.tests = true; continue;
+      case "--pr": opts.pullRequest = true; continue;
       case "--light": opts.light = true; continue;
     }
 

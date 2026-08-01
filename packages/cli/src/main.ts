@@ -43,6 +43,7 @@ async function main(argv: string[]): Promise<number> {
         headRef: opts.headRef,
         context: opts.context,
         stamp: opts.stamp,
+        pullRequest: opts.pullRequest,
         ...(opts.pathspecs.length ? { pathspecs: opts.pathspecs } : {}),
       });
 

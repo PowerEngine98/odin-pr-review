@@ -203,6 +203,15 @@ export interface GraphMeta {
   coverage?: Coverage;
   /** Who wrote the commits in this range, most prolific first. */
   authors?: Author[];
+  /** The pull request this branch belongs to, if one is open. */
+  pullRequest?: PullRequest;
+}
+
+/** The forge's own record of the change under review. */
+export interface PullRequest {
+  number: number;
+  title: string;
+  url: string;
 }
 
 /** One contributor to the change under review. */

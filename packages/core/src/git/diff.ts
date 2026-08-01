@@ -3,7 +3,9 @@ import { buildGraph } from "../graph/build.js";
 import { annotateTests } from "../graph/tests.js";
 import type { ChangeGraph, GraphMeta } from "../model/types.js";
 import type { Author } from "../model/types.js";
+import { readPullRequest } from "./pullRequest.js";
 import {
+  currentBranch,
   git,
   mergeBase,
   repoRoot,
@@ -30,6 +32,8 @@ export interface DiffRequest extends GitOptions {
   /** Record the wall-clock time in `meta.generatedAt`. Off by default so that
    *  the same inputs always serialise to the same bytes. */
   stamp?: boolean;
+  /** Ask `gh` for the pull request this branch belongs to. */
+  pullRequest?: boolean;
 }
 
 /** Raw patch text for a base..head comparison, taken from the merge base. */
@@ -71,6 +75,12 @@ export async function readPatch(req: DiffRequest): Promise<{
 
   const authors = await readAuthors(base, headRef, req);
   if (authors.length > 0) meta.authors = authors;
+
+  if (req.pullRequest) {
+    const branch = (await currentBranch(req)) ?? headRef;
+    const pull = await readPullRequest(branch, req);
+    if (pull) meta.pullRequest = pull;
+  }
 
   return { patch, meta };
 }

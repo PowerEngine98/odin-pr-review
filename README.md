@@ -105,6 +105,11 @@ code --install-extension dist/odin-pr-review-0.1.0.vsix
 
 ![The extension](docs/vscode.png)
 
+Where the branch has an open pull request, its number and title appear in the
+toolbar, linked to the forge. This is asked of the `gh` command line, so it
+inherits whatever authentication you already have — and its absence changes
+nothing else. `--pr` does the same on the command line.
+
 Odin gets its own activity bar entry. The sidebar lists every changed file with
 its status, and expands to show the references leaving it — the graph as a list,
 for when a change is too large to take in visually or you just want to scan.
