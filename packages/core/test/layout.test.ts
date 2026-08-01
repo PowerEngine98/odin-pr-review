@@ -9,7 +9,7 @@ import {
   rowForLine,
   titleLength,
 } from "../src/layout/display.js";
-import { layoutGraph } from "../src/layout/layout.js";
+import { fitText, layoutGraph, textCapacity } from "../src/layout/layout.js";
 import { DEFAULT_METRICS } from "../src/layout/metrics.js";
 import { edgeId, nodeId } from "../src/model/ids.js";
 import type { ChangeGraph, Edge, Endpoint } from "../src/model/types.js";
@@ -293,6 +293,64 @@ describe("card titles", () => {
     ]);
     const phantom = withPhantom.nodes.find((n) => n.path === "src/never.ts")!;
     expect(cardTitle(phantom).stats).toBe("untouched");
+  });
+});
+
+describe("text that does not fit", () => {
+  const LONG =
+    "    private val recordingDelivery = NotificationLiveDelivery { recipientId, notificationId -> delivered += recipientId to (dsl.fetchCount(NOTIFICATION) == 1) }";
+
+  function graphWithLongLine(): ChangeGraph {
+    const patch = [
+      "diff --git a/src/wide.kt b/src/wide.kt",
+      "--- a/src/wide.kt",
+      "+++ b/src/wide.kt",
+      "@@ -1 +1 @@",
+      "-short",
+      `+${LONG}`,
+      "",
+    ].join("\n");
+    return buildGraph(parseUnifiedDiff(patch), { meta: META });
+  }
+
+  it("widens the card rather than clipping, up to the maximum", () => {
+    const card = layoutGraph(graphWithLongLine()).nodes[0]!;
+    expect(card.width).toBeGreaterThan(DEFAULT_METRICS.minCardWidth);
+    expect(card.width).toBeLessThanOrEqual(DEFAULT_METRICS.maxCardWidth);
+  });
+
+  it("reserves room for both gutters when measuring capacity", () => {
+    const capacity = textCapacity(DEFAULT_METRICS.maxCardWidth, DEFAULT_METRICS);
+    const used =
+      capacity * DEFAULT_METRICS.charWidth +
+      DEFAULT_METRICS.gutterWidth +
+      DEFAULT_METRICS.rightGutterWidth +
+      DEFAULT_METRICS.padding * 2;
+    expect(used).toBeLessThanOrEqual(DEFAULT_METRICS.maxCardWidth);
+  });
+
+  it("marks a line it had to cut", () => {
+    expect(fitText("abcdefghij", 5)).toBe("abcd…");
+    expect(fitText("abc", 5)).toBe("abc");
+  });
+
+  it("never draws source text wider than its card", () => {
+    // The failure this guards against is silent: the line simply runs past the
+    // border and over the line numbers.
+    const layout = layoutGraph(graphWithLongLine());
+    const svg = toSvg(layout);
+    const capacity = textCapacity(layout.nodes[0]!.width, layout.metrics);
+
+    for (const drawn of svg.matchAll(/xml:space="preserve">([^<]*)</g)) {
+      // Compare characters, not markup: `->` is escaped to `-&gt;`, which is
+      // three bytes longer than the character it stands for.
+      const text = drawn[1]!
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+      expect(text.length).toBeLessThanOrEqual(capacity);
+    }
+    expect(svg).toContain("…");
   });
 });
 

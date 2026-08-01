@@ -1,24 +1,41 @@
 <!--
-  Activity bar icon: Odin's horned helm, with the one eye he kept.
+  Activity bar icon: Odin, traced from the reference line art.
 
-  VS Code masks activity bar icons to a single themed colour, so this is drawn
-  as monochrome line art on a 24px grid. Detail is limited to the four things
-  that survive at that size: the horns, the helm, the brow band, and the
-  asymmetry of one open eye against one closed. The horns are filled rather
-  than outlined, because hairline crescents close up into mush at 24px, and
-  there is no nose guard — a third mark below the band turned the face into a
-  blob at the size that actually matters.
+  The reference is 1240px square. Landmarks were read off it and mapped onto
+  this 24px grid with x' = (x - 620)/46.4 + 12 and y' = (y - 95)/46.4 + 1, so
+  the proportions carry across rather than being redrawn by eye: horn tips at
+  the top corners, the helm across the middle third, the brow band just above
+  centre, and a beard wider than the helm falling to a point near the bottom.
+
+  What the tracing drops matters as much as what it keeps. VS Code renders
+  activity bar icons as a mask, so every opaque pixel becomes one themed
+  colour: shading, outlines-within-shapes and hairline detail all collapse.
+  Gone are the ridges banding the horns, the beard's interior strands, the
+  studs around the eyepatch, and the modelling of nose and brow. The face is an
+  opening in the beard rather than a drawn feature, for the same reason — under
+  a mask there is no second colour to draw skin with, so it has to be absent
+  material instead. The eyepatch is a solid disc; a ring that small fills in
+  and reads as a smudge.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
   <g fill="currentColor">
-    <path d="M7.0 12.5C4.5 11.7 2.6 9.8 1.9 7.0c2.5.7 4.4 2.3 5.8 4.3z" />
-    <path d="M17.0 12.5c2.5-.8 4.4-2.7 5.1-5.5-2.5.7-4.4 2.3-5.8 4.3z" />
-    <circle cx="9.8" cy="17.4" r="1.15" />
+    <!-- horns: crescents sweeping from the helm's sides out to the corners -->
+    <path d="M3.3 2.1c.3 2.9 2.3 5.9 5.2 7.5-1.9-3.2-3.5-6-5.2-7.5z" />
+    <path d="M20.7 2.1c-.3 2.9-2.3 5.9-5.2 7.5 1.9-3.2 3.5-6 5.2-7.5z" />
+    <!-- beard, with the face left open above the moustache -->
+    <path d="M6.5 10.9c-1.2 2.4-1.4 5.3-.4 7.6 1.2 2.6 3.3 4 5.9 4.6 2.6-.6 4.7-2 5.9-4.6 1-2.3.8-5.2-.4-7.6-.7 2.1-1.8 3.2-5.5 3.2s-4.8-1.1-5.5-3.2z" />
+    <!-- the eye he traded -->
+    <circle cx="14.5" cy="11.6" r="1.35" />
+    <!-- the eye he kept -->
+    <circle cx="10.0" cy="11.5" r="0.7" />
   </g>
-  <g fill="none" stroke="currentColor" stroke-width="1.4"
+  <g fill="none" stroke="currentColor" stroke-width="1.2"
      stroke-linecap="round" stroke-linejoin="round">
-    <path d="M6.2 14.6a5.8 5.8 0 0 1 11.6 0" />
-    <path d="M5.3 14.6h13.4" />
-    <path d="M13.4 17.4h2.9" />
+    <!-- helm -->
+    <path d="M7.8 9.6a4.25 4.9 0 0 1 8.5 0" />
+    <!-- brow band -->
+    <path d="M7.3 9.6h9.6" />
+    <!-- crest, running from above the helm down to the brow -->
+    <path d="M12.1 2.9v6.7" />
   </g>
 </svg>

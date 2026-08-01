@@ -159,6 +159,25 @@ function collectAnchors(graph: ChangeGraph): Map<string, { side: Side; line: num
   return anchors;
 }
 
+/**
+ * How many characters of source a card of this width can show.
+ *
+ * Cards are clamped to a maximum width, so a long enough line will always
+ * overflow one. Both renderers ask this so they cut at the same place, and so
+ * neither ever draws text past its own border.
+ */
+export function textCapacity(width: number, metrics: LayoutMetrics): number {
+  const available =
+    width - metrics.padding * 2 - metrics.gutterWidth - metrics.rightGutterWidth;
+  return Math.max(0, Math.floor(available / metrics.charWidth));
+}
+
+/** Truncates a line to fit, marking that something was cut. */
+export function fitText(text: string, capacity: number): string {
+  if (capacity <= 1 || text.length <= capacity) return text;
+  return `${text.slice(0, capacity - 1)}…`;
+}
+
 /** Vertical offset of a row's centre from the top of its card. */
 export function rowOffset(row: number, metrics: LayoutMetrics): number {
   return (

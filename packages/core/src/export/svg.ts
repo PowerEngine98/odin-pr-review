@@ -1,6 +1,6 @@
 import type { GraphLayout, PlacedEdge, PlacedNode } from "../layout/layout.js";
 import { cardTitle } from "../layout/display.js";
-import { rowOffset } from "../layout/layout.js";
+import { fitText, rowOffset, textCapacity } from "../layout/layout.js";
 import { DARK_THEME, type Theme } from "../layout/theme.js";
 import type { EdgeChange } from "../model/types.js";
 
@@ -76,6 +76,7 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
   );
 
   const textX = node.x + metrics.padding + metrics.gutterWidth;
+  const capacity = textCapacity(node.width, metrics);
   node.rows.forEach((row, i) => {
     const y = node.y + rowOffset(i, metrics) + metrics.fontSize / 2 - 2;
 
@@ -122,26 +123,24 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
         `font-size="${metrics.fontSize}">${marker}</text>`,
     );
 
-    // Base number on the left, head number on the right. One shared column
-    // would interleave the two numbering schemes and read as nonsense on any
-    // file where lines were both added and removed.
-    if (row.oldLine !== undefined) {
-      parts.push(
-        `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
-          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
-          `text-anchor="end">${row.oldLine}</text>`,
-      );
-    }
-    if (row.newLine !== undefined) {
-      parts.push(
-        `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
-          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
-          `text-anchor="end">${row.newLine}</text>`,
-      );
-    }
+    // Both gutters are always drawn so the columns line up down the whole
+    // card. A line that exists on only one side gets a marker on the other
+    // rather than a number, because inventing one would be a lie: an added
+    // line has no position in the base file.
+    parts.push(
+      `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
+        `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+        `text-anchor="end">${row.oldLine ?? "·"}</text>`,
+    );
+    parts.push(
+      `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
+        `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+        `text-anchor="end">${row.newLine ?? "·"}</text>`,
+    );
     parts.push(
       `<text x="${textX}" y="${y}" fill="${colour}" ` +
-        `font-size="${metrics.fontSize}" xml:space="preserve">${escape(row.text)}</text>`,
+        `font-size="${metrics.fontSize}" xml:space="preserve">` +
+        `${escape(fitText(row.text, capacity))}</text>`,
     );
   });
 

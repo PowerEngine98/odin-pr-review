@@ -48,7 +48,7 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   lineNumberRight: 50,
   rightGutterWidth: 38,
   minCardWidth: 240,
-  maxCardWidth: 620,
+  maxCardWidth: 1180,
   columnGap: 140,
   rowGap: 56,
   margin: 48,

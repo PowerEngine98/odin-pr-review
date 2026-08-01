@@ -190,17 +190,32 @@ html, body {
 }
 .row .num {
   color: var(--gutter);
+  opacity: 0.85;
   font-size: calc(var(--font-size) - 1px);
   text-align: right;
   user-select: none;
 }
-.row .num.old { width: calc(var(--line-number-right) - var(--padding)); }
+.row .num.old {
+  width: calc(var(--line-number-right) - var(--padding));
+  flex: 0 0 auto;
+}
 .row .num.new {
   width: var(--right-gutter-width);
   padding-right: var(--padding);
+  flex: 0 0 auto;
 }
+.row .marker { flex: 0 0 auto; }
 .row.add .marker, .row.del .marker { color: inherit; }
-.row .text { flex: 1; }
+
+/* min-width:0 is load-bearing: without it a flex item refuses to shrink below
+   its own content, so a long pre-formatted line runs past the card border and
+   out from under the line numbers. */
+.row .text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Rows an arrow touches get a marker so the eye can find them without
    following the line all the way back. */

@@ -176,14 +176,17 @@ function renderRow(row: DisplayRow): string {
   }
 
   const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : "";
-  // Base number on the left, head number on the right. A single shared column
-  // interleaves the two numbering schemes and reads as nonsense on any file
-  // where lines were both added and removed.
+  // Base number on the left, head number on the right, both always present so
+  // the columns line up down the whole card. A single shared column would
+  // interleave the two numbering schemes and read as nonsense on any file
+  // where lines were both added and removed. A line that exists on only one
+  // side gets a marker on the other rather than a number: an added line has no
+  // position in the base file, and inventing one would be a lie.
   return `<div class="row ${row.kind}">` +
     `<span class="marker">${marker}</span>` +
-    `<span class="num old">${row.oldLine ?? ""}</span>` +
+    `<span class="num old">${row.oldLine ?? "·"}</span>` +
     `<span class="text">${escapeHtml(row.text)}</span>` +
-    `<span class="num new">${row.newLine ?? ""}</span></div>`;
+    `<span class="num new">${row.newLine ?? "·"}</span></div>`;
 }
 
 function edgeLayer(layout: GraphLayout): string {
