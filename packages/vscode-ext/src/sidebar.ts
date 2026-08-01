@@ -78,6 +78,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand("odin.openFile", message.path);
         return;
       }
+      if (message.type === "focus" && message.path) {
+        void vscode.commands.executeCommand("odin.focusFile", message.path);
+        return;
+      }
       if (message.type === "follow" && message.edgeId) {
         const edge = this.graph?.edges.find((e) => e.id === message.edgeId);
         const target = this.graph?.nodes.find((n) => n.id === edge?.to.nodeId);
@@ -534,12 +538,15 @@ window.addEventListener("message", (event) => {
 
 document.querySelectorAll(".row").forEach((row) => {
   row.addEventListener("click", (event) => {
-    // The twisty folds; anywhere else opens the file.
+    // The twisty folds; anywhere else brings the file's card to the middle of
+    // the canvas. Opening the file is the card's own button — choosing a file
+    // to look at and opening an editor on it are different intentions, and
+    // doing both on one click means one of them was never asked for.
     if (event.target.closest(".twisty")) {
       row.classList.toggle("open");
       return;
     }
-    vscodeApi.postMessage({ type: "open", path: row.dataset.path });
+    vscodeApi.postMessage({ type: "focus", path: row.dataset.path });
   });
 });
 

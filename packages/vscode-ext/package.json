@@ -34,7 +34,7 @@
       },
       {
         "command": "odin.reviewAgainst",
-        "title": "Review Against a Different Base…",
+        "title": "Review Against a Different Base\u2026",
         "category": "Odin"
       },
       {
@@ -83,6 +83,12 @@
         "title": "Check Out a Pull Request",
         "category": "Odin",
         "enablement": "false"
+      },
+      {
+        "command": "odin.focusFile",
+        "title": "Focus a File in the Graph",
+        "category": "Odin",
+        "enablement": "false"
       }
     ],
     "configuration": {
@@ -127,7 +133,7 @@
     "viewsWelcome": [
       {
         "view": "odin.changes",
-        "contents": "Review this branch as a graph: every changed file becomes a card, every call-site reference becomes an arrow.\n\n[Review Pull Request](command:odin.review)\n[Choose a base branch…](command:odin.reviewAgainst)\n\nThe diff is taken from the merge base, not the branch tip.",
+        "contents": "Review this branch as a graph: every changed file becomes a card, every call-site reference becomes an arrow.\n\n[Review Pull Request](command:odin.review)\n[Choose a base branch\u2026](command:odin.reviewAgainst)\n\nThe diff is taken from the merge base, not the branch tip.",
         "when": "workspaceFolderCount != 0"
       }
     ],

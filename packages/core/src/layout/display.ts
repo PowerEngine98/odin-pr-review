@@ -166,13 +166,18 @@ function foldImports(
   };
 
   for (const row of rows) {
-    if (row.kind !== "gap" && IMPORT_LINE.test(row.text)) {
+    // An import the change added or removed is a change, and folding it away
+    // would hide the very thing the card exists to show. It breaks the run
+    // instead, so the untouched imports around it still fold and it stays on
+    // screen between them.
+    const changed = row.kind === "add" || row.kind === "del";
+    if (!changed && row.kind !== "gap" && IMPORT_LINE.test(row.text)) {
       run.push(row);
       continue;
     }
     // A blank line between imports keeps the block together rather than
     // splitting it into several bands.
-    if (row.kind !== "gap" && row.text.trim() === "" && run.length > 0) {
+    if (!changed && row.kind !== "gap" && row.text.trim() === "" && run.length > 0) {
       run.push(row);
       continue;
     }

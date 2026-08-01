@@ -98,10 +98,27 @@ on any file that both gained and lost lines.
 | `f` / `esc` | Fit the graph / clear the selection |
 
 Import statements are folded into a band and their arrows hidden, both governed
-by the **imports** checkbox. A Kotlin file can open with thirty imports, which
+by the **imports** checkbox. An import the change added or removed is never
+folded away — it is a change, and folding it would hide the thing the card
+exists to show — so it stays on screen with the untouched imports folding either
+side of it. Nothing a diff touched is ever collapsed. A Kotlin file can open with thirty imports, which
 pushes the actual change off the bottom of the card. They are still resolved, so
 switching them on needs no rebuild — `--imports` does the same on the command
 line.
+
+Files the change touched always stay on the canvas. **hide read-through** takes
+away the untouched files once everything pointing at them has been read, since
+those are in the picture only because something referenced them; a file the
+change touched goes quiet when you tick it — dimmed, struck through in the
+sidebar — but it does not leave. A picture of a change with its read files
+removed is a picture of something else.
+
+Clicking a file in the sidebar brings its card to the middle of the canvas.
+Opening the file itself is the card's own **Jump to file** button, beside the
+reviewed box: choosing a file to look at and opening an editor on it are
+different intentions, and doing both on one click means one of them was never
+asked for. The button is absent where the page has no editor to ask — a graph
+opened from disk cannot open anything.
 
 Test files are hidden by default, and the **tests** checkbox brings them back.
 A test tends to reference a great deal of what it exercises: on a 24-file

@@ -77,3 +77,68 @@ describe("what a band stands in for", () => {
     expect(band && band.kind === "gap" && band.covers?.head).toBeDefined();
   });
 });
+
+describe("what a band may hide", () => {
+  const importing = (kind: "context" | "add" | "del"): FileNode => ({
+    id: "n:src/Dao.kt",
+    path: "src/Dao.kt",
+    status: "modified",
+    language: "kotlin",
+    binary: false,
+    stats: { additions: 1, deletions: 0 },
+    symbols: [],
+    hunks: [
+      {
+        oldStart: 1,
+        oldLines: 6,
+        newStart: 1,
+        newLines: 7,
+        header: "",
+        lines: [
+          { kind: "context", text: "import a.b.C", oldLine: 1, newLine: 1 },
+          { kind: "context", text: "import a.b.D", oldLine: 2, newLine: 2 },
+          { kind: kind === "context" ? "context" : kind, text: "import a.b.E",
+            ...(kind === "del" ? { oldLine: 3 } : kind === "add" ? { newLine: 3 } : { oldLine: 3, newLine: 3 }) },
+          { kind: "context", text: "import a.b.F", oldLine: 4, newLine: 4 },
+          { kind: "context", text: "import a.b.G", oldLine: 5, newLine: 5 },
+          { kind: "context", text: "class Dao {", oldLine: 6, newLine: 6 },
+          // A change right below, so the imports are inside the context radius
+          // and survive as rows for the import fold to act on. Without one the
+          // whole file collapses into a plain untouched band first.
+          { kind: "add", text: "  val added = 1", newLine: 7 },
+        ],
+      },
+    ],
+  });
+
+  // A wide radius so the imports survive the untouched-code collapse and reach
+  // the import fold, which is what these tests are about.
+  const open = { contextRadius: 99, collapseThreshold: 99 };
+
+  it("folds a block of untouched imports", () => {
+    const rows = displayRows(importing("context"), [], open);
+    const band = rows.find((r) => r.kind === "gap" && r.imports);
+    expect(band).toBeDefined();
+    expect(band!.kind === "gap" && band!.hidden).toBe(5);
+    expect(rows.some((r) => r.kind !== "gap" && r.text.includes("import"))).toBe(false);
+  });
+
+  it("never folds an import the change added", () => {
+    // Folding it would hide the very thing the card exists to show.
+    const rows = displayRows(importing("add"), [], open);
+    const added = rows.find((r) => r.kind === "add" && r.text.includes("import"));
+    expect(added).toBeDefined();
+    expect(added!.text).toBe("import a.b.E");
+  });
+
+  it("never folds an import the change removed", () => {
+    const rows = displayRows(importing("del"), [], open);
+    expect(rows.some((r) => r.kind === "del" && r.text === "import a.b.E")).toBe(true);
+  });
+
+  it("still folds the untouched imports around a changed one", () => {
+    const rows = displayRows(importing("add"), [], open);
+    const bands = rows.filter((r) => r.kind === "gap" && r.imports);
+    expect(bands.length).toBeGreaterThan(0);
+  });
+});

@@ -108,16 +108,12 @@ export class GraphPanel {
 
   /** Opens a file as a diff, for the sidebar's file rows. */
   static async openPath(path: string): Promise<void> {
-    // The card and the diff, in that order: the graph is the thing that keeps
-    // your place, and it should already be showing the right file by the time
-    // the editor opens beside it.
-    GraphPanel.current?.focusPath(path);
     await GraphPanel.current?.openDiff(path);
   }
 
-  /** Brings a file's card to the middle of the canvas. */
-  private focusPath(path: string): void {
-    void this.panel.webview.postMessage({ type: "focus", path });
+  /** Brings a file's card to the middle of the canvas, without opening it. */
+  static focusPath(path: string): void {
+    void GraphPanel.current?.panel.webview.postMessage({ type: "focus", path });
   }
 
   /** Follows a reference, for the sidebar's reference rows. */

@@ -322,7 +322,14 @@ export const CLIENT_SCRIPT = String.raw`
       var floor = -Infinity;
       entries.forEach(function (entry) {
         var read = isRead(entry.node.id);
-        var hidden = hideViewed && read;
+        // A file the change touched stays on the canvas whatever happens to it.
+        // It goes quiet when it has been read — dimmed, its box ticked — but it
+        // does not leave: the picture is of this change, and a change with its
+        // read files removed is a picture of something else. What the switch
+        // takes away is the untouched files, which are only here because
+        // something pointed at them, and which have nothing left to say once
+        // everything pointing at them has been read.
+        var hidden = hideViewed && read && entry.node.untouched;
         entry.card.classList.toggle("viewed-hidden", hidden);
         entry.card.classList.toggle("is-viewed", read);
         // Implied is not the same as marked, so the box stays as the reader
@@ -1457,6 +1464,20 @@ export const CLIENT_SCRIPT = String.raw`
   // the graph is still fully explorable, just not able to open files.
   var host =
     typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
+
+  // Jumping to the file needs somewhere to jump from; without a host there is
+  // nothing to ask, so the button never appears rather than appearing dead.
+  if (host) {
+    cards.forEach(function (card) {
+      var jump = card.querySelector(".jump");
+      if (!jump) return;
+      jump.hidden = false;
+      jump.addEventListener("click", function (event) {
+        event.stopPropagation();
+        notifyHost("open", { path: card.dataset.path });
+      });
+    });
+  }
 
   function notifyHost(type, payload) {
     if (host) host.postMessage({ type: type, payload: payload });

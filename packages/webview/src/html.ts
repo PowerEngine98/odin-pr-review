@@ -261,7 +261,7 @@ function toolbar(
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
     <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
-    <label title="Files you have marked as reviewed"><input type="checkbox" id="filter-viewed" checked> hide viewed</label>
+    <label title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed" checked> hide read-through</label>
   </span>
   <button id="action-fit">fit</button>
 </div>`;
@@ -425,6 +425,21 @@ const MD_TOOLS = [
   tool("task", "Task list", "M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5"),
   tool("suggest", "Suggest a replacement", "M8 3v10M3 8h10"),
 ].join("");
+
+/**
+ * Opening the real file, rather than reading the change to it.
+ *
+ * Hidden until the page finds a host that can open one — the same document is
+ * served from disk, where nothing here can reach an editor, and a button that
+ * silently does nothing is worse than no button.
+ */
+const JUMP_ICON =
+  `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<path d="M9.5 2.5H13v3.5M13 2.5L8 7.5" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+  `<path d="M12.5 9.5v3a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h3" ` +
+  `fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" ` +
+  `stroke-linejoin="round"/></svg>`;
 
 /** The state pill opens something, and says so. */
 const CARET =
@@ -603,6 +618,7 @@ function card(
   return `<div class="card status-${node.node.status}${unresolved}${test}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
   <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}` +
+    `<button class="jump" title="Jump to file" aria-label="Jump to file" hidden>${JUMP_ICON}</button>` +
     `<label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body">${body}${more}</div>
 </div>`;
