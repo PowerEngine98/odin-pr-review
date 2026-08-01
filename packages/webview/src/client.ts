@@ -397,7 +397,7 @@ export const CLIENT_SCRIPT = String.raw`
     // A row inside a closed gap, or below the cap, has no position to point at;
     // the fold that would reveal it does.
     if (!row || row.offsetParent === null) {
-      var fold = foldFor(card, row);
+      var fold = foldFor(card, row, side, line);
       if (!fold) return { y: node.y + node.height / 2, node: node };
       row = fold;
     }
@@ -411,8 +411,30 @@ export const CLIENT_SCRIPT = String.raw`
     };
   }
 
-  /** The visible band or bar standing in for a row that is not on screen. */
-  function foldFor(card, row) {
+  /**
+   * The visible band or bar standing in for a row that is not on screen.
+   *
+   * A band between two hunks has no rows behind it — those lines were never
+   * read — so there is nothing in the document to walk back from. Each band
+   * carries the range it hides instead, which is the only way to find the one
+   * covering a line that was never rendered. Without it an arrow aimed at such
+   * a line fell through to the truncation bar or the middle of the card, and
+   * claimed a position it had no reason to claim.
+   */
+  function foldFor(card, row, side, line) {
+    var from = side === "base" ? "data-base-from" : "data-head-from";
+    var to = side === "base" ? "data-base-to" : "data-head-to";
+
+    var bands = card.querySelectorAll(".row.gap[" + from + "]");
+    for (var i = 0; i < bands.length; i++) {
+      var band = bands[i];
+      if (band.offsetParent === null) continue;
+      if (line >= Number(band.getAttribute(from)) && line <= Number(band.getAttribute(to))) {
+        return band;
+      }
+    }
+
+    // A row that exists but is folded away: the band above it is the one.
     if (row) {
       for (var previous = row.previousElementSibling; previous;
            previous = previous.previousElementSibling) {
@@ -1327,6 +1349,17 @@ export const CLIENT_SCRIPT = String.raw`
       refreshReview();
       return;
     }
+    // Clicking a file in the sidebar brings its card to the middle. The list
+    // and the picture are two views of one change, and choosing a file in one
+    // should not leave the other showing somewhere else entirely.
+    if (message && message.type === "focus") {
+      var target = data.nodes.find(function (n) { return n.path === message.path; });
+      if (target) {
+        highlightNode(target.id);
+        centerOn(target.id);
+      }
+      return;
+    }
     if (!message || message.type !== "setViewed") return;
     var byPath = {};
     data.nodes.forEach(function (n) { byPath[n.path] = n.id; });
@@ -1340,6 +1373,27 @@ export const CLIENT_SCRIPT = String.raw`
     var input = document.getElementById(id);
     if (input) input.addEventListener("change", refreshFilters);
   });
+
+  /* ------------------------------------------------------- the draft state */
+
+  var stateButton = document.querySelector(".state.pressable");
+  var stateList = document.querySelector(".state-list");
+  if (stateButton && stateList) {
+    stateButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      stateList.hidden = !stateList.hidden;
+    });
+    stateList.addEventListener("click", function (event) {
+      var item = event.target.closest(".state-item");
+      if (!item) return;
+      stateList.hidden = true;
+      // The host confirms and reports. Taking a pull request out of draft asks
+      // the whole team to look, so nothing about it happens on one click here.
+      notifyHost("setDraft", { draft: item.dataset.ready !== "1" });
+    });
+    // Anywhere else puts it away, which is what every menu does.
+    document.addEventListener("click", function () { stateList.hidden = true; });
+  }
 
   var fitButton = document.getElementById("action-fit");
   if (fitButton) fitButton.addEventListener("click", fit);

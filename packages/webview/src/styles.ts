@@ -34,10 +34,12 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
   --line-number-right: ${metrics.lineNumberRight}px;
   --gap-bg: ${theme.gapBackground};
   --warning: ${theme.warning};
-  /* The one colour in the page that means "do the thing", rather than
-     describing a diff. Kept out of the theme's diff palette on purpose: green
-     and red are already spoken for by added and removed. */
-  --action: #7C36FF;
+  /* The one colour in the page that means "do the thing". The contrast comes
+     from the ink rather than the fill: white on a green this bright is about
+     two to one and was the weakest pairing in the page, while near-black on it
+     is about ten. */
+  --action: #41DB6D;
+  --action-ink: #06230F;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -107,6 +109,50 @@ html, body {
   background: var(--muted);
 }
 .prbar .state.open { background: var(--status-added); }
+
+/* The state is where a draft stops being a draft, so it is a button — with a
+   caret, because a control that acts on the pull request should say that it
+   opens something rather than doing it on the first click. */
+.state-menu { position: relative; flex: 0 0 auto; }
+.prbar .state.pressable {
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding-right: 8px;
+}
+.prbar .state.pressable:hover { filter: brightness(1.12); }
+.prbar .state .caret { opacity: 0.8; margin-left: 1px; }
+
+.state-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 45;
+  min-width: 260px;
+  padding: 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+}
+.state-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+.state-item:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+/* What it will do, said before it is done rather than in a dialog afterwards. */
+.state-item .why { color: var(--muted); font-size: 11px; }
 .prbar .state.draft { background: color-mix(in srgb, var(--muted) 80%, var(--text)); }
 .prbar .state.local { background: color-mix(in srgb, var(--muted) 70%, transparent); }
 
@@ -207,7 +253,7 @@ html, body {
   flex: 0 0 auto;
   font: inherit;
   font-weight: 600;
-  color: #fff;
+  color: var(--action-ink);
   background: var(--action);
   border: 1px solid color-mix(in srgb, #000 22%, var(--action));
   border-radius: 6px;
@@ -216,7 +262,7 @@ html, body {
 }
 .prbar .submit:hover { filter: brightness(1.08); }
 .prbar .submit .count {
-  background: color-mix(in srgb, #000 28%, transparent);
+  background: color-mix(in srgb, var(--action-ink) 22%, transparent);
   border-radius: 999px;
   padding: 0 6px;
   font-size: 11px;
@@ -933,12 +979,12 @@ input[type="checkbox"]:checked::after {
 .composer button:hover, .review button:hover { color: var(--text); }
 .composer .md:hover { color: var(--text); }
 .composer button.primary {
-  color: #fff;
+  color: var(--action-ink);
   background: var(--action);
   border-color: color-mix(in srgb, #000 22%, var(--action));
   font-weight: 600;
 }
-.composer button.primary:hover { color: #fff; filter: brightness(1.08); }
+.composer button.primary:hover { color: var(--action-ink); filter: brightness(1.08); }
 .composer-actions { align-items: center; }
 .composer-actions .composer-cancel { font-weight: 600; color: var(--text); }
 
@@ -989,12 +1035,15 @@ input[type="checkbox"]:checked::after {
 }
 .review-item .drop { padding: 0 6px; font-size: 11px; }
 .review-submit[data-event="APPROVE"] {
-  color: #fff;
+  color: var(--action-ink);
   background: var(--action);
   border-color: color-mix(in srgb, #000 22%, var(--action));
   font-weight: 600;
 }
-.review-submit[data-event="APPROVE"]:hover { color: #fff; filter: brightness(1.08); }
+.review-submit[data-event="APPROVE"]:hover {
+  color: var(--action-ink);
+  filter: brightness(1.08);
+}
 .review-submit[data-event="REQUEST_CHANGES"] { color: var(--removed); border-color: var(--removed); }
 
 .toolbar #action-review {

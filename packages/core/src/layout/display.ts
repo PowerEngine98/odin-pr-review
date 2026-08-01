@@ -28,6 +28,16 @@ export type DisplayRow =
        * offer to expand the first and must not pretend it can expand the second.
        */
       rows?: DisplayRow[];
+      /**
+       * The lines this band stands in for, per side.
+       *
+       * Written down rather than left to be worked out again by whoever needs
+       * it. A renderer pointing an arrow at a line that turned out to be folded
+       * away has to find the band covering it, and it cannot recompute this
+       * from the DOM: a band for a jump between hunks has no rows behind it at
+       * all, so there is nothing there to measure.
+       */
+      covers?: { base?: [number, number]; head?: [number, number] };
     };
 
 /** A run of consecutive source lines pulled in to give an arrow something to
@@ -93,7 +103,32 @@ export function displayRows(
 ): DisplayRow[] {
   const side: Side = node.status === "deleted" ? "base" : "head";
   const rows = assemble(node, snippets, side);
-  return foldImports(collapse(rows, side, options), options);
+  return markCoverage(foldImports(collapse(rows, side, options), options));
+}
+
+/**
+ * Records, on every band, which lines it hides.
+ *
+ * Done once here rather than by each renderer, and for both sides, since an
+ * arrow may be aimed at either.
+ */
+function markCoverage(rows: DisplayRow[]): DisplayRow[] {
+  for (const side of ["base", "head"] as const) {
+    let previous = 0;
+    rows.forEach((row, index) => {
+      if (row.kind !== "gap") {
+        const value = side === "base" ? row.oldLine : row.newLine;
+        if (value !== undefined) previous = value;
+        return;
+      }
+      const covered = coveredRange(row, previous, rows, index, side);
+      if (covered) {
+        row.covers = { ...row.covers, [side]: covered };
+        previous = covered[1];
+      }
+    });
+  }
+  return rows;
 }
 
 /**

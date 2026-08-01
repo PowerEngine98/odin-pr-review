@@ -176,7 +176,7 @@ export function renderHtml(
     // One fixed block, so the two rows cannot drift apart and the canvas has a
     // single height to make room for.
     `<div class="chrome">`,
-    prBar(graph),
+    prBar(graph, options.canReview === true),
     toolbar(graph, layout, options.highlight),
     `</div>`,
     `<div class="viewport">`,
@@ -281,16 +281,31 @@ function toolbar(
  * whole header because no forge is involved would be a strange way to treat the
  * offline case.
  */
-function prBar(graph: ChangeGraph): string {
+function prBar(graph: ChangeGraph, canReview = false): string {
   const meta = graph.meta;
   const pull = meta.pullRequest;
   const authors = meta.authors ?? [];
   const commits = authors.reduce((n, a) => n + a.commits, 0);
 
+  // The state is a button where it can be changed and a label where it cannot.
+  // A control that looks pressable and is not is worse than a plain word.
   const state = pull
-    ? pull.draft
-      ? `<span class="state draft">${PR_ICON}Draft</span>`
-      : `<span class="state open">${PR_ICON}Open</span>`
+    ? canReview
+      ? `<span class="state-menu">` +
+        `<button class="state ${pull.draft ? "draft" : "open"} pressable" ` +
+        `data-draft="${pull.draft ? "1" : "0"}" ` +
+        `title="${pull.draft ? "Mark this pull request ready for review" : "Change the state of this pull request"}">` +
+        `${PR_ICON}${pull.draft ? "Draft" : "Open"}${CARET}</button>` +
+        `<span class="state-list" hidden>` +
+        (pull.draft
+          ? `<button class="state-item" data-ready="1">Ready for review` +
+            `<span class="why">Asks the team to look. Reviewers are notified.</span></button>`
+          : `<button class="state-item" data-ready="0">Convert to draft` +
+            `<span class="why">Takes it back out of the review queue.</span></button>`) +
+        `</span></span>`
+      : pull.draft
+        ? `<span class="state draft">${PR_ICON}Draft</span>`
+        : `<span class="state open">${PR_ICON}Open</span>`
     : `<span class="state local">${PR_ICON}Local</span>`;
 
   const decision =
@@ -410,6 +425,12 @@ const MD_TOOLS = [
   tool("task", "Task list", "M7 4h7M7 8h7M7 12h7M2 3.5l1 1 1.5-1.5M2 7.5l1 1 1.5-1.5M2 11.5l1 1 1.5-1.5"),
   tool("suggest", "Suggest a replacement", "M8 3v10M3 8h10"),
 ].join("");
+
+/** The state pill opens something, and says so. */
+const CARET =
+  `<svg class="caret" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">` +
+  `<path d="M4 6.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.7" ` +
+  `stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 /** Putting the panel away. Nothing pending is lost by closing it. */
 const CLOSE_ICON =
@@ -605,7 +626,15 @@ function renderRow(
         'class="row ', 'class="row in-gap ',
       ))
       .join("");
+    // What the band hides, so an arrow aimed at a folded line can find it.
+    const covers = row.covers ?? {};
+    const range = (side: "base" | "head") => {
+      const pair = covers[side];
+      return pair ? ` data-${side}-from="${pair[0]}" data-${side}-to="${pair[1]}"` : "";
+    };
+
     return `<div class="row gap${expandable}${imports}${overflow}" title="${escapeHtml(row.header ?? "")}"` +
+      range("base") + range("head") +
       (row.rows ? ' role="button" tabindex="0"' : "") + ">" +
       `<span class="text">${escapeHtml(row.text)}</span>` +
       `<span class="header">${escapeHtml(row.header ?? "")}</span></div>` +

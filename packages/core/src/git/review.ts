@@ -193,6 +193,25 @@ export function reviewPayload(request: SubmitRequest): Record<string, unknown> {
 }
 
 /**
+ * Takes a pull request out of draft, or puts it back.
+ *
+ * Leaving draft is not a quiet change: it is the moment the team is asked to
+ * look, and reviewers are notified. Callers should confirm before calling this,
+ * for the same reason they confirm before sending a review.
+ */
+export async function setDraft(
+  number: number,
+  draft: boolean,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<void> {
+  await write(
+    ["pr", "ready", String(number), ...(draft ? ["--undo"] : [])],
+    undefined,
+    options,
+  );
+}
+
+/**
  * The node id a pull request has in the forge's graph API.
  *
  * Marking a file read is only offered there, and it takes ids rather than

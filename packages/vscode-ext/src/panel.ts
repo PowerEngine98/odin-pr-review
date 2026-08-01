@@ -2,6 +2,7 @@ import {
   DARK_THEME,
   LIGHT_THEME,
   listReviewComments,
+  setDraft,
   submitReview,
   type ChangeGraph,
   type DraftComment,
@@ -44,7 +45,17 @@ interface SubmitMessage {
   payload: { event: ReviewEvent; body: string; comments: DraftComment[] };
 }
 
-type Message = NavigateMessage | OpenMessage | ViewedMessage | SubmitMessage;
+interface DraftMessage {
+  type: "setDraft";
+  payload: { draft: boolean };
+}
+
+type Message =
+  | NavigateMessage
+  | OpenMessage
+  | ViewedMessage
+  | SubmitMessage
+  | DraftMessage;
 
 export class GraphPanel {
   private static current: GraphPanel | undefined;
@@ -97,7 +108,16 @@ export class GraphPanel {
 
   /** Opens a file as a diff, for the sidebar's file rows. */
   static async openPath(path: string): Promise<void> {
+    // The card and the diff, in that order: the graph is the thing that keeps
+    // your place, and it should already be showing the right file by the time
+    // the editor opens beside it.
+    GraphPanel.current?.focusPath(path);
     await GraphPanel.current?.openDiff(path);
+  }
+
+  /** Brings a file's card to the middle of the canvas. */
+  private focusPath(path: string): void {
+    void this.panel.webview.postMessage({ type: "focus", path });
   }
 
   /** Follows a reference, for the sidebar's reference rows. */
@@ -179,6 +199,55 @@ export class GraphPanel {
       type: "reviewSubmitted",
       comments: this.comments,
     });
+  }
+
+  /**
+   * Takes the pull request out of draft, or puts it back.
+   *
+   * Leaving draft is the moment the team is asked to look — reviewers are
+   * notified and the pull request joins their queue — so it is confirmed the
+   * same way a review is, by a prompt that names what is about to happen.
+   */
+  private async setDraftState(draft: boolean): Promise<void> {
+    const pull = this.graph.meta.pullRequest;
+    if (!pull) return;
+
+    const confirmed = await vscode.window.showWarningMessage(
+      draft
+        ? `Convert #${pull.number} back to a draft?`
+        : `Mark #${pull.number} ready for review?`,
+      {
+        modal: true,
+        detail: draft
+          ? "It leaves the review queue until it is marked ready again."
+          : "Reviewers are notified and the pull request joins their queue.",
+      },
+      draft ? "Convert to draft" : "Ready for review",
+    );
+    if (!confirmed) return;
+
+    try {
+      await setDraft(pull.number, draft, { cwd: this.repo });
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Odin: the state was not changed. ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return;
+    }
+
+    // The bar is drawn from the graph, so the graph is what has to change.
+    this.graph = {
+      ...this.graph,
+      meta: { ...this.graph.meta, pullRequest: { ...pull, draft } },
+    };
+    vscode.window.showInformationMessage(
+      draft
+        ? `Odin: #${pull.number} is a draft again.`
+        : `Odin: #${pull.number} is ready for review.`,
+    );
+    this.render(this.layout);
   }
 
   /** Reflects a change made in the sidebar. */
@@ -324,6 +393,10 @@ export class GraphPanel {
       }
       if (message.type === "submitReview") {
         await this.submit(message.payload);
+        return;
+      }
+      if (message.type === "setDraft") {
+        await this.setDraftState(message.payload.draft);
       }
     } catch (error) {
       vscode.window.showErrorMessage(
