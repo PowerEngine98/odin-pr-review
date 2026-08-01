@@ -37,7 +37,9 @@ export const DARK_THEME: Theme = {
   warning: "#e2b341",
   status: {
     added: "#4ade80",
-    modified: "#d4d4d8",
+    // Git's own convention for a modified file, and distinct enough from the
+    // warning gold that a tan border is never read as a problem.
+    modified: "#e2c08d",
     deleted: "#f87171",
     renamed: "#60a5fa",
     phantom: "#52525b",
@@ -63,7 +65,7 @@ export const LIGHT_THEME: Theme = {
   warning: "#a1730a",
   status: {
     added: "#16a34a",
-    modified: "#52525b",
+    modified: "#895503",
     deleted: "#dc2626",
     renamed: "#2563eb",
     phantom: "#a1a1aa",

@@ -63,7 +63,7 @@ export function toMermaid(graph: ChangeGraph, options: MermaidOptions = {}): str
 
   out.push("");
   out.push("  classDef added stroke:#4ade80,color:#4ade80,fill:transparent;");
-  out.push("  classDef modified stroke:#e5e7eb,color:#e5e7eb,fill:transparent;");
+  out.push("  classDef modified stroke:#e2c08d,color:#e2c08d,fill:transparent;");
   out.push("  classDef deleted stroke:#f87171,color:#f87171,fill:transparent;");
   out.push("  classDef renamed stroke:#60a5fa,color:#60a5fa,fill:transparent;");
   out.push(

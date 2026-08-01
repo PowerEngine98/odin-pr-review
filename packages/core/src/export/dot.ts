@@ -2,7 +2,7 @@ import type { ChangeGraph, EdgeChange, FileStatus } from "../model/types.js";
 
 const NODE_COLOR: Record<FileStatus, string> = {
   added: "#4ade80",
-  modified: "#e5e7eb",
+  modified: "#e2c08d",
   deleted: "#f87171",
   renamed: "#60a5fa",
   phantom: "#6b7280",

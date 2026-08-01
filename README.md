@@ -173,7 +173,7 @@ flowchart LR
   n6 -->|"log"| n3
 
   classDef added stroke:#4ade80,color:#4ade80,fill:transparent;
-  classDef modified stroke:#e5e7eb,color:#e5e7eb,fill:transparent;
+  classDef modified stroke:#e2c08d,color:#e2c08d,fill:transparent;
   classDef deleted stroke:#f87171,color:#f87171,fill:transparent;
   classDef renamed stroke:#60a5fa,color:#60a5fa,fill:transparent;
   classDef phantom stroke:#6b7280,color:#6b7280,fill:transparent,stroke-dasharray:4 4;
