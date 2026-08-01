@@ -1100,9 +1100,17 @@ input[type="checkbox"]:checked::after {
    through the diff pushes the code around to make room for something the reader
    may not want to read yet. The mark sits in the margin, at the height of the
    line it belongs to, and opens on being asked. */
+/* A layer over the canvas rather than part of it, so the faces keep their size
+   and stay clear of the arrows they would otherwise be buried under. */
+.marks {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  pointer-events: none;
+}
 .mark {
-  position: absolute;
-  z-index: 6;
+  position: fixed;
+  pointer-events: auto;
   width: 26px;
   height: 26px;
   cursor: pointer;
@@ -1111,13 +1119,13 @@ input[type="checkbox"]:checked::after {
    floating beside the card. */
 .mark .tail {
   position: absolute;
-  left: -7px;
+  right: -7px;
   top: 50%;
   width: 0;
   height: 0;
   margin-top: -5px;
   border: 5px solid transparent;
-  border-right-color: color-mix(in srgb, var(--text) 34%, transparent);
+  border-left-color: color-mix(in srgb, var(--text) 34%, transparent);
 }
 .mark .face {
   display: block;

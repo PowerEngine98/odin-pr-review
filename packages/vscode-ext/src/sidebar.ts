@@ -224,6 +224,10 @@ body {
   white-space: nowrap;
 }
 .head .stats .spacer { flex: 1; }
+.head .filter { margin-top: 6px; }
+/* Filtered rows are removed from the flow rather than dimmed: a list with the
+   misses still in it, greyed, is longer than the list you started with. */
+.filtered-out { display: none !important; }
 
 .head .progress { color: var(--muted); }
 .head .progress .done {
@@ -574,6 +578,61 @@ if (filter) {
     });
   });
 }
+
+/*
+ * Filtering the change.
+ *
+ * A file matches on its path, a reference on the symbol it resolves to and the
+ * file and line it lands in — so searching for a function name finds both the
+ * files that call it and the calls themselves. A file whose references match
+ * stays, with its list opened: hiding a file whose contents matched would be
+ * the opposite of what was asked for.
+ *
+ * Folders follow their contents. An empty one is not a result.
+ */
+const treeFilter = document.getElementById("tree-filter");
+if (treeFilter) {
+  treeFilter.addEventListener("input", () => {
+    const needle = treeFilter.value.trim().toLowerCase();
+    const searching = needle !== "";
+
+    document.querySelectorAll(".row").forEach((row) => {
+      const refs = row.nextElementSibling;
+      const matchingRefs = refs && refs.classList.contains("refs")
+        ? [...refs.querySelectorAll(".ref")].filter(
+            (ref) => !searching || ref.dataset.search.includes(needle),
+          )
+        : [];
+
+      const self = !searching || row.dataset.search.includes(needle);
+      const keep = self || matchingRefs.length > 0;
+      row.classList.toggle("filtered-out", !keep);
+
+      if (refs && refs.classList.contains("refs")) {
+        refs.querySelectorAll(".ref").forEach((ref) => {
+          // With the file itself matching, its references are all shown; it is
+          // the file that was asked for, not a subset of what it points at.
+          const show = !searching || self || ref.dataset.search.includes(needle);
+          ref.classList.toggle("filtered-out", !show);
+        });
+        // Opened while searching so a match inside is not hidden behind a
+        // twisty the reader would have to guess at.
+        row.classList.toggle("open", searching ? !self && matchingRefs.length > 0 : row.classList.contains("open"));
+      }
+    });
+
+    // A folder is worth showing when something under it is.
+    const folders = [...document.querySelectorAll(".folder")].reverse();
+    folders.forEach((folder) => {
+      const body = folder.nextElementSibling;
+      const alive = body
+        ? body.querySelector(".row:not(.filtered-out), .folder:not(.filtered-out)")
+        : null;
+      folder.classList.toggle("filtered-out", searching && !alive);
+      if (body) body.classList.toggle("filtered-out", searching && !alive);
+    });
+  });
+}
 </script></body></html>`;
 }
 
@@ -652,6 +711,8 @@ function header(graph: ChangeGraph, viewed: ViewedStore): string {
     ${p.deletions > 0 ? `<span class="removed">−${p.deletions}</span>` : ""}
     ${p.authors ? `<span class="authors" title="${escapeHtml(p.authorsFull)}">${escapeHtml(p.authors)}</span>` : ""}
   </div>
+  <input id="tree-filter" class="filter" type="search" autocomplete="off"
+         placeholder="Filter files and references">
 </div>`;
 }
 
@@ -706,6 +767,7 @@ function fileRow(
   return (
     `<div class="row status-${node.status}${viewed?.has(node.path) ? " seen-marked" : ""}" ` +
     `data-path="${escapeHtml(node.path)}" ` +
+    `data-search="${escapeHtml(node.path.toLowerCase())}" ` +
     `style="padding-left:${8 + (depth + 1) * 10}px" ` +
     `title="${escapeHtml(node.path)}">` +
     `<span class="twisty${outgoing.length ? "" : " none"}">${CHEVRON}</span>` +
@@ -736,6 +798,7 @@ function refRow(edge: Edge, graph: ChangeGraph, depth = 0): string {
 
   return (
     `<div class="ref ${edge.change}" data-id="${escapeHtml(edge.id)}" ` +
+    `data-search="${escapeHtml(`${edge.to.symbolName ?? ""} ${where} ${edge.label ?? ""}`.toLowerCase())}" ` +
     `style="padding-left:${8 + (depth + 1) * 10 + 22}px" ` +
     `title="${escapeHtml(edge.label ?? "")}">` +
     `<span class="arrow">→</span>` +

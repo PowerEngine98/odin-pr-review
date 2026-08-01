@@ -1094,9 +1094,17 @@ input[type="checkbox"]:checked::after {
    through the diff pushes the code around to make room for something the reader
    may not want to read yet. The mark sits in the margin, at the height of the
    line it belongs to, and opens on being asked. */
+/* A layer over the canvas rather than part of it, so the faces keep their size
+   and stay clear of the arrows they would otherwise be buried under. */
+.marks {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  pointer-events: none;
+}
 .mark {
-  position: absolute;
-  z-index: 6;
+  position: fixed;
+  pointer-events: auto;
   width: 26px;
   height: 26px;
   cursor: pointer;
@@ -1105,13 +1113,13 @@ input[type="checkbox"]:checked::after {
    floating beside the card. */
 .mark .tail {
   position: absolute;
-  left: -7px;
+  right: -7px;
   top: 50%;
   width: 0;
   height: 0;
   margin-top: -5px;
   border: 5px solid transparent;
-  border-right-color: color-mix(in srgb, var(--text) 34%, transparent);
+  border-left-color: color-mix(in srgb, var(--text) 34%, transparent);
 }
 .mark .face {
   display: block;
@@ -1305,6 +1313,7 @@ input[type="checkbox"]:checked::after {
   <div class="card-body"><div class="row ctx" data-new="1"><span class="marker"></span><span class="num old anchor">1</span><span class="text"><span class="t0">import</span><span class="t1"> { </span><span class="t2">log</span><span class="t1"> } </span><span class="t0">from</span><span class="t1"> </span><span class="t3">&quot;./logger&quot;</span><span class="t1">;</span></span><span class="num new">1</span></div><div class="row ctx" data-new="2"><span class="marker"></span><span class="num old anchor">2</span><span class="text"></span><span class="num new">2</span></div><div class="row ctx" data-new="3"><span class="marker"></span><span class="num old anchor">3</span><span class="text"><span class="t7">/**</span></span><span class="num new">3</span></div><div class="row gap" title="@@ -8,7 +8,7 @@ export class Repository {" data-base-from="1" data-base-to="7" data-head-from="4" data-head-to="7"><span class="text">⋯ 4 unchanged lines</span><span class="header">@@ -8,7 +8,7 @@ export class Repository {</span></div><div class="row ctx" data-old="8" data-new="8"><span class="marker"></span><span class="num old">8</span><span class="text"><span class="t1">  </span><span class="t2">private</span><span class="t1"> </span><span class="t2">readonly</span><span class="t1"> </span><span class="t2">items</span><span class="t1"> = </span><span class="t4">new</span><span class="t1"> </span><span class="t6">Map</span><span class="t1">&lt;</span><span class="t5">string</span><span class="t1">, </span><span class="t5">string</span><span class="t1">&gt;();</span></span><span class="num new">8</span></div><div class="row ctx" data-old="9" data-new="9"><span class="marker"></span><span class="num old">9</span><span class="text"></span><span class="num new">9</span></div><div class="row ctx" data-old="10" data-new="10"><span class="marker"></span><span class="num old">10</span><span class="text"><span class="t1">  </span><span class="t6">save</span><span class="t1">(</span><span class="t2">key</span><span class="t1">: </span><span class="t2">string</span><span class="t1">, </span><span class="t2">value</span><span class="t1">: </span><span class="t2">string</span><span class="t1">): </span><span class="t4">void</span><span class="t1"> {</span></span><span class="num new">10</span></div><div class="row del" data-old="11"><span class="marker">−</span><span class="num old">11</span><span class="text"><span class="t1">    </span><span class="t6">log</span><span class="t1">(</span><span class="t3">&quot;saving &quot;</span><span class="t1"> + </span><span class="t2">key</span><span class="t1">);</span></span><span class="num new anchor">11</span></div><div class="row add" data-new="11"><span class="marker">+</span><span class="num old anchor">12</span><span class="text"><span class="t1">    </span><span class="t6">log</span><span class="t1">(</span><span class="t3">&quot;saving &quot;</span><span class="t1"> + </span><span class="t2">key</span><span class="t1"> + </span><span class="t3">&quot; (&quot;</span><span class="t1"> + </span><span class="t2">value</span><span class="t1">.</span><span class="t2">length</span><span class="t1"> + </span><span class="t3">&quot; bytes)&quot;</span><span class="t1">);</span></span><span class="num new">11</span></div><div class="row ctx" data-old="12" data-new="12"><span class="marker"></span><span class="num old">12</span><span class="text"><span class="t1">    </span><span class="t4">this</span><span class="t1">.</span><span class="t2">items</span><span class="t1">.</span><span class="t6">set</span><span class="t1">(</span><span class="t2">key</span><span class="t1">, </span><span class="t2">value</span><span class="t1">);</span></span><span class="num new">12</span></div><div class="row ctx" data-old="13" data-new="13"><span class="marker"></span><span class="num old">13</span><span class="text"><span class="t1">  }</span></span><span class="num new">13</span></div><div class="row ctx" data-old="14" data-new="14"><span class="marker"></span><span class="num old">14</span><span class="text"></span><span class="num new">14</span></div><div class="row gap" title="@@ -41,6 +41,7 @@ export class Repository {" data-base-from="15" data-base-to="40" data-head-from="15" data-head-to="40"><span class="text">⋯ 26 unchanged lines</span><span class="header">@@ -41,6 +41,7 @@ export class Repository {</span></div><div class="row ctx" data-old="41" data-new="41"><span class="marker"></span><span class="num old">41</span><span class="text"><span class="t1">  }</span></span><span class="num new">41</span></div><div class="row ctx" data-old="42" data-new="42"><span class="marker"></span><span class="num old">42</span><span class="text"></span><span class="num new">42</span></div><div class="row ctx" data-old="43" data-new="43"><span class="marker"></span><span class="num old">43</span><span class="text"><span class="t1">  </span><span class="t6">clear</span><span class="t1">(): </span><span class="t4">void</span><span class="t1"> {</span></span><span class="num new">43</span></div><div class="row add" data-new="44"><span class="marker">+</span><span class="num old anchor">44</span><span class="text"><span class="t1">    </span><span class="t6">log</span><span class="t1">(</span><span class="t3">&quot;clearing &quot;</span><span class="t1"> + </span><span class="t4">this</span><span class="t1">.</span><span class="t2">items</span><span class="t1">.</span><span class="t2">size</span><span class="t1"> + </span><span class="t3">&quot; items&quot;</span><span class="t1">);</span></span><span class="num new">44</span></div><div class="row ctx" data-old="44" data-new="45"><span class="marker"></span><span class="num old">44</span><span class="text"><span class="t1">    </span><span class="t4">this</span><span class="t1">.</span><span class="t2">items</span><span class="t1">.</span><span class="t6">clear</span><span class="t1">();</span></span><span class="num new">45</span></div><div class="row ctx" data-old="45" data-new="46"><span class="marker"></span><span class="num old">45</span><span class="text"><span class="t1">  }</span></span><span class="num new">46</span></div><div class="row ctx" data-old="46" data-new="47"><span class="marker"></span><span class="num old">46</span><span class="text"><span class="t1">}</span></span><span class="num new">47</span></div></div>
 </div>
 </div></div>
+<div class="marks"></div>
 <div class="tooltip"></div>
 <div class="thread" hidden><div class="thread-head"><span class="thread-where"></span><button class="thread-close" title="Close" aria-label="Close"><svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button></div><div class="thread-body"></div></div>
 <div class="composer" hidden>
@@ -1376,10 +1385,13 @@ input[type="checkbox"]:checked::after {
   function paint() {
     canvas.style.transform =
       "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
-    // An open composer belongs to a line, so it travels with it, and so does
-    // an open thread.
+    // Everything pinned to a line moves with it: the composer, the open thread,
+    // and the marks in the margin. The marks especially — they are placed from
+    // screen coordinates, so a view that moves without telling them leaves them
+    // behind, or hidden off the edge as if they did not exist.
     placeComposer();
     placeThread();
+    placeMarks();
   }
 
   function rest() {
@@ -1396,7 +1408,15 @@ input[type="checkbox"]:checked::after {
   var origin = null;
 
   viewport.addEventListener("pointerdown", function (event) {
-    if (event.target.closest(".card") || event.target.closest("path.hit")) return;
+    // A mark is not part of the drawing you drag. Capturing the pointer here
+    // would redirect the rest of the gesture to the viewport, and the click
+    // would never reach the mark at all — which is why the threads stopped
+    // opening.
+    if (
+      event.target.closest(".card") ||
+      event.target.closest("path.hit") ||
+      event.target.closest(".mark")
+    ) return;
     panning = true;
     origin = { x: event.clientX - view.x, y: event.clientY - view.y };
     viewport.classList.add("panning");
@@ -2738,6 +2758,7 @@ input[type="checkbox"]:checked::after {
    * to; the thread does not, because prose at a tenth of its size is not prose.
    */
   var threadBox = document.querySelector(".thread");
+  var markLayer = document.querySelector(".marks");
   var marks = [];
   var openMark = null;
 
@@ -2776,7 +2797,7 @@ input[type="checkbox"]:checked::after {
   function buildMarks() {
     marks.forEach(function (m) { m.el.remove(); });
     marks = [];
-    if (!canvas || !(data.comments || []).length) return;
+    if (!markLayer || !(data.comments || []).length) return;
 
     threadsOf(data.comments).forEach(function (thread) {
       var node = data.nodes.find(function (n) { return n.path === thread.root.path; });
@@ -2796,7 +2817,7 @@ input[type="checkbox"]:checked::after {
         showThread(thread, el);
       });
 
-      canvas.appendChild(el);
+      markLayer.appendChild(el);
       marks.push({ el: el, thread: thread, nodeId: node.id });
     });
 
@@ -2831,22 +2852,37 @@ input[type="checkbox"]:checked::after {
    * folded line lands on the band standing in for it rather than guessing.
    */
   function placeMarks() {
+    if (!markLayer) return;
+    var top = document.querySelector(".chrome");
+    var ceiling = top ? top.getBoundingClientRect().height : 0;
+
     marks.forEach(function (mark) {
       var node = nodeFor(mark.nodeId);
       var card = document.getElementById("card-" + cssId(mark.nodeId));
       if (!node || !card) return;
 
-      var hidden = card.classList.contains("hidden") ||
+      var gone = card.classList.contains("hidden") ||
         card.classList.contains("viewed-hidden");
-      mark.el.hidden = hidden;
-      if (hidden) return;
+      if (gone) { mark.el.hidden = true; return; }
 
       var side = mark.thread.root.side === "LEFT" ? "base" : "head";
       var anchor = anchorFor(mark.nodeId, side, mark.thread.root.line, false);
-      if (!anchor) return;
+      if (!anchor) { mark.el.hidden = true; return; }
 
-      mark.el.style.left = (node.x + node.width + 14) + "px";
-      mark.el.style.top = (anchor.y - 13) + "px";
+      // Screen coordinates, not canvas ones. A face drawn at a tenth of its
+      // size is not a face, and a target seven pixels across is not a target —
+      // the mark keeps its size and follows the card instead of scaling with
+      // it. To the left of the file, because arrows leave a card on its right
+      // and a mark over that traffic is both hard to see and hard to click.
+      var box = card.getBoundingClientRect();
+      var y = view.y + anchor.y * view.scale;
+      var offScreen = y < ceiling || y > window.innerHeight ||
+        box.right < 0 || box.left > window.innerWidth;
+      mark.el.hidden = offScreen;
+      if (offScreen) return;
+
+      mark.el.style.left = Math.round(box.left - 34) + "px";
+      mark.el.style.top = Math.round(y - 13) + "px";
     });
   }
 

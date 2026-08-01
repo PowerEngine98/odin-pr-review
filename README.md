@@ -215,6 +215,12 @@ an author, a commit count and two ref names. The forge half is asked of the `gh`
 command line, so it inherits whatever authentication you already have, and its
 absence changes nothing else. `--pr` does the same on the command line.
 
+A filter box sits under the progress bar. A file matches on its path, a
+reference on the symbol it resolves to and the file and line it lands in — so
+searching a function name finds both the files that call it and the calls
+themselves, with the matching file's references opened rather than left behind a
+twisty. Folders follow their contents; an empty one is not a result.
+
 Odin gets its own activity bar entry. The sidebar lists every changed file with
 its status, and expands to show the references leaving it — the graph as a list,
 for when a change is too large to take in visually or you just want to scan.

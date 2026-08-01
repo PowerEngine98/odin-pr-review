@@ -187,6 +187,7 @@ export function renderHtml(
     edgeLayer(full),
     cards,
     `</div></div>`,
+    `<div class="marks"></div>`,
     `<div class="tooltip"></div>`,
     `<div class="thread" hidden><div class="thread-head">` +
       `<span class="thread-where"></span>` +

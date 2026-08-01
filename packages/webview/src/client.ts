@@ -44,10 +44,13 @@ export const CLIENT_SCRIPT = String.raw`
   function paint() {
     canvas.style.transform =
       "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
-    // An open composer belongs to a line, so it travels with it, and so does
-    // an open thread.
+    // Everything pinned to a line moves with it: the composer, the open thread,
+    // and the marks in the margin. The marks especially — they are placed from
+    // screen coordinates, so a view that moves without telling them leaves them
+    // behind, or hidden off the edge as if they did not exist.
     placeComposer();
     placeThread();
+    placeMarks();
   }
 
   function rest() {
@@ -64,7 +67,15 @@ export const CLIENT_SCRIPT = String.raw`
   var origin = null;
 
   viewport.addEventListener("pointerdown", function (event) {
-    if (event.target.closest(".card") || event.target.closest("path.hit")) return;
+    // A mark is not part of the drawing you drag. Capturing the pointer here
+    // would redirect the rest of the gesture to the viewport, and the click
+    // would never reach the mark at all — which is why the threads stopped
+    // opening.
+    if (
+      event.target.closest(".card") ||
+      event.target.closest("path.hit") ||
+      event.target.closest(".mark")
+    ) return;
     panning = true;
     origin = { x: event.clientX - view.x, y: event.clientY - view.y };
     viewport.classList.add("panning");
@@ -1406,6 +1417,7 @@ export const CLIENT_SCRIPT = String.raw`
    * to; the thread does not, because prose at a tenth of its size is not prose.
    */
   var threadBox = document.querySelector(".thread");
+  var markLayer = document.querySelector(".marks");
   var marks = [];
   var openMark = null;
 
@@ -1444,7 +1456,7 @@ export const CLIENT_SCRIPT = String.raw`
   function buildMarks() {
     marks.forEach(function (m) { m.el.remove(); });
     marks = [];
-    if (!canvas || !(data.comments || []).length) return;
+    if (!markLayer || !(data.comments || []).length) return;
 
     threadsOf(data.comments).forEach(function (thread) {
       var node = data.nodes.find(function (n) { return n.path === thread.root.path; });
@@ -1464,7 +1476,7 @@ export const CLIENT_SCRIPT = String.raw`
         showThread(thread, el);
       });
 
-      canvas.appendChild(el);
+      markLayer.appendChild(el);
       marks.push({ el: el, thread: thread, nodeId: node.id });
     });
 
@@ -1499,22 +1511,37 @@ export const CLIENT_SCRIPT = String.raw`
    * folded line lands on the band standing in for it rather than guessing.
    */
   function placeMarks() {
+    if (!markLayer) return;
+    var top = document.querySelector(".chrome");
+    var ceiling = top ? top.getBoundingClientRect().height : 0;
+
     marks.forEach(function (mark) {
       var node = nodeFor(mark.nodeId);
       var card = document.getElementById("card-" + cssId(mark.nodeId));
       if (!node || !card) return;
 
-      var hidden = card.classList.contains("hidden") ||
+      var gone = card.classList.contains("hidden") ||
         card.classList.contains("viewed-hidden");
-      mark.el.hidden = hidden;
-      if (hidden) return;
+      if (gone) { mark.el.hidden = true; return; }
 
       var side = mark.thread.root.side === "LEFT" ? "base" : "head";
       var anchor = anchorFor(mark.nodeId, side, mark.thread.root.line, false);
-      if (!anchor) return;
+      if (!anchor) { mark.el.hidden = true; return; }
 
-      mark.el.style.left = (node.x + node.width + 14) + "px";
-      mark.el.style.top = (anchor.y - 13) + "px";
+      // Screen coordinates, not canvas ones. A face drawn at a tenth of its
+      // size is not a face, and a target seven pixels across is not a target —
+      // the mark keeps its size and follows the card instead of scaling with
+      // it. To the left of the file, because arrows leave a card on its right
+      // and a mark over that traffic is both hard to see and hard to click.
+      var box = card.getBoundingClientRect();
+      var y = view.y + anchor.y * view.scale;
+      var offScreen = y < ceiling || y > window.innerHeight ||
+        box.right < 0 || box.left > window.innerWidth;
+      mark.el.hidden = offScreen;
+      if (offScreen) return;
+
+      mark.el.style.left = Math.round(box.left - 34) + "px";
+      mark.el.style.top = Math.round(y - 13) + "px";
     });
   }
 
