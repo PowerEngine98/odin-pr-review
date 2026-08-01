@@ -374,7 +374,7 @@ html, body {
 .tooltip {
   position: fixed;
   z-index: 30;
-  max-width: 380px;
+  max-width: 440px;
   padding: 7px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
@@ -391,9 +391,8 @@ html, body {
 .tooltip.removed .arrow { color: var(--removed); }
 .tooltip .target,
 .tooltip .meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .tooltip .target { color: var(--text); }
 .tooltip .meta { color: var(--muted); }
