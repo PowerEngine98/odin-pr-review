@@ -11,13 +11,21 @@ import {
 import * as vscode from "vscode";
 
 import { buildTree, type Folder } from "./tree-model.js";
+import type { ViewedStore } from "./viewed.js";
 
-const STATUS_LABEL: Record<FileStatus, string> = {
-  added: "A",
-  modified: "M",
-  deleted: "D",
-  renamed: "R",
-  phantom: "~",
+/**
+ * The glyph inside each status box.
+ *
+ * Follows GitHub Desktop: a small filled square carrying a mark, rather than a
+ * bare letter. At sidebar size the shape is what registers — a reader picks out
+ * "green plus" long before they read anything.
+ */
+const STATUS_GLYPH: Record<FileStatus, string> = {
+  added: "+",
+  modified: "•",
+  deleted: "−",
+  renamed: "→",
+  phantom: "·",
 };
 
 /**
@@ -36,6 +44,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private graph: ChangeGraph | undefined;
 
+  constructor(private readonly viewed: ViewedStore) {}
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     view.webview.options = { enableScripts: true, localResourceRoots: [] };
@@ -44,6 +54,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       type: string;
       path?: string;
       edgeId?: string;
+      paths?: string[];
+      viewed?: boolean;
     }) => {
       if (message.type === "open" && message.path) {
         void vscode.commands.executeCommand("odin.openFile", message.path);
@@ -62,6 +74,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
       if (message.type === "review") {
         void vscode.commands.executeCommand("odin.review");
+        return;
+      }
+      if (message.type === "viewed" && message.paths) {
+        this.viewed.set(message.paths, message.viewed === true);
       }
     });
 
@@ -73,18 +89,31 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     this.render();
   }
 
+  /** Reflects a change made elsewhere, without redrawing the list. */
+  apply(paths: string[], viewed: boolean): void {
+    void this.view?.webview.postMessage({ type: "setViewed", paths, viewed });
+  }
+
   private render(): void {
     if (!this.view) return;
     const dark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-    this.view.webview.html = html(this.graph, dark ? DARK_THEME : LIGHT_THEME);
+    this.view.webview.html = html(
+      this.graph,
+      dark ? DARK_THEME : LIGHT_THEME,
+      this.viewed,
+    );
   }
 }
 
-function html(graph: ChangeGraph | undefined, theme: Theme): string {
+function html(
+  graph: ChangeGraph | undefined,
+  theme: Theme,
+  viewed: ViewedStore,
+): string {
   const body = graph
-    ? renderTree(buildTree(graph.nodes), graph, 0)
+    ? renderTree(buildTree(graph.nodes), graph, 0, viewed)
     : `<p class="empty">Review this branch to see its files here.</p>
        <button id="review">Review Pull Request</button>`;
 
@@ -142,18 +171,34 @@ body {
   text-align: center;
 }
 .twisty.none { visibility: hidden; }
-.badge {
-  width: 13px;
+/* A filled square with a mark in it, as GitHub Desktop draws them. */
+.box {
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
-  text-align: center;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid currentColor;
+  border-radius: 3px;
   font-size: 10px;
+  line-height: 1;
+  font-weight: 700;
 }
-.status-added .badge    { color: var(--status-added); }
-.status-modified .badge { color: var(--status-modified); }
-.status-deleted .badge  { color: var(--status-deleted); }
-.status-renamed .badge  { color: var(--status-renamed); }
-.status-phantom .badge  { color: var(--status-phantom); }
+.status-added .box    { color: var(--status-added); background: color-mix(in srgb, var(--status-added) 16%, transparent); }
+.status-modified .box { color: var(--status-modified); background: color-mix(in srgb, var(--status-modified) 16%, transparent); }
+.status-deleted .box  { color: var(--status-deleted); background: color-mix(in srgb, var(--status-deleted) 16%, transparent); }
+.status-renamed .box  { color: var(--status-renamed); background: color-mix(in srgb, var(--status-renamed) 16%, transparent); }
+.status-phantom .box  { color: var(--status-phantom); background: transparent; }
+
+input.seen {
+  flex: 0 0 auto;
+  margin: 0 2px 0 0;
+  cursor: pointer;
+}
+.row.seen-marked .name,
+.row.seen-marked .counts { opacity: 0.45; }
+.row.seen-marked .name { text-decoration: line-through; }
 
 .name { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
 .status-phantom .name { color: var(--muted); }
@@ -209,11 +254,78 @@ ${body}
 const vscodeApi = acquireVsCodeApi();
 
 document.querySelectorAll(".folder").forEach((folder) => {
-  folder.addEventListener("click", () => {
+  folder.addEventListener("click", (event) => {
+    if (event.target.closest(".seen")) return;
     folder.classList.toggle("open");
     const twisty = folder.querySelector(".twisty");
     if (twisty) twisty.textContent = folder.classList.contains("open") ? "▾" : "▸";
   });
+});
+
+/** The file rows a folder heading governs. */
+function rowsUnder(folder) {
+  const body = folder.nextElementSibling;
+  return body ? [...body.querySelectorAll(".row")] : [];
+}
+
+/**
+ * Reflects the state of the files below each folder.
+ *
+ * Some-but-not-all is shown as indeterminate rather than as unchecked, so a
+ * folder never claims nothing in it has been read.
+ */
+function refreshFolders() {
+  document.querySelectorAll(".folder").forEach((folder) => {
+    const boxes = rowsUnder(folder).map((r) => r.querySelector(".seen"));
+    const checked = boxes.filter((b) => b && b.checked).length;
+    const box = folder.querySelector(".seen");
+    if (!box) return;
+    box.checked = boxes.length > 0 && checked === boxes.length;
+    box.indeterminate = checked > 0 && checked < boxes.length;
+  });
+}
+
+function markRow(row, marked) {
+  const box = row.querySelector(".seen");
+  if (box) box.checked = marked;
+  row.classList.toggle("seen-marked", marked);
+}
+
+function announce(paths, marked) {
+  if (paths.length > 0) {
+    vscodeApi.postMessage({ type: "viewed", paths: paths, viewed: marked });
+  }
+}
+
+document.querySelectorAll(".row .seen").forEach((box) => {
+  box.addEventListener("click", (event) => event.stopPropagation());
+  box.addEventListener("change", () => {
+    const row = box.closest(".row");
+    markRow(row, box.checked);
+    refreshFolders();
+    announce([row.dataset.path], box.checked);
+  });
+});
+
+document.querySelectorAll(".folder .seen").forEach((box) => {
+  box.addEventListener("click", (event) => event.stopPropagation());
+  box.addEventListener("change", () => {
+    // A folder speaks for everything beneath it, however deep.
+    const rows = rowsUnder(box.closest(".folder"));
+    rows.forEach((row) => markRow(row, box.checked));
+    refreshFolders();
+    announce(rows.map((r) => r.dataset.path), box.checked);
+  });
+});
+
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (!message || message.type !== "setViewed") return;
+  const wanted = new Set(message.paths || []);
+  document.querySelectorAll(".row").forEach((row) => {
+    if (wanted.has(row.dataset.path)) markRow(row, message.viewed === true);
+  });
+  refreshFolders();
 });
 
 document.querySelectorAll(".row").forEach((row) => {
@@ -235,28 +347,41 @@ document.querySelectorAll(".ref").forEach((ref) => {
   });
 });
 
+refreshFolders();
+
 const review = document.getElementById("review");
 if (review) review.addEventListener("click", () => vscodeApi.postMessage({ type: "review" }));
 </script></body></html>`;
 }
 
-function renderTree(folder: Folder, graph: ChangeGraph, depth: number): string {
+function renderTree(
+  folder: Folder,
+  graph: ChangeGraph,
+  depth: number,
+  viewed: ViewedStore,
+): string {
   const inner =
-    folder.folders.map((f) => renderTree(f, graph, depth + 1)).join("") +
-    folder.files.map((node) => fileRow(node, graph, depth)).join("");
+    folder.folders.map((f) => renderTree(f, graph, depth + 1, viewed)).join("") +
+    folder.files.map((node) => fileRow(node, graph, depth, viewed)).join("");
 
   if (folder.label === "") return inner;
 
   const indent = depth * 10;
   return (
     `<div class="folder open" style="padding-left:${8 + indent}px">` +
+    `<input type="checkbox" class="seen" title="Mark everything below as reviewed">` +
     `<span class="twisty">▾</span>` +
     `<span class="dir">${escapeHtml(folder.label)}</span>` +
     `</div><div class="folder-body">${inner}</div>`
   );
 }
 
-function fileRow(node: FileNode, graph: ChangeGraph, depth = 0): string {
+function fileRow(
+  node: FileNode,
+  graph: ChangeGraph,
+  depth = 0,
+  viewed?: ViewedStore,
+): string {
   const title = cardTitle(node);
   const outgoing = graph.edges.filter((e) => e.from.nodeId === node.id);
 
@@ -276,11 +401,14 @@ function fileRow(node: FileNode, graph: ChangeGraph, depth = 0): string {
       : "";
 
   return (
-    `<div class="row status-${node.status}" data-path="${escapeHtml(node.path)}" ` +
+    `<div class="row status-${node.status}${viewed?.has(node.path) ? " seen-marked" : ""}" ` +
+    `data-path="${escapeHtml(node.path)}" ` +
     `style="padding-left:${8 + (depth + 1) * 10}px" ` +
     `title="${escapeHtml(node.path)}">` +
+    `<input type="checkbox" class="seen"${viewed?.has(node.path) ? " checked" : ""} ` +
+    `title="Mark as reviewed">` +
     `<span class="twisty${outgoing.length ? "" : " none"}">▸</span>` +
-    `<span class="badge">${STATUS_LABEL[node.status]}</span>` +
+    `<span class="box">${STATUS_GLYPH[node.status]}</span>` +
     `<span class="name">${escapeHtml(title.name)}</span>` +
     `<span class="counts">${counts}</span>` +
     note +

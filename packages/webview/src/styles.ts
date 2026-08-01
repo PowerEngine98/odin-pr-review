@@ -195,6 +195,23 @@ html, body {
 
 /* A file nothing could read. Marked rather than left blank, because a card
    with no arrows otherwise looks like a file that references nothing. */
+/* Marking a file reviewed is a per-reader note, not a fact about the change,
+   so it sits apart from the counts and stays quiet until hovered. */
+.card-title .viewed {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.card-title .viewed:hover,
+.card.is-viewed .card-title .viewed { opacity: 1; }
+.card-title .viewed input { margin: 0; cursor: pointer; }
+
+.card.is-viewed { opacity: 0.45; }
+
 .card-title .note {
   color: var(--warning);
   font-size: calc(var(--font-size) - 2px);
@@ -362,7 +379,9 @@ html, body {
 #edges g.edge.dim path.wire { opacity: 0.12; }
 #edges g.edge.active path.wire { opacity: 1; stroke-width: 3; }
 
-.card.hidden { display: none; }
+.card.hidden,
+.card.viewed-hidden { display: none; }
+#edges g.edge.viewed-hidden { display: none; }
 .card.dim { opacity: 0.32; }
 .card.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
 .card.flash { animation: flash 900ms ease-out; }
@@ -399,6 +418,8 @@ html, body {
 }
 .tooltip .target { color: var(--text); }
 .tooltip .meta { color: var(--muted); }
+.tooltip .meta .at { color: var(--gutter); margin: 0 1px; }
+.tooltip .meta .line { color: var(--text); opacity: 0.75; }
 
 /* What the reference is says something different from where it goes, so it is
    set apart rather than run on as a third line of the same grey. */

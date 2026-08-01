@@ -390,6 +390,100 @@ export const CLIENT_SCRIPT = String.raw`
     });
   });
 
+  /* ---------------------------------------------------------------- viewed */
+
+  // Which files the reader has marked off. Kept here rather than in the graph:
+  // it is a note about the reader's progress, not a fact about the change.
+  var viewed = {};
+
+  function isViewed(nodeId) {
+    return viewed[nodeId] === true;
+  }
+
+  /**
+   * Hides or reveals a reviewed card, closing the space it leaves.
+   *
+   * Left in place it would punch a hole in its column, and a graph read as a
+   * shape is worse for having gaps in it. Cards below shift by exactly the
+   * height that went away, which is the same move an expansion makes in
+   * reverse.
+   */
+  function applyViewed(card, hide) {
+    var node = nodeFor(card.dataset.id);
+    if (!node) return;
+    var alreadyHidden = card.classList.contains("viewed-hidden");
+    if (hide === alreadyHidden) return;
+
+    var span = node.height + data.rowGap;
+    card.classList.toggle("viewed-hidden", hide);
+
+    data.nodes.forEach(function (other) {
+      if (other.id === node.id) return;
+      if (other.x !== node.x) return;
+      if (other.y <= node.y) return;
+      other.y += hide ? -span : span;
+      var el = document.getElementById("card-" + cssId(other.id));
+      if (el) el.style.top = other.y + "px";
+    });
+  }
+
+  function refreshViewed() {
+    var hideViewed = document.getElementById("filter-viewed").checked;
+
+    cards.forEach(function (card) {
+      var marked = isViewed(card.dataset.id);
+      card.classList.toggle("is-viewed", marked);
+      var box = card.querySelector(".viewed-box");
+      if (box) box.checked = marked;
+      applyViewed(card, marked && hideViewed);
+    });
+
+    edgeGroups.forEach(function (g) {
+      var edge = data.edges.find(function (e) { return e.id === g.dataset.id; });
+      if (!edge) return;
+      var touchesHidden =
+        hideViewed && (isViewed(edge.from) || isViewed(edge.to));
+      g.classList.toggle("viewed-hidden", touchesHidden);
+    });
+
+    rerouteEdges();
+  }
+
+  /** Sets one file's state, from a click here or from the host. */
+  function setViewed(nodeId, marked, tell) {
+    viewed[nodeId] = marked;
+    refreshViewed();
+    if (tell) {
+      var node = nodeFor(nodeId);
+      if (node) notifyHost("viewed", { path: node.path, viewed: marked });
+    }
+  }
+
+  cards.forEach(function (card) {
+    var box = card.querySelector(".viewed-box");
+    if (!box) return;
+    box.addEventListener("click", function (event) { event.stopPropagation(); });
+    box.addEventListener("change", function () {
+      setViewed(card.dataset.id, box.checked, true);
+    });
+  });
+
+  var viewedFilter = document.getElementById("filter-viewed");
+  if (viewedFilter) viewedFilter.addEventListener("change", refreshViewed);
+
+  // The sidebar and the canvas show the same marks, so the host keeps them
+  // in step.
+  window.addEventListener("message", function (event) {
+    var message = event.data;
+    if (!message || message.type !== "setViewed") return;
+    var byPath = {};
+    data.nodes.forEach(function (n) { byPath[n.path] = n.id; });
+    (message.paths || []).forEach(function (path) {
+      if (byPath[path]) viewed[byPath[path]] = message.viewed === true;
+    });
+    refreshViewed();
+  });
+
   /* --------------------------------------------------------------- tooltip */
 
   function showTooltip(event, id) {
@@ -403,11 +497,18 @@ export const CLIENT_SCRIPT = String.raw`
       return path.slice(path.lastIndexOf("/") + 1);
     };
 
+    // The colon is dimmed so the eye can split "file" from "line" without a
+    // pause; run in the same colour they read as one long token.
+    var at = function (path, line) {
+      return escapeHtml(name(path)) + '<span class="at">:</span>' +
+        '<span class="line">' + line + "</span>";
+    };
+
     tooltip.innerHTML =
       '<div class="target">' + escapeHtml(edge.label || edge.symbol || "") + "</div>" +
-      '<div class="meta">' + escapeHtml(name(edge.fromPath)) + ":" + edge.fromLine +
+      '<div class="meta">' + at(edge.fromPath, edge.fromLine) +
       ' <span class="arrow">&rarr;</span> ' +
-      escapeHtml(name(edge.toPath)) + ":" + edge.toLine + "</div>" +
+      at(edge.toPath, edge.toLine) + "</div>" +
       '<div class="facts"><span class="' + edge.change + '">' + edge.change +
       "</span> &middot; " + edge.kind + " &middot; " + edge.confidence + "</div>";
     tooltip.title = edge.fromPath + " → " + edge.toPath;
@@ -529,6 +630,7 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   refreshFilters();
+  refreshViewed();
   fit();
   window.addEventListener("resize", fit);
 })();

@@ -67,6 +67,7 @@ export function renderHtml(
   const viewModel = {
     width: layout.width,
     height: layout.height,
+    rowGap: layout.metrics.rowGap,
     // Cards come from the arrangement that includes everything, so the markup
     // holds every file; only positions and visibility change with the toggle.
     nodes: full.nodes.map((n) => ({
@@ -163,6 +164,7 @@ function toolbar(graph: ChangeGraph, layout: GraphLayout): string {
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
     <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
+    <label title="Files you have marked as reviewed"><input type="checkbox" id="filter-viewed" checked> hide viewed</label>
   </span>
   <button id="action-fit">fit</button>
 </div>`;
@@ -213,7 +215,8 @@ function card(node: PlacedNode, layout: GraphLayout): string {
   const test = node.node.isTest ? " is-test" : "";
   return `<div class="card status-${node.node.status}${unresolved}${test}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
-  <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}</div>
+  <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}` +
+    `<label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body">${body}${more}</div>
 </div>`;
 }

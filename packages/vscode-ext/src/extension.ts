@@ -5,15 +5,27 @@ import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo } from "./graph.js";
 import { GraphPanel } from "./panel.js";
 import { ChangeSidebar } from "./sidebar.js";
+import { ViewedStore } from "./viewed.js";
+
+/** Which files the reviewer has marked off, shared by both views. */
+let viewed: ViewedStore;
 
 /** The sidebar's view of the most recent review. */
-const sidebar = new ChangeSidebar();
+let sidebar: ChangeSidebar;
 
 /** Enough of the last review to act on it without rebuilding. */
 let last: { repo: string; baseRef?: string } | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
+  viewed = new ViewedStore(context.workspaceState);
+  sidebar = new ChangeSidebar(viewed);
+
+  // Both views show the same marks, so each follows what the other does.
   context.subscriptions.push(
+    viewed.onDidChange((paths, marked) => {
+      sidebar.apply(paths, marked);
+      GraphPanel.applyViewed(paths, marked);
+    }),
     vscode.window.registerWebviewViewProvider(ChangeSidebar.viewType, sidebar, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
@@ -87,7 +99,8 @@ async function review(baseRef?: string): Promise<void> {
           return;
         }
 
-        GraphPanel.show(shown, layout, repo, layoutWithTests);
+        viewed.open(repo, graph.meta.baseRef, graph.meta.headRef);
+        GraphPanel.show(shown, layout, repo, layoutWithTests, viewed);
         sidebar.setGraph(graph);
         last = { repo, ...(base ? { baseRef: base } : {}) };
       } catch (error) {

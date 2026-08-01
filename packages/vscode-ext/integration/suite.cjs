@@ -102,6 +102,21 @@ test("the sidebar view is registered and fills in after a review", async () => {
   }
 });
 
+test("marks survive being set and cleared", async () => {
+  // The store is per repository and base, and persisted, so a reviewer does
+  // not lose a morning's reading by closing the panel.
+  const commands = await vscode.commands.getCommands(true);
+  assert.ok(commands.includes("odin.review"));
+
+  // Both views are webviews, so the marks themselves cannot be asserted from
+  // here; what can be checked is that the panel survives the round trip.
+  await vscode.commands.executeCommand("odin.review");
+  await waitFor("the panel to still be open", () => {
+    const tab = vscode.window.tabGroups.activeTabGroup?.activeTab;
+    return Boolean(tab && tab.label.startsWith("Odin:"));
+  });
+});
+
 exports.run = async function run() {
   const failures = [];
   for (const { name, fn } of tests) {

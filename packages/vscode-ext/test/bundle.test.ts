@@ -39,8 +39,22 @@ function loadWithStub(): { api: Stub; extension: ExtensionModule } {
 }
 
 interface ExtensionModule {
-  activate(context: { subscriptions: unknown[] }): void;
+  activate(context: {
+    subscriptions: unknown[];
+    workspaceState: { get: () => unknown; update: () => Promise<void> };
+  }): void;
   deactivate(): void;
+}
+
+/** Activation needs somewhere to keep the reviewer's marks. */
+function context(subscriptions: unknown[] = []) {
+  return {
+    subscriptions,
+    workspaceState: {
+      get: (_key: string, fallback: unknown) => fallback,
+      update: () => Promise.resolve(),
+    },
+  } as unknown as Parameters<ExtensionModule["activate"]>[0];
 }
 
 interface Stub {
@@ -101,6 +115,8 @@ function createStub(): Stub {
     },
     // The tree provider constructs an emitter as a field, so this has to exist
     // before activation, not merely when something subscribes.
+    // The viewed store hands back a Disposable of its own.
+    Disposable: class { constructor(readonly fn?: () => void) {} dispose() {} },
     EventEmitter: class {
       readonly event = () => disposable;
       fire() {}
@@ -131,7 +147,7 @@ describe("the built extension", () => {
 
   it("registers every command the manifest declares", async () => {
     const { api, extension } = loadWithStub();
-    extension.activate({ subscriptions: [] });
+    extension.activate(context());
 
     const manifest = (
       await import("../package.json", { with: { type: "json" } })
@@ -143,22 +159,23 @@ describe("the built extension", () => {
 
   it("serves base-revision documents under its own scheme", () => {
     const { api, extension } = loadWithStub();
-    extension.activate({ subscriptions: [] });
+    extension.activate(context());
     expect(api.registeredSchemes).toEqual(["odin-base"]);
   });
 
   it("collects every registration for disposal", async () => {
     const { api, extension } = loadWithStub();
     const subscriptions: unknown[] = [];
-    extension.activate({ subscriptions });
+    extension.activate(context(subscriptions));
 
     const manifest = (
       await import("../package.json", { with: { type: "json" } })
     ).default as { contributes: { commands: { command: string }[] } };
 
-    // Every command, plus the content provider, the URI handler and the
-    // sidebar. Anything registered but not collected here leaks on reload.
-    const nonCommands = 3;
+    // Every command, plus the content provider, the URI handler, the sidebar
+    // and the viewed store's listener. Anything registered but not collected
+    // here leaks on reload.
+    const nonCommands = 4;
     expect(subscriptions).toHaveLength(
       manifest.contributes.commands.length + nonCommands,
     );
@@ -169,7 +186,7 @@ describe("the built extension", () => {
 
   it("deactivates cleanly", () => {
     const { extension } = loadWithStub();
-    extension.activate({ subscriptions: [] });
+    extension.activate(context());
     expect(() => extension.deactivate()).not.toThrow();
   });
 });

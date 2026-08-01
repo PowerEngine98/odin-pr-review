@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 
 import { baseUri } from "./baseContent.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
+import type { ViewedStore } from "./viewed.js";
 
 /** What the webview sends back when a reviewer follows something. */
 interface NavigateMessage {
@@ -21,7 +22,12 @@ interface OpenMessage {
   payload: { path: string };
 }
 
-type Message = NavigateMessage | OpenMessage;
+interface ViewedMessage {
+  type: "viewed";
+  payload: { path: string; viewed: boolean };
+}
+
+type Message = NavigateMessage | OpenMessage | ViewedMessage;
 
 export class GraphPanel {
   private static current: GraphPanel | undefined;
@@ -36,9 +42,10 @@ export class GraphPanel {
     layout: GraphLayout,
     repo: string,
     withTests?: GraphLayout,
+    viewed?: ViewedStore,
   ): GraphPanel {
     if (GraphPanel.current) {
-      GraphPanel.current.update(graph, layout, repo, withTests);
+      GraphPanel.current.update(graph, layout, repo, withTests, viewed);
       GraphPanel.current.panel.reveal(vscode.ViewColumn.One);
       return GraphPanel.current;
     }
@@ -56,7 +63,7 @@ export class GraphPanel {
       },
     );
 
-    GraphPanel.current = new GraphPanel(panel, graph, layout, repo, withTests);
+    GraphPanel.current = new GraphPanel(panel, graph, layout, repo, withTests, viewed);
     return GraphPanel.current;
   }
 
@@ -83,6 +90,16 @@ export class GraphPanel {
   }
 
   private withTests: GraphLayout | undefined;
+  private viewed: ViewedStore | undefined;
+
+  /** Reflects a change made in the sidebar. */
+  static applyViewed(paths: string[], marked: boolean): void {
+    void GraphPanel.current?.panel.webview.postMessage({
+      type: "setViewed",
+      paths,
+      viewed: marked,
+    });
+  }
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -90,11 +107,13 @@ export class GraphPanel {
     layout: GraphLayout,
     repo: string,
     withTests?: GraphLayout,
+    viewed?: ViewedStore,
   ) {
     this.panel = panel;
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;
+    this.viewed = viewed;
 
     this.render(layout);
 
@@ -122,10 +141,12 @@ export class GraphPanel {
     layout: GraphLayout,
     repo: string,
     withTests?: GraphLayout,
+    viewed?: ViewedStore,
   ): void {
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;
+    this.viewed = viewed;
     this.render(layout);
   }
 
@@ -136,6 +157,18 @@ export class GraphPanel {
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
 
     this.panel.title = `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
+
+    // Marks made in an earlier session are restored once the page is up.
+    const marked = this.viewed?.all() ?? [];
+    if (marked.length > 0) {
+      setTimeout(() => {
+        void this.panel.webview.postMessage({
+          type: "setViewed",
+          paths: marked,
+          viewed: true,
+        });
+      }, 0);
+    }
     this.panel.webview.html = renderHtml(this.graph, layout, {
       theme: dark ? DARK_THEME : LIGHT_THEME,
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
@@ -162,6 +195,10 @@ export class GraphPanel {
       }
       if (message.type === "open") {
         await this.openDiff(message.payload.path);
+        return;
+      }
+      if (message.type === "viewed") {
+        this.viewed?.set([message.payload.path], message.payload.viewed);
       }
     } catch (error) {
       vscode.window.showErrorMessage(

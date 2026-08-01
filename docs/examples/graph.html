@@ -189,6 +189,23 @@ html, body {
 
 /* A file nothing could read. Marked rather than left blank, because a card
    with no arrows otherwise looks like a file that references nothing. */
+/* Marking a file reviewed is a per-reader note, not a fact about the change,
+   so it sits apart from the counts and stays quiet until hovered. */
+.card-title .viewed {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.card-title .viewed:hover,
+.card.is-viewed .card-title .viewed { opacity: 1; }
+.card-title .viewed input { margin: 0; cursor: pointer; }
+
+.card.is-viewed { opacity: 0.45; }
+
 .card-title .note {
   color: var(--warning);
   font-size: calc(var(--font-size) - 2px);
@@ -356,7 +373,9 @@ html, body {
 #edges g.edge.dim path.wire { opacity: 0.12; }
 #edges g.edge.active path.wire { opacity: 1; stroke-width: 3; }
 
-.card.hidden { display: none; }
+.card.hidden,
+.card.viewed-hidden { display: none; }
+#edges g.edge.viewed-hidden { display: none; }
 .card.dim { opacity: 0.32; }
 .card.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
 .card.flash { animation: flash 900ms ease-out; }
@@ -393,6 +412,8 @@ html, body {
 }
 .tooltip .target { color: var(--text); }
 .tooltip .meta { color: var(--muted); }
+.tooltip .meta .at { color: var(--gutter); margin: 0 1px; }
+.tooltip .meta .line { color: var(--text); opacity: 0.75; }
 
 /* What the reference is says something different from where it goes, so it is
    set apart rather than run on as a third line of the same grey. */
@@ -430,6 +451,7 @@ html, body {
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
     <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
+    <label title="Files you have marked as reviewed"><input type="checkbox" id="filter-viewed" checked> hide viewed</label>
   </span>
   <button id="action-fit">fit</button>
 </div>
@@ -437,31 +459,31 @@ html, body {
 <div class="canvas" style="width:2393px;height:916px">
 <svg id="edges" width="2393" height="916"><defs><marker id="arrow-added" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="head-added"/></marker><marker id="arrow-removed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="head-removed"/></marker><marker id="arrow-unchanged" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" class="head-unchanged"/></marker></defs><style>#arrow-added path, .head-added { fill: var(--added); }#arrow-removed path, .head-removed { fill: var(--removed); }#arrow-unchanged path, .head-unchanged { fill: var(--unchanged); }</style><g class="edge removed import" data-id="e:d969fdb6d527"><path class="hit" d="M 1263 559 C 1332.75 559, 1348.25 552, 1418 552"/><path class="wire" d="M 1263 559 C 1332.75 559, 1348.25 552, 1418 552" marker-end="url(#arrow-removed)"/></g><g class="edge removed instantiation" data-id="e:8692a62d0b79"><path class="hit" d="M 1263 595 C 1332.75 595, 1348.25 608, 1418 608"/><path class="wire" d="M 1263 595 C 1332.75 595, 1348.25 608, 1418 608" marker-end="url(#arrow-removed)"/></g><g class="edge removed call" data-id="e:09b3bbf53573"><path class="hit" d="M 1263 739 C 1332.75 739, 1348.25 734, 1418 734"/><path class="wire" d="M 1263 739 C 1332.75 739, 1348.25 734, 1418 734" marker-end="url(#arrow-removed)"/></g><g class="edge added import" data-id="e:17c03e0acdd2"><path class="hit" d="M 537 103 C 951.9000000000001 103, 1044.1 202, 1459 202"/><path class="wire" d="M 537 103 C 951.9000000000001 103, 1044.1 202, 1459 202" marker-end="url(#arrow-added)"/></g><g class="edge added import" data-id="e:945e9c3c3ec2"><path class="hit" d="M 537 103 C 625.2 103, 644.8 521, 733 521"/><path class="wire" d="M 537 103 C 625.2 103, 644.8 521, 733 521" marker-end="url(#arrow-added)"/></g><g class="edge added import" data-id="e:3c2011e2a987"><path class="hit" d="M 537 103 C 618.45 103, 636.55 65, 718 65"/><path class="wire" d="M 537 103 C 618.45 103, 636.55 65, 718 65" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:f3f1cbbe79f8"><path class="hit" d="M 537 247 C 951.9000000000001 247, 1044.1 240, 1459 240"/><path class="wire" d="M 537 247 C 951.9000000000001 247, 1044.1 240, 1459 240" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:d88552d7e3b6"><path class="hit" d="M 537 265 C 625.2 265, 644.8 631, 733 631"/><path class="wire" d="M 537 265 C 625.2 265, 644.8 631, 733 631" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:2545469b3a16"><path class="hit" d="M 537 283 C 618.45 283, 636.55 355, 718 355"/><path class="wire" d="M 537 283 C 618.45 283, 636.55 355, 718 355" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:21cfb5caf93f"><path class="hit" d="M 578 541 C 647.75 541, 663.25 793, 733 793"/><path class="wire" d="M 578 541 C 647.75 541, 663.25 793, 733 793" marker-end="url(#arrow-added)"/></g><g class="edge removed call" data-id="e:f2658af39d71"><path class="hit" d="M 578 523 C 647.75 523, 663.25 703, 733 703"/><path class="wire" d="M 578 523 C 647.75 523, 663.25 703, 733 703" marker-end="url(#arrow-removed)"/></g><g class="edge removed import" data-id="e:2aa712b61542"><path class="hit" d="M 1418 590 C 1348.25 590, 1332.75 521, 1263 521"/><path class="wire" d="M 1418 590 C 1348.25 590, 1332.75 521, 1263 521" marker-end="url(#arrow-removed)"/></g><g class="edge removed call" data-id="e:62fdff7277aa"><path class="hit" d="M 1418 680 C 1348.25 680, 1332.75 703, 1263 703"/><path class="wire" d="M 1418 680 C 1348.25 680, 1332.75 703, 1263 703" marker-end="url(#arrow-removed)"/></g><g class="edge removed call" data-id="e:affa1ceb6246"><path class="hit" d="M 1278 211 C 1359.45 211, 1377.55 241, 1459 241"/><path class="wire" d="M 1278 211 C 1359.45 211, 1377.55 241, 1459 241" marker-end="url(#arrow-removed)"/></g><g class="edge added call" data-id="e:c7e801e84905"><path class="hit" d="M 1278 229 C 1359.45 229, 1377.55 240, 1459 240"/><path class="wire" d="M 1278 229 C 1359.45 229, 1377.55 240, 1459 240" marker-end="url(#arrow-added)"/></g><g class="edge added call" data-id="e:0d1169c0c130"><path class="hit" d="M 1278 373 C 1359.45 373, 1377.55 240, 1459 240"/><path class="wire" d="M 1278 373 C 1359.45 373, 1377.55 240, 1459 240" marker-end="url(#arrow-added)"/></g></svg>
 <div class="card status-added" id="card-n_9518c3291d8e" data-id="n:9518c3291d8e" data-path="src/addedFile.ts" style="left:89px;top:48px;width:448px;height:292px">
-  <div class="card-title" title="src/addedFile.ts">addedFile.ts<span class="stats"><span class="added">+16</span></span></div>
+  <div class="card-title" title="src/addedFile.ts">addedFile.ts<span class="stats"><span class="added">+16</span></span><label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body"><div class="row gap expandable imports" title="" role="button" tabindex="0"><span class="text">⋯ 4 imports</span><span class="header"></span></div><div class="row in-gap add" data-new="1"><span class="marker">+</span><span class="num old anchor">1</span><span class="text">import { log } from &quot;./logger&quot;;</span><span class="num new">1</span></div><div class="row in-gap add" data-new="2"><span class="marker">+</span><span class="num old anchor">2</span><span class="text">import type { MyService } from &quot;./myService&quot;;</span><span class="num new">2</span></div><div class="row in-gap add" data-new="3"><span class="marker">+</span><span class="num old anchor">3</span><span class="text">import type { Repository } from &quot;./repository&quot;;</span><span class="num new">3</span></div><div class="row in-gap add" data-new="4"><span class="marker">+</span><span class="num old anchor">4</span><span class="text"></span><span class="num new">4</span></div><div class="row add" data-new="5"><span class="marker">+</span><span class="num old anchor">5</span><span class="text">export class AddedFile {</span><span class="num new">5</span></div><div class="row add" data-new="6"><span class="marker">+</span><span class="num old anchor">6</span><span class="text">  constructor(</span><span class="num new">6</span></div><div class="row add" data-new="7"><span class="marker">+</span><span class="num old anchor">7</span><span class="text">    private readonly myService: MyService,</span><span class="num new">7</span></div><div class="row add" data-new="8"><span class="marker">+</span><span class="num old anchor">8</span><span class="text">    private readonly repository: Repository,</span><span class="num new">8</span></div><div class="row add" data-new="9"><span class="marker">+</span><span class="num old anchor">9</span><span class="text">  ) {}</span><span class="num new">9</span></div><div class="row add" data-new="10"><span class="marker">+</span><span class="num old anchor">10</span><span class="text"></span><span class="num new">10</span></div><div class="row add" data-new="11"><span class="marker">+</span><span class="num old anchor">11</span><span class="text">  myNewFunction(): void {</span><span class="num new">11</span></div><div class="row add" data-new="12"><span class="marker">+</span><span class="num old anchor">12</span><span class="text">    log(&quot;starting&quot;);</span><span class="num new">12</span></div><div class="row add" data-new="13"><span class="marker">+</span><span class="num old anchor">13</span><span class="text">    this.myService.function1();</span><span class="num new">13</span></div><div class="row add" data-new="14"><span class="marker">+</span><span class="num old anchor">14</span><span class="text">    this.repository.clear();</span><span class="num new">14</span></div><div class="row add" data-new="15"><span class="marker">+</span><span class="num old anchor">15</span><span class="text">  }</span><span class="num new">15</span></div><div class="row add" data-new="16"><span class="marker">+</span><span class="num old anchor">16</span><span class="text">}</span><span class="num new">16</span></div></div>
 </div>
 <div class="card status-modified" id="card-n_a5d65acaa45a" data-id="n:a5d65acaa45a" data-path="src/consumer.ts" style="left:48px;top:396px;width:530px;height:202px">
-  <div class="card-title" title="src/consumer.ts">consumer.ts<span class="stats"><span class="added">+1</span> <span class="removed">−1</span></span></div>
+  <div class="card-title" title="src/consumer.ts">consumer.ts<span class="stats"><span class="added">+1</span> <span class="removed">−1</span></span><label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body"><div class="row gap expandable" title="@@ -4,6 +4,6 @@ export class Consumer {" role="button" tabindex="0"><span class="text">⋯ 3 unchanged lines</span><span class="header">@@ -4,6 +4,6 @@ export class Consumer {</span></div><div class="row in-gap ctx" data-new="1"><span class="marker"></span><span class="num old anchor">1</span><span class="text">import type { MyService } from &quot;./myService&quot;;</span><span class="num new">1</span></div><div class="row in-gap ctx" data-new="2"><span class="marker"></span><span class="num old anchor">2</span><span class="text"></span><span class="num new">2</span></div><div class="row in-gap ctx" data-new="3"><span class="marker"></span><span class="num old anchor">3</span><span class="text">export class Consumer {</span><span class="num new">3</span></div><div class="row ctx" data-old="4" data-new="4"><span class="marker"></span><span class="num old">4</span><span class="text">  constructor(private readonly myService: MyService) {}</span><span class="num new">4</span></div><div class="row ctx" data-old="5" data-new="5"><span class="marker"></span><span class="num old">5</span><span class="text"></span><span class="num new">5</span></div><div class="row ctx" data-old="6" data-new="6"><span class="marker"></span><span class="num old">6</span><span class="text">  aFunction(): void {</span><span class="num new">6</span></div><div class="row del" data-old="7"><span class="marker">−</span><span class="num old">7</span><span class="text">    this.myService.function2();</span><span class="num new anchor">7</span></div><div class="row add" data-new="7"><span class="marker">+</span><span class="num old anchor">8</span><span class="text">    this.myService.function3();</span><span class="num new">7</span></div><div class="row ctx" data-old="8" data-new="8"><span class="marker"></span><span class="num old">8</span><span class="text">  }</span><span class="num new">8</span></div><div class="row ctx" data-old="9" data-new="9"><span class="marker"></span><span class="num old">9</span><span class="text">}</span><span class="num new">9</span></div></div>
 </div>
 <div class="card status-deleted" id="card-n_b2a4cf4d702e" data-id="n:b2a4cf4d702e" data-path="src/deletedFile.ts" style="left:1418px;top:535px;width:530px;height:274px">
-  <div class="card-title" title="src/deletedFile.ts">deletedFile.ts<span class="stats"><span class="removed">−13</span></span></div>
+  <div class="card-title" title="src/deletedFile.ts">deletedFile.ts<span class="stats"><span class="removed">−13</span></span><label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body"><div class="row gap expandable imports" title="" role="button" tabindex="0"><span class="text">⋯ 2 imports</span><span class="header"></span></div><div class="row in-gap del" data-old="1"><span class="marker">−</span><span class="num old">1</span><span class="text">import type { MyService } from &quot;./myService&quot;;</span><span class="num new anchor">1</span></div><div class="row in-gap del" data-old="2"><span class="marker">−</span><span class="num old">2</span><span class="text"></span><span class="num new anchor">2</span></div><div class="row del" data-old="3"><span class="marker">−</span><span class="num old">3</span><span class="text">export class DeletedFile {</span><span class="num new anchor">3</span></div><div class="row del" data-old="4"><span class="marker">−</span><span class="num old">4</span><span class="text">  constructor(private readonly myService: MyService) {}</span><span class="num new anchor">4</span></div><div class="row del" data-old="5"><span class="marker">−</span><span class="num old">5</span><span class="text"></span><span class="num new anchor">5</span></div><div class="row del" data-old="6"><span class="marker">−</span><span class="num old">6</span><span class="text">  anotherFunction(): void {</span><span class="num new anchor">6</span></div><div class="row del" data-old="7"><span class="marker">−</span><span class="num old">7</span><span class="text">    this.myService.function2();</span><span class="num new anchor">7</span></div><div class="row del" data-old="8"><span class="marker">−</span><span class="num old">8</span><span class="text">  }</span><span class="num new anchor">8</span></div><div class="row del" data-old="9"><span class="marker">−</span><span class="num old">9</span><span class="text"></span><span class="num new anchor">9</span></div><div class="row del" data-old="10"><span class="marker">−</span><span class="num old">10</span><span class="text">  anotherFunction2(): void {</span><span class="num new anchor">10</span></div><div class="row del" data-old="11"><span class="marker">−</span><span class="num old">11</span><span class="text">    console.log(&quot;legacy&quot;);</span><span class="num new anchor">11</span></div><div class="row del" data-old="12"><span class="marker">−</span><span class="num old">12</span><span class="text">  }</span><span class="num new anchor">12</span></div><div class="row del" data-old="13"><span class="marker">−</span><span class="num old">13</span><span class="text">}</span><span class="num new anchor">13</span></div></div>
 </div>
 <div class="card status-phantom" id="card-n_7ca9a636a596" data-id="n:7ca9a636a596" data-path="src/logger.ts" style="left:1459px;top:185px;width:448px;height:112px">
-  <div class="card-title" title="src/logger.ts">logger.ts<span class="stats">untouched</span></div>
+  <div class="card-title" title="src/logger.ts">logger.ts<span class="stats">untouched</span><label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body"><div class="row ctx" data-new="1"><span class="marker"></span><span class="num old anchor">1</span><span class="text">export function log(message: string): void {</span><span class="num new">1</span></div><div class="row ctx" data-new="2"><span class="marker"></span><span class="num old anchor">2</span><span class="text">  console.log(`[demo] ${message}`);</span><span class="num new">2</span></div><div class="row ctx" data-new="3"><span class="marker"></span><span class="num old anchor">3</span><span class="text">}</span><span class="num new">3</span></div></div>
 </div>
 <div class="card status-modified" id="card-n_5353548f9372" data-id="n:5353548f9372" data-path="src/myService.ts" style="left:733px;top:504px;width:530px;height:364px">
-  <div class="card-title" title="src/myService.ts">myService.ts<span class="stats"><span class="added">+4</span> <span class="removed">−5</span></span></div>
+  <div class="card-title" title="src/myService.ts">myService.ts<span class="stats"><span class="added">+4</span> <span class="removed">−5</span></span><label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body"><div class="row gap expandable imports" title="" role="button" tabindex="0"><span class="text">⋯ 2 imports</span><span class="header"></span></div><div class="row in-gap del" data-old="1"><span class="marker">−</span><span class="num old">1</span><span class="text">import { DeletedFile } from &quot;./deletedFile&quot;;</span><span class="num new anchor">1</span></div><div class="row in-gap del" data-old="2"><span class="marker">−</span><span class="num old">2</span><span class="text"></span><span class="num new anchor">1</span></div><div class="row ctx" data-old="3" data-new="1"><span class="marker"></span><span class="num old">3</span><span class="text">export class MyService {</span><span class="num new">1</span></div><div class="row del" data-old="4"><span class="marker">−</span><span class="num old">4</span><span class="text">  private readonly deletedFile = new DeletedFile(this);</span><span class="num new anchor">2</span></div><div class="row del" data-old="5"><span class="marker">−</span><span class="num old">5</span><span class="text"></span><span class="num new anchor">2</span></div><div class="row ctx" data-old="6" data-new="2"><span class="marker"></span><span class="num old">6</span><span class="text">  function1(): void {</span><span class="num new">2</span></div><div class="row ctx" data-old="7" data-new="3"><span class="marker"></span><span class="num old">7</span><span class="text">    console.log(&quot;one&quot;);</span><span class="num new">3</span></div><div class="row ctx" data-old="8" data-new="4"><span class="marker"></span><span class="num old">8</span><span class="text">  }</span><span class="num new">4</span></div><div class="row ctx" data-old="9" data-new="5"><span class="marker"></span><span class="num old">9</span><span class="text"></span><span class="num new">5</span></div><div class="row ctx" data-old="10" data-new="6"><span class="marker"></span><span class="num old">10</span><span class="text">  function2(): void {</span><span class="num new">6</span></div><div class="row ctx" data-old="11" data-new="7"><span class="marker"></span><span class="num old">11</span><span class="text">    console.log(&quot;two&quot;);</span><span class="num new">7</span></div><div class="row del" data-old="12"><span class="marker">−</span><span class="num old">12</span><span class="text">    this.deletedFile.anotherFunction2();</span><span class="num new anchor">8</span></div><div class="row add" data-new="8"><span class="marker">+</span><span class="num old anchor">13</span><span class="text">  }</span><span class="num new">8</span></div><div class="row add" data-new="9"><span class="marker">+</span><span class="num old anchor">13</span><span class="text"></span><span class="num new">9</span></div><div class="row add" data-new="10"><span class="marker">+</span><span class="num old anchor">13</span><span class="text">  function3(): void {</span><span class="num new">10</span></div><div class="row add" data-new="11"><span class="marker">+</span><span class="num old anchor">13</span><span class="text">    console.log(&quot;three&quot;);</span><span class="num new">11</span></div><div class="row ctx" data-old="13" data-new="12"><span class="marker"></span><span class="num old">13</span><span class="text">  }</span><span class="num new">12</span></div><div class="row ctx" data-old="14" data-new="13"><span class="marker"></span><span class="num old">14</span><span class="text">}</span><span class="num new">13</span></div></div>
 </div>
 <div class="card status-renamed" id="card-n_d26c6859c04e" data-id="n:d26c6859c04e" data-path="src/renamedFile.ts" style="left:2088px;top:48px;width:257px;height:120px">
-  <div class="card-title" title="src/renamedFile.ts">renamedFile.ts<span class="was">← oldName.ts</span><span class="stats"></span></div>
+  <div class="card-title" title="src/renamedFile.ts">renamedFile.ts<span class="was">← oldName.ts</span><span class="stats"></span><label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body"></div>
 </div>
 <div class="card status-modified" id="card-n_c14920f42f50" data-id="n:c14920f42f50" data-path="src/repository.ts" style="left:718px;top:48px;width:560px;height:400px">
-  <div class="card-title" title="src/repository.ts">repository.ts<span class="stats"><span class="added">+2</span> <span class="removed">−1</span></span></div>
+  <div class="card-title" title="src/repository.ts">repository.ts<span class="stats"><span class="added">+2</span> <span class="removed">−1</span></span><label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
   <div class="card-body"><div class="row gap expandable imports" title="" role="button" tabindex="0"><span class="text">⋯ 2 imports</span><span class="header"></span></div><div class="row in-gap ctx" data-new="1"><span class="marker"></span><span class="num old anchor">1</span><span class="text">import { log } from &quot;./logger&quot;;</span><span class="num new">1</span></div><div class="row in-gap ctx" data-new="2"><span class="marker"></span><span class="num old anchor">2</span><span class="text"></span><span class="num new">2</span></div><div class="row ctx" data-new="3"><span class="marker"></span><span class="num old anchor">3</span><span class="text">/**</span><span class="num new">3</span></div><div class="row gap" title="@@ -8,7 +8,7 @@ export class Repository {"><span class="text">⋯ 4 unchanged lines</span><span class="header">@@ -8,7 +8,7 @@ export class Repository {</span></div><div class="row ctx" data-old="8" data-new="8"><span class="marker"></span><span class="num old">8</span><span class="text">  private readonly items = new Map&lt;string, string&gt;();</span><span class="num new">8</span></div><div class="row ctx" data-old="9" data-new="9"><span class="marker"></span><span class="num old">9</span><span class="text"></span><span class="num new">9</span></div><div class="row ctx" data-old="10" data-new="10"><span class="marker"></span><span class="num old">10</span><span class="text">  save(key: string, value: string): void {</span><span class="num new">10</span></div><div class="row del" data-old="11"><span class="marker">−</span><span class="num old">11</span><span class="text">    log(&quot;saving &quot; + key);</span><span class="num new anchor">11</span></div><div class="row add" data-new="11"><span class="marker">+</span><span class="num old anchor">12</span><span class="text">    log(&quot;saving &quot; + key + &quot; (&quot; + value.length + &quot; bytes)&quot;);</span><span class="num new">11</span></div><div class="row ctx" data-old="12" data-new="12"><span class="marker"></span><span class="num old">12</span><span class="text">    this.items.set(key, value);</span><span class="num new">12</span></div><div class="row ctx" data-old="13" data-new="13"><span class="marker"></span><span class="num old">13</span><span class="text">  }</span><span class="num new">13</span></div><div class="row ctx" data-old="14" data-new="14"><span class="marker"></span><span class="num old">14</span><span class="text"></span><span class="num new">14</span></div><div class="row gap" title="@@ -41,6 +41,7 @@ export class Repository {"><span class="text">⋯ 26 unchanged lines</span><span class="header">@@ -41,6 +41,7 @@ export class Repository {</span></div><div class="row ctx" data-old="41" data-new="41"><span class="marker"></span><span class="num old">41</span><span class="text">  }</span><span class="num new">41</span></div><div class="row ctx" data-old="42" data-new="42"><span class="marker"></span><span class="num old">42</span><span class="text"></span><span class="num new">42</span></div><div class="row ctx" data-old="43" data-new="43"><span class="marker"></span><span class="num old">43</span><span class="text">  clear(): void {</span><span class="num new">43</span></div><div class="row add" data-new="44"><span class="marker">+</span><span class="num old anchor">44</span><span class="text">    log(&quot;clearing &quot; + this.items.size + &quot; items&quot;);</span><span class="num new">44</span></div><div class="row ctx" data-old="44" data-new="45"><span class="marker"></span><span class="num old">44</span><span class="text">    this.items.clear();</span><span class="num new">45</span></div><div class="row ctx" data-old="45" data-new="46"><span class="marker"></span><span class="num old">45</span><span class="text">  }</span><span class="num new">46</span></div><div class="row ctx" data-old="46" data-new="47"><span class="marker"></span><span class="num old">46</span><span class="text">}</span><span class="num new">47</span></div></div>
 </div>
 </div></div>
@@ -470,7 +492,7 @@ html, body {
   click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
   scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
 </div>
-<script>window.__ODIN__={"width":2393,"height":916,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":89,"y":48,"width":448,"height":292,"isTest":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":396,"width":530,"height":202,"isTest":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":535,"width":530,"height":274,"isTest":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":185,"width":448,"height":112,"isTest":false},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":504,"width":530,"height":364,"isTest":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"isTest":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":48,"width":560,"height":400,"isTest":false}],"arrangements":{"withTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292},"n:a5d65acaa45a":{"x":48,"y":396,"height":202},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274},"n:7ca9a636a596":{"x":1459,"y":185,"height":112},"n:5353548f9372":{"x":733,"y":504,"height":364},"n:d26c6859c04e":{"x":2088,"y":48,"height":120},"n:c14920f42f50":{"x":718,"y":48,"height":400}}},"withoutTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292},"n:a5d65acaa45a":{"x":48,"y":396,"height":202},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274},"n:7ca9a636a596":{"x":1459,"y":185,"height":112},"n:5353548f9372":{"x":733,"y":504,"height":364},"n:d26c6859c04e":{"x":2088,"y":48,"height":120},"n:c14920f42f50":{"x":718,"y":48,"height":400}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}]};</script>
+<script>window.__ODIN__={"width":2393,"height":916,"rowGap":56,"nodes":[{"id":"n:9518c3291d8e","path":"src/addedFile.ts","x":89,"y":48,"width":448,"height":292,"isTest":false},{"id":"n:a5d65acaa45a","path":"src/consumer.ts","x":48,"y":396,"width":530,"height":202,"isTest":false},{"id":"n:b2a4cf4d702e","path":"src/deletedFile.ts","x":1418,"y":535,"width":530,"height":274,"isTest":false},{"id":"n:7ca9a636a596","path":"src/logger.ts","x":1459,"y":185,"width":448,"height":112,"isTest":false},{"id":"n:5353548f9372","path":"src/myService.ts","x":733,"y":504,"width":530,"height":364,"isTest":false},{"id":"n:d26c6859c04e","path":"src/renamedFile.ts","x":2088,"y":48,"width":257,"height":120,"isTest":false},{"id":"n:c14920f42f50","path":"src/repository.ts","x":718,"y":48,"width":560,"height":400,"isTest":false}],"arrangements":{"withTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292},"n:a5d65acaa45a":{"x":48,"y":396,"height":202},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274},"n:7ca9a636a596":{"x":1459,"y":185,"height":112},"n:5353548f9372":{"x":733,"y":504,"height":364},"n:d26c6859c04e":{"x":2088,"y":48,"height":120},"n:c14920f42f50":{"x":718,"y":48,"height":400}}},"withoutTests":{"width":2393,"height":916,"nodes":{"n:9518c3291d8e":{"x":89,"y":48,"height":292},"n:a5d65acaa45a":{"x":48,"y":396,"height":202},"n:b2a4cf4d702e":{"x":1418,"y":535,"height":274},"n:7ca9a636a596":{"x":1459,"y":185,"height":112},"n:5353548f9372":{"x":733,"y":504,"height":364},"n:d26c6859c04e":{"x":2088,"y":48,"height":120},"n:c14920f42f50":{"x":718,"y":48,"height":400}}}},"edges":[{"id":"e:d969fdb6d527","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"deletedFile.ts","label":"./deletedFile"},{"id":"e:8692a62d0b79","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":4,"toLine":3,"fromSide":"base","toSide":"base","change":"removed","kind":"instantiation","confidence":"resolved","symbol":"DeletedFile","label":"new DeletedFile(this)"},{"id":"e:09b3bbf53573","from":"n:5353548f9372","to":"n:b2a4cf4d702e","fromPath":"src/myService.ts","toPath":"src/deletedFile.ts","fromLine":12,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"anotherFunction2","label":"this.deletedFile.anotherFunction2()"},{"id":"e:17c03e0acdd2","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":1,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"logger.ts","label":"./logger"},{"id":"e:945e9c3c3ec2","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":2,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:3c2011e2a987","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":3,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"import","confidence":"resolved","symbol":"repository.ts","label":"./repository"},{"id":"e:f3f1cbbe79f8","from":"n:9518c3291d8e","to":"n:7ca9a636a596","fromPath":"src/addedFile.ts","toPath":"src/logger.ts","fromLine":12,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"starting\")"},{"id":"e:d88552d7e3b6","from":"n:9518c3291d8e","to":"n:5353548f9372","fromPath":"src/addedFile.ts","toPath":"src/myService.ts","fromLine":13,"toLine":2,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function1","label":"this.myService.function1()"},{"id":"e:2545469b3a16","from":"n:9518c3291d8e","to":"n:c14920f42f50","fromPath":"src/addedFile.ts","toPath":"src/repository.ts","fromLine":14,"toLine":43,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"clear","label":"this.repository.clear()"},{"id":"e:21cfb5caf93f","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"function3","label":"this.myService.function3()"},{"id":"e:f2658af39d71","from":"n:a5d65acaa45a","to":"n:5353548f9372","fromPath":"src/consumer.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:2aa712b61542","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":1,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"import","confidence":"resolved","symbol":"myService.ts","label":"./myService"},{"id":"e:62fdff7277aa","from":"n:b2a4cf4d702e","to":"n:5353548f9372","fromPath":"src/deletedFile.ts","toPath":"src/myService.ts","fromLine":7,"toLine":10,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"function2","label":"this.myService.function2()"},{"id":"e:affa1ceb6246","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"base","toSide":"base","change":"removed","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key)"},{"id":"e:c7e801e84905","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":11,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"saving \" + key + \" (\" + value.length + \" bytes)\")"},{"id":"e:0d1169c0c130","from":"n:c14920f42f50","to":"n:7ca9a636a596","fromPath":"src/repository.ts","toPath":"src/logger.ts","fromLine":44,"toLine":1,"fromSide":"head","toSide":"head","change":"added","kind":"call","confidence":"resolved","symbol":"log","label":"log(\"clearing \" + this.items.size + \" items\")"}]};</script>
 <script>
 (function () {
   var data = window.__ODIN__;
@@ -855,6 +877,100 @@ html, body {
     });
   });
 
+  /* ---------------------------------------------------------------- viewed */
+
+  // Which files the reader has marked off. Kept here rather than in the graph:
+  // it is a note about the reader's progress, not a fact about the change.
+  var viewed = {};
+
+  function isViewed(nodeId) {
+    return viewed[nodeId] === true;
+  }
+
+  /**
+   * Hides or reveals a reviewed card, closing the space it leaves.
+   *
+   * Left in place it would punch a hole in its column, and a graph read as a
+   * shape is worse for having gaps in it. Cards below shift by exactly the
+   * height that went away, which is the same move an expansion makes in
+   * reverse.
+   */
+  function applyViewed(card, hide) {
+    var node = nodeFor(card.dataset.id);
+    if (!node) return;
+    var alreadyHidden = card.classList.contains("viewed-hidden");
+    if (hide === alreadyHidden) return;
+
+    var span = node.height + data.rowGap;
+    card.classList.toggle("viewed-hidden", hide);
+
+    data.nodes.forEach(function (other) {
+      if (other.id === node.id) return;
+      if (other.x !== node.x) return;
+      if (other.y <= node.y) return;
+      other.y += hide ? -span : span;
+      var el = document.getElementById("card-" + cssId(other.id));
+      if (el) el.style.top = other.y + "px";
+    });
+  }
+
+  function refreshViewed() {
+    var hideViewed = document.getElementById("filter-viewed").checked;
+
+    cards.forEach(function (card) {
+      var marked = isViewed(card.dataset.id);
+      card.classList.toggle("is-viewed", marked);
+      var box = card.querySelector(".viewed-box");
+      if (box) box.checked = marked;
+      applyViewed(card, marked && hideViewed);
+    });
+
+    edgeGroups.forEach(function (g) {
+      var edge = data.edges.find(function (e) { return e.id === g.dataset.id; });
+      if (!edge) return;
+      var touchesHidden =
+        hideViewed && (isViewed(edge.from) || isViewed(edge.to));
+      g.classList.toggle("viewed-hidden", touchesHidden);
+    });
+
+    rerouteEdges();
+  }
+
+  /** Sets one file's state, from a click here or from the host. */
+  function setViewed(nodeId, marked, tell) {
+    viewed[nodeId] = marked;
+    refreshViewed();
+    if (tell) {
+      var node = nodeFor(nodeId);
+      if (node) notifyHost("viewed", { path: node.path, viewed: marked });
+    }
+  }
+
+  cards.forEach(function (card) {
+    var box = card.querySelector(".viewed-box");
+    if (!box) return;
+    box.addEventListener("click", function (event) { event.stopPropagation(); });
+    box.addEventListener("change", function () {
+      setViewed(card.dataset.id, box.checked, true);
+    });
+  });
+
+  var viewedFilter = document.getElementById("filter-viewed");
+  if (viewedFilter) viewedFilter.addEventListener("change", refreshViewed);
+
+  // The sidebar and the canvas show the same marks, so the host keeps them
+  // in step.
+  window.addEventListener("message", function (event) {
+    var message = event.data;
+    if (!message || message.type !== "setViewed") return;
+    var byPath = {};
+    data.nodes.forEach(function (n) { byPath[n.path] = n.id; });
+    (message.paths || []).forEach(function (path) {
+      if (byPath[path]) viewed[byPath[path]] = message.viewed === true;
+    });
+    refreshViewed();
+  });
+
   /* --------------------------------------------------------------- tooltip */
 
   function showTooltip(event, id) {
@@ -868,11 +984,18 @@ html, body {
       return path.slice(path.lastIndexOf("/") + 1);
     };
 
+    // The colon is dimmed so the eye can split "file" from "line" without a
+    // pause; run in the same colour they read as one long token.
+    var at = function (path, line) {
+      return escapeHtml(name(path)) + '<span class="at">:</span>' +
+        '<span class="line">' + line + "</span>";
+    };
+
     tooltip.innerHTML =
       '<div class="target">' + escapeHtml(edge.label || edge.symbol || "") + "</div>" +
-      '<div class="meta">' + escapeHtml(name(edge.fromPath)) + ":" + edge.fromLine +
+      '<div class="meta">' + at(edge.fromPath, edge.fromLine) +
       ' <span class="arrow">&rarr;</span> ' +
-      escapeHtml(name(edge.toPath)) + ":" + edge.toLine + "</div>" +
+      at(edge.toPath, edge.toLine) + "</div>" +
       '<div class="facts"><span class="' + edge.change + '">' + edge.change +
       "</span> &middot; " + edge.kind + " &middot; " + edge.confidence + "</div>";
     tooltip.title = edge.fromPath + " → " + edge.toPath;
@@ -994,6 +1117,7 @@ html, body {
   }
 
   refreshFilters();
+  refreshViewed();
   fit();
   window.addEventListener("resize", fit);
 })();

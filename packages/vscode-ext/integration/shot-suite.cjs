@@ -11,5 +11,13 @@ exports.run = async function () {
     await new Promise((r) => setTimeout(r, 500));
   }
   await new Promise((r) => setTimeout(r, 4000));
+  // A full-screen grab takes whatever is in front, which is not necessarily
+  // the editor this suite just opened.
+  try {
+    execFileSync("osascript", ["-e", 'tell application "System Events" to set frontmost of first process whose unix id is ' + process.pid + ' to true']);
+  } catch {
+    execFileSync("osascript", ["-e", 'tell application "Visual Studio Code" to activate']);
+  }
+  await new Promise((r) => setTimeout(r, 1500));
   execFileSync("screencapture", ["-x", "-o", `${process.env.SP}/sidebar.png`]);
 };
