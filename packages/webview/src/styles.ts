@@ -623,6 +623,8 @@ body:not(.split) .card-body.split-view { display: none; }
 .row.split:has(.side.add) + .row.split .side.add { box-shadow: 0 -1px 0 0 var(--add-bg); }
 .row.split:has(.side.del) + .row.split .side.del { box-shadow: 0 -1px 0 0 var(--del-bg); }
 .row.split:has(.side.empty) + .row.split .side.empty { box-shadow: 0 -1px 0 0 var(--gap-bg); }
+.row.flat.add + .row.flat.add { box-shadow: 0 -1px 0 0 var(--add-bg); }
+.row.flat.del + .row.flat.del { box-shadow: 0 -1px 0 0 var(--del-bg); }
 .row.gap + .row.gap { box-shadow: 0 -1px 0 0 var(--gap-bg); }
 
 /* A collapsed run of untouched code, banded the way a diff viewer marks the
@@ -676,6 +678,19 @@ body:not(.split) .card-body.split-view { display: none; }
    halves of the row, each with its own marker, number and code, so a line and
    the line that replaced it read across rather than down and both numbers are
    real. The card was measured as two of these plus its padding. */
+/* One column of code, a gutter either side of it: the base number on the left
+   and the head number on the right, which is how this card answers "where is
+   this line in each checkout". */
+.row.flat { padding: 0 var(--padding); }
+.row.flat.add { background: var(--add-bg); color: var(--added); }
+.row.flat.del { background: var(--del-bg); color: var(--removed); }
+.row.flat.add .marker, .row.flat.del .marker { color: inherit; }
+.row.flat .num.new {
+  width: var(--right-gutter-width);
+  padding-right: 0;
+  padding-left: 8px;
+}
+
 .row.split { padding: 0 var(--padding); }
 .row.split .side {
   display: flex;

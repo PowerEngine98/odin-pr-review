@@ -415,10 +415,19 @@ function prBar(graph: ChangeGraph, canReview = false): string {
 
 const GEAR =
   `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` +
-  `<circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.4" fill="none"/>` +
-  `<path d="M8 1.2v1.9M8 12.9v1.9M14.8 8h-1.9M3.1 8H1.2M12.8 3.2l-1.3 1.3M4.5 11.5l-1.3 1.3` +
-  `M12.8 12.8l-1.3-1.3M4.5 4.5L3.2 3.2" stroke="currentColor" stroke-width="1.4" ` +
-  `stroke-linecap="round" fill="none"/></svg>`;
+  [0, 45, 90, 135, 180, 225, 270, 315]
+    .map(
+      (angle) =>
+        `<rect x="6.9" y="0.6" width="2.2" height="3.8" rx="0.7" ` +
+        `fill="currentColor" transform="rotate(${angle} 8 8)"/>`,
+    )
+    .join("") +
+  // Body and bore in one path: the even-odd rule punches the hole, so the
+  // middle shows whatever is behind the button rather than a guess at its
+  // colour.
+  `<path fill-rule="evenodd" fill="currentColor" ` +
+  `d="M8 3.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm0 2.6a2.1 2.1 0 1 1 0 4.2 2.1 2.1 0 0 1 0-4.2Z"/>` +
+  `</svg>`;
 
 /** A pull request, drawn rather than borrowed, so nothing has to be fetched. */
 const PR_ICON =
