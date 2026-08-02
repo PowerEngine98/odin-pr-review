@@ -47,7 +47,10 @@ export const CLIENT_SCRIPT = String.raw`
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".parts .part-tab"));
 
   var view = { x: 0, y: 0, scale: 1 };
-  var MIN_SCALE = 0.15;
+  // Low enough that a part of a large change fits on screen. A tall card is
+  // thousands of pixels; a floor of 0.15 meant "fit" still left most of a part
+  // below the fold, which is the one thing fit is for.
+  var MIN_SCALE = 0.04;
   var MAX_SCALE = 3;
 
   /*
@@ -219,24 +222,53 @@ export const CLIENT_SCRIPT = String.raw`
 
   /* --------------------------------------------------------------- framing */
 
+  /**
+   * Frames what is actually on the canvas.
+   *
+   * Measured from the cards that are showing rather than from the drawing's
+   * full extent: with a part open, or tests hidden, most of that extent is the
+   * space the others left behind, and fitting to it puts a handful of cards in
+   * a corner of the screen surrounded by nothing.
+   */
+  function shown() {
+    var left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+
+    cards.forEach(function (card) {
+      if (card.classList.contains("hidden") ||
+          card.classList.contains("viewed-hidden")) return;
+      var node = nodeFor(card.dataset.id);
+      if (!node) return;
+      left = Math.min(left, node.x);
+      top = Math.min(top, node.y);
+      right = Math.max(right, node.x + node.width);
+      bottom = Math.max(bottom, node.y + node.height);
+    });
+
+    if (left === Infinity) {
+      return { x: 0, y: 0, width: data.width, height: data.height };
+    }
+    return { x: left, y: top, width: right - left, height: bottom - top };
+  }
+
   function fit() {
     var rect = viewport.getBoundingClientRect();
     // The header stacks into columns and wraps, so its height depends on how
     // much it has to say; measuring beats assuming.
     var bar = document.querySelector(".chrome") || document.querySelector(".toolbar");
     var top = bar ? bar.getBoundingClientRect().height + 12 : 60;
+    var box = shown();
 
     var scale = clamp(
       Math.min(
-        (rect.width - 80) / data.width,
-        (rect.height - top - 60) / data.height,
+        (rect.width - 80) / box.width,
+        (rect.height - top - 60) / box.height,
       ),
       MIN_SCALE,
       1,
     );
     view.scale = scale;
-    view.x = (rect.width - data.width * scale) / 2;
-    view.y = top + (rect.height - top - data.height * scale) / 2;
+    view.x = (rect.width - box.width * scale) / 2 - box.x * scale;
+    view.y = top + (rect.height - top - box.height * scale) / 2 - box.y * scale;
     apply();
   }
 
