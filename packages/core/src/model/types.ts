@@ -215,6 +215,20 @@ export interface PullRequest {
   draft?: boolean;
   /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
   reviewDecision?: string;
+  /** Who has been asked to look, and what they have said so far. */
+  reviewers?: Reviewer[];
+}
+
+/** Somebody asked to review the change, and where they have got to. */
+export interface Reviewer {
+  login: string;
+  /** `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, or `PENDING` for a request. */
+  state: string;
+  avatarUrl?: string;
+  /** The forge's page for this account. */
+  url: string;
+  /** A team rather than a person; it has no face and no profile of its own. */
+  team?: boolean;
 }
 
 /** An open pull request, as listed for choosing between. */

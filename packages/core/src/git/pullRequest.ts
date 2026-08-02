@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 
-import type { PullRequest, PullRequestSummary } from "../model/types.js";
+import type { Reviewer, PullRequest, PullRequestSummary } from "../model/types.js";
 import type { GitOptions } from "./exec.js";
 
 /**
@@ -18,7 +18,10 @@ export async function readPullRequest(
   options: GitOptions & { timeoutMs?: number },
 ): Promise<PullRequest | undefined> {
   const json = await run(
-    ["pr", "view", branch, "--json", "number,title,url,isDraft,reviewDecision"],
+    [
+      "pr", "view", branch,
+      "--json", "number,title,url,isDraft,reviewDecision,reviewRequests,latestReviews",
+    ],
     options,
   );
   if (!json) return undefined;
@@ -27,6 +30,11 @@ export async function readPullRequest(
     const parsed = JSON.parse(json) as Partial<PullRequest> & {
       isDraft?: boolean;
       reviewDecision?: string | null;
+      reviewRequests?: { login?: string; name?: string; slug?: string }[];
+      latestReviews?: {
+        state?: string;
+        author?: { login?: string; url?: string };
+      }[];
     };
     if (
       typeof parsed.number !== "number" ||
@@ -43,10 +51,62 @@ export async function readPullRequest(
     };
     if (parsed.isDraft === true) pull.draft = true;
     if (parsed.reviewDecision) pull.reviewDecision = parsed.reviewDecision;
+
+    const reviewers = readReviewers(parsed.reviewRequests, parsed.latestReviews);
+    if (reviewers.length > 0) pull.reviewers = reviewers;
     return pull;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Who is on the review, and what they have said.
+ *
+ * Two lists from the forge and one answer: the reviews people have left, and
+ * the requests nobody has answered yet. Somebody who has already spoken is not
+ * also waiting, so a request is only carried through when it has no review
+ * against it. Faces come from the avatar service by login, which needs no
+ * second call and no token.
+ */
+function readReviewers(
+  requests: { login?: string; name?: string; slug?: string }[] | undefined,
+  reviews: { state?: string; author?: { login?: string; url?: string } }[] | undefined,
+): Reviewer[] {
+  const out: Reviewer[] = [];
+  const seen = new Set<string>();
+
+  for (const review of reviews ?? []) {
+    const login = review.author?.login;
+    if (!login || seen.has(login)) continue;
+    seen.add(login);
+    out.push({
+      login,
+      state: review.state ?? "COMMENTED",
+      url: review.author?.url ?? `https://github.com/${login}`,
+      avatarUrl: `https://github.com/${login}.png?size=64`,
+    });
+  }
+
+  for (const request of requests ?? []) {
+    // A team request has a slug where a person has a login, and no face.
+    const login = request.login ?? request.slug ?? request.name;
+    if (!login || seen.has(login)) continue;
+    seen.add(login);
+
+    const reviewer: Reviewer = {
+      login,
+      state: "PENDING",
+      url: request.login
+        ? `https://github.com/${request.login}`
+        : `https://github.com/orgs/${login}/teams`,
+    };
+    if (request.login) reviewer.avatarUrl = `https://github.com/${request.login}.png?size=64`;
+    else reviewer.team = true;
+    out.push(reviewer);
+  }
+
+  return out;
 }
 
 /**

@@ -1521,6 +1521,158 @@ body:not(.split) .card-body.split-view { display: none; }
   pointer-events: none;
 }
 
+/* --------------------------------------------------------------- reviewers
+
+   Everyone who has left a remark, as a row of faces under the chrome. Clicking
+   one lists what that person said; clicking a line of that goes to it. */
+.reviewers {
+  position: fixed;
+  right: 14px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+/* The forge's own list, in the forge's own order: who was asked, and how far
+   they have got. */
+.review-list {
+  width: 220px;
+  padding: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  font-size: 12px;
+}
+.review-head {
+  color: var(--muted);
+  padding: 0 2px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  margin-bottom: 4px;
+}
+.reviewer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: 5px;
+}
+.reviewer-row:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.reviewer-row .face {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  object-fit: cover;
+}
+.reviewer-row .face.team {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.reviewer-row .login {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Approved, changes asked for, spoke without a verdict, or still waiting. */
+.reviewer-row .state { flex: 0 0 auto; display: inline-flex; }
+.reviewer-row .state.ok { color: var(--action); }
+.reviewer-row .state.warn { color: var(--removed); }
+.reviewer-row .state.waiting,
+.reviewer-row .state.said {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+.reviewer-row .state.said { background: var(--status-renamed); }
+
+.faces {
+  display: flex;
+  flex-direction: row-reverse;
+  padding: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+/* Overlapped, and the one under the pointer comes forward: a row of faces is
+   one object saying who is in the conversation, not five separate buttons. */
+.faces .reviewer {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  margin-left: -9px;
+  cursor: pointer;
+  object-fit: cover;
+  transition: transform 120ms ease;
+}
+.faces .reviewer:last-child { margin-left: 0; }
+.faces .reviewer:hover,
+.faces .reviewer.on { transform: translateY(-2px) scale(1.06); z-index: 2; }
+.faces .reviewer.initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--status-renamed);
+}
+
+.reviewer-panel {
+  width: 320px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+  font-size: 12px;
+}
+.reviewer-panel .who {
+  padding: 4px 8px 6px;
+  color: var(--muted);
+}
+.reviewer-panel .remark-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.reviewer-panel .remark-link:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.reviewer-panel .where {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--status-renamed);
+}
+.reviewer-panel .said {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ------------------------------------------------------------------ remarks
 
    Comments already on the pull request, shown beside the file rather than in

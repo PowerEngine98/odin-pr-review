@@ -11,6 +11,7 @@ import {
   type PlacedEdge,
   type PlacedNode,
   type Component,
+  type Reviewer,
   type RowPair,
   type Theme,
 } from "@odin/core";
@@ -253,6 +254,13 @@ export function renderHtml(
     // review lasts, and a row of chrome across the top costs it that height on
     // every screen.
     toolbar(graph, layout, options.highlight),
+    // Who has said something, and where. Docked under the chrome on the side
+    // the canvas is least busy, because a comment on a change is a thing to
+    // come back to rather than a thing to find again.
+    `<div class="reviewers">` +
+    reviewerList(graph.meta.pullRequest?.reviewers ?? []) +
+    `<div class="faces" hidden></div>` +
+    `<div class="reviewer-panel" hidden></div></div>`,
     `<div class="marks"></div>`,
     `<div class="tooltip"></div>`,
     `<div class="thread" hidden><div class="thread-head">` +
@@ -537,6 +545,58 @@ const GEAR =
   `<path fill-rule="evenodd" fill="currentColor" ` +
   `d="M8 3.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm0 2.6a2.1 2.1 0 1 1 0 4.2 2.1 2.1 0 0 1 0-4.2Z"/>` +
   `</svg>`;
+
+/**
+ * Who was asked to look, the way the forge lists them.
+ *
+ * The same three facts it shows: who, whether they have answered, and a way
+ * through to them. A name here is a link to the account rather than to
+ * anything in this page — the question it answers is "who is this person",
+ * which this page cannot answer and the forge can.
+ */
+function reviewerList(reviewers: Reviewer[]): string {
+  if (reviewers.length === 0) return "";
+
+  const dot = (state: string) =>
+    state === "APPROVED"
+      ? `<span class="state ok" title="Approved">${CHECK_DOT}</span>`
+      : state === "CHANGES_REQUESTED"
+        ? `<span class="state warn" title="Changes requested">${CHANGE_DOT}</span>`
+        : state === "PENDING"
+          ? `<span class="state waiting" title="Waiting on this review"></span>`
+          : `<span class="state said" title="Commented"></span>`;
+
+  const rows = reviewers
+    .map((who) => {
+      const face = who.avatarUrl
+        ? `<img class="face" src="${escapeHtml(who.avatarUrl)}" alt="">`
+        : `<span class="face team">${TEAM_ICON}</span>`;
+      return `<a class="reviewer-row" href="${escapeHtml(who.url)}" ` +
+        `target="_blank" rel="noreferrer" title="Open ${escapeHtml(who.login)} on the forge">` +
+        `${face}<span class="login">${escapeHtml(who.login)}</span>${dot(who.state)}</a>`;
+    })
+    .join("");
+
+  return `<div class="review-list"><div class="review-head">Reviewers</div>${rows}</div>`;
+}
+
+const CHECK_DOT =
+  `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">` +
+  `<path d="M3.5 8.5 6.5 11.5 12.5 5" fill="none" stroke="currentColor" ` +
+  `stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+const CHANGE_DOT =
+  `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">` +
+  `<path d="M4 8h8" fill="none" stroke="currentColor" stroke-width="2" ` +
+  `stroke-linecap="round"/></svg>`;
+
+const TEAM_ICON =
+  `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<circle cx="5.6" cy="6" r="2.3" fill="none" stroke="currentColor" stroke-width="1.4"/>` +
+  `<path d="M1.8 13c0-2.1 1.7-3.4 3.8-3.4S9.4 10.9 9.4 13" fill="none" ` +
+  `stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>` +
+  `<path d="M10.6 4.2a2.3 2.3 0 0 1 0 4.4M11.6 9.9c1.6.4 2.6 1.6 2.6 3.1" ` +
+  `fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
 /** A pull request, drawn rather than borrowed, so nothing has to be fetched. */
 const PR_ICON =

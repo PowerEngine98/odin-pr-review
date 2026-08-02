@@ -2559,6 +2559,7 @@ export const CLIENT_SCRIPT = String.raw`
 
     placeMarks();
     refreshRemarkCounts();
+    buildReviewers();
   }
 
   /** The author's picture, or their initials when the page has none. */
@@ -2632,6 +2633,136 @@ export const CLIENT_SCRIPT = String.raw`
       mark.el.style.top = Math.round(y - size / 2) + "px";
     });
   }
+
+  /* --------------------------------------------------------- the reviewers */
+
+  var reviewerDock = document.querySelector(".reviewers");
+  var faceRow = reviewerDock && reviewerDock.querySelector(".faces");
+  var reviewerPanel = reviewerDock && reviewerDock.querySelector(".reviewer-panel");
+  var openReviewer = null;
+
+  /**
+   * Everyone who has left a remark, as one face each.
+   *
+   * A face per thread would say the same name five times over; a face per
+   * person says who is in the conversation, which is the question being asked
+   * of a row of avatars. What each of them said is one click away, and where
+   * they said it is one more.
+   */
+  function buildReviewers() {
+    if (!reviewerDock || !faceRow) return;
+
+    // Everyone who said anything, not everyone who started a thread: a reply is
+    // a comment, and the person who left it is in the conversation.
+    var order = [];
+    var byAuthor = {};
+    marks.forEach(function (mark) {
+      mark.thread.comments.forEach(function (comment) {
+        var who = comment.author || "?";
+        if (!byAuthor[who]) { byAuthor[who] = []; order.push(who); }
+        // One entry per thread per person, however much they said in it.
+        var mine = byAuthor[who];
+        if (mine.some(function (each) { return each.mark === mark; })) return;
+        mine.push({ mark: mark, said: comment });
+      });
+    });
+
+    faceRow.textContent = "";
+    reviewerPanel.hidden = true;
+    openReviewer = null;
+    faceRow.hidden = order.length === 0;
+    if (order.length === 0) return;
+
+    // Reversed, so the row reads left to right while each face still overlaps
+    // the one after it rather than being overlapped by it.
+    order.slice().reverse().forEach(function (who) {
+      var mine = byAuthor[who];
+      var el = face(mine[0].said, "reviewer");
+      el.title = who + " — " + mine.length +
+        (mine.length === 1 ? " thread" : " threads");
+      el.addEventListener("click", function (event) {
+        event.stopPropagation();
+        if (openReviewer === who) {
+          reviewerPanel.hidden = true;
+          openReviewer = null;
+          el.classList.remove("on");
+          return;
+        }
+        faceRow.querySelectorAll(".reviewer").forEach(function (other) {
+          other.classList.remove("on");
+        });
+        el.classList.add("on");
+        openReviewer = who;
+        listRemarks(who, mine);
+      });
+      faceRow.appendChild(el);
+    });
+
+    place();
+  }
+
+  /** What one person said, in the order they said it. */
+  function listRemarks(who, mine) {
+    reviewerPanel.textContent = "";
+    reviewerPanel.appendChild(chrome("who", who));
+
+    mine.forEach(function (entry) {
+      var mark = entry.mark;
+      var root = mark.thread.root;
+      var button = document.createElement("button");
+      button.className = "remark-link";
+
+      var where = root.path.split("/").pop() + ":" +
+        (root.startLine && root.startLine < root.line
+          ? root.startLine + "\u2013" + root.line
+          : root.line);
+      button.appendChild(chrome("where", where));
+      // What this person said, which is not always how the thread opened.
+      button.appendChild(chrome("said", entry.said.body.replace(/\s+/g, " ").slice(0, 80)));
+
+      button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        goToRemark(mark);
+      });
+      reviewerPanel.appendChild(button);
+    });
+
+    reviewerPanel.hidden = false;
+  }
+
+  /**
+   * Takes the reader to a remark and opens it.
+   *
+   * The thread is opened after the flight rather than before: it is placed
+   * beside its mark, and a mark that is still moving would leave it somewhere
+   * the reader has already left.
+   */
+  function goToRemark(mark) {
+    centerOn(mark.nodeId);
+    window.setTimeout(function () {
+      placeMarks();
+      if (!mark.el.hidden) showThread(mark.thread, mark.el);
+    }, 360);
+  }
+
+  /** Under the chrome, which changes height with what it has to say. */
+  function place() {
+    if (!reviewerDock) return;
+    var bar = chromeBar ? chromeBar.getBoundingClientRect().height : 0;
+    reviewerDock.style.top = bar + 14 + "px";
+  }
+
+  window.addEventListener("resize", place);
+
+  document.addEventListener("click", function (event) {
+    if (!reviewerDock || reviewerPanel.hidden) return;
+    if (reviewerDock.contains(event.target)) return;
+    reviewerPanel.hidden = true;
+    openReviewer = null;
+    faceRow.querySelectorAll(".reviewer").forEach(function (el) {
+      el.classList.remove("on");
+    });
+  });
 
   function showThread(thread, el) {
     if (!threadBox) return;
