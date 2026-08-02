@@ -121,6 +121,11 @@ html, body {
   justify-content: center;
   height: 16px;
   line-height: 1;
+  /* The line box is centred exactly; the ink is not. Digits have no descenders,
+     so half the font's descent is empty space under them and the numerals read
+     as sitting high. One pixel down puts the ink in the middle, which is what
+     the eye is measuring. */
+  padding-top: 1px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   min-width: 18px;
