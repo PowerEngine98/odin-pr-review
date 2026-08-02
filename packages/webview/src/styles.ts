@@ -502,6 +502,11 @@ input[type="checkbox"]:checked::after {
 .card.status-phantom  { border-color: var(--status-phantom); border-style: dashed; }
 
 .card-title {
+  /* Sits above the code so it can be moved down over it: the card's name stays
+     in view while the card runs off the top of the window. */
+  position: relative;
+  z-index: 3;
+  background: var(--card-bg);
   height: var(--title-height);
   padding: 0 var(--padding);
   display: flex;
@@ -512,6 +517,13 @@ input[type="checkbox"]:checked::after {
   color: var(--status-modified);
   cursor: pointer;
 }
+/* Only while it is being held in place, so a card sitting still in the middle
+   of the canvas looks exactly as it did. */
+.card-title.pinned {
+  box-shadow: 0 1px 0 0 color-mix(in srgb, var(--text) 14%, transparent),
+              0 6px 12px color-mix(in srgb, #000 30%, transparent);
+}
+
 .status-added    .card-title { color: var(--status-added); }
 .status-deleted  .card-title { color: var(--status-deleted); }
 .status-renamed  .card-title { color: var(--status-renamed); }

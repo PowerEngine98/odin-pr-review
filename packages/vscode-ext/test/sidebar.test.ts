@@ -4,7 +4,7 @@ import type { FileNode } from "@odin/core";
 
 import type { ChangeGraph } from "@odin/core";
 
-import { ago, buildTree, progressOf } from "../src/tree-model.js";
+import { ago, buildTree, progressOf, rowSearchText } from "../src/tree-model.js";
 
 function file(path: string): FileNode {
   return {
@@ -176,5 +176,19 @@ describe("how long ago a pull request was opened", () => {
 
   it("says nothing rather than guessing at an unparseable date", () => {
     expect(ago("not a date", now)).toBe("");
+  });
+});
+
+describe("what the filter matches", () => {
+  it("matches the name on the row, not the directories above it", () => {
+    // A tree with a pages/app folder answered "page" with every file under it,
+    // almost none of them carrying the word anywhere the reader could see.
+    expect(rowSearchText({ name: "Home.tsx", was: "" })).toBe("home.tsx");
+    expect(rowSearchText({ name: "Home.tsx", was: "" })).not.toContain("pages");
+  });
+
+  it("still finds a file by the name it used to have", () => {
+    // A rename is exactly when someone searches for the old name.
+    expect(rowSearchText({ name: "Feed.tsx", was: "← Stream.tsx" })).toContain("stream.tsx");
   });
 });

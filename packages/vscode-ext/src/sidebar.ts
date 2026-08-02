@@ -11,7 +11,7 @@ import {
 } from "@odin/core";
 import * as vscode from "vscode";
 
-import { ago, buildTree, progressOf, type Folder } from "./tree-model.js";
+import { ago, buildTree, progressOf, rowSearchText, type Folder } from "./tree-model.js";
 import type { ViewedStore } from "./viewed.js";
 
 /**
@@ -605,7 +605,7 @@ if (filter) {
 /*
  * Filtering the change.
  *
- * A file matches on its path, a reference on the symbol it resolves to and the
+ * A file matches on its own name, a reference on the symbol it resolves to and the
  * file and line it lands in — so searching for a function name finds both the
  * files that call it and the calls themselves. A file whose references match
  * stays, with its list opened: hiding a file whose contents matched would be
@@ -833,7 +833,11 @@ function fileRow(
   return (
     `<div class="row status-${node.status}${viewed?.has(node.path) ? " seen-marked" : ""}" ` +
     `data-path="${escapeHtml(node.path)}" ` +
-    `data-search="${escapeHtml(node.path.toLowerCase())}" ` +
+    // The name on the row, and the name it had before a rename -- not the whole
+    // path. Searching the path meant a word appearing in a directory dragged in
+    // every file beneath it: "page" under pages/app returned the entire tree,
+    // most of it with no "page" anywhere a reader could see.
+    `data-search="${escapeHtml(rowSearchText(title))}" ` +
     `style="padding-left:${8 + (depth + 1) * 10}px" ` +
     `title="${escapeHtml(node.path)}">` +
     `<span class="twisty${outgoing.length ? "" : " none"}">${CHEVRON}</span>` +

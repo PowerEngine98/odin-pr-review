@@ -136,3 +136,17 @@ export function ago(iso: string, now = Date.now()): string {
   const months = Math.floor(days / 30);
   return months === 1 ? "1mo ago" : `${months}mo ago`;
 }
+
+/**
+ * What a file's row in the list is matched against.
+ *
+ * The name the row shows, and the name it had before a rename — not the path
+ * it sits at. Matching the path meant a word appearing in a directory pulled in
+ * every file beneath it: searching "page" in a tree with a `pages/app` folder
+ * returned nearly everything, almost none of it carrying the word anywhere the
+ * reader could see. A directory the reader wants to narrow to is one click on
+ * its twisty away, which is a better answer than a filter that lies.
+ */
+export function rowSearchText(title: { name: string; was: string }): string {
+  return `${title.name} ${title.was}`.trim().toLowerCase();
+}

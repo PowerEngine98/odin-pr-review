@@ -12,6 +12,7 @@ export const CLIENT_SCRIPT = String.raw`
   var viewport = document.querySelector(".viewport");
   var canvas = document.querySelector(".canvas");
   var tooltip = document.querySelector(".tooltip");
+  var chromeBar = document.querySelector(".chrome");
 
   /*
    * Which way the change is being read: side by side, or one column.
@@ -70,6 +71,53 @@ export const CLIENT_SCRIPT = String.raw`
     placeComposer();
     placeThread();
     placeMarks();
+    pinTitles();
+  }
+
+  /**
+   * Keeps each card's name in view while the card itself runs off the top.
+   *
+   * A long file is taller than the window, and once its title has scrolled past
+   * the bar there is nothing on screen saying which file the code belongs to —
+   * the one question a reader of a graph asks most often. The forge solves this
+   * with a sticky header; here there is no scrolling ancestor to be sticky
+   * inside, because the canvas is one transformed layer, so the title is moved
+   * down its own card by hand.
+   *
+   * It stops at the foot of the card rather than following the bar forever, so
+   * a title never outlives the code it names: as the card leaves, its name
+   * slides out with it and the next card's takes over.
+   */
+  function pinTitles() {
+    // Called from every paint, including the first, which happens before the
+            // card list has been collected.
+    if (!cards) return;
+    var top = chromeBar ? chromeBar.getBoundingClientRect().bottom : 0;
+    // Where the bar sits in the drawing's own coordinates. Everything below is
+    // arithmetic on the card's placed position, not measurement of the DOM.
+    var line = (top - view.y) / view.scale;
+
+    cards.forEach(function (card) {
+      var title = card.querySelector(".card-title");
+      if (!title || card.offsetParent === null) return;
+
+      var cardTop = parseFloat(card.style.top) || 0;
+      var height = parseFloat(card.style.height) || card.offsetHeight;
+      var titleHeight = title.offsetHeight;
+
+      var offset = line - cardTop;
+      if (offset <= 0 || height <= titleHeight) {
+        if (title.style.transform) {
+          title.style.transform = "";
+          title.classList.remove("pinned");
+        }
+        return;
+      }
+
+      offset = Math.min(offset, height - titleHeight);
+      title.style.transform = "translateY(" + offset + "px)";
+      title.classList.add("pinned");
+    });
   }
 
   function rest() {
