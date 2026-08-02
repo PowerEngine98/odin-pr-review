@@ -2245,6 +2245,8 @@ export const CLIENT_SCRIPT = String.raw`
 
     recompute();
     refreshTally();
+    // What is on screen decides whether there is a comments section at all.
+    buildReviewers();
   }
 
   /**
@@ -2730,61 +2732,53 @@ export const CLIENT_SCRIPT = String.raw`
   var reviewerDock = document.querySelector(".reviewers");
   var faceRow = reviewerDock && reviewerDock.querySelector(".faces");
   var reviewerPanel = reviewerDock && reviewerDock.querySelector(".reviewer-panel");
-  var openReviewer = null;
-
   /**
-   * Everyone who has left a remark, as one face each.
+   * Everyone who has left a remark on what is currently on screen.
    *
-   * A face per thread would say the same name five times over; a face per
-   * person says who is in the conversation, which is the question being asked
-   * of a row of avatars. What each of them said is one click away, and where
-   * they said it is one more.
+   * A face per person rather than per thread — a name repeated five times says
+   * nothing the first one did. Replies count: somebody who answered is in the
+   * conversation.
+   *
+   * The whole section goes away when the part being read has no comments in
+   * it. A row of faces whose every entry leads somewhere that is not on the
+   * canvas is worse than no row at all: it offers a journey and then refuses
+   * to make it.
    */
   function buildReviewers() {
     if (!reviewerDock || !faceRow) return;
 
-    // Everyone who said anything, not everyone who started a thread: a reply is
-    // a comment, and the person who left it is in the conversation.
+    var here = marks.filter(function (mark) {
+      var card = document.getElementById("card-" + cssId(mark.nodeId));
+      return card &&
+        !card.classList.contains("hidden") &&
+        !card.classList.contains("viewed-hidden");
+    });
+
     var order = [];
-    var byAuthor = {};
-    marks.forEach(function (mark) {
+    var counts = {};
+    var first = {};
+    here.forEach(function (mark) {
       mark.thread.comments.forEach(function (comment) {
         var who = comment.author || "?";
-        if (!byAuthor[who]) { byAuthor[who] = []; order.push(who); }
-        // One entry per thread per person, however much they said in it.
-        var mine = byAuthor[who];
-        if (mine.some(function (each) { return each.mark === mark; })) return;
-        mine.push({ mark: mark, said: comment });
+        if (!counts[who]) { counts[who] = 0; order.push(who); first[who] = comment; }
+        counts[who]++;
       });
     });
 
     faceRow.textContent = "";
     reviewerPanel.hidden = true;
-    openReviewer = null;
-    faceRow.hidden = order.length === 0;
-    if (order.length === 0) return;
+    faceRow.hidden = here.length === 0;
+    if (here.length === 0) return;
 
     // Reversed, so the row reads left to right while each face still overlaps
     // the one after it rather than being overlapped by it.
     order.slice().reverse().forEach(function (who) {
-      var mine = byAuthor[who];
-      var el = face(mine[0].said, "reviewer");
-      el.title = who + " — " + mine.length +
-        (mine.length === 1 ? " thread" : " threads");
+      var el = face(first[who], "reviewer");
+      el.title = who + " — " + counts[who] +
+        (counts[who] === 1 ? " comment" : " comments");
       el.addEventListener("click", function (event) {
         event.stopPropagation();
-        if (openReviewer === who) {
-          reviewerPanel.hidden = true;
-          openReviewer = null;
-          el.classList.remove("on");
-          return;
-        }
-        faceRow.querySelectorAll(".reviewer").forEach(function (other) {
-          other.classList.remove("on");
-        });
-        el.classList.add("on");
-        openReviewer = who;
-        listRemarks(who, mine);
+        toggleThreadList(here);
       });
       faceRow.appendChild(el);
     });
@@ -2792,13 +2786,25 @@ export const CLIENT_SCRIPT = String.raw`
     place();
   }
 
-  /** What one person said, in the order they said it. */
-  function listRemarks(who, mine) {
-    reviewerPanel.textContent = "";
-    reviewerPanel.appendChild(chrome("who", who));
+  /**
+   * Every thread on screen, as the conversation that started it.
+   *
+   * The list is of threads, not of messages: a thread is one place in one file
+   * and one thing being discussed, and splitting it into its replies would
+   * offer the reader five ways to arrive at the same line.
+   */
+  function toggleThreadList(here) {
+    if (!reviewerPanel.hidden) {
+      reviewerPanel.hidden = true;
+      return;
+    }
 
-    mine.forEach(function (entry) {
-      var mark = entry.mark;
+    reviewerPanel.textContent = "";
+    reviewerPanel.appendChild(
+      chrome("who", here.length + (here.length === 1 ? " thread" : " threads")),
+    );
+
+    here.forEach(function (mark) {
       var root = mark.thread.root;
       var button = document.createElement("button");
       button.className = "remark-link";
@@ -2807,9 +2813,14 @@ export const CLIENT_SCRIPT = String.raw`
         (root.startLine && root.startLine < root.line
           ? root.startLine + "\u2013" + root.line
           : root.line);
-      button.appendChild(chrome("where", where));
-      // What this person said, which is not always how the thread opened.
-      button.appendChild(chrome("said", entry.said.body.replace(/\s+/g, " ").slice(0, 80)));
+      var replies = mark.thread.comments.length - 1;
+      button.appendChild(
+        chrome("where", where + (replies > 0
+          ? "  \u00b7  " + replies + (replies === 1 ? " reply" : " replies")
+          : "")),
+      );
+      button.appendChild(chrome("by", root.author));
+      button.appendChild(chrome("said", root.body.replace(/\s+/g, " ").slice(0, 90)));
 
       button.addEventListener("click", function (event) {
         event.stopPropagation();
@@ -2819,21 +2830,6 @@ export const CLIENT_SCRIPT = String.raw`
     });
 
     reviewerPanel.hidden = false;
-  }
-
-  /**
-   * Takes the reader to a remark and opens it.
-   *
-   * The thread is opened after the flight rather than before: it is placed
-   * beside its mark, and a mark that is still moving would leave it somewhere
-   * the reader has already left.
-   */
-  function goToRemark(mark) {
-    centerOn(mark.nodeId);
-    window.setTimeout(function () {
-      placeMarks();
-      if (!mark.el.hidden) showThread(mark.thread, mark.el);
-    }, 360);
   }
 
   /** Under the chrome, which changes height with what it has to say. */
@@ -2849,10 +2845,6 @@ export const CLIENT_SCRIPT = String.raw`
     if (!reviewerDock || reviewerPanel.hidden) return;
     if (reviewerDock.contains(event.target)) return;
     reviewerPanel.hidden = true;
-    openReviewer = null;
-    faceRow.querySelectorAll(".reviewer").forEach(function (el) {
-      el.classList.remove("on");
-    });
   });
 
   function showThread(thread, el) {

@@ -1738,6 +1738,7 @@ body:not(.split) .card-body.split-view { display: none; }
   font-size: 11px;
   color: var(--status-renamed);
 }
+.reviewer-panel .by { color: var(--text); }
 .reviewer-panel .said {
   color: var(--muted);
   overflow: hidden;
