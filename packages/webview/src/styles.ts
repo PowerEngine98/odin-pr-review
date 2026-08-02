@@ -173,7 +173,7 @@ html, body {
   bottom: 52px;
   z-index: 20;
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
@@ -552,20 +552,35 @@ input[type="checkbox"]:checked::after {
   gap: 1px;
   line-height: 1.35;
 }
-/* Filled, not hollow. An outlined square of exactly this size is what an
+/* The same box the file list draws, so a status reads the same in both places.
+   Filled rather than hollow: an outlined square of this size is what an
    unticked checkbox looks like, and a legend is not something you can tick. */
-.legend i {
-  width: 10px; height: 10px; border-radius: 3px;
+.legend .box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
   border: 1px solid currentColor;
-  background: color-mix(in srgb, currentColor 32%, transparent);
-  font-style: normal;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
 }
+.legend .phantom .box { border-style: dashed; }
+
+/* What the change is, above; what to do with it, below. */
+.facts { display: flex; flex-direction: column; gap: 1px; }
+.toolbar .rule {
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.toolbar #action-fit { align-self: flex-end; }
 .legend .added { color: var(--status-added); }
 .legend .modified { color: var(--status-modified); }
 .legend .deleted { color: var(--status-deleted); }
 .legend .renamed { color: var(--status-renamed); }
 .legend .phantom { color: var(--status-phantom); }
-.legend .phantom i { border-style: dashed; }
+
 
 /* ----------------------------------------------------------------- viewport */
 

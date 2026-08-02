@@ -326,15 +326,21 @@ function toolbar(
     .filter((status) => counts[status])
     .map(
       (status) =>
-        `<span class="${status}"><i></i>${counts[status]} ${status}</span>`,
+        `<span class="${status}"><span class="box">${STATUS_MARK[status]}</span>` +
+        `${counts[status]} ${status}</span>`,
     )
     .join("");
 
+  // What the change is, then what to do with it, with a rule between: the first
+  // group is read, the second is pressed, and nothing in the panel should have
+  // to be tried to find out which it is.
   return `<div class="toolbar">
+  <span class="facts">
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
   ${paint(highlight)}
-  <span class="spacer"></span>
+  </span>
+  <span class="rule"></span>
   <span class="filters">
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
@@ -487,6 +493,32 @@ function prBar(graph: ChangeGraph, canReview = false): string {
   </span>
 </div>`;
 }
+
+/**
+ * The mark inside a status box, drawn rather than typed.
+ *
+ * The same shapes the file list uses, so a green plus means the same thing in
+ * both places — and drawn, because a glyph is centred on its font's baseline
+ * and side bearings rather than on the box it sits in.
+ */
+const mark = (body: string): string =>
+  `<svg viewBox="0 0 10 10" width="9" height="9" aria-hidden="true">${body}</svg>`;
+
+const STATUS_MARK: Record<string, string> = {
+  added: mark(
+    `<rect x="4.2" y="1.4" width="1.6" height="7.2" rx="0.6" fill="currentColor"/>` +
+    `<rect x="1.4" y="4.2" width="7.2" height="1.6" rx="0.6" fill="currentColor"/>`,
+  ),
+  modified: mark(`<circle cx="5" cy="5" r="2.4" fill="currentColor"/>`),
+  deleted: mark(
+    `<rect x="1.4" y="4.2" width="7.2" height="1.6" rx="0.6" fill="currentColor"/>`,
+  ),
+  renamed: mark(
+    `<path d="M1.6 5h6M5.4 2.6 8.2 5 5.4 7.4" fill="none" stroke="currentColor" ` +
+    `stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
+  phantom: mark(`<circle cx="5" cy="5" r="1.5" fill="currentColor"/>`),
+};
 
 const TICK =
   `<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">` +
