@@ -34,12 +34,27 @@ const CHEVRON =
  * bare letter. At sidebar size the shape is what registers — a reader picks out
  * "green plus" long before they read anything.
  */
+const mark = (body: string): string =>
+  `<svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">${body}</svg>`;
+
 const STATUS_GLYPH: Record<FileStatus, string> = {
-  added: "+",
-  modified: "•",
-  deleted: "−",
-  renamed: "→",
-  phantom: "·",
+  // Drawn rather than typed. A glyph is centred on its font's baseline and side
+  // bearings, not on its box, so a plus, a bullet and an arrow each sat a
+  // different distance from the middle of the same square. These are centred on
+  // the box because the box is what they are drawn in.
+  added: mark(
+    `<rect x="4.2" y="1.4" width="1.6" height="7.2" rx="0.6" fill="currentColor"/>` +
+    `<rect x="1.4" y="4.2" width="7.2" height="1.6" rx="0.6" fill="currentColor"/>`,
+  ),
+  modified: mark(`<circle cx="5" cy="5" r="2.4" fill="currentColor"/>`),
+  deleted: mark(
+    `<rect x="1.4" y="4.2" width="7.2" height="1.6" rx="0.6" fill="currentColor"/>`,
+  ),
+  renamed: mark(
+    `<path d="M1.6 5h6M5.4 2.6 8.2 5 5.4 7.4" fill="none" stroke="currentColor" ` +
+    `stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+  ),
+  phantom: mark(`<circle cx="5" cy="5" r="1.5" fill="currentColor"/>`),
 };
 
 /**
@@ -293,6 +308,7 @@ body {
 .box {
   width: 14px;
   height: 14px;
+  line-height: 0;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;

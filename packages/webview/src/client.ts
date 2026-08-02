@@ -728,14 +728,23 @@ export const CLIENT_SCRIPT = String.raw`
     }
     box.dataset.change = edge.change;
 
+    // Measured off the label rather than counted in characters: a band is set a
+    // size smaller than the code around it, so multiplying its length by the
+    // code's character width left the box floating well clear of the words it
+    // follows. The header at the far end gives way while boxes are present,
+    // since what is hidden in the fold matters more than which hunk it is.
     var label = band.querySelector(".text");
-    var x = data.textLeft + ((label ? label.textContent.length : 0) + 2) * data.charWidth;
-    band.querySelectorAll(".symbol-box.folded").forEach(function (each) {
+    var x = label ? label.offsetLeft + label.offsetWidth + 8 : data.textLeft;
+    var boxes = band.querySelectorAll(".symbol-box.folded");
+    boxes.forEach(function (each) {
       var width = (each.textContent.length + 1) * data.charWidth;
       each.style.left = x + "px";
       each.style.width = width + "px";
-      x += width + data.charWidth;
+      x += width + 6;
     });
+
+    var header = band.querySelector(".header");
+    if (header) header.hidden = boxes.length > 0;
   }
 
   /** Moves the camera to one end of an arrow, and lights the arrow. */

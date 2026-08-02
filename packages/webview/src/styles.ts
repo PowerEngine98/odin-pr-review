@@ -666,6 +666,10 @@ body:not(.split) .card-body.split-view { display: none; }
   justify-content: center;
 }
 .row.more .text { flex: 0 0 auto; }
+/* Sized to its words rather than stretched across the row: a box placed after
+   the label is placed after the words, and a stretched span ends at the far
+   side of the card. */
+.row.gap .text { flex: 0 0 auto; }
 
 .row.gap .header {
   color: var(--gutter);
