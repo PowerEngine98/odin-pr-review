@@ -2263,8 +2263,45 @@ export const CLIENT_SCRIPT = String.raw`
     box.addEventListener("click", function (event) { event.stopPropagation(); });
     box.addEventListener("change", function () {
       setViewed(card.dataset.id, box.checked, true);
+      // Reading a file finishes with a question -- what does this reach? -- and
+      // the answer is the next file along the chain. Carried there rather than
+      // left to be found again on a canvas that has just rearranged itself.
+      if (box.checked) goToNext(card.dataset.id);
     });
   });
+
+  /**
+   * The next file to read after this one.
+   *
+   * Down the chain first: something this file calls, since that is the question
+   * a reader has just finished asking of it. Failing that, the nearest unread
+   * file still on the canvas, top to bottom, because a part with its chains
+   * exhausted is still a list of files to get through.
+   *
+   * Nothing happens when there is nothing left, which is its own answer.
+   */
+  function goToNext(fromId) {
+    var open = function (id) {
+      var card = document.getElementById("card-" + cssId(id));
+      if (!card || card.classList.contains("hidden")) return false;
+      if (card.classList.contains("viewed-hidden")) return false;
+      return !isRead(id);
+    };
+
+    var downstream = data.edges
+      .filter(function (e) { return e.from === fromId && e.to !== fromId && open(e.to); })
+      .map(function (e) { return e.to; });
+
+    var next = downstream[0];
+    if (!next) {
+      var rest = data.nodes
+        .filter(function (n) { return n.id !== fromId && open(n.id); })
+        .sort(function (a, b) { return a.column - b.column || a.y - b.y; });
+      next = rest[0] && rest[0].id;
+    }
+
+    if (next) centerOn(next);
+  }
 
   // The sidebar and the canvas show the same marks, so the host keeps them
   // in step.
