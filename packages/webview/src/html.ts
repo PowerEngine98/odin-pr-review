@@ -664,8 +664,11 @@ function card(
   // out hiding. Expanding is then a matter of revealing markup that is already
   // there, and the browser's own search still finds code inside a closed gap.
   const coloured = colourRows(node, highlight);
+  // Carried down the card so a run of inserted lines does not print the same
+  // base-side number against every one of them.
+  const gutter = { lastOld: undefined as number | undefined, lastNew: undefined as number | undefined };
   const body = node.rows
-    .map((row, i) => renderRow(row, i >= node.visibleRows, coloured, palette))
+    .map((row, i) => renderRow(row, i >= node.visibleRows, coloured, palette, gutter))
     .join("");
   const more =
     node.hiddenRows > 0
@@ -684,11 +687,17 @@ function card(
 </div>`;
 }
 
+interface Gutter {
+  lastOld: number | undefined;
+  lastNew: number | undefined;
+}
+
 function renderRow(
   row: DisplayRow,
   beyondCap = false,
   coloured?: Map<DisplayRow, CodeToken[]>,
   palette?: Palette,
+  gutter?: Gutter,
 ): string {
   const overflow = beyondCap ? " beyond-cap" : "";
 
@@ -698,7 +707,7 @@ function renderRow(
     const expandable = row.rows ? " expandable" : "";
     const imports = row.imports ? " imports" : "";
     const hidden = (row.rows ?? [])
-      .map((inner) => renderRow(inner, beyondCap, coloured, palette).replace(
+      .map((inner) => renderRow(inner, beyondCap, coloured, palette, gutter).replace(
         'class="row ', 'class="row in-gap ',
       ))
       .join("");
@@ -734,13 +743,20 @@ function renderRow(
   const left = row.oldLine ?? row.oldAnchor ?? row.newLine;
   const right = row.newLine ?? row.newAnchor ?? row.oldLine;
 
+  // An inserted line has no number on the base side, only the position it will
+  // occupy there — and every line of the same insertion occupies the same one.
+  // Printing it once says where the run lands; printing it six times reads as a
+  // fault in the gutter, which is what it looked like.
+  const showLeft = repeats(gutter, "lastOld", row.oldLine, left);
+  const showRight = repeats(gutter, "lastNew", row.newLine, right);
+
   return `<div class="row ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
     `<span class="marker">${marker}</span>` +
     `<span class="num old${row.oldLine === undefined ? " anchor" : ""}">` +
-      `${left ?? ""}</span>` +
+      `${showLeft ?? ""}</span>` +
     `<span class="text">${code(row, coloured?.get(row), palette)}</span>` +
     `<span class="num new${row.newLine === undefined ? " anchor" : ""}">` +
-      `${right ?? ""}</span></div>`;
+      `${showRight ?? ""}</span></div>`;
 }
 
 function edgeLayer(layout: GraphLayout): string {
@@ -818,6 +834,29 @@ function code(row: DisplayRow, tokens?: CodeToken[], palette?: Palette): string 
         : escapeHtml(token.text);
     })
     .join("");
+}
+
+/**
+ * The number to print in one gutter, blanking a repeated stand-in.
+ *
+ * A real line number always prints. A stand-in prints the first time it appears
+ * and is left out while it keeps repeating, which is exactly as long as one
+ * insertion lasts.
+ */
+function repeats(
+  gutter: Gutter | undefined,
+  side: "lastOld" | "lastNew",
+  real: number | undefined,
+  value: number | undefined,
+): number | undefined {
+  if (!gutter) return value;
+  if (real !== undefined) {
+    gutter[side] = undefined;
+    return value;
+  }
+  if (value !== undefined && gutter[side] === value) return undefined;
+  gutter[side] = value;
+  return value;
 }
 
 function escapeHtml(value: string): string {
