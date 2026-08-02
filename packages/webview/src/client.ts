@@ -496,15 +496,6 @@ export const CLIENT_SCRIPT = String.raw`
         dot.setAttribute("cx", fromX);
         dot.setAttribute("cy", from.y);
       }
-      // The dashes sit on the approach, not past the head: past the head is
-      // inside the card, and the cards are drawn over the arrows.
-      var travel = goesRight ? 1 : -1;
-      var near = toX - travel * 8;
-      var stubD = "M " + (near - travel * 20) + " " + to.y + " L " + near + " " + to.y;
-      group.querySelectorAll("path.port, path.port-under").forEach(function (path) {
-        path.setAttribute("d", stubD);
-      });
-
       markSymbol(edge, to);
 
       // Where each end wants the camera, remembered rather than recomputed on
@@ -541,9 +532,20 @@ export const CLIENT_SCRIPT = String.raw`
     var box = row.querySelector(".symbol-box");
     if (!box) {
       box = chrome("symbol-box", "");
-      box.dataset.change = edge.change;
+      box.title = "Go back to where this is called from";
+      box.addEventListener("click", function (event) {
+        event.stopPropagation();
+        var origin = data.edges.find(function (e) { return e.id === box.dataset.edge; });
+        if (!origin) return;
+        var group = document.querySelector('g.edge[data-id="' + origin.id + '"]');
+        if (!group) return;
+        highlightEdge(origin.id);
+        centerPoint(Number(group.dataset.fromX), Number(group.dataset.fromY), origin.from);
+      });
       row.appendChild(box);
     }
+    box.dataset.change = edge.change;
+    box.dataset.edge = edge.id;
 
     box.style.left = (data.textLeft + at * data.charWidth) + "px";
     box.style.width = (edge.symbol.length * data.charWidth) + "px";
@@ -580,14 +582,8 @@ export const CLIENT_SCRIPT = String.raw`
       var edge = data.edges.find(function (e) { return e.id === group.dataset.id; });
       if (!edge) return;
 
-      // The dot travels to where the arrow lands; the dashes travel back.
-      var forward = port.classList.contains("out");
       highlightEdge(edge.id);
-      centerPoint(
-        Number(group.dataset[forward ? "toX" : "fromX"]),
-        Number(group.dataset[forward ? "toY" : "fromY"]),
-        forward ? edge.to : edge.from,
-      );
+      centerPoint(Number(group.dataset.toX), Number(group.dataset.toY), edge.to);
     });
   });
 
