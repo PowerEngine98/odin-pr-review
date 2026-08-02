@@ -92,12 +92,24 @@ html, body {
   color: var(--text);
   border-bottom-color: var(--status-renamed);
 }
+/* The count is the reason to pick one tab over another -- how much work is
+   behind it -- so it is read, not glanced at. Gutter grey on a faint pill was
+   two greys arguing with each other. */
 .part-tab .count {
   font-size: 11px;
-  color: var(--gutter);
-  background: color-mix(in srgb, var(--text) 10%, transparent);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  min-width: 18px;
+  text-align: center;
+  color: color-mix(in srgb, var(--text) 72%, transparent);
+  background: color-mix(in srgb, var(--text) 16%, transparent);
   border-radius: 999px;
   padding: 0 6px;
+}
+.part-tab:hover .count { color: var(--text); }
+.part-tab.on .count {
+  color: var(--text);
+  background: color-mix(in srgb, var(--status-renamed) 28%, transparent);
 }
 
 /* ------------------------------------------------------------------ toolbar */
