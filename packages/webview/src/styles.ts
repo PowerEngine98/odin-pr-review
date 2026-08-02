@@ -61,6 +61,21 @@ html, body {
   overflow: hidden;
 }
 
+/* How much of what is on screen has been read. Full width, because it is about
+   the whole view rather than any one card, and pinned to the chrome's lower
+   edge so a title sliding up to the bar meets it there. */
+.done-bar {
+  height: 2px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.done-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--status-renamed);
+  transition: width 200ms ease;
+}
+
 /* One tab per part of the change that can be read on its own. Drawn like the
    editor's own tabs rather than the forge's, because this is a place you come
    back to rather than a page you scroll. */
@@ -95,6 +110,7 @@ html, body {
 /* The count is the reason to pick one tab over another -- how much work is
    behind it -- so it is read, not glanced at. Gutter grey on a faint pill was
    two greys arguing with each other. */
+.part-tab .count .done { color: var(--status-renamed); font-weight: 600; }
 .part-tab .count {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -107,6 +123,8 @@ html, body {
   padding: 0 6px;
 }
 .part-tab:hover .count { color: var(--text); }
+/* Everything in it has been read. Said quietly — it is a state, not an award. */
+.part-tab.finished .count .done { color: var(--action); }
 .part-tab.on .count {
   color: var(--text);
   background: color-mix(in srgb, var(--status-renamed) 28%, transparent);

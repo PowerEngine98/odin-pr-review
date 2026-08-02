@@ -42,6 +42,10 @@ export const CLIENT_SCRIPT = String.raw`
     return !data.unified;
   }
 
+  // Scoped to the strip: the markdown editor has tabs of its own, and a bare
+  // .tab caught its Write and Preview buttons too.
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".parts .part-tab"));
+
   var view = { x: 0, y: 0, scale: 1 };
   var MIN_SCALE = 0.15;
   var MAX_SCALE = 3;
@@ -968,9 +972,6 @@ export const CLIENT_SCRIPT = String.raw`
 
   /* ----------------------------------------------------------- the parts */
 
-  // Scoped to the strip: the markdown editor has tabs of its own, and a bare
-  // .tab caught its Write and Preview buttons too.
-  var tabs = Array.prototype.slice.call(document.querySelectorAll(".parts .part-tab"));
   tabs.forEach(function (tab) {
     tab.addEventListener("click", function () {
       var part = (data.parts || []).find(function (p) {
@@ -988,6 +989,7 @@ export const CLIENT_SCRIPT = String.raw`
       });
 
       refreshFilters();
+      refreshTally();
       // The part fills the view it was opened into; leaving the camera where it
       // was would open a part and show the space the rest of them left behind.
       fit();
@@ -2142,6 +2144,54 @@ export const CLIENT_SCRIPT = String.raw`
         filled.toFixed(2) + " " + (circumference - filled).toFixed(2),
       );
     }
+
+    refreshParts(done, total);
+  }
+
+  /**
+   * How much of each part has been read, and of whatever part is open.
+   *
+   * A count of files says how much there is; a count of files read says how
+   * much is left, which is the question being asked of a strip of tabs. The bar
+   * along the bottom of the chrome answers the same question for the part in
+   * front, so it can be seen without reading anything.
+   */
+  function refreshParts(doneAll, totalAll) {
+    var counted = {};
+
+    tabs.forEach(function (tab) {
+      var part = (data.parts || []).find(function (p) {
+        return p.id === tab.dataset.part;
+      });
+
+      var done = doneAll;
+      var total = totalAll;
+      if (part) {
+        done = 0;
+        total = 0;
+        part.nodes.forEach(function (id) {
+          var node = nodeFor(id);
+          // Untouched files carry no box, so counting them would leave every
+          // tally short of full however much was read.
+          if (!node || node.untouched) return;
+          total++;
+          if (viewed[id] === true) done++;
+        });
+      }
+
+      var readEl = tab.querySelector(".done");
+      var totalEl = tab.querySelector(".total");
+      if (readEl) readEl.textContent = done;
+      if (totalEl) totalEl.textContent = total;
+      counted[tab.dataset.part] = { done: done, total: total };
+      tab.classList.toggle("finished", total > 0 && done === total);
+    });
+
+    var open = tabs.filter(function (tab) { return tab.classList.contains("on"); })[0];
+    var fill = document.querySelector(".done-bar span");
+    if (!fill) return;
+    var shown = (open && counted[open.dataset.part]) || { done: doneAll, total: totalAll };
+    fill.style.width = shown.total ? (shown.done / shown.total) * 100 + "%" : "0";
   }
 
   /** Sets one file's state, from a click here or from the host. */

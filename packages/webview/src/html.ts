@@ -239,6 +239,10 @@ export function renderHtml(
     prBar(graph, options.canReview === true),
     toolbar(graph, layout, options.highlight),
     tabs(parts),
+    // Along the bottom edge of the chrome, where a sticky card title comes to
+    // rest: how much of what is on screen has been read, without having to
+    // look for a number.
+    `<div class="done-bar"><span></span></div>`,
     `</div>`,
     `<div class="viewport">`,
     `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
@@ -357,7 +361,11 @@ function tabs(parts: Component[]): string {
   const total = parts.reduce((n, p) => n + p.files, 0);
   const one = (id: string, label: string, files: number, title: string) =>
     `<button class="part-tab" data-part="${escapeHtml(id)}" title="${escapeHtml(title)}">` +
-    `${escapeHtml(label)}<span class="count">${files}</span></button>`;
+    `${escapeHtml(label)}` +
+    // How much of this part is done over how much there is. The read count is
+    // the one that changes while reviewing, so it carries the colour.
+    `<span class="count"><b class="done">0</b>/<span class="total">${files}</span></span>` +
+    `</button>`;
 
   const spare = loose.reduce((n, p) => n + p.files, 0);
 
