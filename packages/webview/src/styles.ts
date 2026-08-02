@@ -570,11 +570,14 @@ input[type="checkbox"]:checked::after {
 
 /* What the change is, above; what to do with it, below. */
 .facts { display: flex; flex-direction: column; gap: 1px; }
-.toolbar .rule {
-  height: 1px;
-  background: color-mix(in srgb, var(--text) 12%, transparent);
+/* Across the panel rather than tucked in a corner: it is the one thing here
+   that acts on the drawing, and a button the width of what it sits under is
+   easier to hit than one the width of its own word. */
+.toolbar #action-fit {
+  align-self: stretch;
+  text-align: center;
+  padding: 4px 0;
 }
-.toolbar #action-fit { align-self: flex-end; }
 .legend .added { color: var(--status-added); }
 .legend .modified { color: var(--status-modified); }
 .legend .deleted { color: var(--status-deleted); }

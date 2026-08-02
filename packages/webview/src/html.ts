@@ -331,21 +331,18 @@ function toolbar(
     )
     .join("");
 
-  // What the change is, then what to do with it, with a rule between: the first
-  // group is read, the second is pressed, and nothing in the panel should have
-  // to be tried to find out which it is.
+  // What the change is, then what to do with it: read above, pressed below.
   return `<div class="toolbar">
   <span class="facts">
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
   ${paint(highlight)}
   </span>
-  <span class="rule"></span>
   <span class="filters">
     <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
     <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
     <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
-    <label title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed"> hide read-through</label>
+    <label title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed"> hide viewed relations</label>
   </span>
   <button id="action-fit">fit</button>
 </div>`;
