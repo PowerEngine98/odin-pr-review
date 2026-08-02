@@ -485,7 +485,16 @@ export const CLIENT_SCRIPT = String.raw`
       var c1 = goesRight ? fromX + dx : fromX - dx;
       var c2 = goesRight ? toX - dx : toX + dx;
 
-      var d = "M " + fromX + " " + from.y + " C " + c1 + " " + from.y + ", " +
+      // The wire begins on the dot's rim, at the point facing where it is
+      // headed, rather than at the card behind it. Drawn from the card it ran
+      // straight through the dot and out again, which read as a bead on a
+      // string instead of the arrow leaving from there.
+      var portX = fromX + (goesRight ? 9 : -9);
+      var reach = Math.hypot(toX - portX, to.y - from.y) || 1;
+      var startX = portX + ((toX - portX) / reach) * 6;
+      var startY = from.y + ((to.y - from.y) / reach) * 6;
+
+      var d = "M " + startX + " " + startY + " C " + c1 + " " + from.y + ", " +
               c2 + " " + to.y + ", " + toX + " " + to.y;
       group.querySelectorAll("path.hit, path.wire").forEach(function (path) {
         path.setAttribute("d", d);
@@ -496,7 +505,7 @@ export const CLIENT_SCRIPT = String.raw`
       if (dot) {
         // Clear of the card, not on its edge: half a dot under the border is a
         // smudge, and this one is meant to be pressed.
-        dot.setAttribute("cx", fromX + (goesRight ? 9 : -9));
+        dot.setAttribute("cx", portX);
         dot.setAttribute("cy", from.y);
       }
       markSymbol(edge, "in");

@@ -782,7 +782,7 @@ function edgeLayer(layout: GraphLayout): string {
     // smudge, and this one is meant to be pressed.
     const away = edge.fromSide === "right" ? 1 : -1;
     const port =
-      `<circle class="port out" cx="${edge.from.x + away * 9}" cy="${edge.from.y}" r="4.5">` +
+      `<circle class="port out" cx="${edge.from.x + away * PORT_GAP}" cy="${edge.from.y}" r="4.5">` +
       `<title>Go to the definition this points at</title></circle>`;
     return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
       `<path class="hit" d="${d}"/>` +
@@ -795,12 +795,42 @@ function edgeLayer(layout: GraphLayout): string {
     `<defs>${markers}</defs>${style}${paths.join("")}</svg>`;
 }
 
-/** Same curve the static SVG draws, so the two renderers agree. */
+/**
+ * The curve, starting at the rim of the dot rather than at the card.
+ *
+ * The static SVG has no dot and so starts at the card edge. Here the wire ran
+ * out of the card, straight through the dot, and out the other side — the dot
+ * read as a bead threaded onto the line instead of the thing the line leaves
+ * from. It now begins on the dot's rim, at the point facing where the arrow is
+ * headed, so the two touch and nothing is drawn underneath.
+ */
 function curve(edge: PlacedEdge): string {
+  const away = edge.fromSide === "right" ? 1 : -1;
+  const start = rim(edge.from.x + away * PORT_GAP, edge.from.y, edge.to.x, edge.to.y);
   const dx = Math.max(40, Math.abs(edge.to.x - edge.from.x) * 0.45);
   const c1 = edge.fromSide === "right" ? edge.from.x + dx : edge.from.x - dx;
   const c2 = edge.toSide === "left" ? edge.to.x - dx : edge.to.x + dx;
-  return `M ${edge.from.x} ${edge.from.y} C ${c1} ${edge.from.y}, ${c2} ${edge.to.y}, ${edge.to.x} ${edge.to.y}`;
+  return `M ${start.x} ${start.y} C ${c1} ${edge.from.y}, ${c2} ${edge.to.y}, ${edge.to.x} ${edge.to.y}`;
+}
+
+/** How far the dot sits from the card. */
+const PORT_GAP = 9;
+/** Its radius plus its stroke, so a line stopping here stops on the rim. */
+const PORT_RIM = 6;
+
+/** The point on the dot's rim that faces the far end of the arrow. */
+function rim(cx: number, cy: number, tx: number, ty: number): { x: number; y: number } {
+  const dx = tx - cx;
+  const dy = ty - cy;
+  const length = Math.hypot(dx, dy) || 1;
+  return {
+    x: round(cx + (dx / length) * PORT_RIM),
+    y: round(cy + (dy / length) * PORT_RIM),
+  };
+}
+
+function round(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function pathOf(layout: GraphLayout, nodeId: string): string {
