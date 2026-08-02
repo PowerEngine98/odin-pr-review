@@ -499,7 +499,8 @@ export const CLIENT_SCRIPT = String.raw`
         dot.setAttribute("cx", fromX + (goesRight ? 9 : -9));
         dot.setAttribute("cy", from.y);
       }
-      markSymbol(edge, to);
+      markSymbol(edge, "in");
+      markSymbol(edge, "out");
 
       // Where each end wants the camera, remembered rather than recomputed on
       // the click: by then the view has moved and the numbers would be stale.
@@ -511,20 +512,29 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   /**
-   * Draws a box around the symbol an arrow lands on.
+   * Draws a box around the name at one end of an arrow.
    *
-   * The arrow reaches the line; the box says which word on it. Placed by
-   * arithmetic rather than by measuring the browser's text, using the same
-   * character width the layout engine used — the two have to agree, and asking
-   * the browser would be asking a different question.
+   * The arrow reaches a line; the box says which word on it — at the far end
+   * the definition it resolved to, and at the near end the call that resolved.
+   * Placed by arithmetic rather than by measuring the browser's text, using the
+   * same character width the layout engine used: the two have to agree, and
+   * asking the browser would be asking a different question.
+   *
+   * Pressing either takes you to the other end, which is the same journey the
+   * dot makes, offered from wherever the reader happens to be looking.
    */
-  function markSymbol(edge, to) {
+  function markSymbol(edge, role) {
     if (!edge.symbol || edge.kind === "import") return;
-    var card = document.getElementById("card-" + cssId(edge.to));
+
+    var here = role === "out" ? edge.from : edge.to;
+    var side = role === "out" ? edge.fromSide : edge.toSide;
+    var line = role === "out" ? edge.fromLine : edge.toLine;
+
+    var card = document.getElementById("card-" + cssId(here));
     if (!card) return;
 
-    var attribute = edge.toSide === "base" ? "data-old" : "data-new";
-    var row = card.querySelector(".row[" + attribute + '="' + edge.toLine + '"]');
+    var attribute = side === "base" ? "data-old" : "data-new";
+    var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
     if (!row || row.offsetParent === null) return;
 
     var text = row.querySelector(".text");
@@ -532,29 +542,41 @@ export const CLIENT_SCRIPT = String.raw`
     var at = text.textContent.indexOf(edge.symbol);
     if (at < 0) return;
 
-    var box = row.querySelector(".symbol-box");
+    var selector = '.symbol-box[data-edge="' + edge.id + '"][data-role="' + role + '"]';
+    var box = row.querySelector(selector);
     if (!box) {
       box = chrome("symbol-box", "");
-      box.title = "Go back to where this is called from";
+      box.dataset.edge = edge.id;
+      box.dataset.role = role;
+      box.title = role === "out"
+        ? "Go to the definition this points at"
+        : "Go back to where this is called from";
       box.addEventListener("click", function (event) {
         event.stopPropagation();
-        var origin = data.edges.find(function (e) { return e.id === box.dataset.edge; });
-        if (!origin) return;
-        var group = document.querySelector('g.edge[data-id="' + origin.id + '"]');
-        if (!group) return;
-        highlightEdge(origin.id);
-        centerPoint(Number(group.dataset.fromX), Number(group.dataset.fromY), origin.from);
+        travel(edge.id, role === "out");
       });
       row.appendChild(box);
     }
     box.dataset.change = edge.change;
-    box.dataset.edge = edge.id;
 
     // A character of room on the left, so the box does not sit on the first
     // glyph it is meant to be pointing out. The right edge stays where it was.
     box.style.left = (data.textLeft + (at - 1) * data.charWidth) + "px";
     box.style.width = ((edge.symbol.length + 1) * data.charWidth) + "px";
-    void to;
+  }
+
+  /** Moves the camera to one end of an arrow, and lights the arrow. */
+  function travel(edgeId, forward) {
+    var group = document.querySelector('g.edge[data-id="' + edgeId + '"]');
+    var edge = data.edges.find(function (e) { return e.id === edgeId; });
+    if (!group || !edge) return;
+
+    highlightEdge(edgeId);
+    centerPoint(
+      Number(group.dataset[forward ? "toX" : "fromX"]),
+      Number(group.dataset[forward ? "toY" : "fromY"]),
+      forward ? edge.to : edge.from,
+    );
   }
 
   /**
@@ -587,8 +609,7 @@ export const CLIENT_SCRIPT = String.raw`
       var edge = data.edges.find(function (e) { return e.id === group.dataset.id; });
       if (!edge) return;
 
-      highlightEdge(edge.id);
-      centerPoint(Number(group.dataset.toX), Number(group.dataset.toY), edge.to);
+      travel(edge.id, true);
     });
   });
 
@@ -1754,6 +1775,20 @@ export const CLIENT_SCRIPT = String.raw`
 
   // The sidebar and the canvas show the same marks, so the host keeps them
   // in step.
+  /**
+   * Comments arriving from the host, in the shape the page draws.
+   *
+   * The page is built with an avatar field and the host sends an avatarUrl,
+   * so every refresh after a reaction quietly replaced the faces with initials
+   * — the pictures were there all along, under another name.
+   */
+  function normalise(comments) {
+    return (comments || []).map(function (c) {
+      if (c.avatar || !c.avatarUrl) return c;
+      return Object.assign({}, c, { avatar: c.avatarUrl });
+    });
+  }
+
   window.addEventListener("message", function (event) {
     var message = event.data;
     if (message && message.type === "reviewSubmitted") {
@@ -1762,7 +1797,7 @@ export const CLIENT_SCRIPT = String.raw`
         panel.hidden = true;
         bodyOf(panel).value = "";
       }
-      if (message.comments) data.comments = message.comments;
+      if (message.comments) data.comments = normalise(message.comments);
       forget("review");
       refreshReview();
       buildMarks();
@@ -1776,7 +1811,7 @@ export const CLIENT_SCRIPT = String.raw`
       return;
     }
     if (message && message.type === "comments") {
-      data.comments = message.comments || [];
+      data.comments = normalise(message.comments);
       var was = openThread && openThread.root.id;
       buildMarks();
       // Back to the conversation the reader was in, now that it has changed.

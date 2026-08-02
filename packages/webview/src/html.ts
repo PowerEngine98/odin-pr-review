@@ -666,9 +666,12 @@ function card(
   const coloured = colourRows(node, highlight);
   // Carried down the card so a run of inserted lines does not print the same
   // base-side number against every one of them.
-  const gutter = { lastOld: undefined as number | undefined, lastNew: undefined as number | undefined };
+  // A file that exists on one side only has a single numbering, so both gutters
+  // carry it: an empty column down a whole card reads as a column that failed
+  // to draw, and the numbers are not in doubt — there is only one set of them.
+  const single = node.node.status === "added" || node.node.status === "deleted";
   const body = node.rows
-    .map((row, i) => renderRow(row, i >= node.visibleRows, coloured, palette, gutter))
+    .map((row, i) => renderRow(row, i >= node.visibleRows, coloured, palette, single))
     .join("");
   const more =
     node.hiddenRows > 0
@@ -687,17 +690,12 @@ function card(
 </div>`;
 }
 
-interface Gutter {
-  lastOld: number | undefined;
-  lastNew: number | undefined;
-}
-
 function renderRow(
   row: DisplayRow,
   beyondCap = false,
   coloured?: Map<DisplayRow, CodeToken[]>,
   palette?: Palette,
-  gutter?: Gutter,
+  single = false,
 ): string {
   const overflow = beyondCap ? " beyond-cap" : "";
 
@@ -707,7 +705,7 @@ function renderRow(
     const expandable = row.rows ? " expandable" : "";
     const imports = row.imports ? " imports" : "";
     const hidden = (row.rows ?? [])
-      .map((inner) => renderRow(inner, beyondCap, coloured, palette, gutter).replace(
+      .map((inner) => renderRow(inner, beyondCap, coloured, palette, single).replace(
         'class="row ', 'class="row in-gap ',
       ))
       .join("");
@@ -740,13 +738,13 @@ function renderRow(
     (row.newLine !== undefined ? ` data-new="${row.newLine}"` : "");
   // A wholly added or deleted file has a single numbering, so it is mirrored
   // into the other gutter rather than leaving a column empty down the card.
-  // A line that exists on one side only leaves the other column empty, the way
-  // the forge leaves it. A stand-in number there is either the same value
-  // repeated down a whole insertion, which reads as a fault in the gutter, or a
-  // number the line does not have, which reads as a claim it cannot support.
-  const showLeft = row.oldLine;
-  const showRight = row.newLine;
-  void gutter;
+  // Inside a modified file a line that exists on one side only leaves the other
+  // column empty, the way the forge leaves it: a stand-in there is either the
+  // same value repeated down a whole insertion or a number the line does not
+  // have. A wholly added or deleted file is the exception — one numbering,
+  // shown in both columns.
+  const showLeft = row.oldLine ?? (single ? row.newLine : undefined);
+  const showRight = row.newLine ?? (single ? row.oldLine : undefined);
 
   return `<div class="row ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
     `<span class="marker">${marker}</span>` +
@@ -832,29 +830,6 @@ function code(row: DisplayRow, tokens?: CodeToken[], palette?: Palette): string 
         : escapeHtml(token.text);
     })
     .join("");
-}
-
-/**
- * The number to print in one gutter, blanking a repeated stand-in.
- *
- * A real line number always prints. A stand-in prints the first time it appears
- * and is left out while it keeps repeating, which is exactly as long as one
- * insertion lasts.
- */
-function repeats(
-  gutter: Gutter | undefined,
-  side: "lastOld" | "lastNew",
-  real: number | undefined,
-  value: number | undefined,
-): number | undefined {
-  if (!gutter) return value;
-  if (real !== undefined) {
-    gutter[side] = undefined;
-    return value;
-  }
-  if (value !== undefined && gutter[side] === value) return undefined;
-  gutter[side] = value;
-  return value;
 }
 
 function escapeHtml(value: string): string {

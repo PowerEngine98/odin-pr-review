@@ -92,6 +92,9 @@ export function layoutGraph(
   return { nodes: placed, edges: routed, ...bounds, metrics };
 }
 
+/** Width of the buttons a card title carries at its end, plus their spacing. */
+const TITLE_CONTROLS = 46;
+
 // ---------------------------------------------------------------- measurement
 
 function measureNodes(
@@ -111,8 +114,13 @@ function measureNodes(
       metrics.gutterWidth +
       metrics.rightGutterWidth +
       metrics.padding * 2;
+    // The controls at the end of a title — open the file, mark it read — are
+    // not text, so they are not in titleLength. Without room set aside for them
+    // a card sized to its own filename ends with them against its border.
     const titleWidth =
-      titleLength(cardTitle(node)) * metrics.charWidth + metrics.padding * 4;
+      titleLength(cardTitle(node)) * metrics.charWidth +
+      metrics.padding * 4 +
+      TITLE_CONTROLS;
 
     const width = clamp(
       Math.max(contentWidth, titleWidth),
