@@ -83,3 +83,31 @@ describe("naming a language", () => {
     expect(languageLabel("kotlin")).toBe("kotlin");
   });
 });
+
+describe("a language the change does not contain", () => {
+  it("loads it when something asks for it", async () => {
+    // A comment can name any language at all — a reviewer quoting shell in a
+    // Kotlin review is ordinary — and refusing to colour it because no file in
+    // the diff is written in it would be a strange rule to explain.
+    const h = await loadHighlighter(["typescript"]);
+    expect(h.supports("kotlin")).toBe(false);
+
+    expect(await h.ensure("kotlin")).toBe(true);
+    expect(h.supports("kotlin")).toBe(true);
+
+    const [line] = h.tokenize("kotlin", "fun test() = 1");
+    expect(line!.some((t) => t.color)).toBe(true);
+  });
+
+  it("says no to one it has no grammar for", async () => {
+    const h = await loadHighlighter(["typescript"]);
+    expect(await h.ensure("brainfuck")).toBe(false);
+  });
+
+  it("starts from nothing when the change had no languages at all", async () => {
+    const h = await loadHighlighter([]);
+    expect(await h.ensure("python")).toBe(true);
+    const [line] = h.tokenize("python", "def go(): pass");
+    expect(line!.some((t) => t.color)).toBe(true);
+  });
+});

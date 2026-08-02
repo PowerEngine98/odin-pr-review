@@ -968,7 +968,9 @@ input[type="checkbox"]:checked::after {
   font-family: var(--mono);
   font-size: 11px;
 }
-.editor-preview :not(pre) > code {
+.editor-preview p > code,
+.editor-preview li > code,
+.editor-preview td > code {
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);
@@ -1260,7 +1262,9 @@ input[type="checkbox"]:checked::after {
   overflow-x: auto;
 }
 .remark .text code { font-family: var(--mono); font-size: 11px; }
-.remark .text :not(pre) > code {
+.remark .text p > code,
+.remark .text li > code,
+.remark .text td > code {
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);
@@ -1421,10 +1425,14 @@ input[type="checkbox"]:checked::after {
   padding: 1px 0;
   vertical-align: top;
 }
+/* nowrap is load-bearing: the number column is sized to its content, and
+   without it "23" wraps to a "2" over a "3" — which reads as two rows with the
+   wrong numbers on them, and doubles the height of every line. */
 .suggestion .n {
   width: 1px;
   padding: 1px 8px;
   text-align: right;
+  white-space: nowrap;
   color: var(--gutter);
   background: color-mix(in srgb, var(--text) 6%, transparent);
   user-select: none;
@@ -1432,6 +1440,7 @@ input[type="checkbox"]:checked::after {
 .suggestion .m {
   width: 1px;
   padding: 1px 8px 1px 4px;
+  white-space: nowrap;
   user-select: none;
 }
 .suggestion .code {

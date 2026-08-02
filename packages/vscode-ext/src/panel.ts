@@ -237,14 +237,25 @@ export class GraphPanel {
    * comment that is not among them comes back plain, which is the honest
    * answer rather than a guess at the colours.
    */
-  private colour(request: { id: number; lang: string; code: string }): void {
-    const lines = this.highlight?.supports(request.lang)
-      ? this.highlight.tokenize(request.lang, request.code)
-      : [];
+  private async colour(request: {
+    id: number;
+    lang: string;
+    code: string;
+  }): Promise<void> {
+    // A comment may name a language no file in the change is written in — a
+    // reviewer quoting shell in a Kotlin review is ordinary — so the grammar is
+    // fetched on demand rather than refused.
+    const ready = this.highlight
+      ? this.highlight.supports(request.lang) ||
+        (await this.highlight.ensure(request.lang))
+      : false;
+
     void this.panel.webview.postMessage({
       type: "highlighted",
       id: request.id,
-      lines,
+      lines: ready && this.highlight
+        ? this.highlight.tokenize(request.lang, request.code)
+        : [],
     });
   }
 
@@ -497,7 +508,7 @@ export class GraphPanel {
         return;
       }
       if (message.type === "highlight") {
-        this.colour(message.payload);
+        await this.colour(message.payload);
         return;
       }
       if (

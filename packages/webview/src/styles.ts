@@ -974,7 +974,9 @@ input[type="checkbox"]:checked::after {
   font-family: var(--mono);
   font-size: 11px;
 }
-.editor-preview :not(pre) > code {
+.editor-preview p > code,
+.editor-preview li > code,
+.editor-preview td > code {
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);
@@ -1266,7 +1268,9 @@ input[type="checkbox"]:checked::after {
   overflow-x: auto;
 }
 .remark .text code { font-family: var(--mono); font-size: 11px; }
-.remark .text :not(pre) > code {
+.remark .text p > code,
+.remark .text li > code,
+.remark .text td > code {
   padding: 1px 5px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--text) 10%, transparent);

@@ -30,6 +30,15 @@ export interface Token {
 export interface Highlighter {
   supports(language: string): boolean;
   /**
+   * Loads a grammar that was not among the change's languages.
+   *
+   * A comment can name any language at all — a reviewer quoting shell in a
+   * Kotlin review is ordinary — and refusing to colour it because no file in
+   * the diff is written in it would be a strange rule to explain. Returns
+   * false when nothing here can read it.
+   */
+  ensure(language: string): Promise<boolean>;
+  /**
    * Colours a block of code, returning one array of tokens per line.
    *
    * Takes a block rather than a line because a line is not enough to know what
@@ -201,6 +210,27 @@ export async function loadHighlighter(
     supports(language: string): boolean {
       const id = SHIKI_ID[language];
       return Boolean(core && id && loaded.has(id));
+    },
+    async ensure(language: string): Promise<boolean> {
+      const id = SHIKI_ID[language];
+      if (!id || !GRAMMARS[id]) return false;
+      if (core && loaded.has(id)) return true;
+
+      try {
+        if (!core) {
+          core = await createHighlighterCore({
+            langs: [await GRAMMARS[id]!()],
+            themes: [theme as never],
+            engine: createJavaScriptRegexEngine({ forgiving: true }),
+          });
+        } else {
+          await core.loadLanguage(await GRAMMARS[id]!());
+        }
+        loaded.add(id);
+        return true;
+      } catch {
+        return false;
+      }
     },
     tokenize(language: string, code: string): Token[][] {
       const id = SHIKI_ID[language];
