@@ -705,6 +705,10 @@ body:not(.split) .card-body.split-view { display: none; }
 
 .row .marker {
   width: 14px;
+  /* Inside the marker's own box, which is border-box, so the gutter is still
+     exactly as wide as the layout engine measured it. Without this the sign
+     sits against the card border and reads as part of the frame. */
+  padding-left: 5px;
   flex: 0 0 auto;
   color: var(--gutter);
 }
