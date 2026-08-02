@@ -94,7 +94,9 @@ html, body {
   flex: 0 0 auto;
   padding: 6px 12px;
   border: 0;
-  border-bottom: 2px solid transparent;
+  /* The mark rides the top edge, where the strip meets the header above it,
+     rather than the bottom edge it shares with the canvas. */
+  border-top: 2px solid transparent;
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -105,7 +107,7 @@ html, body {
 .part-tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
 .part-tab.on {
   color: var(--text);
-  border-bottom-color: var(--status-renamed);
+  border-top-color: var(--status-renamed);
 }
 /* The count is the reason to pick one tab over another -- how much work is
    behind it -- so it is read, not glanced at. Gutter grey on a faint pill was
@@ -1060,29 +1062,47 @@ body:not(.split) .card-body.split-view { display: none; }
    Laid on as an image rather than a colour: the row's own background already
    says added or removed, and replacing it would cost that while the reader is
    choosing what to say about it. The wash tints, it does not overwrite. */
-/* The wash goes over whatever the row already is. It has to be repeated per
-   shape because the change markers down the card's edges are background layers
-   too, and a single background-image would replace them rather than sit on
-   them -- which is how picking a changed line stopped looking picked at all. */
+/* A pick is one block, not a stack of marked lines.
+   The wash used to sit on top of whatever each row already was, so the diff's
+   colours and the change markers down the card's edges showed through it and
+   read as rules ruled between the rows. Inside a pick the row is flattened to
+   one opaque colour across its whole width: the reader is choosing a passage,
+   and which of its lines were added is a question for after they have chosen. */
 .row.picked {
-  background-image: linear-gradient(var(--pick-wash), var(--pick-wash));
+  background-color: color-mix(in srgb, var(--warning) 20%, var(--card-bg));
+  background-image: none;
 }
-.row.split.picked .side {
-  background-image: linear-gradient(var(--pick-wash), var(--pick-wash));
+.row.split.picked .side,
+.row.split.picked .side.add,
+.row.split.picked .side.del,
+.row.split.picked .side.empty {
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
 }
-.row.flat.add.picked {
-  background-image:
-    linear-gradient(var(--pick-wash), var(--pick-wash)),
-    linear-gradient(to right, var(--added) 0 3px, transparent 3px),
-    linear-gradient(to left, var(--added) 0 3px, transparent 3px);
+.row.flat.picked.add,
+.row.flat.picked.del {
+  background-color: color-mix(in srgb, var(--warning) 20%, var(--card-bg));
+  background-image: none;
+  box-shadow: none;
 }
-.row.flat.del.picked {
-  background-image:
-    linear-gradient(var(--pick-wash), var(--pick-wash)),
-    linear-gradient(to right, var(--removed) 0 3px, transparent 3px),
-    linear-gradient(to left, var(--removed) 0 3px, transparent 3px);
-}
+/* Gutter grey on a lit background is the one place these numbers are hard to
+   read, and a picked range is exactly when they are being read: the reader is
+   about to quote them. */
+.row.picked .num { color: var(--text); opacity: 0.9; }
+.row.picked .marker { color: color-mix(in srgb, var(--text) 75%, transparent); }
+
 .card.picking { user-select: none; }
+
+/* Where a remark starts. The rail is the only part of a row that begins one,
+   so it is the only part that says it can: pressing the code used to open a
+   composer over the passage being read, and the way out was to notice. */
+.card:not(.is-viewed) .row.in-diff .marker,
+.card:not(.is-viewed) .row.in-diff .num { cursor: cell; }
+.card:not(.is-viewed) .row.in-diff .marker:hover,
+.card:not(.is-viewed) .row.in-diff .num:hover {
+  color: var(--status-renamed);
+}
 
 /* The pick's own edge, drawn where the code starts rather than at the row's
    left edge: that is the line the eye already follows down a diff. */
@@ -1099,9 +1119,12 @@ body:not(.split) .card-body.split-view { display: none; }
 /* The handles at the two ends of the pick. They straddle the same edge, which
    is what makes a span read as one thing with a top and a bottom rather than
    as a stack of marked rows. */
+/* Clear of the numbers rather than straddling them: the handle sat centred on
+   the code's edge, and its left half covered the line number of the row it
+   marks -- the number the reader needs most while choosing a range. */
 .pick-plus {
   position: absolute;
-  left: calc(var(--gutter-width) - 9px);
+  left: calc(var(--gutter-width) + 3px);
   top: 1px;
   width: 18px;
   height: calc(var(--line-height) - 2px);

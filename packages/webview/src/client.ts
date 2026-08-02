@@ -1931,7 +1931,15 @@ export const CLIENT_SCRIPT = String.raw`
     // refused — after the reviewer had written it, which is the worst moment to
     // find out.
     var row = event.target.closest(".row");
-    return row && row.classList.contains("in-diff") ? row : null;
+    if (!row || !row.classList.contains("in-diff")) return null;
+
+    // Only from the rail: the strip carrying the marker and the line number,
+    // which is where the forge puts its own + button. Anywhere-on-the-row meant
+    // a stray press while reading opened a composer over the code, and the way
+    // out of that was to notice it had happened.
+    var pane = event.target.closest(".side") || row;
+    var x = (event.clientX - pane.getBoundingClientRect().left) / (view.scale || 1);
+    return x <= data.gutterWidth ? row : null;
   }
 
   cards.forEach(function (card) {
