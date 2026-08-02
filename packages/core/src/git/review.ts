@@ -399,6 +399,25 @@ export async function inlineAvatars(
   });
 }
 
+/**
+ * A picture as a data uri, so it can be shown where the network cannot reach.
+ *
+ * An editor webview refuses remote images outright, which is why every face in
+ * this page travels inside the document rather than as a link to one. Shares
+ * the cache with the comment avatars: the same people appear in both places.
+ */
+export async function inlineAvatar(
+  url: string,
+  timeoutMs = 4000,
+): Promise<string | undefined> {
+  const cached = avatarCache.get(url);
+  if (cached) return cached;
+
+  const data = await fetchImage(sized(url), timeoutMs);
+  if (data) avatarCache.set(url, data);
+  return data;
+}
+
 /** Pictures already fetched, by their url. Small, and the process is short. */
 const avatarCache = new Map<string, string>();
 

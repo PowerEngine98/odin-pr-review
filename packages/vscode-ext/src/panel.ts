@@ -1,6 +1,7 @@
 import {
   DARK_THEME,
   inlineAvatars,
+  readChecks,
   LIGHT_THEME,
   currentUser,
   deleteComment,
@@ -157,6 +158,27 @@ export class GraphPanel {
   private highlight: Highlighter | undefined;
   /** Who the reader is, so only their own remarks offer edit and delete. */
   private viewer = "";
+
+  /**
+   * Keeps the forge's verdict on the branch up to date while the panel is open.
+   *
+   * Asked again every few seconds: checks finish while a review is being read,
+   * and a stale "3/10 running" is worse than no number at all. The timer stops
+   * with the panel, and each round is best-effort — a failed ask leaves the
+   * last good answer on screen rather than blanking it.
+   */
+  watchChecks(branch: string, repo: string): void {
+    const ask = () => {
+      void readChecks(branch, { cwd: repo, timeoutMs: 8000 }).then((summary) => {
+        if (!summary) return;
+        void this.panel.webview.postMessage({ type: "checks", payload: summary });
+      });
+    };
+
+    ask();
+    const timer = setInterval(ask, 5000);
+    this.disposables.push({ dispose: () => clearInterval(timer) });
+  }
 
   /** Comments already on the pull request, shown against their lines. */
   setComments(comments: ReviewComment[]): void {

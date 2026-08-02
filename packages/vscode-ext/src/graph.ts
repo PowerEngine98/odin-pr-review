@@ -7,6 +7,7 @@ import {
   withoutTests,
   enrichSnippets,
   graphFromRepo,
+  inlineAvatar,
   layoutGraph,
   currentBranch,
   materializeTree,
@@ -134,6 +135,19 @@ export async function buildGraphForRepo(
     // Tests are hidden by default and the checkbox swaps arrangements, so both
     // are laid out here — the webview has no layout engine to compute the
     // second one for itself.
+    // A webview refuses remote images, so the reviewers' faces travel inside
+    // the document the way the comment avatars already do. Best-effort: a face
+    // that will not load leaves a name, which is the part that matters.
+    const reviewers = graph.meta.pullRequest?.reviewers ?? [];
+    await Promise.all(
+      reviewers.map(async (who) => {
+        if (!who.avatarUrl) return;
+        const data = await inlineAvatar(who.avatarUrl).catch(() => undefined);
+        if (data) who.avatarUrl = data;
+        else delete who.avatarUrl;
+      }),
+    );
+
     const shown = withoutTests(graph);
     return {
       graph,

@@ -526,16 +526,21 @@ input[type="checkbox"]:checked::after {
   transform: translate(-0.5px, -1px) rotate(45deg) scale(1);
 }
 
+/* No outline of its own: it is the only thing on that row, inside a panel that
+   already has an edge, and a box drawn inside a box reads as a seam. */
 .toolbar button {
   font: inherit;
   color: var(--muted);
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: 0;
   border-radius: 6px;
-  padding: 3px 10px;
+  padding: 4px 10px;
   cursor: pointer;
 }
-.toolbar button:hover { color: var(--text); border-color: var(--text); }
+.toolbar button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
 
 .legend {
   display: flex;
@@ -1520,6 +1525,73 @@ body:not(.split) .card-body.split-view { display: none; }
   line-height: 1.7;
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------------- checks
+
+   What the forge made of the branch, in the bar and in a list under it. */
+.checks-menu { position: relative; flex: 0 0 auto; }
+.checks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.checks:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+.checks-tally { font-variant-numeric: tabular-nums; }
+/* Green while everything that has finished has passed, red the moment one has
+   not: a reviewer wants the bad news without opening anything. */
+.checks.ok { color: var(--action); }
+.checks.bad { color: var(--removed); }
+.checks.busy { color: var(--warning); }
+
+.checks-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12px;
+}
+.check-row:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.check-row .mark { flex: 0 0 auto; display: inline-flex; width: 14px; }
+.check-row.passed .mark { color: var(--action); }
+.check-row.failed .mark { color: var(--removed); }
+.check-row.running .mark { color: var(--warning); }
+.check-row.skipped .mark { color: var(--gutter); }
+.check-row .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.check-row .flow { color: var(--muted); }
+.checks-empty { padding: 8px; color: var(--muted); font-size: 12px; }
 
 /* --------------------------------------------------------------- reviewers
 

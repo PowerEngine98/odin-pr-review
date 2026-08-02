@@ -10,6 +10,7 @@ import {
   layoutGraph,
   listReviewComments,
   parseUnifiedDiff,
+  readChecks,
   readPullRequest,
   serializeGraph,
   toDot,
@@ -170,8 +171,15 @@ async function render(
         { dark: !opts.light },
       );
 
+      // A file on disk cannot poll, so the checks it carries are the ones the
+      // forge reported when it was written.
+      const checks = opts.view && !opts.patchFile && graph.meta.pullRequest
+        ? await readChecks(graph.meta.headRef, { cwd: opts.cwd }).catch(() => undefined)
+        : undefined;
+
       return renderHtml(graph, layout, {
         theme,
+        ...(checks ? { checks } : {}),
         withTests: layoutGraph(everything, { snippets }),
         // Both readings of the change travel with the page: switching between
         // them is a change of card sizes, which needs a layout, and a file

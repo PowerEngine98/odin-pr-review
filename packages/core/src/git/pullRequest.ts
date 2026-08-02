@@ -135,7 +135,14 @@ export function forgeEnv(): NodeJS.ProcessEnv {
   return { ...process.env, PATH: parts.join(":") };
 }
 
-function run(
+/**
+ * Runs a `gh` command and hands back its output, or nothing.
+ *
+ * Shared with the other readers here so they all fail the same way: `gh` may
+ * be missing, signed out, pointed at a host with no such branch, or slow, and
+ * none of those is worth interrupting a review for.
+ */
+export function run(
   args: string[],
   options: GitOptions & { timeoutMs?: number },
 ): Promise<string | undefined> {

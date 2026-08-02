@@ -11,6 +11,7 @@ import {
   type PlacedEdge,
   type PlacedNode,
   type Component,
+  type CheckSummary,
   type Reviewer,
   type RowPair,
   type Theme,
@@ -53,6 +54,8 @@ export interface RenderOptions {
   alternate?: { layout: GraphLayout; withTests?: GraphLayout };
   /** Comments already on the pull request. */
   comments?: ReviewComment[];
+  /** What the forge made of the branch, if it was asked. */
+  checks?: CheckSummary;
   /** Whether the host can post a review; without it the composer is pointless. */
   canReview?: boolean;
   /** Who the reader is signed in as, for deciding what they may edit. */
@@ -154,6 +157,7 @@ export function renderHtml(
       untouched: n.node.status === "phantom",
     })),
     unified: layout.unified,
+    ...(options.checks ? { checks: options.checks } : {}),
     arrangements: {
       withTests: place(full),
       withoutTests: place(layout),
@@ -484,6 +488,13 @@ function prBar(graph: ChangeGraph, canReview = false): string {
     <span class="merge-line">${merging}</span>
   </span>
   <span class="spacer"></span>
+  <span class="checks-menu" hidden>
+    <button class="checks" title="What the forge made of this branch">
+      <span class="checks-label">Checks</span><span class="checks-tally"></span>
+      ${CHECK_RING}
+    </button>
+    <span class="checks-list" hidden></span>
+  </span>
   <span class="viewed-count" title="Files you have marked as reviewed">
     ${RING}<span class="tally">0 / 0</span> viewed</span>
   <button id="action-review" class="submit" hidden>Submit review<span class="count" hidden>0</span></button>
@@ -579,6 +590,21 @@ function reviewerList(reviewers: Reviewer[]): string {
 
   return `<div class="review-list"><div class="review-head">Reviewers</div>${rows}</div>`;
 }
+
+/**
+ * The ring beside the tally, filled by how many checks have finished.
+ *
+ * The same shape the viewed count uses, for the same reason: a number says how
+ * many, a ring says how far, and a reviewer waiting on CI is asking the second
+ * question.
+ */
+const CHECK_RING =
+  `<svg class="ring" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` +
+  `<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="2" ` +
+  `opacity="0.25"/>` +
+  `<circle class="arc" cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" ` +
+  `stroke-width="2" stroke-linecap="round" stroke-dasharray="0 38.96" ` +
+  `transform="rotate(-90 8 8)"/></svg>`;
 
 const CHECK_DOT =
   `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">` +

@@ -228,6 +228,7 @@ async function review(baseRef?: string): Promise<void> {
         // Fetched after the graph is on screen: the picture is the point, and
         // waiting on the forge before showing it would be the wrong order.
         const pull = graph.meta.pullRequest;
+        if (pull) panel.watchChecks(graph.meta.headRef, repo);
         if (pull) {
           void listReviewComments(pull.number, { cwd: repo })
             .then((found) => inlineAvatars(found).catch(() => found))

@@ -2445,6 +2445,13 @@ export const CLIENT_SCRIPT = String.raw`
       paintBlock(message.id, message.lines);
       return;
     }
+    // The forge is asked again every few seconds while the panel is open, so a
+    // check that finishes shows up without anything being reopened.
+    if (message && message.type === "checks") {
+      data.checks = message.payload;
+      showChecks(data.checks);
+      return;
+    }
     if (message && message.type === "comments") {
       data.comments = normalise(message.comments);
       var was = openThread && openThread.root.id;
@@ -2633,6 +2640,90 @@ export const CLIENT_SCRIPT = String.raw`
       mark.el.style.top = Math.round(y - size / 2) + "px";
     });
   }
+
+  /* ------------------------------------------------------------- the checks */
+
+  var checksMenu = document.querySelector(".checks-menu");
+  var checksButton = checksMenu && checksMenu.querySelector(".checks");
+  var checksList = checksMenu && checksMenu.querySelector(".checks-list");
+
+  var CHECK_MARKS = {
+    passed: "\u2713",
+    failed: "\u2715",
+    running: "\u25CF",
+    skipped: "\u2013",
+  };
+
+  /**
+   * What the forge made of the branch, in the bar and in a list under it.
+   *
+   * The tally counts what has finished against what exists, and the ring fills
+   * with the same fraction: a number says how many, a ring says how far, and
+   * somebody waiting on CI is asking the second question. The colour answers
+   * the first one they will ask after that — green while nothing has failed,
+   * red the moment something has.
+   */
+  function showChecks(summary) {
+    if (!checksMenu || !checksButton || !checksList) return;
+
+    if (!summary || summary.total === 0) {
+      checksMenu.hidden = true;
+      return;
+    }
+    checksMenu.hidden = false;
+
+    checksButton.querySelector(".checks-tally").textContent =
+      summary.done + "/" + summary.total;
+    checksButton.classList.toggle("bad", summary.failed > 0);
+    checksButton.classList.toggle("ok", summary.failed === 0 && summary.running === 0);
+    checksButton.classList.toggle("busy", summary.failed === 0 && summary.running > 0);
+
+    var arc = checksButton.querySelector(".arc");
+    if (arc) {
+      var circumference = 38.96;
+      var filled = summary.total ? (summary.done / summary.total) * circumference : 0;
+      arc.setAttribute(
+        "stroke-dasharray",
+        filled.toFixed(2) + " " + (circumference - filled).toFixed(2),
+      );
+    }
+
+    // Failures first. A list in the forge's order buries the one row the
+    // reader opened this for under the nine that passed.
+    var rank = { failed: 0, running: 1, passed: 2, skipped: 3 };
+    var ordered = summary.checks.slice().sort(function (a, b) {
+      return (rank[a.state] - rank[b.state]) || a.name.localeCompare(b.name);
+    });
+
+    checksList.textContent = "";
+    ordered.forEach(function (check) {
+      var row = document.createElement(check.url ? "a" : "div");
+      row.className = "check-row " + check.state;
+      if (check.url) {
+        row.href = check.url;
+        row.target = "_blank";
+        row.rel = "noreferrer";
+        row.title = "Open this run on the forge";
+      }
+      row.appendChild(chrome("mark", CHECK_MARKS[check.state] || ""));
+      row.appendChild(chrome("name", check.name));
+      if (check.workflow) row.appendChild(chrome("flow", check.workflow));
+      checksList.appendChild(row);
+    });
+  }
+
+  if (checksButton) {
+    checksButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      checksList.hidden = !checksList.hidden;
+    });
+    document.addEventListener("click", function (event) {
+      if (checksList.hidden || checksMenu.contains(event.target)) return;
+      checksList.hidden = true;
+    });
+  }
+
+  showChecks(data.checks);
 
   /* --------------------------------------------------------- the reviewers */
 

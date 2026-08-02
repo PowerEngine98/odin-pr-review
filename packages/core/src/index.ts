@@ -3,6 +3,7 @@ export * from "./model/ids.js";
 export * from "./model/language.js";
 export * from "./diff/parse.js";
 export * from "./diff/unquote.js";
+export * from "./git/checks.js";
 export * from "./graph/build.js";
 export * from "./graph/components.js";
 export * from "./graph/tests.js";
