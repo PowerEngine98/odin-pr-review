@@ -114,9 +114,15 @@ html, body {
    two greys arguing with each other. */
 .part-tab .count .done { color: var(--status-renamed); font-weight: 600; }
 .part-tab .count {
+  /* Centred by the box rather than by a line height guessed against the font's
+     metrics, which sat the digits a pixel high in the pill. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  line-height: 1;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  line-height: 16px;
   min-width: 18px;
   text-align: center;
   color: color-mix(in srgb, var(--text) 72%, transparent);
