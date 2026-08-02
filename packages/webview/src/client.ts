@@ -493,7 +493,9 @@ export const CLIENT_SCRIPT = String.raw`
       // The dot rides the tail of the arrow, the dashes carry on past its head.
       var dot = group.querySelector("circle.port");
       if (dot) {
-        dot.setAttribute("cx", fromX);
+        // Clear of the card, not on its edge: half a dot under the border is a
+        // smudge, and this one is meant to be pressed.
+        dot.setAttribute("cx", fromX + (goesRight ? 9 : -9));
         dot.setAttribute("cy", from.y);
       }
       markSymbol(edge, to);

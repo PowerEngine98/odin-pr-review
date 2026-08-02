@@ -766,8 +766,11 @@ function edgeLayer(layout: GraphLayout): string {
     // lands; the dashes past where it lands take you back. Following a
     // reference across a large graph otherwise means finding the other end by
     // eye and then finding your way home the same way.
+    // Clear of the card, not on its edge: half a dot under the border is a
+    // smudge, and this one is meant to be pressed.
+    const away = edge.fromSide === "right" ? 1 : -1;
     const port =
-      `<circle class="port out" cx="${edge.from.x}" cy="${edge.from.y}" r="4.5">` +
+      `<circle class="port out" cx="${edge.from.x + away * 9}" cy="${edge.from.y}" r="4.5">` +
       `<title>Go to the definition this points at</title></circle>`;
     return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
       `<path class="hit" d="${d}"/>` +
