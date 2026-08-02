@@ -185,7 +185,8 @@ async function review(baseRef?: string): Promise<void> {
     { location: vscode.ProgressLocation.Notification, title: "Odin" },
     async (progress) => {
       try {
-        const { graph, shown, layout, layoutWithTests } = await buildGraphForRepo({
+        const { graph, shown, layout, layoutWithTests, unifiedLayout, unifiedWithTests } =
+          await buildGraphForRepo({
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
@@ -214,6 +215,7 @@ async function review(baseRef?: string): Promise<void> {
 
         const panel = GraphPanel.show(
           shown, layout, repo, layoutWithTests, viewed, highlight,
+          { layout: unifiedLayout, withTests: unifiedWithTests },
         );
 
         // Fetched after the graph is on screen: the picture is the point, and

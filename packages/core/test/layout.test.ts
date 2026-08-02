@@ -198,12 +198,14 @@ describe("layoutGraph", () => {
     const added = layout.edges.find((e) => e.edge.change === "added")!;
     const removed = layout.edges.find((e) => e.edge.change === "removed")!;
 
-    // The added call sits on the row below the removed one, in both cards.
-    expect(added.fromRow).toBe(2);
+    // A line and the line that replaced it share a row, one pane each, so both
+    // arrows arrive at the same height — the difference between them is which
+    // side of the card they belong to, not how far down it they are.
     expect(removed.fromRow).toBe(1);
-    expect(added.from.y).toBeGreaterThan(removed.from.y);
-    expect(added.toRow).toBe(2);
+    expect(added.fromRow).toBe(1);
+    expect(added.from.y).toBe(removed.from.y);
     expect(removed.toRow).toBe(1);
+    expect(added.toRow).toBe(1);
   });
 
   it("falls back to the card edge when the line is off screen", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { displayRows } from "../src/layout/display.js";
+import { displayRows, pairRows, sideOf } from "../src/layout/display.js";
 
 import type { FileNode } from "../src/model/types.js";
 
@@ -225,5 +225,85 @@ describe("a line an arrow points at", () => {
       collapseThreshold: 99,
     });
     expect(rows.some((r) => r.kind !== "gap" && r.newLine === 3)).toBe(true);
+  });
+});
+
+describe("the two sides of a row", () => {
+  /** A hunk that rewrites two lines and adds a third. */
+  const rewritten = (): FileNode => ({
+    id: "n:src/Dao.kt",
+    path: "src/Dao.kt",
+    status: "modified",
+    language: "kotlin",
+    binary: false,
+    stats: { additions: 3, deletions: 2 },
+    symbols: [],
+    hunks: [
+      {
+        oldStart: 10,
+        oldLines: 3,
+        newStart: 10,
+        newLines: 4,
+        header: "class Dao",
+        lines: [
+          { kind: "context", text: "fun save() {", oldLine: 10, newLine: 10 },
+          { kind: "del", text: "  log(a)", oldLine: 11 },
+          { kind: "del", text: "  log(b)", oldLine: 12 },
+          { kind: "add", text: "  trace(a)", newLine: 11 },
+          { kind: "add", text: "  trace(b)", newLine: 12 },
+          { kind: "add", text: "  trace(c)", newLine: 13 },
+        ],
+      },
+    ],
+  });
+
+  it("puts a line and the line that replaced it on one row", () => {
+    // The whole point: both gutters carry a real number on the same row, so a
+    // rewritten line reads across instead of down, and the two columns cannot
+    // appear to drift apart by however many lines the change added.
+    const pairs = pairRows(displayRows(rewritten()));
+    const rewrite = pairs.find((p) => p.left?.text === "  log(a)");
+
+    expect(rewrite?.left?.oldLine).toBe(11);
+    expect(rewrite?.right?.newLine).toBe(11);
+    expect(rewrite?.right?.text).toBe("  trace(a)");
+  });
+
+  it("leaves the short side empty when one side has more lines", () => {
+    const pairs = pairRows(displayRows(rewritten()));
+    const third = pairs.find((p) => p.right?.text === "  trace(c)");
+
+    expect(third?.left).toBeUndefined();
+    expect(third?.right?.newLine).toBe(13);
+  });
+
+  it("shows an unchanged line on both sides", () => {
+    const pairs = pairRows(displayRows(rewritten()));
+    const context = pairs.find((p) => p.left?.text === "fun save() {");
+
+    expect(context?.left?.oldLine).toBe(10);
+    expect(context?.right?.newLine).toBe(10);
+  });
+
+  it("gives a band the whole row, since it is not a comparison", () => {
+    const pairs = pairRows(displayRows(node()));
+    const band = pairs.find((p) => p.band);
+
+    expect(band?.left).toBeUndefined();
+    expect(band?.right).toBeUndefined();
+    expect(band!.band!.kind).toBe("gap");
+  });
+
+  it("keeps a hole where one side has no line, so positions still line up", () => {
+    // Everything that answers "which row is line N on" counts positions down
+    // the card. Closing the holes up would put every later answer one row high.
+    const pairs = pairRows(displayRows(rewritten()));
+    const base = sideOf(pairs, "base");
+    const head = sideOf(pairs, "head");
+
+    expect(base.length).toBe(pairs.length);
+    expect(head.length).toBe(pairs.length);
+    expect(base[base.length - 1]).toBeUndefined();
+    expect(head[head.length - 1]?.kind).toBe("add");
   });
 });

@@ -13,6 +13,25 @@ export const CLIENT_SCRIPT = String.raw`
   var canvas = document.querySelector(".canvas");
   var tooltip = document.querySelector(".tooltip");
 
+  /*
+   * Which way the change is being read: side by side, or one column.
+   *
+   * Both are in the document. Split is the default because it is the only one
+   * where a line and the line that replaced it sit on the same row, and so the
+   * only one where both gutters carry a real number against the same code.
+   */
+  var splitMode = readMode();
+  document.body.classList.toggle("split", splitMode);
+
+  function readMode() {
+    try {
+      var saved = window.localStorage.getItem("odin.diff-mode");
+      if (saved === "unified") return false;
+      if (saved === "split") return true;
+    } catch (e) {}
+    return !data.unified;
+  }
+
   var view = { x: 0, y: 0, scale: 1 };
   var MIN_SCALE = 0.15;
   var MAX_SCALE = 3;
@@ -293,10 +312,29 @@ export const CLIENT_SCRIPT = String.raw`
    * The arrangement's own coordinates are treated as immutable and never
    * written back to, so there is exactly one source of truth to drift from.
    */
+  /**
+   * The positions for the way the change is currently being read.
+   *
+   * A card is a different width and height split than it is unified, so the
+   * mode picks a whole arrangement rather than a stylesheet. Falls back to the
+   * one the page was rendered in when the other was never computed.
+   */
+  function arrangementFor(showTests) {
+    var primary = splitMode === !data.unified;
+    var key = showTests ? "withTests" : "withoutTests";
+    var other = showTests ? "otherWithTests" : "otherWithoutTests";
+    return data.arrangements[primary ? key : other] || data.arrangements[key];
+  }
+
+  /** The body showing the change the way it is currently being read. */
+  function visibleBody(card) {
+    return card.querySelector(splitMode ? ".card-body.split-view" : ".card-body.unified-view");
+  }
+
   function recompute() {
     var showTests = document.getElementById("filter-tests").checked;
     var hideViewed = document.getElementById("filter-viewed").checked;
-    var arrangement = data.arrangements[showTests ? "withTests" : "withoutTests"];
+    var arrangement = arrangementFor(showTests);
 
     // What counts as read: marked by hand, or accounted for by everything that
     // referenced it having been marked.
@@ -318,6 +356,10 @@ export const CLIENT_SCRIPT = String.raw`
       node.x = placed.x;
       node.column = placed.column;
       card.style.left = node.x + "px";
+      if (placed.width) {
+        node.width = placed.width;
+        card.style.width = placed.width + "px";
+      }
 
       var bucket = columns[placed.column] || (columns[placed.column] = []);
       bucket.push({ node: node, card: card, placed: placed });
@@ -360,7 +402,7 @@ export const CLIENT_SCRIPT = String.raw`
         }
 
         var title = entry.card.querySelector(".card-title");
-        var body = entry.card.querySelector(".card-body");
+        var body = visibleBody(entry.card);
         var height = body
           ? (title ? title.offsetHeight : 0) + body.scrollHeight
           : entry.placed.height;
@@ -415,12 +457,15 @@ export const CLIENT_SCRIPT = String.raw`
     }
 
     var attribute = side === "base" ? "data-old" : "data-new";
-    var row = card.querySelector('.row[' + attribute + '="' + line + '"]');
+    // Both readings of the change are in the card and one of them is hidden, so
+    // every question about where a line sits is asked of the visible one.
+    var body = visibleBody(card) || card;
+    var row = body.querySelector('.row[' + attribute + '="' + line + '"]');
 
     // A row inside a closed gap, or below the cap, has no position to point at;
     // the fold that would reveal it does.
     if (!row || row.offsetParent === null) {
-      var fold = foldFor(card, row, side, line);
+      var fold = foldFor(body, row, side, line);
       if (!fold) return { y: node.y + node.height / 2, node: node };
       row = fold;
     }
@@ -444,11 +489,11 @@ export const CLIENT_SCRIPT = String.raw`
    * a line fell through to the truncation bar or the middle of the card, and
    * claimed a position it had no reason to claim.
    */
-  function foldFor(card, row, side, line) {
+  function foldFor(root, row, side, line) {
     var from = side === "base" ? "data-base-from" : "data-head-from";
     var to = side === "base" ? "data-base-to" : "data-head-to";
 
-    var bands = card.querySelectorAll(".row.gap[" + from + "]");
+    var bands = root.querySelectorAll(".row.gap[" + from + "]");
     for (var i = 0; i < bands.length; i++) {
       var band = bands[i];
       if (band.offsetParent === null) continue;
@@ -466,7 +511,7 @@ export const CLIENT_SCRIPT = String.raw`
         }
       }
     }
-    return card.querySelector(".row.more");
+    return root.querySelector(".row.more");
   }
 
   function mixPoint(a, b, t) {
@@ -609,7 +654,8 @@ export const CLIENT_SCRIPT = String.raw`
     if (!card) return;
 
     var attribute = side === "base" ? "data-old" : "data-new";
-    var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+    var body = visibleBody(card) || card;
+    var row = body.querySelector(".row[" + attribute + '="' + line + '"]');
 
     // The line the arrow lands on may be folded away — a deleted call inside a
     // collapsed run, most often. The arrow already points at the band standing
@@ -617,12 +663,16 @@ export const CLIENT_SCRIPT = String.raw`
     // them. The name goes on the band, so a reference is never invisible only
     // because the code around it is.
     if (!row || row.offsetParent === null) {
-      var band = foldFor(card, row, side, line);
+      var band = foldFor(body, row, side, line);
       if (band) foldedSymbol(band, edge, role);
       return;
     }
 
-    var text = row.querySelector(".text");
+    // Split puts the base and head of the change in panes of their own, so the
+    // word being boxed is in the pane belonging to this end's side. Falls back
+    // to the row's only pane, which is what unified and a one-sided file have.
+    var pane = row.querySelector(".side." + (side === "base" ? "base" : "head") + " .text");
+    var text = pane || row.querySelector(".text");
     if (!text) return;
     var at = text.textContent.indexOf(edge.symbol);
     if (at < 0) return;
@@ -646,7 +696,10 @@ export const CLIENT_SCRIPT = String.raw`
 
     // A character of room on the left, so the box does not sit on the first
     // glyph it is meant to be pointing out. The right edge stays where it was.
-    box.style.left = (data.textLeft + (at - 1) * data.charWidth) + "px";
+    // Measured from where this pane's code actually starts rather than from a
+    // fixed offset: which column the text begins in depends on the mode and,
+    // in split, on which pane the word is in.
+    box.style.left = (text.offsetLeft + (at - 1) * data.charWidth) + "px";
     box.style.width = ((edge.symbol.length + 1) * data.charWidth) + "px";
   }
 
@@ -773,6 +826,53 @@ export const CLIENT_SCRIPT = String.raw`
     });
   });
 
+  /* -------------------------------------------------------- diff settings */
+
+  var settingsButton = document.getElementById("diff-settings");
+  var settingsPanel = document.querySelector(".settings-panel");
+
+  if (settingsButton && settingsPanel) {
+    settingsPanel.querySelectorAll("input[name=diff-mode]").forEach(function (radio) {
+      radio.checked = (radio.value === "split") === splitMode;
+      radio.addEventListener("change", function () {
+        if (!radio.checked) return;
+        setDiffMode(radio.value === "split");
+      });
+    });
+
+    settingsButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      settingsPanel.hidden = !settingsPanel.hidden;
+    });
+    // Clicking anywhere else puts it away, the way every other panel here does.
+    document.addEventListener("click", function (event) {
+      if (settingsPanel.hidden) return;
+      if (settingsPanel.contains(event.target) || settingsButton.contains(event.target)) return;
+      settingsPanel.hidden = true;
+    });
+  }
+
+  /**
+   * Switches between reading the change side by side and reading it in one
+   * column.
+   *
+   * Both bodies are already in the document, so this is a change of which one
+   * is shown and which set of positions applies — cards are a different width
+   * and height in each. The arrows are then re-routed rather than moved: they
+   * are anchored to rows, and the rows have just changed places.
+   */
+  function setDiffMode(split) {
+    if (split === splitMode) return;
+    splitMode = split;
+    document.body.classList.toggle("split", splitMode);
+    try {
+      window.localStorage.setItem("odin.diff-mode", splitMode ? "split" : "unified");
+    } catch (e) {}
+
+    recompute();
+    buildMarks();
+  }
+
   /* ---------------------------------------------------------------- review */
 
   // Comments written here but not yet sent. Held together so the forge sees
@@ -836,7 +936,7 @@ export const CLIENT_SCRIPT = String.raw`
       var attribute = span.side === "LEFT" ? "data-old" : "data-new";
       var marked = [];
       for (var line = span.start; line <= span.end; line++) {
-        var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+        var row = (visibleBody(card) || card).querySelector(".row[" + attribute + '="' + line + '"]');
         // Lines folded into a gap have no row of their own; the span is drawn
         // across whatever of it is on screen.
         if (row) marked.push(row);
@@ -1344,7 +1444,7 @@ export const CLIENT_SCRIPT = String.raw`
     var attribute = comment.side === "LEFT" ? "data-old" : "data-new";
     var out = [];
     for (var line = comment.startLine || comment.line; line <= comment.line; line++) {
-      var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
+      var row = (visibleBody(card) || card).querySelector(".row[" + attribute + '="' + line + '"]');
       if (row) out.push(row.querySelector(".text").textContent);
     }
     return out;
@@ -1818,7 +1918,7 @@ export const CLIENT_SCRIPT = String.raw`
       });
     });
 
-    var arrangement = data.arrangements[showTests ? "withTests" : "withoutTests"];
+    var arrangement = arrangementFor(showTests);
 
     edgeGroups.forEach(function (g) {
       var edge = data.edges.find(function (e) { return e.id === g.dataset.id; });

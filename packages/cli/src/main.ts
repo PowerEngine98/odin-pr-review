@@ -173,6 +173,13 @@ async function render(
       return renderHtml(graph, layout, {
         theme,
         withTests: layoutGraph(everything, { snippets }),
+        // Both readings of the change travel with the page: switching between
+        // them is a change of card sizes, which needs a layout, and a file
+        // opened from disk has nothing to ask for one.
+        alternate: {
+          layout: layoutGraph(graph, { snippets, unified: true }),
+          withTests: layoutGraph(everything, { snippets, unified: true }),
+        },
         ...(comments.length ? { comments } : {}),
         highlight,
       });

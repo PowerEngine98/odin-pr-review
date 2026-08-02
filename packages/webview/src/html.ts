@@ -2,12 +2,14 @@ import {
   DARK_THEME,
   cardTitle,
   describeGaps,
+  pairRows,
   type ReviewComment,
   type ChangeGraph,
   type DisplayRow,
   type GraphLayout,
   type PlacedEdge,
   type PlacedNode,
+  type RowPair,
   type Theme,
 } from "@odin/core";
 
@@ -37,6 +39,15 @@ export interface RenderOptions {
     /** The host's resource origin, e.g. `webview.cspSource`. */
     source: string;
   };
+  /**
+   * The same graph laid out the other way round.
+   *
+   * A card is a different width and a different height in unified than it is in
+   * split, so switching between them is a change of layout and not of
+   * stylesheet. Both are computed here and the page swaps between them, the way
+   * it already swaps between showing tests and hiding them.
+   */
+  alternate?: { layout: GraphLayout; withTests?: GraphLayout };
   /** Comments already on the pull request. */
   comments?: ReviewComment[];
   /** Whether the host can post a review; without it the composer is pointless. */
@@ -96,7 +107,7 @@ export function renderHtml(
     nodes: Object.fromEntries(
       l.nodes.map((n) => [
         n.id,
-        { x: n.x, y: n.y, height: n.height, column: n.rank },
+        { x: n.x, y: n.y, width: n.width, height: n.height, column: n.rank },
       ]),
     ),
   });
@@ -111,6 +122,10 @@ export function renderHtml(
     // Where a row's first character sits: the marker column, the base number,
     // and the padding between that and the code.
     textLeft: layout.metrics.padding + layout.metrics.gutterWidth,
+    // A card's body is two panes wide, so the head side's code starts a pane in.
+    // The pane width depends on the card, which the page measures for itself.
+    padding: layout.metrics.padding,
+    gutterWidth: layout.metrics.gutterWidth,
     // Cards come from the arrangement that includes everything, so the markup
     // holds every file; only positions and visibility change with the toggle.
     nodes: full.nodes.map((n) => ({
@@ -132,7 +147,17 @@ export function renderHtml(
       // points at it, which is what lets it follow those references' state.
       untouched: n.node.status === "phantom",
     })),
-    arrangements: { withTests: place(full), withoutTests: place(layout) },
+    unified: layout.unified,
+    arrangements: {
+      withTests: place(full),
+      withoutTests: place(layout),
+      ...(options.alternate
+        ? {
+            otherWithTests: place(options.alternate.withTests ?? options.alternate.layout),
+            otherWithoutTests: place(options.alternate.layout),
+          }
+        : {}),
+    },
     edges: full.edges.map((e) => ({
       id: e.id,
       from: e.edge.from.nodeId,
@@ -175,8 +200,15 @@ export function renderHtml(
   // Cards first: colouring them is what fills the palette, and the palette has
   // to be in the head before anything it names is used.
   const palette = new Palette();
+  // The same cards measured the other way round, so each card can carry both
+  // bodies with the right amount hidden behind each one's bar.
+  const alternate = options.alternate
+    ? new Map(
+        (options.alternate.withTests ?? options.alternate.layout).nodes.map((n) => [n.id, n]),
+      )
+    : undefined;
   const cards = full.nodes
-    .map((node) => card(node, full, options.highlight, palette))
+    .map((node) => card(node, full, options.highlight, palette, alternate?.get(node.id)))
     .join("\n");
   const colours = palette.stylesheet();
 
@@ -369,8 +401,24 @@ function prBar(graph: ChangeGraph, canReview = false): string {
   <span class="viewed-count" title="Files you have marked as reviewed">
     ${RING}<span class="tally">0 / 0</span> viewed</span>
   <button id="action-review" class="submit" hidden>Submit review<span class="count" hidden>0</span></button>
+  <span class="settings-menu">
+    <button id="diff-settings" class="icon-button" title="Diff settings" aria-label="Diff settings">${GEAR}</button>
+    <span class="settings-panel" hidden>
+      <span class="settings-title">Diff settings</span>
+      <span class="settings-group">Diff display</span>
+      <label class="settings-option"><input type="radio" name="diff-mode" value="unified"><span>Unified</span></label>
+      <label class="settings-option"><input type="radio" name="diff-mode" value="split"><span>Split</span></label>
+    </span>
+  </span>
 </div>`;
 }
+
+const GEAR =
+  `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` +
+  `<circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.4" fill="none"/>` +
+  `<path d="M8 1.2v1.9M8 12.9v1.9M14.8 8h-1.9M3.1 8H1.2M12.8 3.2l-1.3 1.3M4.5 11.5l-1.3 1.3` +
+  `M12.8 12.8l-1.3-1.3M4.5 4.5L3.2 3.2" stroke="currentColor" stroke-width="1.4" ` +
+  `stroke-linecap="round" fill="none"/></svg>`;
 
 /** A pull request, drawn rather than borrowed, so nothing has to be fetched. */
 const PR_ICON =
@@ -638,6 +686,7 @@ function card(
   layout: GraphLayout,
   highlight?: CodeHighlighter,
   palette?: Palette,
+  other?: PlacedNode,
 ): string {
   const { metrics } = layout;
   const style =
@@ -670,13 +719,26 @@ function card(
   // carry it: an empty column down a whole card reads as a column that failed
   // to draw, and the numbers are not in doubt — there is only one set of them.
   const single = node.node.status === "added" || node.node.status === "deleted";
-  const body = node.rows
-    .map((row, i) => renderRow(row, i >= node.visibleRows, coloured, palette, single))
+  // Both ways of reading the change are written into the document and the page
+  // shows one of them. Re-rendering on the switch would mean shipping the
+  // renderer and the diff to the browser; this costs markup instead, which
+  // compresses to very little because the two say the same thing.
+  // Each mode caps its own card: a split card is shorter, having put pairs of
+  // lines on one row, so the two disagree about how much is behind the bar.
+  const splitCap = (layout.unified ? other?.visibleRows : node.visibleRows) ?? node.visibleRows;
+  const unifiedCap = (layout.unified ? node.visibleRows : other?.visibleRows) ?? node.visibleRows;
+
+  const pairs = pairRows(node.rows);
+  const split = pairs
+    .map((pair, i) => renderPair(pair, i >= splitCap, coloured, palette, single))
     .join("");
-  const more =
-    node.hiddenRows > 0
+  const unified = node.rows
+    .map((row, i) => renderRow(row, i >= unifiedCap, coloured, palette, single))
+    .join("");
+  const bar = (hidden: number) =>
+    hidden > 0
       ? `<div class="row more" role="button" tabindex="0">` +
-        `<span class="text">show ${node.hiddenRows} more lines</span></div>`
+        `<span class="text">show ${hidden} more lines</span></div>`
       : "";
 
   const unresolved = title.note ? " unresolved" : "";
@@ -686,10 +748,20 @@ function card(
   <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}` +
     `<button class="jump" title="Jump to file" aria-label="Jump to file" hidden>${JUMP_ICON}</button>` +
     `<label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
-  <div class="card-body">${body}${more}</div>
+  <div class="card-body split-view">${split}${bar(pairs.length - splitCap)}</div>
+  <div class="card-body unified-view">${unified}${bar(node.rows.length - unifiedCap)}</div>
 </div>`;
 }
 
+/**
+ * One row of a card in unified view: one column of code, a gutter either side.
+ *
+ * The base number on the left and the head number on the right, which is how a
+ * reader of this card asks "where is this line in each checkout". A line that
+ * exists on one side only leaves the other column empty, the way the forge
+ * leaves it — the alternative is either the same number repeated down a whole
+ * insertion or a number the line does not have.
+ */
 function renderRow(
   row: DisplayRow,
   beyondCap = false,
@@ -700,8 +772,6 @@ function renderRow(
   const overflow = beyondCap ? " beyond-cap" : "";
 
   if (row.kind === "gap") {
-    // A gap that knows what it hides can be opened; one that does not must not
-    // pretend otherwise, so it is rendered inert.
     const expandable = row.rows ? " expandable" : "";
     const imports = row.imports ? " imports" : "";
     const hidden = (row.rows ?? [])
@@ -709,11 +779,10 @@ function renderRow(
         'class="row ', 'class="row in-gap ',
       ))
       .join("");
-    // What the band hides, so an arrow aimed at a folded line can find it.
     const covers = row.covers ?? {};
     const range = (side: "base" | "head") => {
-      const pair = covers[side];
-      return pair ? ` data-${side}-from="${pair[0]}" data-${side}-to="${pair[1]}"` : "";
+      const span = covers[side];
+      return span ? ` data-${side}-from="${span[0]}" data-${side}-to="${span[1]}"` : "";
     };
 
     return `<div class="row gap${expandable}${imports}${overflow}" title="${escapeHtml(row.header ?? "")}"` +
@@ -724,35 +793,109 @@ function renderRow(
       hidden;
   }
 
-  const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : "";
-  // Base number on the left, head number on the right, both always populated so
-  // the columns run unbroken down the card. A single shared column would
-  // interleave the two numbering schemes and read as nonsense on any file where
-  // lines were both added and removed. Where a line exists on one side only,
-  // the other column shows the position it occupies there rather than a line
-  // number it does not have, dimmed so the difference is visible.
-  // The line numbers double as anchors: after an expansion the client finds a
-  // row by the line it shows rather than by an index that has since moved.
+  const marker = row.kind === "add" ? "+" : row.kind === "del" ? "\u2212" : "";
   const anchors =
     (row.oldLine !== undefined ? ` data-old="${row.oldLine}"` : "") +
     (row.newLine !== undefined ? ` data-new="${row.newLine}"` : "");
-  // A wholly added or deleted file has a single numbering, so it is mirrored
-  // into the other gutter rather than leaving a column empty down the card.
-  // Inside a modified file a line that exists on one side only leaves the other
-  // column empty, the way the forge leaves it: a stand-in there is either the
-  // same value repeated down a whole insertion or a number the line does not
-  // have. A wholly added or deleted file is the exception — one numbering,
-  // shown in both columns.
+  // A wholly added or deleted file has one numbering, so both gutters carry it.
   const showLeft = row.oldLine ?? (single ? row.newLine : undefined);
   const showRight = row.newLine ?? (single ? row.oldLine : undefined);
 
-  return `<div class="row ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
+  return `<div class="row flat ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
     `<span class="marker">${marker}</span>` +
-    `<span class="num old${row.oldLine === undefined ? " anchor" : ""}">` +
-      `${showLeft ?? ""}</span>` +
+    `<span class="num old">${showLeft ?? ""}</span>` +
     `<span class="text">${code(row, coloured?.get(row), palette)}</span>` +
-    `<span class="num new${row.newLine === undefined ? " anchor" : ""}">` +
-      `${showRight ?? ""}</span></div>`;
+    `<span class="num new">${showRight ?? ""}</span></div>`;
+}
+
+/**
+ * One row of a card: the base of the change beside the head of it.
+ *
+ * The two sides are laid out as panes rather than as one stream, so a line and
+ * the line that replaced it sit on the same row and both gutters carry a real
+ * number. A file that exists on one side only is drawn as a single pane — the
+ * other would be blank all the way down.
+ */
+function renderPair(
+  pair: RowPair,
+  beyondCap = false,
+  coloured?: Map<DisplayRow, CodeToken[]>,
+  palette?: Palette,
+  single = false,
+): string {
+  const overflow = beyondCap ? " beyond-cap" : "";
+
+  const band = pair.band;
+  if (band) {
+    // A gap that knows what it hides can be opened; one that does not must not
+    // pretend otherwise, so it is rendered inert.
+    const expandable = band.rows ? " expandable" : "";
+    const imports = band.imports ? " imports" : "";
+    const hidden = pairRows(band.rows ?? [])
+      .map((inner) => renderPair(inner, beyondCap, coloured, palette, single).replace(
+        'class="row ', 'class="row in-gap ',
+      ))
+      .join("");
+    // What the band hides, so an arrow aimed at a folded line can find it.
+    const covers = band.covers ?? {};
+    const range = (side: "base" | "head") => {
+      const span = covers[side];
+      return span ? ` data-${side}-from="${span[0]}" data-${side}-to="${span[1]}"` : "";
+    };
+
+    return `<div class="row gap${expandable}${imports}${overflow}" title="${escapeHtml(band.header ?? "")}"` +
+      range("base") + range("head") +
+      (band.rows ? ' role="button" tabindex="0"' : "") + ">" +
+      `<span class="text">${escapeHtml(band.text)}</span>` +
+      `<span class="header">${escapeHtml(band.header ?? "")}</span></div>` +
+      hidden;
+  }
+
+  // The line numbers double as anchors: after an expansion the client finds a
+  // row by the line it shows rather than by an index that has since moved. A
+  // row carries both, one from each pane.
+  const anchors =
+    (pair.left?.kind !== "gap" && pair.left?.oldLine !== undefined
+      ? ` data-old="${pair.left.oldLine}"` : "") +
+    (pair.right?.kind !== "gap" && pair.right?.newLine !== undefined
+      ? ` data-new="${pair.right.newLine}"` : "");
+
+  const inDiff = (row?: DisplayRow) => row !== undefined && row.kind !== "gap" && row.inDiff === true;
+  const commentable = inDiff(pair.left) || inDiff(pair.right);
+  // A one-sided file has a single numbering, and one pane to show it in.
+  const panes = single
+    ? [pane(pair.right ?? pair.left, "head", coloured, palette, true)]
+    : [
+        pane(pair.left, "base", coloured, palette, false),
+        pane(pair.right, "head", coloured, palette, false),
+      ];
+
+  return `<div class="row split${overflow}${commentable ? " in-diff" : ""}"${anchors}>` +
+    panes.join("") + `</div>`;
+}
+
+/** One side of a row: its marker, its line number, and its code. */
+function pane(
+  row: DisplayRow | undefined,
+  side: "base" | "head",
+  coloured?: Map<DisplayRow, CodeToken[]>,
+  palette?: Palette,
+  single = false,
+): string {
+  if (!row || row.kind === "gap") {
+    return `<span class="side ${side} empty"></span>`;
+  }
+
+  const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : "";
+  // On a one-sided file the number shown is whichever side the file has.
+  const line = single
+    ? row.newLine ?? row.oldLine
+    : side === "base" ? row.oldLine : row.newLine;
+
+  return `<span class="side ${side} ${row.kind}${row.inDiff ? " in-diff" : ""}">` +
+    `<span class="marker">${marker}</span>` +
+    `<span class="num">${line ?? ""}</span>` +
+    `<span class="text">${code(row, coloured?.get(row), palette)}</span></span>`;
 }
 
 function edgeLayer(layout: GraphLayout): string {

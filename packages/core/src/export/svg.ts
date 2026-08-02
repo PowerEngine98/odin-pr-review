@@ -1,5 +1,5 @@
 import type { GraphLayout, PlacedEdge, PlacedNode } from "../layout/layout.js";
-import { cardTitle } from "../layout/display.js";
+import { cardTitle, type DisplayRow } from "../layout/display.js";
 import { fitText, rowOffset, textCapacity } from "../layout/layout.js";
 import { DARK_THEME, type Theme } from "../layout/theme.js";
 import type { EdgeChange } from "../model/types.js";
@@ -41,7 +41,7 @@ export function toSvg(layout: GraphLayout, options: SvgOptions = {}): string {
   );
 
   // Cards first: arrows must read as passing over the canvas, not under it.
-  for (const node of layout.nodes) parts.push(card(node, theme, metrics));
+  for (const node of layout.nodes) parts.push(card(node, theme, metrics, layout.unified));
   for (const edge of edges) parts.push(arrow(edge, theme));
 
   parts.push("</svg>");
@@ -56,7 +56,12 @@ function defs(theme: Theme): string {
   return `<defs>${marker("added")}${marker("removed")}${marker("unchanged")}</defs>`;
 }
 
-function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): string {
+function card(
+  node: PlacedNode,
+  theme: Theme,
+  metrics: GraphLayout["metrics"],
+  unified: boolean,
+): string {
   const stroke = theme.status[node.node.status];
   const dashed = node.node.status === "phantom" ? ` stroke-dasharray="6 5"` : "";
   const parts: string[] = [`<g>`];
@@ -100,12 +105,18 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
     );
   }
 
-  const textX = node.x + metrics.padding + metrics.gutterWidth;
-  const capacity = textCapacity(node.width, metrics);
-  node.rows.slice(0, node.visibleRows).forEach((row, i) => {
-    const y = node.y + rowOffset(i, metrics) + metrics.fontSize / 2 - 2;
+  // A card is two panes wide — the base of the change beside the head of it —
+  // unless the file exists on one side only, which needs one.
+  const panes =
+    unified || node.node.status === "added" || node.node.status === "deleted" ? 1 : 2;
+  const paneWidth = (node.width - metrics.padding * 2) / panes;
+  const capacity = textCapacity(node.width, metrics, panes);
 
-    if (row.kind === "gap") {
+  node.pairs.slice(0, node.visibleRows).forEach((pair, i) => {
+    const y = node.y + rowOffset(i, metrics) + metrics.fontSize / 2 - 2;
+    const row = pair.band;
+
+    if (row) {
       // A banded row, the way a diff viewer marks the part of a file it is not
       // showing. The header keeps the hidden region attributable.
       parts.push(
@@ -127,54 +138,84 @@ function card(node: PlacedNode, theme: Theme, metrics: GraphLayout["metrics"]): 
       return;
     }
 
-    if (row.kind !== "ctx") {
-      parts.push(
-        `<rect x="${node.x + 2}" y="${node.y + rowOffset(i, metrics) - metrics.lineHeight / 2}" ` +
-          `width="${node.width - 4}" height="${metrics.lineHeight}" ` +
-          `fill="${theme.lineBackground[row.kind]}"/>`,
-      );
-    }
+    // One side of the row. Each pane carries its own marker, line number and
+    // code, so the number beside a line is always that line's own.
+    const pane = (side: DisplayRow | undefined, index: number): void => {
+      const x = node.x + metrics.padding + index * paneWidth;
+      const top = node.y + rowOffset(i, metrics) - metrics.lineHeight / 2;
 
-    const colour =
-      row.kind === "add"
-        ? theme.change.added
-        : row.kind === "del"
-          ? theme.change.removed
-          : theme.text;
-    const marker = row.kind === "add" ? "+" : row.kind === "del" ? "−" : " ";
+      if (!side || side.kind === "gap") {
+        parts.push(
+          `<rect x="${x}" y="${top}" width="${paneWidth}" ` +
+            `height="${metrics.lineHeight}" fill="${theme.gapBackground}" opacity="0.35"/>`,
+        );
+        return;
+      }
 
-    parts.push(
-      `<text x="${node.x + metrics.padding}" y="${y}" fill="${theme.gutter}" ` +
-        `font-size="${metrics.fontSize}">${marker}</text>`,
-    );
+      if (side.kind !== "ctx") {
+        parts.push(
+          `<rect x="${x}" y="${top}" width="${paneWidth}" ` +
+            `height="${metrics.lineHeight}" fill="${theme.lineBackground[side.kind]}"/>`,
+        );
+      }
 
-    // Both gutters always carry a number so the columns run unbroken down the
-    // card. Where a line exists on one side only, the other shows the position
-    // it occupies there rather than a line number it does not have, at reduced
-    // opacity so the two can be told apart.
-    const old = row.oldLine ?? row.oldAnchor ?? row.newLine;
-    const fresh = row.newLine ?? row.newAnchor ?? row.oldLine;
-    if (old !== undefined) {
+      const colour =
+        side.kind === "add"
+          ? theme.change.added
+          : side.kind === "del"
+            ? theme.change.removed
+            : theme.text;
+      const marker = side.kind === "add" ? "+" : side.kind === "del" ? "\u2212" : " ";
+
       parts.push(
-        `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
-          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
-          `opacity="${row.oldLine === undefined ? 0.45 : 1}" ` +
-          `text-anchor="end">${old}</text>`,
+        `<text x="${x}" y="${y}" fill="${theme.gutter}" ` +
+          `font-size="${metrics.fontSize}">${marker}</text>`,
       );
-    }
-    if (fresh !== undefined) {
+
+      // The number belongs to the side it is drawn beside: base on the left
+      // pane, head on the right. A one-sided file has one numbering and one
+      // pane to show it in.
+      const line = panes === 1
+        ? side.newLine ?? side.oldLine
+        : index === 0 ? side.oldLine : side.newLine;
+      if (line !== undefined && !unified) {
+        parts.push(
+          `<text x="${x + metrics.gutterWidth - 8}" y="${y}" ` +
+            `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+            `text-anchor="end">${line}</text>`,
+        );
+      }
+      // One column of code has a gutter either side of it, the base number on
+      // the left and the head number on the right.
+      if (unified) {
+        if (side.oldLine !== undefined) {
+          parts.push(
+            `<text x="${node.x + metrics.padding + metrics.lineNumberRight}" y="${y}" ` +
+              `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+              `text-anchor="end">${side.oldLine}</text>`,
+          );
+        }
+        if (side.newLine !== undefined) {
+          parts.push(
+            `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
+              `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
+              `text-anchor="end">${side.newLine}</text>`,
+          );
+        }
+      }
+
       parts.push(
-        `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
-          `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
-          `opacity="${row.newLine === undefined ? 0.45 : 1}" ` +
-          `text-anchor="end">${fresh}</text>`,
+        `<text x="${x + metrics.gutterWidth}" y="${y}" fill="${colour}" ` +
+          `font-size="${metrics.fontSize}" xml:space="preserve">` +
+          `${escape(fitText(side.text, capacity))}</text>`,
       );
+    };
+
+    if (panes === 1) pane(pair.right ?? pair.left, 0);
+    else {
+      pane(pair.left, 0);
+      pane(pair.right, 1);
     }
-    parts.push(
-      `<text x="${textX}" y="${y}" fill="${colour}" ` +
-        `font-size="${metrics.fontSize}" xml:space="preserve">` +
-        `${escape(fitText(row.text, capacity))}</text>`,
-    );
   });
 
   if (node.hiddenRows > 0) {

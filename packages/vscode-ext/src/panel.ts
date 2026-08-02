@@ -92,9 +92,11 @@ export class GraphPanel {
     withTests?: GraphLayout,
     viewed?: ViewedStore,
     highlight?: Highlighter,
+    alternate?: { layout: GraphLayout; withTests?: GraphLayout },
   ): GraphPanel {
     if (GraphPanel.current) {
       GraphPanel.current.highlight = highlight;
+      GraphPanel.current.alternate = alternate;
       GraphPanel.current.update(graph, layout, repo, withTests, viewed);
       GraphPanel.current.panel.reveal(vscode.ViewColumn.One);
       return GraphPanel.current;
@@ -147,6 +149,8 @@ export class GraphPanel {
   }
 
   private withTests: GraphLayout | undefined;
+  /** The same graph in the other diff mode, for the page's own switch. */
+  private alternate: { layout: GraphLayout; withTests?: GraphLayout } | undefined;
   private viewed: ViewedStore | undefined;
   private comments: ReviewComment[] = [];
   /** Loaded before the first paint, so the code is never briefly grey. */
@@ -467,6 +471,7 @@ export class GraphPanel {
       theme: dark ? DARK_THEME : LIGHT_THEME,
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
       ...(this.withTests ? { withTests: this.withTests } : {}),
+      ...(this.alternate ? { alternate: this.alternate } : {}),
       ...(this.highlight ? { highlight: this.highlight } : {}),
       comments: this.comments,
       canReview: Boolean(this.graph.meta.pullRequest),

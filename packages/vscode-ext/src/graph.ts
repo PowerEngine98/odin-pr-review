@@ -38,6 +38,9 @@ export interface BuiltGraph {
   layout: GraphLayout;
   /** The arrangement the tests checkbox switches to. */
   layoutWithTests: GraphLayout;
+  /** The same graph in the other diff mode, for the page's own switch. */
+  unifiedLayout: GraphLayout;
+  unifiedWithTests: GraphLayout;
   /** The graph the default arrangement was laid out from. */
   shown: ChangeGraph;
 }
@@ -137,6 +140,10 @@ export async function buildGraphForRepo(
       shown,
       layout: layoutGraph(shown, { snippets }),
       layoutWithTests: layoutGraph(graph, { snippets }),
+      // The page carries both readings of the change and switches between them,
+      // and each is a different set of card sizes, so each is a layout.
+      unifiedLayout: layoutGraph(shown, { snippets, unified: true }),
+      unifiedWithTests: layoutGraph(graph, { snippets, unified: true }),
     };
   } finally {
     for (const checkout of checkouts) checkout.dispose();

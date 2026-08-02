@@ -4,8 +4,11 @@ import {
   anchorRowForLine,
   cardTitle,
   displayRows,
+  pairRows,
+  sideOf,
   titleLength,
   type DisplayRow,
+  type RowPair,
   type Snippet,
 } from "./display.js";
 import { DEFAULT_METRICS, type LayoutMetrics } from "./metrics.js";
@@ -15,6 +18,8 @@ export interface PlacedNode {
   path: string;
   node: FileNode;
   rows: DisplayRow[];
+  /** The same rows with the two sides of the change laid out side by side. */
+  pairs: RowPair[];
   x: number;
   y: number;
   width: number;
@@ -46,6 +51,8 @@ export interface PlacedEdge {
 }
 
 export interface GraphLayout {
+  /** One column of code per card rather than two. */
+  unified: boolean;
   nodes: PlacedNode[];
   edges: PlacedEdge[];
   width: number;
@@ -57,6 +64,16 @@ export interface LayoutOptions {
   metrics?: Partial<LayoutMetrics>;
   /** Extra source context per node id, keyed as returned by `enrichSnippets`. */
   snippets?: Map<string, Snippet[]>;
+  /**
+   * One column of code rather than two.
+   *
+   * Unified reads as a diff does on the command line, and keeps cards narrow;
+   * split puts the two sides beside each other, where a rewritten line and its
+   * replacement share a row and both gutters carry a real number. The choice
+   * changes how wide and how tall every card is, so it belongs to the layout
+   * and not to the stylesheet.
+   */
+  unified?: boolean;
 }
 
 /**
@@ -75,7 +92,7 @@ export function layoutGraph(
   // same picture as one that read it back from JSON.
   const graph = sortGraph(input);
   const metrics = { ...DEFAULT_METRICS, ...options.metrics };
-  const placed = measureNodes(graph, metrics, options.snippets);
+  const placed = measureNodes(graph, metrics, options.snippets, options.unified === true);
   const byId = new Map(placed.map((n) => [n.id, n]));
 
   const edges = graph.edges.filter(
@@ -89,7 +106,7 @@ export function layoutGraph(
   const routed = routeEdges(edges, byId, metrics);
   const bounds = measureBounds(placed, metrics);
 
-  return { nodes: placed, edges: routed, ...bounds, metrics };
+  return { unified: options.unified === true, nodes: placed, edges: routed, ...bounds, metrics };
 }
 
 /** Width of the buttons a card title carries at its end, plus their spacing. */
@@ -101,6 +118,7 @@ function measureNodes(
   graph: ChangeGraph,
   metrics: LayoutMetrics,
   snippets?: Map<string, Snippet[]>,
+  unified = false,
 ): PlacedNode[] {
   const anchors = collectAnchors(graph);
 
@@ -108,12 +126,45 @@ function measureNodes(
     const rows = displayRows(node, snippets?.get(node.id) ?? [], {
       anchors: anchors.get(node.id) ?? [],
     });
-    const widest = rows.reduce((max, row) => Math.max(max, row.text.length), 0);
-    const contentWidth =
-      widest * metrics.charWidth +
-      metrics.gutterWidth +
-      metrics.rightGutterWidth +
-      metrics.padding * 2;
+    // Unified is one row per line of the diff, with both gutters on the outside
+    // of a single column of code; split pairs each removed line with the line
+    // that replaced it. Both are described the same way -- a row is what the
+    // card draws on one line -- so everything downstream counts the same thing.
+    const pairs: RowPair[] = unified
+      ? rows.map((row) =>
+          row.kind === "gap" ? { band: row } : { left: row, right: row },
+        )
+      : pairRows(rows);
+
+    // Split sizes the panes from the widest line on either side: they have to
+    // be equal or the divider between them wanders down the card.
+    const widest = unified
+      ? rows.reduce((max, row) => Math.max(max, row.text.length), 0)
+      : pairs.reduce(
+          (max, pair) =>
+            Math.max(max, pair.left?.text.length ?? 0, pair.right?.text.length ?? 0),
+          0,
+        );
+    // A band runs across both panes, so it needs the whole width rather than
+    // half of it — it is the one row that is not split.
+    const widestBand = pairs.reduce(
+      (max, pair) => Math.max(max, pair.band?.text.length ?? 0),
+      0,
+    );
+    // A file that only exists on one side of the change has one pane: the other
+    // would be blank from top to bottom, and a card twice as wide as it needs to
+    // be to show that is a card that says nothing twice.
+    const panes =
+      unified || node.status === "added" || node.status === "deleted" ? 1 : 2;
+    const contentWidth = unified
+      ? widest * metrics.charWidth +
+        metrics.gutterWidth +
+        metrics.rightGutterWidth +
+        metrics.padding * 2
+      : Math.max(
+          paneWidth(widest, metrics) * panes + metrics.padding * 2,
+          widestBand * metrics.charWidth + metrics.gutterWidth + metrics.padding * 2,
+        );
     // The controls at the end of a title — open the file, mark it read — are
     // not text, so they are not in titleLength. Without room set aside for them
     // a card sized to its own filename ends with them against its border.
@@ -134,18 +185,18 @@ function measureNodes(
     // same reason: an arrow into the part a card has not unrolled says which
     // file and not where.
     const reach = Math.max(
-      lastChangedRow(rows),
-      lastAnchoredRow(rows, anchors.get(node.id) ?? []),
+      lastChangedRow(pairs),
+      lastAnchoredRow(pairs, anchors.get(node.id) ?? []),
     );
     const visibleRows = Math.min(
-      rows.length,
+      pairs.length,
       Math.max(metrics.maxCardRows, reach + 1),
     );
-    const hiddenRows = rows.length - visibleRows;
+    const hiddenRows = pairs.length - visibleRows;
     // The truncation bar occupies a row of its own, so it is part of the height.
     const drawnRows = visibleRows + (hiddenRows > 0 ? 1 : 0);
     const height =
-      rows.length === 0
+      pairs.length === 0
         ? metrics.emptyCardHeight
         : metrics.titleHeight + metrics.padding * 2 + drawnRows * metrics.lineHeight;
 
@@ -154,6 +205,7 @@ function measureNodes(
       path: node.path,
       node,
       rows,
+      pairs,
       x: 0,
       y: 0,
       width: Math.round(width),
@@ -174,31 +226,31 @@ function measureNodes(
  * card edge — losing exactly the precision the graph is for.
  */
 /** The last row the change itself touched, as an index, or -1 for none. */
-function lastChangedRow(rows: DisplayRow[]): number {
+function lastChangedRow(pairs: RowPair[]): number {
   let last = -1;
-  rows.forEach((row, index) => {
-    if (row.kind === "add" || row.kind === "del") last = index;
+  pairs.forEach((pair, index) => {
+    if (pair.left?.kind === "del" || pair.right?.kind === "add") last = index;
   });
   return last;
 }
 
 /** How far down a card an arrow reaches, as a row index, or -1 for none. */
 function lastAnchoredRow(
-  rows: DisplayRow[],
+  pairs: RowPair[],
   anchors: { side: Side; line: number }[],
 ): number {
   if (anchors.length === 0) return -1;
 
   const wanted = new Set(anchors.map((a) => `${a.side}:${a.line}`));
+  const hit = (row?: DisplayRow): boolean =>
+    row !== undefined &&
+    row.kind !== "gap" &&
+    ((row.oldLine !== undefined && wanted.has(`base:${row.oldLine}`)) ||
+      (row.newLine !== undefined && wanted.has(`head:${row.newLine}`)));
+
   let last = -1;
-  rows.forEach((row, index) => {
-    if (row.kind === "gap") return;
-    if (
-      (row.oldLine !== undefined && wanted.has(`base:${row.oldLine}`)) ||
-      (row.newLine !== undefined && wanted.has(`head:${row.newLine}`))
-    ) {
-      last = index;
-    }
+  pairs.forEach((pair, index) => {
+    if (hit(pair.left) || hit(pair.right)) last = index;
   });
   return last;
 }
@@ -220,16 +272,25 @@ function collectAnchors(graph: ChangeGraph): Map<string, { side: Side; line: num
   return anchors;
 }
 
+/** What one of a card's two panes takes up: its gutter and this much code. */
+export function paneWidth(characters: number, metrics: LayoutMetrics): number {
+  return metrics.gutterWidth + characters * metrics.charWidth;
+}
+
 /**
- * How many characters of source a card of this width can show.
+ * How many characters of source one pane of a card this wide can show.
  *
  * Cards are clamped to a maximum width, so a long enough line will always
  * overflow one. Both renderers ask this so they cut at the same place, and so
  * neither ever draws text past its own border.
  */
-export function textCapacity(width: number, metrics: LayoutMetrics): number {
+export function textCapacity(
+  width: number,
+  metrics: LayoutMetrics,
+  panes = 2,
+): number {
   const available =
-    width - metrics.padding * 2 - metrics.gutterWidth - metrics.rightGutterWidth;
+    (width - metrics.padding * 2) / panes - metrics.gutterWidth;
   return Math.max(0, Math.floor(available / metrics.charWidth));
 }
 
@@ -415,7 +476,7 @@ function assignCoordinates(
       const sum = links.reduce((total, edge) => {
         const source = byId.get(edge.from.nodeId)!;
         const sourceRow = anchorRowForLine(
-          source.rows, edge.from.side, edge.from.line, source.visibleRows,
+          sideOf(source.pairs, edge.from.side), edge.from.side, edge.from.line, source.visibleRows,
         );
         const sourceY =
           source.y +
@@ -425,7 +486,7 @@ function assignCoordinates(
         const fileLevel = edge.kind === "import";
         const targetRow = fileLevel
           ? undefined
-          : anchorRowForLine(node.rows, edge.to.side, edge.to.line, node.visibleRows);
+          : anchorRowForLine(sideOf(node.pairs, edge.to.side), edge.to.side, edge.to.line, node.visibleRows);
         const offset = anchorOffset(node, targetRow, fileLevel, metrics);
         return total + (sourceY - offset);
       }, 0);
@@ -462,11 +523,11 @@ function routeEdges(
     // The call site of an import is a real line; its target is the file itself.
     const fileLevel = edge.kind === "import";
     const fromRow = anchorRowForLine(
-      source.rows, edge.from.side, edge.from.line, source.visibleRows,
+      sideOf(source.pairs, edge.from.side), edge.from.side, edge.from.line, source.visibleRows,
     );
     const toRow = fileLevel
       ? undefined
-      : anchorRowForLine(target.rows, edge.to.side, edge.to.line, target.visibleRows);
+      : anchorRowForLine(sideOf(target.pairs, edge.to.side), edge.to.side, edge.to.line, target.visibleRows);
 
     const fromY = source.y + anchorOffset(source, fromRow, false, metrics);
     const toY = target.y + anchorOffset(target, toRow, fileLevel, metrics);

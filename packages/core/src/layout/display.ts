@@ -48,6 +48,83 @@ export type DisplayRow =
       covers?: { base?: [number, number]; head?: [number, number] };
     };
 
+/**
+ * One row of a card with the two sides of the change laid out side by side.
+ *
+ * A card shows the base of the change on the left and the head on the right, so
+ * both gutters carry a real line number on the same row. In a single stream a
+ * deleted line and the line that replaced it sit several rows apart, each with
+ * one gutter filled and the other blank, and the two columns drift by however
+ * many lines the change added — which reads as a numbering fault rather than as
+ * what it is.
+ *
+ * A band spans both sides: it stands for lines nobody changed, so there is
+ * nothing to compare.
+ */
+export interface RowPair {
+  band?: Extract<DisplayRow, { kind: "gap" }>;
+  left?: DisplayRow;
+  right?: DisplayRow;
+}
+
+/**
+ * The rows of a card, paired.
+ *
+ * Context appears on both sides, being the same line. A run of changed lines is
+ * paired off in order — first deletion against first insertion — which is what
+ * the forge does and what a reader expects: a line rewritten in place should
+ * read across, not down. A run with more of one than the other leaves the short
+ * side empty for the remainder.
+ */
+export function pairRows(rows: readonly DisplayRow[]): RowPair[] {
+  const pairs: RowPair[] = [];
+
+  for (let i = 0; i < rows.length; ) {
+    const row = rows[i]!;
+
+    if (row.kind === "gap") {
+      pairs.push({ band: row });
+      i++;
+      continue;
+    }
+    // Anything that is neither a band nor a change is a line both sides have.
+    if (row.kind !== "add" && row.kind !== "del") {
+      pairs.push({ left: row, right: row });
+      i++;
+      continue;
+    }
+
+    const removed: DisplayRow[] = [];
+    const added: DisplayRow[] = [];
+    for (; i < rows.length; i++) {
+      const next = rows[i]!;
+      if (next.kind === "del") removed.push(next);
+      else if (next.kind === "add") added.push(next);
+      else break;
+    }
+    for (let k = 0; k < Math.max(removed.length, added.length); k++) {
+      const pair: RowPair = {};
+      if (removed[k]) pair.left = removed[k];
+      if (added[k]) pair.right = added[k];
+      pairs.push(pair);
+    }
+  }
+
+  return pairs;
+}
+
+/**
+ * One side of a set of pairs, as a row per pair.
+ *
+ * Everything that answers "which row is line N on" walks a list where position
+ * is the row's position on the card. Paired, that list has a hole wherever the
+ * other side has a line and this one does not, so the holes are kept rather
+ * than closed up.
+ */
+export function sideOf(pairs: readonly RowPair[], side: Side): (DisplayRow | undefined)[] {
+  return pairs.map((pair) => pair.band ?? (side === "base" ? pair.left : pair.right));
+}
+
 /** A run of consecutive source lines pulled in to give an arrow something to
  *  land on. Produced by `enrichSnippets`, never by the diff itself. */
 export interface Snippet {
@@ -518,7 +595,7 @@ function basename(path: string): string {
  * on, when the answer is "open this fold".
  */
 export function anchorRowForLine(
-  rows: DisplayRow[],
+  rows: readonly (DisplayRow | undefined)[],
   side: Side,
   line: number,
   visibleRows: number,
@@ -532,7 +609,8 @@ export function anchorRowForLine(
   // stand-in range can be read off its neighbours.
   let previous = 0;
   for (let i = 0; i < Math.min(visibleRows, rows.length); i++) {
-    const row = rows[i]!;
+    const row = rows[i];
+    if (!row) continue;
 
     if (row.kind === "gap") {
       const covered = coveredRange(row, previous, rows, i, side);
@@ -550,7 +628,7 @@ export function anchorRowForLine(
 
 /** The index of the "show more" bar, when the card has one. */
 function truncationBar(
-  rows: DisplayRow[],
+  rows: readonly (DisplayRow | undefined)[],
   visibleRows: number,
 ): number | undefined {
   return rows.length > visibleRows ? visibleRows : undefined;
@@ -560,7 +638,7 @@ function truncationBar(
 function coveredRange(
   row: Extract<DisplayRow, { kind: "gap" }>,
   previous: number,
-  rows: DisplayRow[],
+  rows: readonly (DisplayRow | undefined)[],
   index: number,
   side: Side,
 ): [number, number] | undefined {
@@ -575,8 +653,8 @@ function coveredRange(
 
   // No material behind it, so infer the range from what surrounds it.
   for (let i = index + 1; i < rows.length; i++) {
-    const next = rows[i]!;
-    if (next.kind === "gap") continue;
+    const next = rows[i];
+    if (!next || next.kind === "gap") continue;
     const value = side === "base" ? next.oldLine : next.newLine;
     if (value !== undefined) return [previous + 1, value - 1];
   }
@@ -589,13 +667,13 @@ function coveredRange(
  * says which file, it just cannot say where.
  */
 export function rowForLine(
-  rows: DisplayRow[],
+  rows: readonly (DisplayRow | undefined)[],
   side: Side,
   line: number,
 ): number | undefined {
   for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!;
-    if (row.kind === "gap") continue;
+    const row = rows[i];
+    if (!row || row.kind === "gap") continue;
     const value = side === "base" ? row.oldLine : row.newLine;
     if (value === line) return i;
   }

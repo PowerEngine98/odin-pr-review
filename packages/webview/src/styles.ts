@@ -125,6 +125,54 @@ html, body {
 .prbar .state.pressable:hover { filter: brightness(1.12); }
 .prbar .state .caret { opacity: 0.8; margin-left: 1px; }
 
+/* The diff settings, at the end of the bar where the forge keeps them. */
+.settings-menu { position: relative; display: inline-flex; }
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+
+.settings-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 230px;
+  padding: 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+}
+.settings-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.settings-group {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 2px;
+}
+.settings-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.settings-option:hover { color: var(--text); }
+
 .state-list {
   position: absolute;
   top: calc(100% + 6px);
@@ -301,6 +349,37 @@ html, body {
    beside, and an unticked one shouts louder than a ticked one, which is
    backwards. Same shape as the sidebar's, so the two halves of the tool agree
    about what a checkbox looks like. */
+/* Drawn, like every other control here: a native radio ignores the page's
+   colours and arrives white in a dark theme. */
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1px solid color-mix(in srgb, var(--text) 32%, transparent);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  border-radius: 50%;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 100ms ease, border-color 100ms ease;
+}
+input[type="radio"]:hover { border-color: color-mix(in srgb, var(--text) 55%, transparent); }
+input[type="radio"]:checked {
+  border-color: var(--status-renamed);
+  background: var(--status-renamed);
+}
+input[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+}
+
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
@@ -522,6 +601,9 @@ input[type="checkbox"]:checked::after {
 }
 
 .card-body { padding: var(--padding) 0; }
+/* Both readings of the change are in the document; the page shows one. */
+body.split .card-body.unified-view,
+body:not(.split) .card-body.split-view { display: none; }
 
 .row {
   display: flex;
@@ -530,9 +612,6 @@ input[type="checkbox"]:checked::after {
   font-size: var(--font-size);
   white-space: pre;
 }
-.row.add { background: var(--add-bg); color: var(--added); }
-.row.del { background: var(--del-bg); color: var(--removed); }
-
 /* A run of changed lines is one block of colour, not a stack of them.
    Row heights are whole CSS pixels, but the canvas is scaled by a fraction, so
    two rows that share an edge land it between device pixels and the compositor
@@ -541,8 +620,9 @@ input[type="checkbox"]:checked::after {
    closes the seam without touching layout: a shadow occupies no space, so
    nothing that measures rows can notice. Adjacency does the work of a wrapper
    element, which would break the sibling rules that open and close gaps. */
-.row.add + .row.add { box-shadow: 0 -1px 0 0 var(--add-bg); }
-.row.del + .row.del { box-shadow: 0 -1px 0 0 var(--del-bg); }
+.row.split:has(.side.add) + .row.split .side.add { box-shadow: 0 -1px 0 0 var(--add-bg); }
+.row.split:has(.side.del) + .row.split .side.del { box-shadow: 0 -1px 0 0 var(--del-bg); }
+.row.split:has(.side.empty) + .row.split .side.empty { box-shadow: 0 -1px 0 0 var(--gap-bg); }
 .row.gap + .row.gap { box-shadow: 0 -1px 0 0 var(--gap-bg); }
 
 /* A collapsed run of untouched code, banded the way a diff viewer marks the
@@ -592,12 +672,25 @@ input[type="checkbox"]:checked::after {
   text-overflow: ellipsis;
 }
 
-/* The left block spans padding + gutter, matching the static renderer: the
-   marker sits at the padding, the base number's right edge lands on
-   --line-number-right, and the text starts a clear gap after it. */
+/* Two panes: the base of the change on the left, the head on the right. Equal
+   halves of the row, each with its own marker, number and code, so a line and
+   the line that replaced it read across rather than down and both numbers are
+   real. The card was measured as two of these plus its padding. */
+.row.split { padding: 0 var(--padding); }
+.row.split .side {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.row.split .side.add { background: var(--add-bg); color: var(--added); }
+.row.split .side.del { background: var(--del-bg); color: var(--removed); }
+/* Nothing on this side of the change: not blank code, no code. */
+.row.split .side.empty { background: var(--gap-bg); opacity: 0.35; }
+
 .row .marker {
-  width: calc(var(--padding) + 14px);
-  padding-left: var(--padding);
+  width: 14px;
+  flex: 0 0 auto;
   color: var(--gutter);
 }
 .row .num {
@@ -605,20 +698,13 @@ input[type="checkbox"]:checked::after {
   opacity: 0.85;
   font-size: calc(var(--font-size) - 1px);
   text-align: right;
+  padding-right: 8px;
+  width: calc(var(--gutter-width) - 22px);
+  flex: 0 0 auto;
   user-select: none;
 }
-.row .num.anchor { opacity: 0.5; }
-.row .num.old {
-  width: calc(var(--padding) + var(--line-number-right) - var(--padding) - 14px);
-  flex: 0 0 auto;
-}
-.row .num.new {
-  width: var(--right-gutter-width);
-  padding-right: var(--padding);
-  flex: 0 0 auto;
-}
 .row .marker { flex: 0 0 auto; }
-.row.add .marker, .row.del .marker { color: inherit; }
+.row .side.add .marker, .row .side.del .marker { color: inherit; }
 
 /* min-width:0 is load-bearing: without it a flex item refuses to shrink below
    its own content, so a long pre-formatted line runs past the card border and
@@ -626,7 +712,6 @@ input[type="checkbox"]:checked::after {
 .row .text {
   flex: 1 1 auto;
   min-width: 0;
-  padding-left: calc(var(--gutter-width) - var(--line-number-right));
   overflow: hidden;
   text-overflow: ellipsis;
 }
