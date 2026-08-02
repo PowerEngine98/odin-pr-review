@@ -1427,10 +1427,14 @@ input[type="checkbox"]:checked::after {
   padding: 1px 0;
   vertical-align: top;
 }
+/* nowrap is load-bearing: the number column is sized to its content, and
+   without it "23" wraps to a "2" over a "3" — which reads as two rows with the
+   wrong numbers on them, and doubles the height of every line. */
 .suggestion .n {
   width: 1px;
   padding: 1px 8px;
   text-align: right;
+  white-space: nowrap;
   color: var(--gutter);
   background: color-mix(in srgb, var(--text) 6%, transparent);
   user-select: none;
@@ -1438,6 +1442,7 @@ input[type="checkbox"]:checked::after {
 .suggestion .m {
   width: 1px;
   padding: 1px 8px 1px 4px;
+  white-space: nowrap;
   user-select: none;
 }
 .suggestion .code {
