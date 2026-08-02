@@ -740,15 +740,13 @@ function renderRow(
     (row.newLine !== undefined ? ` data-new="${row.newLine}"` : "");
   // A wholly added or deleted file has a single numbering, so it is mirrored
   // into the other gutter rather than leaving a column empty down the card.
-  const left = row.oldLine ?? row.oldAnchor ?? row.newLine;
-  const right = row.newLine ?? row.newAnchor ?? row.oldLine;
-
-  // An inserted line has no number on the base side, only the position it will
-  // occupy there — and every line of the same insertion occupies the same one.
-  // Printing it once says where the run lands; printing it six times reads as a
-  // fault in the gutter, which is what it looked like.
-  const showLeft = repeats(gutter, "lastOld", row.oldLine, left);
-  const showRight = repeats(gutter, "lastNew", row.newLine, right);
+  // A line that exists on one side only leaves the other column empty, the way
+  // the forge leaves it. A stand-in number there is either the same value
+  // repeated down a whole insertion, which reads as a fault in the gutter, or a
+  // number the line does not have, which reads as a claim it cannot support.
+  const showLeft = row.oldLine;
+  const showRight = row.newLine;
+  void gutter;
 
   return `<div class="row ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
     `<span class="marker">${marker}</span>` +

@@ -1449,11 +1449,14 @@ input[type="checkbox"]:checked::after {
   white-space: nowrap;
   user-select: none;
 }
+/* A long line stays a long line. Wrapping it puts one line of code on two rows
+   with one number between them, which is exactly the confusion the two number
+   columns exist to prevent; the table scrolls sideways instead. */
 .suggestion .code {
   padding-right: 10px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
 }
+.suggestion { overflow-x: auto; }
 .suggestion .del { background: var(--del-bg); }
 .suggestion .add { background: var(--add-bg); }
 .suggestion .del .m { color: var(--removed); }

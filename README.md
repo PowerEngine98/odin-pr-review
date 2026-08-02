@@ -86,9 +86,9 @@ the size of its change rather than the size of its file. Line numbers run in two
 columns — base on the left beside the +/− marker, head on the right — because a
 single shared column interleaves the two numbering schemes and reads as nonsense
 on any file that both gained and lost lines. A line that exists on one side only
-shows, dimmed, the position it occupies on the other — once per run, since every
-line of one insertion occupies the same one, and printing it six times reads as
-a fault in the gutter rather than as information.
+leaves the other column empty, the way the forge leaves it: a stand-in number
+there is either the same value repeated down a whole insertion, or a number the
+line does not have.
 
 | Gesture | Effect |
 | --- | --- |
