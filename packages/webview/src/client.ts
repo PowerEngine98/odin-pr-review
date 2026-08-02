@@ -2384,11 +2384,18 @@ export const CLIENT_SCRIPT = String.raw`
       return !isRead(id);
     };
 
+    // Nearest first. The edge list is in hash order, so taking the first of it
+    // sent the reader to whichever call happened to sort first — often the far
+    // end of the chain, skipping the file in between. Column, then height: the
+    // layout already places a callee to the right of its caller, so the closest
+    // column is the next link.
     var downstream = data.edges
       .filter(function (e) { return e.from === fromId && e.to !== fromId && open(e.to); })
-      .map(function (e) { return e.to; });
+      .map(function (e) { return nodeFor(e.to); })
+      .filter(Boolean)
+      .sort(function (a, b) { return a.column - b.column || a.y - b.y; });
 
-    var next = downstream[0];
+    var next = downstream[0] && downstream[0].id;
     if (!next) {
       var rest = data.nodes
         .filter(function (n) { return n.id !== fromId && open(n.id); })
