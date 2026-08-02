@@ -756,11 +756,15 @@ function renderRow(
 }
 
 function edgeLayer(layout: GraphLayout): string {
+  // Sized in page units rather than in stroke widths: the stem is cut short by
+  // exactly the head's length, and a head that grew with the stroke — the wire
+  // thickens while it is followed — would leave that cut in the wrong place.
   const markers = (["added", "removed", "unchanged"] as const)
     .map(
       (change) =>
-        `<marker id="arrow-${change}" viewBox="0 0 10 10" refX="9" refY="5" ` +
-        `markerWidth="7" markerHeight="7" orient="auto-start-reverse">` +
+        `<marker id="arrow-${change}" viewBox="0 0 10 10" refX="10" refY="5" ` +
+        `markerUnits="userSpaceOnUse" markerWidth="${HEAD}" markerHeight="${HEAD}" ` +
+        `orient="auto-start-reverse">` +
         `<path d="M 0 0 L 10 5 L 0 10 z" class="head-${change}"/></marker>`,
     )
     .join("");
@@ -773,7 +777,7 @@ function edgeLayer(layout: GraphLayout): string {
     `</style>`;
 
   const paths = layout.edges.map((edge) => {
-    const d = curve(edge);
+    const { stem, head, full } = wire(edge);
     // Two places to press. The dot where the arrow leaves takes you to where it
     // lands; the dashes past where it lands take you back. Following a
     // reference across a large graph otherwise means finding the other end by
@@ -785,8 +789,9 @@ function edgeLayer(layout: GraphLayout): string {
       `<circle class="port out" cx="${edge.from.x + away * PORT_GAP}" cy="${edge.from.y}" r="4.5">` +
       `<title>Go to the definition this points at</title></circle>`;
     return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
-      `<path class="hit" d="${d}"/>` +
-      `<path class="wire" d="${d}" marker-end="url(#arrow-${edge.edge.change})"/>` +
+      `<path class="hit" d="${full}"/>` +
+      `<path class="wire" d="${stem}"/>` +
+      `<path class="head" d="${head}" marker-end="url(#arrow-${edge.edge.change})"/>` +
       port +
       `</g>`;
   });
@@ -796,27 +801,102 @@ function edgeLayer(layout: GraphLayout): string {
 }
 
 /**
- * The curve, starting at the rim of the dot rather than at the card.
+ * An arrow, as three paths: what you press, what is drawn, and the head.
  *
- * The static SVG has no dot and so starts at the card edge. Here the wire ran
- * out of the card, straight through the dot, and out the other side — the dot
- * read as a bead threaded onto the line instead of the thing the line leaves
- * from. It now begins on the dot's rim, at the point facing where the arrow is
- * headed, so the two touch and nothing is drawn underneath.
+ * The line no longer runs the whole way. It starts on the rim of the dot — drawn
+ * from the card it went straight through the dot and out again, so the dot read
+ * as a bead threaded onto the line rather than the thing the line leaves from —
+ * and it stops where the head begins, since a stem carried on underneath a
+ * filled triangle shows as a lump at the join.
  */
-function curve(edge: PlacedEdge): string {
+function wire(edge: PlacedEdge): { stem: string; head: string; full: string } {
   const away = edge.fromSide === "right" ? 1 : -1;
   const start = rim(edge.from.x + away * PORT_GAP, edge.from.y, edge.to.x, edge.to.y);
   const dx = Math.max(40, Math.abs(edge.to.x - edge.from.x) * 0.45);
   const c1 = edge.fromSide === "right" ? edge.from.x + dx : edge.from.x - dx;
   const c2 = edge.toSide === "left" ? edge.to.x - dx : edge.to.x + dx;
-  return `M ${start.x} ${start.y} C ${c1} ${edge.from.y}, ${c2} ${edge.to.y}, ${edge.to.x} ${edge.to.y}`;
+
+  const points: Point[] = [
+    start,
+    { x: c1, y: edge.from.y },
+    { x: c2, y: edge.to.y },
+    { x: edge.to.x, y: edge.to.y },
+  ];
+  const cut = shorten(points, HEAD);
+
+  return {
+    full: bezier(points),
+    stem: bezier(cut),
+    // The head rides its own segment so it can be oriented and placed without
+    // anything drawn along it — the stroke is off, only the marker shows.
+    head: `M ${cut[3]!.x} ${cut[3]!.y} L ${points[3]!.x} ${points[3]!.y}`,
+  };
 }
 
+interface Point { x: number; y: number }
+
+/** How far the arrow head reaches back from the line's end. */
+const HEAD = 13;
 /** How far the dot sits from the card. */
 const PORT_GAP = 9;
-/** Its radius plus its stroke, so a line stopping here stops on the rim. */
-const PORT_RIM = 6;
+/**
+ * Where a line starting at the dot starts.
+ *
+ * The dot's own radius, which is the middle of its ring rather than the outside
+ * of it: a line stopping cleanly at the outer edge leaves a hairline of
+ * background between the two. This tucks the end under the ring instead.
+ */
+const PORT_RIM = 4.5;
+
+function bezier(p: Point[]): string {
+  return `M ${p[0]!.x} ${p[0]!.y} C ${p[1]!.x} ${p[1]!.y}, ` +
+    `${p[2]!.x} ${p[2]!.y}, ${p[3]!.x} ${p[3]!.y}`;
+}
+
+/**
+ * The same curve with its last `back` pixels taken off.
+ *
+ * Cut with de Casteljau rather than by stepping back along the end tangent: the
+ * curve is at its most bent right where it arrives, so a straight backoff of a
+ * head's length lands off the line and leaves a visible kink.
+ */
+function shorten(p: Point[], back: number): Point[] {
+  const steps = 96;
+  const seen: Point[] = [];
+  for (let i = 0; i <= steps; i++) seen.push(pointAt(p, i / steps));
+
+  let travelled = 0;
+  let t = 0;
+  for (let i = steps; i > 0; i--) {
+    const step = Math.hypot(seen[i]!.x - seen[i - 1]!.x, seen[i]!.y - seen[i - 1]!.y);
+    if (travelled + step >= back) {
+      // Between two samples, not at one of them. On a long arrow a single step
+      // is tens of pixels, and stopping at the near end of it leaves the head
+      // floating that far off the end of the line.
+      t = (i - 1 + (travelled + step - back) / (step || 1)) / steps;
+      break;
+    }
+    travelled += step;
+  }
+
+  const a = mix(p[0]!, p[1]!, t);
+  const b = mix(p[1]!, p[2]!, t);
+  const c = mix(p[2]!, p[3]!, t);
+  const d = mix(a, b, t);
+  const e = mix(b, c, t);
+  return [p[0]!, a, d, mix(d, e, t)].map((q) => ({ x: round(q.x), y: round(q.y) }));
+}
+
+function pointAt(p: Point[], t: number): Point {
+  const a = mix(p[0]!, p[1]!, t);
+  const b = mix(p[1]!, p[2]!, t);
+  const c = mix(p[2]!, p[3]!, t);
+  return mix(mix(a, b, t), mix(b, c, t), t);
+}
+
+function mix(a: Point, b: Point, t: number): Point {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
 
 /** The point on the dot's rim that faces the far end of the arrow. */
 function rim(cx: number, cy: number, tx: number, ty: number): { x: number; y: number } {

@@ -469,6 +469,55 @@ export const CLIENT_SCRIPT = String.raw`
     return card.querySelector(".row.more");
   }
 
+  function mixPoint(a, b, t) {
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+  }
+
+  function curvePoint(p, t) {
+    var a = mixPoint(p[0], p[1], t);
+    var b = mixPoint(p[1], p[2], t);
+    var c = mixPoint(p[2], p[3], t);
+    return mixPoint(mixPoint(a, b, t), mixPoint(b, c, t), t);
+  }
+
+  /**
+   * The curve with its last few pixels taken off, cut with de Casteljau.
+   *
+   * Stepping back along the end tangent instead would land off the line: the
+   * curve is at its most bent exactly where it arrives.
+   */
+  function shortenCurve(p, back) {
+    var steps = 96;
+    var seen = [];
+    for (var i = 0; i <= steps; i++) seen.push(curvePoint(p, i / steps));
+
+    var travelled = 0;
+    var t = 0;
+    for (var j = steps; j > 0; j--) {
+      var step = Math.hypot(seen[j].x - seen[j - 1].x, seen[j].y - seen[j - 1].y);
+      // Between two samples, not at one of them: on a long arrow one step is
+      // tens of pixels, and stopping at the near end of it leaves the head
+      // floating that far off the end of the line.
+      if (travelled + step >= back) {
+        t = (j - 1 + (travelled + step - back) / (step || 1)) / steps;
+        break;
+      }
+      travelled += step;
+    }
+
+    var a = mixPoint(p[0], p[1], t);
+    var b = mixPoint(p[1], p[2], t);
+    var c = mixPoint(p[2], p[3], t);
+    var d = mixPoint(a, b, t);
+    var e = mixPoint(b, c, t);
+    return [p[0], a, d, mixPoint(d, e, t)];
+  }
+
+  function bezierPath(p) {
+    return "M " + p[0].x + " " + p[0].y + " C " + p[1].x + " " + p[1].y + ", " +
+           p[2].x + " " + p[2].y + ", " + p[3].x + " " + p[3].y;
+  }
+
   function rerouteEdges() {
     data.edges.forEach(function (edge) {
       var group = document.querySelector('g.edge[data-id="' + edge.id + '"]');
@@ -490,15 +539,32 @@ export const CLIENT_SCRIPT = String.raw`
       // straight through the dot and out again, which read as a bead on a
       // string instead of the arrow leaving from there.
       var portX = fromX + (goesRight ? 9 : -9);
+      // Started at the dot's radius, the middle of its ring rather than the
+      // outside: ending cleanly at the outer edge leaves a hairline of
+      // background between the two, so the end tucks under the ring.
       var reach = Math.hypot(toX - portX, to.y - from.y) || 1;
-      var startX = portX + ((toX - portX) / reach) * 6;
-      var startY = from.y + ((to.y - from.y) / reach) * 6;
+      var startX = portX + ((toX - portX) / reach) * 4.5;
+      var startY = from.y + ((to.y - from.y) / reach) * 4.5;
 
-      var d = "M " + startX + " " + startY + " C " + c1 + " " + from.y + ", " +
-              c2 + " " + to.y + ", " + toX + " " + to.y;
-      group.querySelectorAll("path.hit, path.wire").forEach(function (path) {
-        path.setAttribute("d", d);
-      });
+      var points = [
+        { x: startX, y: startY },
+        { x: c1, y: from.y },
+        { x: c2, y: to.y },
+        { x: toX, y: to.y },
+      ];
+      var cut = shortenCurve(points, 13);
+
+      // Three paths: the whole curve to press, the stem that stops where the
+      // head begins, and the segment the head is drawn on. A stem carried on
+      // underneath the filled triangle shows as a lump at the join.
+      var hit = group.querySelector("path.hit");
+      if (hit) hit.setAttribute("d", bezierPath(points));
+      var stem = group.querySelector("path.wire");
+      if (stem) stem.setAttribute("d", bezierPath(cut));
+      var head = group.querySelector("path.head");
+      if (head) {
+        head.setAttribute("d", "M " + cut[3].x + " " + cut[3].y + " L " + toX + " " + to.y);
+      }
 
       // The dot rides the tail of the arrow, the dashes carry on past its head.
       var dot = group.querySelector("circle.port");
@@ -544,7 +610,17 @@ export const CLIENT_SCRIPT = String.raw`
 
     var attribute = side === "base" ? "data-old" : "data-new";
     var row = card.querySelector(".row[" + attribute + '="' + line + '"]');
-    if (!row || row.offsetParent === null) return;
+
+    // The line the arrow lands on may be folded away — a deleted call inside a
+    // collapsed run, most often. The arrow already points at the band standing
+    // in for it, and the band says how many lines it holds but not what is in
+    // them. The name goes on the band, so a reference is never invisible only
+    // because the code around it is.
+    if (!row || row.offsetParent === null) {
+      var band = foldFor(card, row, side, line);
+      if (band) foldedSymbol(band, edge, role);
+      return;
+    }
 
     var text = row.querySelector(".text");
     if (!text) return;
@@ -572,6 +648,41 @@ export const CLIENT_SCRIPT = String.raw`
     // glyph it is meant to be pointing out. The right edge stays where it was.
     box.style.left = (data.textLeft + (at - 1) * data.charWidth) + "px";
     box.style.width = ((edge.symbol.length + 1) * data.charWidth) + "px";
+  }
+
+  /**
+   * The same box, on the band that hides the line instead of on the line.
+   *
+   * It carries the name, since there is no code under it to point at, and sits
+   * after the band's own label. Several arrows can land on one band, so they
+   * are laid out in a row rather than on top of one another.
+   */
+  function foldedSymbol(band, edge, role) {
+    var selector = '.symbol-box[data-edge="' + edge.id + '"][data-role="' + role + '"]';
+    var box = band.querySelector(selector);
+    if (!box) {
+      box = chrome("symbol-box folded", edge.symbol);
+      box.dataset.edge = edge.id;
+      box.dataset.role = role;
+      box.title = (role === "out"
+        ? "Go to the definition this points at"
+        : "Go back to where this is called from") + " — folded away here";
+      box.addEventListener("click", function (event) {
+        event.stopPropagation();
+        travel(edge.id, role === "out");
+      });
+      band.appendChild(box);
+    }
+    box.dataset.change = edge.change;
+
+    var label = band.querySelector(".text");
+    var x = data.textLeft + ((label ? label.textContent.length : 0) + 2) * data.charWidth;
+    band.querySelectorAll(".symbol-box.folded").forEach(function (each) {
+      var width = (each.textContent.length + 1) * data.charWidth;
+      each.style.left = x + "px";
+      each.style.width = width + "px";
+      x += width + data.charWidth;
+    });
   }
 
   /** Moves the camera to one end of an arrow, and lights the arrow. */

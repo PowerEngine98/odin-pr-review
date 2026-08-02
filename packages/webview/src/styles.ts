@@ -658,6 +658,11 @@ input[type="checkbox"]:checked::after {
   opacity: 0.85;
   transition: opacity 160ms ease, stroke-width 160ms ease;
 }
+/* Carries the head and nothing else: the stem already stopped where it starts. */
+#edges path.head {
+  fill: none;
+  stroke: none;
+}
 #edges path.hit {
   fill: none;
   stroke: transparent;
@@ -1506,6 +1511,16 @@ input[type="checkbox"]:checked::after {
 /* Pressing it goes back to the call. The box is already at the far end of the
    journey, and it is the only thing there that belongs to the arrow. */
 .symbol-box:hover { filter: brightness(1.5); }
+/* On a band there is no code underneath, so the box carries the name itself. */
+.symbol-box.folded {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  opacity: 0.85;
+  white-space: pre;
+  overflow: hidden;
+}
 .symbol-box[data-change="added"] {
   border: 1px solid color-mix(in srgb, var(--added) 75%, transparent);
   background: color-mix(in srgb, var(--added) 16%, transparent);
