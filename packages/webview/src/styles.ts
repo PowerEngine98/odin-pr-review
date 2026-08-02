@@ -745,9 +745,15 @@ body:not(.split) .card-body.split-view { display: none; }
 .row.flat.del { background-color: var(--del-bg); color: var(--removed); }
 .row.flat.add .marker, .row.flat.del .marker { color: inherit; }
 .row.flat .num.new {
-  width: var(--right-gutter-width);
+  width: calc(var(--right-gutter-width) - 14px);
   padding-right: 0;
   padding-left: 8px;
+}
+/* The plus lives on the head side, where the line it marks has its number. */
+.row.flat .marker.right {
+  width: 14px;
+  padding-left: 4px;
+  text-align: left;
 }
 
 /* An edge marker down both sides of the card, in the diff's own colours, so a

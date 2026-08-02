@@ -167,10 +167,14 @@ function card(
             : theme.text;
       const marker = side.kind === "add" ? "+" : side.kind === "del" ? "\u2212" : " ";
 
-      parts.push(
-        `<text x="${x}" y="${y}" fill="${theme.gutter}" ` +
-          `font-size="${metrics.fontSize}">${marker}</text>`,
-      );
+      // Unified keeps the plus on the head side, beside the number the added
+      // line actually has; everything else marks from the left.
+      if (!(unified && side.kind === "add")) {
+        parts.push(
+          `<text x="${x}" y="${y}" fill="${theme.gutter}" ` +
+            `font-size="${metrics.fontSize}">${marker}</text>`,
+        );
+      }
 
       // The number belongs to the side it is drawn beside: base on the left
       // pane, head on the right. A one-sided file has one numbering and one
@@ -197,9 +201,15 @@ function card(
         }
         if (side.newLine !== undefined) {
           parts.push(
-            `<text x="${node.x + node.width - metrics.padding}" y="${y}" ` +
+            `<text x="${node.x + node.width - metrics.padding - 14}" y="${y}" ` +
               `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
               `text-anchor="end">${side.newLine}</text>`,
+          );
+        }
+        if (side.kind === "add") {
+          parts.push(
+            `<text x="${node.x + node.width - metrics.padding - 10}" y="${y}" ` +
+              `fill="${theme.gutter}" font-size="${metrics.fontSize}">+</text>`,
           );
         }
       }

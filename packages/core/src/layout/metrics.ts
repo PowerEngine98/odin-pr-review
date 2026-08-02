@@ -21,7 +21,7 @@ export interface LayoutMetrics {
   gutterWidth: number;
   /** Where the base-side number's right edge sits within the left gutter. */
   lineNumberRight: number;
-  /** Right gutter: the head-side line number. */
+  /** Right gutter: the head-side line number, and the + beside it. */
   rightGutterWidth: number;
   minCardWidth: number;
   maxCardWidth: number;
@@ -55,7 +55,7 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   padding: 12,
   gutterWidth: 58,
   lineNumberRight: 50,
-  rightGutterWidth: 38,
+  rightGutterWidth: 52,
   minCardWidth: 240,
   maxCardWidth: 1180,
   columnGap: 140,

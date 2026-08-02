@@ -824,7 +824,12 @@ function renderRow(
       hidden;
   }
 
-  const marker = row.kind === "add" ? "+" : row.kind === "del" ? "\u2212" : "";
+  // The sign sits beside the number that exists: a minus by the base number it
+  // was removed from, a plus by the head number it was added at. Kept on the
+  // side the line actually has, the two columns read as what happened to each
+  // checkout rather than as one column of marks about the other.
+  const removed = row.kind === "del" ? "\u2212" : "";
+  const added = row.kind === "add" ? "+" : "";
   const anchors =
     (row.oldLine !== undefined ? ` data-old="${row.oldLine}"` : "") +
     (row.newLine !== undefined ? ` data-new="${row.newLine}"` : "");
@@ -833,10 +838,11 @@ function renderRow(
   const showRight = row.newLine ?? (single ? row.oldLine : undefined);
 
   return `<div class="row flat ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
-    `<span class="marker">${marker}</span>` +
+    `<span class="marker">${removed}</span>` +
     `<span class="num old">${showLeft ?? ""}</span>` +
     `<span class="text">${code(row, coloured?.get(row), palette)}</span>` +
-    `<span class="num new">${showRight ?? ""}</span></div>`;
+    `<span class="num new">${showRight ?? ""}</span>` +
+    `<span class="marker right">${added}</span></div>`;
 }
 
 /**
