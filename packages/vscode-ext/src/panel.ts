@@ -116,7 +116,7 @@ export class GraphPanel {
     );
 
     GraphPanel.current = new GraphPanel(
-      panel, graph, layout, repo, withTests, viewed, highlight,
+      panel, graph, layout, repo, withTests, viewed, highlight, alternate,
     );
     return GraphPanel.current;
   }
@@ -378,6 +378,7 @@ export class GraphPanel {
     withTests?: GraphLayout,
     viewed?: ViewedStore,
     highlight?: Highlighter,
+    alternate?: { layout: GraphLayout; withTests?: GraphLayout },
   ) {
     this.panel = panel;
     this.graph = graph;
@@ -385,6 +386,10 @@ export class GraphPanel {
     this.withTests = withTests;
     this.viewed = viewed;
     this.highlight = highlight;
+    // Set before the first render: without it the page has one set of card
+    // sizes for two ways of reading the change, and the unified cards are
+    // capped by numbers measured for split ones.
+    this.alternate = alternate;
 
     this.render(layout);
 

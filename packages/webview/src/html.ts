@@ -822,15 +822,41 @@ function card(
   // compresses to very little because the two say the same thing.
   // Each mode caps its own card: a split card is shorter, having put pairs of
   // lines on one row, so the two disagree about how much is behind the bar.
+  // Which lines an arrow touches. A card's height cap is for tails of untouched
+  // context and nothing else: a line the change made, or one a reference points
+  // at, must never be behind the bar however the cap was arrived at. Stated
+  // here as well as in the layout, because the two have disagreed — a page
+  // rendered without the other mode's measurements capped its unified cards
+  // with numbers taken from split ones.
+  const anchored = new Set<string>();
+  for (const edge of layout.edges) {
+    if (edge.edge.from.nodeId === node.id) {
+      anchored.add(`${edge.edge.from.side}:${edge.edge.from.line}`);
+    }
+    if (edge.edge.to.nodeId === node.id) {
+      anchored.add(`${edge.edge.to.side}:${edge.edge.to.line}`);
+    }
+  }
+
   const splitCap = (layout.unified ? other?.visibleRows : node.visibleRows) ?? node.visibleRows;
   const unifiedCap = (layout.unified ? node.visibleRows : other?.visibleRows) ?? node.visibleRows;
 
   const pairs = pairRows(node.rows);
   const split = pairs
-    .map((pair, i) => renderPair(pair, i >= splitCap, coloured, palette, single))
+    .map((pair, i) =>
+      renderPair(
+        pair,
+        i >= splitCap && !held(pair.left, anchored) && !held(pair.right, anchored),
+        coloured,
+        palette,
+        single,
+      ),
+    )
     .join("");
   const unified = node.rows
-    .map((row, i) => renderRow(row, i >= unifiedCap, coloured, palette, single))
+    .map((row, i) =>
+      renderRow(row, i >= unifiedCap && !held(row, anchored), coloured, palette, single),
+    )
     .join("");
   const bar = (hidden: number) =>
     hidden > 0
@@ -858,6 +884,16 @@ function card(
   <div class="card-body split-view">${split}${bar(pairs.length - splitCap)}</div>
   <div class="card-body unified-view">${unified}${bar(node.rows.length - unifiedCap)}</div>
 </div>`;
+}
+
+/** Whether a row must stay on screen: the change made it, or an arrow needs it. */
+function held(row: DisplayRow | undefined, anchored: Set<string>): boolean {
+  if (!row || row.kind === "gap") return false;
+  if (row.kind === "add" || row.kind === "del") return true;
+  return (
+    (row.oldLine !== undefined && anchored.has(`base:${row.oldLine}`)) ||
+    (row.newLine !== undefined && anchored.has(`head:${row.newLine}`))
+  );
 }
 
 /**
