@@ -1937,10 +1937,52 @@ export const CLIENT_SCRIPT = String.raw`
     // which is where the forge puts its own + button. Anywhere-on-the-row meant
     // a stray press while reading opened a composer over the code, and the way
     // out of that was to notice it had happened.
+    // The hint button belongs to the rail even though it is drawn past its
+    // edge: it is the rail saying what pressing it does.
+    if (event.target.closest(".pick-hint")) return row;
+
     var pane = event.target.closest(".side") || row;
     var x = (event.clientX - pane.getBoundingClientRect().left) / (view.scale || 1);
     return x <= data.gutterWidth ? row : null;
   }
+
+  /*
+   * The button that says a comment can start here.
+   *
+   * One element for the whole page, moved to whatever rail is under the
+   * pointer. A button per row would be tens of thousands of them, and the rail
+   * without one is a rule nobody can see -- which is how a restriction reads as
+   * a thing that stopped working.
+   */
+  var pickHint = chrome("pick-hint", "+");
+  pickHint.hidden = true;
+
+  document.addEventListener("pointerover", function (event) {
+    var rail = event.target.closest(".num, .marker, .pick-hint");
+    var row = rail && rail.closest(".row");
+    var card = row && row.closest(".card");
+
+    if (!rail || !row || !row.classList.contains("in-diff") ||
+        !card || card.classList.contains("is-viewed") || !data.canReview) {
+      if (pickHint.parentNode && !event.target.closest(".pick-hint")) {
+        pickHint.hidden = true;
+      }
+      return;
+    }
+
+    // Placed from the pane the rail belongs to, so on a split card it lands in
+    // the half the reader is pointing at rather than always in the left one.
+    var pane = rail.closest(".side");
+    var left = (pane ? pane.offsetLeft : 0) + data.gutterWidth + 3;
+    pickHint.style.left = left + "px";
+    pickHint.hidden = false;
+    if (pickHint.parentNode !== row) row.appendChild(pickHint);
+  });
+
+  document.addEventListener("pointerdown", function (event) {
+    if (event.target.closest(".pick-hint")) return;
+    pickHint.hidden = true;
+  }, true);
 
   cards.forEach(function (card) {
     card.addEventListener("pointerdown", function (event) {

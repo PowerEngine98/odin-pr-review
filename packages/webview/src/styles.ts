@@ -1094,6 +1094,26 @@ body:not(.split) .card-body.split-view { display: none; }
 
 .card.picking { user-select: none; }
 
+/* The same button the pick's own handles are, offered before there is a pick:
+   hovering the rail says a remark can start here, in the place it would start. */
+.pick-hint {
+  position: absolute;
+  top: 1px;
+  width: 18px;
+  height: calc(var(--line-height) - 2px);
+  border-radius: 5px;
+  background: var(--status-renamed);
+  color: #fff;
+  font-weight: 700;
+  font-size: calc(var(--font-size) + 1px);
+  line-height: calc(var(--line-height) - 2px);
+  text-align: center;
+  cursor: cell;
+  user-select: none;
+  z-index: 2;
+}
+.pick-hint:hover { filter: brightness(1.15); }
+
 /* Where a remark starts. The rail is the only part of a row that begins one,
    so it is the only part that says it can: pressing the code used to open a
    composer over the passage being read, and the way out was to notice. */
