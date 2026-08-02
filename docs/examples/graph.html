@@ -1688,7 +1688,8 @@ input[type="checkbox"]:checked::after {
     if (
       event.target.closest(".card") ||
       event.target.closest("path.hit") ||
-      event.target.closest(".mark")
+      event.target.closest(".mark") ||
+      event.target.closest(".port")
     ) return;
     panning = true;
     origin = { x: event.clientX - view.x, y: event.clientY - view.y };
@@ -2163,8 +2164,10 @@ input[type="checkbox"]:checked::after {
     box.dataset.change = edge.change;
     box.dataset.edge = edge.id;
 
-    box.style.left = (data.textLeft + at * data.charWidth) + "px";
-    box.style.width = (edge.symbol.length * data.charWidth) + "px";
+    // A character of room on the left, so the box does not sit on the first
+    // glyph it is meant to be pointing out. The right edge stays where it was.
+    box.style.left = (data.textLeft + (at - 1) * data.charWidth) + "px";
+    box.style.width = ((edge.symbol.length + 1) * data.charWidth) + "px";
     void to;
   }
 
@@ -3104,8 +3107,9 @@ input[type="checkbox"]:checked::after {
   cards.forEach(function (card) {
     card.addEventListener("pointerdown", function (event) {
       // The handle belongs to the pick already made; pressing it must not be
-      // read as the start of a new one.
-      if (event.target.closest(".pick-plus")) {
+      // read as the start of a new one. Nor must the box on a name an arrow
+      // lands on, which belongs to the arrow.
+      if (event.target.closest(".pick-plus") || event.target.closest(".symbol-box")) {
         event.stopPropagation();
         return;
       }

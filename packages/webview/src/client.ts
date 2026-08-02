@@ -550,8 +550,10 @@ export const CLIENT_SCRIPT = String.raw`
     box.dataset.change = edge.change;
     box.dataset.edge = edge.id;
 
-    box.style.left = (data.textLeft + at * data.charWidth) + "px";
-    box.style.width = (edge.symbol.length * data.charWidth) + "px";
+    // A character of room on the left, so the box does not sit on the first
+    // glyph it is meant to be pointing out. The right edge stays where it was.
+    box.style.left = (data.textLeft + (at - 1) * data.charWidth) + "px";
+    box.style.width = ((edge.symbol.length + 1) * data.charWidth) + "px";
     void to;
   }
 
