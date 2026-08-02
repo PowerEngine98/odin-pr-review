@@ -2095,6 +2095,36 @@ export const CLIENT_SCRIPT = String.raw`
     moveTooltip(event);
   }
 
+  /**
+   * The page's own tooltip for anything carrying a hint.
+   *
+   * The browser's title tooltip takes a second to appear, draws itself in the
+   * platform's colours rather than the page's, and in a webview arrives over
+   * the editor's chrome. The header buttons say what they do here instead, in
+   * the same box the arrows use.
+   */
+  document.addEventListener("pointerover", function (event) {
+    var hint = event.target.closest("[data-hint]");
+    if (!hint) return;
+    tooltip.classList.remove("added", "removed", "unchanged");
+    tooltip.innerHTML = '<div class="target">' + escapeHtml(hint.dataset.hint) + "</div>";
+    tooltip.classList.add("visible");
+    moveTooltip(event);
+  });
+
+  document.addEventListener("pointerout", function (event) {
+    if (!event.target.closest("[data-hint]")) return;
+    if (event.relatedTarget && event.relatedTarget.closest &&
+        event.relatedTarget.closest("[data-hint]") === event.target.closest("[data-hint]")) return;
+    tooltip.classList.remove("visible");
+  });
+
+  document.addEventListener("pointermove", function (event) {
+    if (!tooltip.classList.contains("visible")) return;
+    if (!event.target.closest("[data-hint]")) return;
+    moveTooltip(event);
+  });
+
   function moveTooltip(event) {
     // Measured rather than assumed, because a wrapped path makes the height
     // depend on what it says.

@@ -473,7 +473,7 @@ function prBar(graph: ChangeGraph, canReview = false): string {
     ${RING}<span class="tally">0 / 0</span> viewed</span>
   <button id="action-review" class="submit" hidden>Submit review<span class="count" hidden>0</span></button>
   <span class="settings-menu">
-    <button id="diff-settings" class="icon-button" title="Diff settings" aria-label="Diff settings">${GEAR}</button>
+    <button id="diff-settings" class="icon-button" data-hint="How the change is laid out" title="Diff settings" aria-label="Diff settings">${GEAR}</button>
     <span class="settings-panel" hidden>
       <span class="settings-title">Diff settings</span>
       <span class="settings-group">Diff display</span>
@@ -873,12 +873,12 @@ function card(
     // the path, the whole file, whether it has been read, and what has been
     // said about it. Grouped at the end so the name keeps the middle.
     `<span class="card-controls">` +
-    `<button class="copy-path" title="Copy the path" aria-label="Copy the path">${COPY_ICON}</button>` +
-    `<button class="unfold" title="Show the whole file" aria-label="Show the whole file">${UNFOLD_ICON}</button>` +
-    `<button class="jump" title="Open the file" aria-label="Open the file" hidden>${JUMP_ICON}</button>` +
-    `<label class="viewed" title="Mark as reviewed">` +
+    `<button class="copy-path" data-hint="Copy the path to this file" title="Copy the path" aria-label="Copy the path">${COPY_ICON}</button>` +
+    `<button class="unfold" data-hint="Show every line this card is holding back" title="Show the whole file" aria-label="Show the whole file">${UNFOLD_ICON}</button>` +
+    `<button class="jump" data-hint="Open this file in the editor" title="Open the file" aria-label="Open the file" hidden>${JUMP_ICON}</button>` +
+    `<label class="viewed" data-hint="Mark this file as read" title="Mark as reviewed">` +
     `<input type="checkbox" class="viewed-box"><span class="viewed-label">Viewed</span></label>` +
-    `<button class="remarks" title="Comments on this file" aria-label="Comments on this file" hidden>` +
+    `<button class="remarks" data-hint="Go to the first comment on this file" title="Comments on this file" aria-label="Comments on this file" hidden>` +
     `${SPEECH_ICON}<span class="tally">0</span></button>` +
     `</span></div>
   <div class="card-body split-view">${split}${bar(pairs.length - splitCap)}</div>
