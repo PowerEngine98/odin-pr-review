@@ -222,6 +222,10 @@ function html(
 }
 * { box-sizing: border-box; }
 
+/* Beats any display a class sets, so something the script has hidden stays
+   hidden rather than reappearing because a rule further down set a display. */
+[hidden] { display: none !important; }
+
 /* Something is running. Indeterminate, because asking the forge how far along
    it is costs another round trip -- the same reason the editor's own
    notifications draw it this way. */
@@ -586,6 +590,13 @@ function refreshProgress() {
   const done = boxes.filter((b) => b.checked).length;
   const pct = boxes.length === 0 ? 0 : Math.round((done / boxes.length) * 100);
 
+  // Nothing read yet is not progress, and "0/43 0%" is three ways of saying
+  // the review has not started -- printed where the amount left to do goes.
+  const bar = document.querySelector(".head .bar");
+  if (bar) bar.hidden = done === 0;
+  const progress = document.querySelector(".head .progress");
+  if (progress) progress.hidden = done === 0;
+
   const fill = document.querySelector(".head .fill");
   if (fill) fill.style.width = pct + "%";
   const doneEl = document.querySelector(".head .done");
@@ -828,9 +839,9 @@ function header(graph: ChangeGraph, viewed: ViewedStore): string {
   const p = progressOf(graph, (path) => viewed.has(path));
 
   return `<div class="head">
-  <div class="bar"><div class="fill" style="width:${p.percent}%"></div></div>
+  <div class="bar"${p.done === 0 ? " hidden" : ""}><div class="fill" style="width:${p.percent}%"></div></div>
   <div class="stats">
-    <span class="progress"><b class="done">${p.done}</b>/<span class="total">${p.total}</span><span class="pct">${p.percent}%</span></span>
+    <span class="progress"${p.done === 0 ? " hidden" : ""}><b class="done">${p.done}</b>/<span class="total">${p.total}</span><span class="pct">${p.percent}%</span></span>
     <span class="spacer"></span>
     ${p.additions > 0 ? `<span class="added">+${p.additions}</span>` : ""}
     ${p.deletions > 0 ? `<span class="removed">−${p.deletions}</span>` : ""}
