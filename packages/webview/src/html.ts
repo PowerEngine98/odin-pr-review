@@ -904,7 +904,11 @@ function card(
   const test = node.node.isTest ? " is-test" : "";
   return `<div class="card status-${node.node.status}${unresolved}${test}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
-  <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}` +
+  <div class="card-title" title="${escapeHtml(node.path)}">` +
+    // The same mark the file list puts beside the name, so a card and its row
+    // in the list are recognisably the same file.
+    `<span class="box">${STATUS_MARK[node.node.status] ?? ""}</span>` +
+    `${escapeHtml(title.name)}${was}${stats}${note}` +
     // The controls the forge puts on a file header, in the order it puts them:
     // the path, the whole file, whether it has been read, and what has been
     // said about it. Grouped at the end so the name keeps the middle.

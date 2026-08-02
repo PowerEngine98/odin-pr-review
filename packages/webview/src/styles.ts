@@ -645,6 +645,21 @@ input[type="checkbox"]:checked::after {
               0 6px 12px color-mix(in srgb, #000 30%, transparent);
 }
 
+/* The file list's own mark, in the title's colour: the card says what kind of
+   change it is in the same shape the list does. */
+.card-title .box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.status-phantom .card-title .box { border-style: dashed; }
+
 .status-added    .card-title { color: var(--status-added); }
 .status-deleted  .card-title { color: var(--status-deleted); }
 .status-renamed  .card-title { color: var(--status-renamed); }
