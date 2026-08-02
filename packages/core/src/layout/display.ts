@@ -10,6 +10,14 @@ export type DisplayRow =
       /** Position on the side this line does not exist on. */
       oldAnchor?: number;
       newAnchor?: number;
+      /**
+       * This line is in the patch, rather than source fetched around it.
+       *
+       * A comment can only be left where the forge can see the line — which is
+       * the diff, not the file. Everything else on a card is context Odin went
+       * and read so that an arrow had somewhere to land.
+       */
+      inDiff?: boolean;
     }
   | {
       kind: "gap";
@@ -339,7 +347,10 @@ function gapRow(
 }
 
 function toRow(line: DiffLine): DisplayRow {
-  const row: DisplayRow = { kind: line.kind, text: line.text };
+  // From the diff itself, as opposed to source fetched to give an arrow
+  // somewhere to land. The forge will only take a comment on a line it can see
+  // in the patch, so the two have to be told apart.
+  const row: DisplayRow = { kind: line.kind, text: line.text, inDiff: true };
   if (line.oldLine !== undefined) row.oldLine = line.oldLine;
   if (line.newLine !== undefined) row.newLine = line.newLine;
   if (line.oldAnchor !== undefined) row.oldAnchor = line.oldAnchor;

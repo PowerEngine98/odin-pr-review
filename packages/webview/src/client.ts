@@ -505,6 +505,8 @@ export const CLIENT_SCRIPT = String.raw`
         path.setAttribute("d", stubD);
       });
 
+      markSymbol(edge, to);
+
       // Where each end wants the camera, remembered rather than recomputed on
       // the click: by then the view has moved and the numbers would be stale.
       group.dataset.fromX = fromX;
@@ -512,6 +514,40 @@ export const CLIENT_SCRIPT = String.raw`
       group.dataset.toX = toX;
       group.dataset.toY = to.y;
     });
+  }
+
+  /**
+   * Draws a box around the symbol an arrow lands on.
+   *
+   * The arrow reaches the line; the box says which word on it. Placed by
+   * arithmetic rather than by measuring the browser's text, using the same
+   * character width the layout engine used — the two have to agree, and asking
+   * the browser would be asking a different question.
+   */
+  function markSymbol(edge, to) {
+    if (!edge.symbol || edge.kind === "import") return;
+    var card = document.getElementById("card-" + cssId(edge.to));
+    if (!card) return;
+
+    var attribute = edge.toSide === "base" ? "data-old" : "data-new";
+    var row = card.querySelector(".row[" + attribute + '="' + edge.toLine + '"]');
+    if (!row || row.offsetParent === null) return;
+
+    var text = row.querySelector(".text");
+    if (!text) return;
+    var at = text.textContent.indexOf(edge.symbol);
+    if (at < 0) return;
+
+    var box = row.querySelector(".symbol-box");
+    if (!box) {
+      box = chrome("symbol-box", "");
+      box.dataset.change = edge.change;
+      row.appendChild(box);
+    }
+
+    box.style.left = (data.textLeft + at * data.charWidth) + "px";
+    box.style.width = (edge.symbol.length * data.charWidth) + "px";
+    void to;
   }
 
   /**
@@ -1444,7 +1480,13 @@ export const CLIENT_SCRIPT = String.raw`
     if (!data.canReview) return null;
     if (event.target.closest(".card-title")) return null;
     if (event.target.closest(".row.gap, .row.more")) return null;
-    return event.target.closest(".row");
+
+    // Only lines the forge can see. A card also carries source fetched so that
+    // an arrow has somewhere to land, and a comment on one of those would be
+    // refused — after the reviewer had written it, which is the worst moment to
+    // find out.
+    var row = event.target.closest(".row");
+    return row && row.classList.contains("in-diff") ? row : null;
   }
 
   cards.forEach(function (card) {

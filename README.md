@@ -146,7 +146,9 @@ card at its title instead of landing on whatever line one happens to hold.
 
 Every arrow carries two places to press: a dot where it leaves, which puts its
 destination in the middle of the screen, and a dashed run just before its head,
-which brings you back. Following a reference across a large change otherwise
+which brings you back. Where it lands, the name it resolved to is boxed in the
+change's own colour — the arrow reaches the line, and the box says which word on
+it, which is the difference between "somewhere in here" and the answer. Following a reference across a large change otherwise
 means finding the other end by eye and then finding your way home the same way.
 The dashes sit on the approach rather than past the head, because past the head
 is inside the card, and cards are drawn over arrows.
@@ -218,6 +220,11 @@ The last button has no equivalent on the forge because it is ours: it opens a
 suggestion block already filled with the lines being commented on. A suggestion
 has to be the complete replacement for the lines it covers, and retyping them
 from memory is how the wrong indentation gets in.
+
+Only lines the forge can see accept a comment. A card also carries source Odin
+fetched so that an arrow had somewhere to land, and the forge would refuse a
+remark on one of those — after it had been written, which is the worst moment to
+find out.
 
 Most remarks are about a passage rather than a line, so a comment can cover
 one: drag down the card, or click a line and shift-click another, and the

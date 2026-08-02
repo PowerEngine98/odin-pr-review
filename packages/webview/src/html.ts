@@ -105,6 +105,12 @@ export function renderHtml(
     width: layout.width,
     height: layout.height,
     rowGap: layout.metrics.rowGap,
+    // The width of one character, for placing a mark over a symbol without
+    // measuring text in the browser — the same number the layout engine used.
+    charWidth: layout.metrics.charWidth,
+    // Where a row's first character sits: the marker column, the base number,
+    // and the padding between that and the code.
+    textLeft: layout.metrics.padding + layout.metrics.gutterWidth,
     // Cards come from the arrangement that includes everything, so the markup
     // holds every file; only positions and visibility change with the toggle.
     nodes: full.nodes.map((n) => ({
@@ -728,7 +734,7 @@ function renderRow(
   const left = row.oldLine ?? row.oldAnchor ?? row.newLine;
   const right = row.newLine ?? row.newAnchor ?? row.oldLine;
 
-  return `<div class="row ${row.kind}${overflow}"${anchors}>` +
+  return `<div class="row ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
     `<span class="marker">${marker}</span>` +
     `<span class="num old${row.oldLine === undefined ? " anchor" : ""}">` +
       `${left ?? ""}</span>` +

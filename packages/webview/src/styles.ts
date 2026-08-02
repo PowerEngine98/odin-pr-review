@@ -1486,10 +1486,10 @@ input[type="checkbox"]:checked::after {
 #edges g.edge.hidden .port-under { display: none; }
 #edges path.port {
   fill: none;
-  stroke-width: 2.5;
+  stroke-width: 3;
   stroke-linecap: round;
-  stroke-dasharray: 4 4;
-  opacity: 0.75;
+  stroke-dasharray: 7 5;
+  opacity: 0.9;
 }
 #edges g.edge.added .port { stroke: var(--added); }
 #edges g.edge.removed .port { stroke: var(--removed); }
@@ -1505,5 +1505,29 @@ input[type="checkbox"]:checked::after {
 /* A dimmed edge keeps its ports out of the way with it. */
 #edges g.edge.dim .port { opacity: 0.1; pointer-events: none; }
 #edges g.edge.hidden .port { display: none; }
+
+/* The word an arrow lands on, boxed. The arrow reaches the line; this says
+   which name on it, which is the difference between "somewhere in here" and
+   the answer. Filled faintly rather than outlined alone, so it reads at the
+   zoom a whole change is taken in at. */
+.symbol-box {
+  position: absolute;
+  top: 1px;
+  height: calc(var(--line-height) - 2px);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.symbol-box[data-change="added"] {
+  border: 1px solid color-mix(in srgb, var(--added) 75%, transparent);
+  background: color-mix(in srgb, var(--added) 16%, transparent);
+}
+.symbol-box[data-change="removed"] {
+  border: 1px solid color-mix(in srgb, var(--removed) 75%, transparent);
+  background: color-mix(in srgb, var(--removed) 16%, transparent);
+}
+.symbol-box[data-change="unchanged"] {
+  border: 1px solid color-mix(in srgb, var(--unchanged) 65%, transparent);
+  background: color-mix(in srgb, var(--unchanged) 14%, transparent);
+}
 `;
 }
