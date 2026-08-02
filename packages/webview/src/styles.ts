@@ -1046,12 +1046,18 @@ body:not(.split) .card-body.split-view { display: none; }
   content: "";
   position: absolute;
   left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
+  /* A pixel past the row at each end so consecutive rows overlap. Meeting
+     exactly leaves a hairline between them once the canvas scale turns whole
+     pixels into fractions, and a bracket down a passage came out as a dashed
+     one. */
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  z-index: 1;
 }
 .row.commented::before { background: var(--status-renamed); }
 .row.drafted::before { background: var(--warning); }
+/* The ends of the passage are the only places the bracket stops. */
 .row.span-start::before { border-top-left-radius: 2px; top: 1px; }
 .row.span-end::before { border-bottom-left-radius: 2px; bottom: 1px; }
 
@@ -1484,7 +1490,9 @@ body:not(.split) .card-body.split-view { display: none; }
    floating beside the card. */
 .mark .tail {
   position: absolute;
-  right: calc(var(--mark-size) * -0.27);
+  /* Clear of the face rather than growing out of it: the two are a pointer and
+     a portrait, and touching they read as one lopsided shape. */
+  right: calc(var(--mark-size) * -0.5);
   top: 50%;
   width: 0;
   height: 0;

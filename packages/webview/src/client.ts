@@ -2561,7 +2561,11 @@ export const CLIENT_SCRIPT = String.raw`
       mark.el.hidden = offScreen;
       if (offScreen) return;
 
-      mark.el.style.left = Math.round(box.left - size - 8) + "px";
+      // Room for the tail and a gap after it, both measured from the mark's own
+      // size: a fixed eight pixels was a clear margin on a small mark and no
+      // margin at all on a large one, where the tail reached the card.
+      var reach = Math.round(size * 0.31) + 10;
+      mark.el.style.left = Math.round(box.left - size - reach) + "px";
       mark.el.style.top = Math.round(y - size / 2) + "px";
     });
   }
