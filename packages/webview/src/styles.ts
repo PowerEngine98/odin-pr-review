@@ -539,9 +539,12 @@ input[type="checkbox"]:checked::after {
 /* Marking a file reviewed is a per-reader note, not a fact about the change,
    so it sits apart from the counts and stays quiet until hovered. */
 .card-title .viewed {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
+  /* The box and the word are one control, but they are not one glyph: touching
+     they read as a box with a broken border. */
+  gap: 6px;
+  padding: 0 2px;
   flex: 0 0 auto;
   opacity: 0.35;
   cursor: pointer;
@@ -1395,7 +1398,13 @@ body:not(.split) .card-body.split-view { display: none; }
   z-index: 41;
   width: 430px;
   max-height: 60vh;
-  overflow-y: auto;
+  /* A column, so the reply box stays put and the remarks scroll behind it. A
+     long thread used to push the button that answers it off the bottom of the
+     popover, which left the reader scrolling to reach the one control they
+     opened the thread to use. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 10px 12px 12px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
@@ -1404,6 +1413,7 @@ body:not(.split) .card-body.split-view { display: none; }
   font-size: 12px;
 }
 .thread-head {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1567,10 +1577,15 @@ body:not(.split) .card-body.split-view { display: none; }
 }
 
 /* Answering in the thread, rather than starting another one beside it. */
+/* The remarks are what grows; everything else in the popover holds still. */
+.thread-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
 .thread-reply {
+  flex: 0 0 auto;
   margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
 }
 .reply-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
 .thread-reply .primary {
