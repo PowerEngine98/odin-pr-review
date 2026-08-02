@@ -486,11 +486,74 @@ export const CLIENT_SCRIPT = String.raw`
 
       var d = "M " + fromX + " " + from.y + " C " + c1 + " " + from.y + ", " +
               c2 + " " + to.y + ", " + toX + " " + to.y;
-      group.querySelectorAll("path").forEach(function (path) {
+      group.querySelectorAll("path.hit, path.wire").forEach(function (path) {
         path.setAttribute("d", d);
       });
+
+      // The dot rides the tail of the arrow, the dashes carry on past its head.
+      var dot = group.querySelector("circle.port");
+      if (dot) {
+        dot.setAttribute("cx", fromX);
+        dot.setAttribute("cy", from.y);
+      }
+      // The dashes sit on the approach, not past the head: past the head is
+      // inside the card, and the cards are drawn over the arrows.
+      var travel = goesRight ? 1 : -1;
+      var near = toX - travel * 8;
+      var stubD = "M " + (near - travel * 20) + " " + to.y + " L " + near + " " + to.y;
+      group.querySelectorAll("path.port, path.port-under").forEach(function (path) {
+        path.setAttribute("d", stubD);
+      });
+
+      // Where each end wants the camera, remembered rather than recomputed on
+      // the click: by then the view has moved and the numbers would be stale.
+      group.dataset.fromX = fromX;
+      group.dataset.fromY = from.y;
+      group.dataset.toX = toX;
+      group.dataset.toY = to.y;
     });
   }
+
+  /**
+   * Puts a point on the canvas in the middle of the screen.
+   *
+   * Following a reference is the gesture the whole tool is built around, and on
+   * a change of any size doing it by eye means finding the other end by hand
+   * and then finding your way home the same way.
+   */
+  function centerPoint(x, y, flashNodeId) {
+    var rect = viewport.getBoundingClientRect();
+    view.x = rect.width / 2 - x * view.scale;
+    view.y = rect.height / 2 - y * view.scale;
+    canvas.style.transition = "transform 320ms cubic-bezier(.22,.61,.36,1)";
+    apply(400);
+    window.setTimeout(function () { canvas.style.transition = ""; }, 340);
+
+    if (!flashNodeId) return;
+    var card = document.getElementById("card-" + cssId(flashNodeId));
+    if (!card) return;
+    card.classList.remove("flash");
+    void card.offsetWidth;
+    card.classList.add("flash");
+  }
+
+  document.querySelectorAll("#edges g.edge .port").forEach(function (port) {
+    port.addEventListener("click", function (event) {
+      event.stopPropagation();
+      var group = port.closest("g.edge");
+      var edge = data.edges.find(function (e) { return e.id === group.dataset.id; });
+      if (!edge) return;
+
+      // The dot travels to where the arrow lands; the dashes travel back.
+      var forward = port.classList.contains("out");
+      highlightEdge(edge.id);
+      centerPoint(
+        Number(group.dataset[forward ? "toX" : "fromX"]),
+        Number(group.dataset[forward ? "toY" : "fromY"]),
+        forward ? edge.to : edge.from,
+      );
+    });
+  });
 
   /* ------------------------------------------------------------ expanding */
 

@@ -756,14 +756,44 @@ function edgeLayer(layout: GraphLayout): string {
 
   const paths = layout.edges.map((edge) => {
     const d = curve(edge);
+    // Two places to press. The dot where the arrow leaves takes you to where it
+    // lands; the dashes past where it lands take you back. Following a
+    // reference across a large graph otherwise means finding the other end by
+    // eye and then finding your way home the same way.
+    const port =
+      `<circle class="port out" cx="${edge.from.x}" cy="${edge.from.y}" r="4.5">` +
+      `<title>Go to the definition this points at</title></circle>`;
+    const d2 = stub(edge);
+    // An underlay in the page's own colour, so the dashes read as dashes
+    // rather than as a solid line with lighter bits on it.
+    const back =
+      `<path class="port-under" d="${d2}"/>` +
+      `<path class="port back" d="${d2}">` +
+      `<title>Go back to where this came from</title></path>`;
+
     return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
       `<path class="hit" d="${d}"/>` +
       `<path class="wire" d="${d}" marker-end="url(#arrow-${edge.edge.change})"/>` +
+      port + back +
       `</g>`;
   });
 
   return `<svg id="edges" width="${layout.width}" height="${layout.height}">` +
     `<defs>${markers}</defs>${style}${paths.join("")}</svg>`;
+}
+
+/**
+ * The dashed run just before an arrow lands.
+ *
+ * On the approach rather than past the head, because past the head is inside
+ * the card, and the card is drawn over the arrows. Close enough to the point to
+ * read as part of that arrow, and dashed so it does not read as more of the
+ * line it is sitting on.
+ */
+function stub(edge: PlacedEdge): string {
+  const travel = edge.toSide === "left" ? 1 : -1;
+  const near = edge.to.x - travel * 8;
+  return `M ${near - travel * 20} ${edge.to.y} L ${near} ${edge.to.y}`;
 }
 
 /** Same curve the static SVG draws, so the two renderers agree. */

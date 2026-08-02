@@ -1458,5 +1458,52 @@ input[type="checkbox"]:checked::after {
 .suggestion .add { background: var(--add-bg); }
 .suggestion .del .m { color: var(--removed); }
 .suggestion .add .m { color: var(--added); }
+
+/* -------------------------------------------------------------- teleporters
+
+   An arrow says where a reference goes; these two make the graph go there. The
+   dot at its start jumps to the definition, the dashes past its head jump back
+   to the call. On a change of any size the alternative is finding the other end
+   by eye, and then finding your way home the same way. */
+#edges .port {
+  cursor: pointer;
+  pointer-events: all;
+  transition: opacity 120ms ease;
+}
+#edges circle.port {
+  fill: var(--bg);
+  stroke-width: 2.5;
+  opacity: 0.9;
+}
+#edges .port-under {
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 4.5;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+#edges g.edge.dim .port-under,
+#edges g.edge.hidden .port-under { display: none; }
+#edges path.port {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 4 4;
+  opacity: 0.75;
+}
+#edges g.edge.added .port { stroke: var(--added); }
+#edges g.edge.removed .port { stroke: var(--removed); }
+#edges g.edge.unchanged .port { stroke: var(--unchanged); }
+
+#edges g.edge:hover .port,
+#edges g.edge.active .port { opacity: 1; }
+#edges circle.port:hover { fill: var(--added); }
+#edges g.edge.removed circle.port:hover { fill: var(--removed); }
+#edges g.edge.unchanged circle.port:hover { fill: var(--unchanged); }
+#edges path.port:hover { stroke-dasharray: none; opacity: 1; }
+
+/* A dimmed edge keeps its ports out of the way with it. */
+#edges g.edge.dim .port { opacity: 0.1; pointer-events: none; }
+#edges g.edge.hidden .port { display: none; }
 `;
 }

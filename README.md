@@ -91,6 +91,8 @@ on any file that both gained and lost lines.
 | --- | --- |
 | Hover an arrow | Isolate it, show the resolved reference and its confidence |
 | Click an arrow | Travel to the definition it points at |
+| Click the dot at an arrow's start | Put its destination in the middle of the screen |
+| Click the dashes before an arrowhead | Go back to where that arrow came from |
 | Click a filename | Isolate that file and everything it touches |
 | Scroll / ⌘-scroll | Pan / zoom around the cursor |
 | Click a gap | Open the untouched code it stands for |
@@ -141,6 +143,13 @@ worth the height.
 
 An import names a file rather than a position in it, so those arrows meet the
 card at its title instead of landing on whatever line one happens to hold.
+
+Every arrow carries two places to press: a dot where it leaves, which puts its
+destination in the middle of the screen, and a dashed run just before its head,
+which brings you back. Following a reference across a large change otherwise
+means finding the other end by eye and then finding your way home the same way.
+The dashes sit on the approach rather than past the head, because past the head
+is inside the card, and cards are drawn over arrows.
 
 Source: [`docs/examples/graph.html`](docs/examples/graph.html).
 
