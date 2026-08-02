@@ -74,7 +74,8 @@ export const CLIENT_SCRIPT = String.raw`
     if (
       event.target.closest(".card") ||
       event.target.closest("path.hit") ||
-      event.target.closest(".mark")
+      event.target.closest(".mark") ||
+      event.target.closest(".port")
     ) return;
     panning = true;
     origin = { x: event.clientX - view.x, y: event.clientY - view.y };
@@ -1490,8 +1491,9 @@ export const CLIENT_SCRIPT = String.raw`
   cards.forEach(function (card) {
     card.addEventListener("pointerdown", function (event) {
       // The handle belongs to the pick already made; pressing it must not be
-      // read as the start of a new one.
-      if (event.target.closest(".pick-plus")) {
+      // read as the start of a new one. Nor must the box on a name an arrow
+      // lands on, which belongs to the arrow.
+      if (event.target.closest(".pick-plus") || event.target.closest(".symbol-box")) {
         event.stopPropagation();
         return;
       }
