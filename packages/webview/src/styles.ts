@@ -123,8 +123,15 @@ html, body {
   padding: 0 6px;
 }
 .part-tab:hover .count { color: var(--text); }
-/* Everything in it has been read. Said quietly — it is a state, not an award. */
-.part-tab.finished .count .done { color: var(--action); }
+/* Everything in it has been read. */
+.part-tab .count .tick {
+  display: inline-flex;
+  align-items: center;
+  color: var(--status-renamed);
+}
+.part-tab.finished .count {
+  background: color-mix(in srgb, var(--status-renamed) 22%, transparent);
+}
 .part-tab.on .count {
   color: var(--text);
   background: color-mix(in srgb, var(--status-renamed) 28%, transparent);

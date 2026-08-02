@@ -359,13 +359,21 @@ function tabs(parts: Component[]): string {
   if (chains.length < 2 && loose.length === 0) return "";
 
   const total = parts.reduce((n, p) => n + p.files, 0);
-  const one = (id: string, label: string, files: number, title: string) =>
-    `<button class="part-tab" data-part="${escapeHtml(id)}" title="${escapeHtml(title)}">` +
-    `${escapeHtml(label)}` +
-    // How much of this part is done over how much there is. The read count is
-    // the one that changes while reviewing, so it carries the colour.
-    `<span class="count"><b class="done">0</b>/<span class="total">${files}</span></span>` +
-    `</button>`;
+  const one = (id: string, label: string, files: number, title: string) => {
+    // Room for the widest thing the pill will ever hold — "12/12" — so the
+    // strip does not shuffle sideways every time a file is ticked.
+    const room = String(files).length * 2 + 1;
+    return `<button class="part-tab" data-part="${escapeHtml(id)}" title="${escapeHtml(title)}">` +
+      `${escapeHtml(label)}` +
+      // Nothing read yet is just the size of the part; part-read is read over
+      // size, with the moving number carrying the colour; all read is a tick,
+      // because by then the numbers have nothing left to say.
+      `<span class="count" style="min-width:calc(${room}ch + 12px)">` +
+      `<b class="done" hidden>0</b><span class="sep" hidden>/</span>` +
+      `<span class="total">${files}</span>` +
+      `<span class="tick" hidden>${TICK}</span></span>` +
+      `</button>`;
+  };
 
   const spare = loose.reduce((n, p) => n + p.files, 0);
 
@@ -475,6 +483,11 @@ function prBar(graph: ChangeGraph, canReview = false): string {
   </span>
 </div>`;
 }
+
+const TICK =
+  `<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">` +
+  `<path d="M3.5 8.6 6.4 11.5 12.5 5.2" fill="none" stroke="currentColor" ` +
+  `stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 const GEAR =
   `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` +

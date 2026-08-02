@@ -2212,11 +2212,24 @@ export const CLIENT_SCRIPT = String.raw`
       }
 
       var readEl = tab.querySelector(".done");
+      var sepEl = tab.querySelector(".sep");
       var totalEl = tab.querySelector(".total");
-      if (readEl) readEl.textContent = done;
-      if (totalEl) totalEl.textContent = total;
+      var tickEl = tab.querySelector(".tick");
+      var complete = total > 0 && done === total;
+
+      if (readEl) {
+        readEl.textContent = done;
+        readEl.hidden = done === 0 || complete;
+      }
+      if (sepEl) sepEl.hidden = done === 0 || complete;
+      if (totalEl) {
+        totalEl.textContent = total;
+        totalEl.hidden = complete;
+      }
+      if (tickEl) tickEl.hidden = !complete;
+
       counted[tab.dataset.part] = { done: done, total: total };
-      tab.classList.toggle("finished", total > 0 && done === total);
+      tab.classList.toggle("finished", complete);
     });
 
     var open = tabs.filter(function (tab) { return tab.classList.contains("on"); })[0];
