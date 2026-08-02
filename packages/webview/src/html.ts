@@ -1,6 +1,7 @@
 import {
   DARK_THEME,
   cardTitle,
+  components,
   describeGaps,
   pairRows,
   type ReviewComment,
@@ -9,6 +10,7 @@ import {
   type GraphLayout,
   type PlacedEdge,
   type PlacedNode,
+  type Component,
   type RowPair,
   type Theme,
 } from "@odin/core";
@@ -97,6 +99,9 @@ export function renderHtml(
 
   const comments = options.comments ?? [];
   const full = options.withTests ?? layout;
+  // Split from the arrangement that holds every file, so a part does not lose
+  // members to a filter and then be named after a file that is not in it.
+  const parts = components({ ...graph, nodes: full.nodes.map((n) => n.node) });
   // Column identity belongs to the arrangement, not to the file: hiding the
   // tests changes the graph, which changes the ranking. Carrying it from one
   // arrangement while taking positions from another is how cards end up
@@ -176,6 +181,13 @@ export function renderHtml(
       symbol: e.edge.to.symbolName ?? "",
       label: e.edge.label ?? "",
     })),
+    parts: [
+      ...parts.filter((p) => p.files > 1).map((p) => ({ id: p.id, nodes: p.nodeIds })),
+      {
+        id: "loose",
+        nodes: parts.filter((p) => p.files === 1).flatMap((p) => p.nodeIds),
+      },
+    ],
     canReview: options.canReview === true,
     viewer: options.viewer ?? "",
     comments: comments.map((c) => ({
@@ -226,6 +238,7 @@ export function renderHtml(
     `<div class="chrome">`,
     prBar(graph, options.canReview === true),
     toolbar(graph, layout, options.highlight),
+    tabs(parts),
     `</div>`,
     `<div class="viewport">`,
     `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
@@ -322,6 +335,48 @@ function toolbar(
   </span>
   <button id="action-fit">fit</button>
 </div>`;
+}
+
+/**
+ * One tab per part of the change that can be read without the others.
+ *
+ * A large pull request is usually several changes pushed together, and reading
+ * it as one picture means holding all of it at once. Each tab is a call chain
+ * and everything it reaches, named after the file the chain starts at. Absent
+ * when the change is one connected thing, which is when the strip would only
+ * take up room to say so.
+ */
+function tabs(parts: Component[]): string {
+  // A part of one file is a review of one file: real, but not a chain, and
+  // thirty of them in a strip is a worse index than the sidebar already is.
+  // They are gathered into a tab of their own so nothing is unreachable.
+  const chains = parts.filter((p) => p.files > 1);
+  const loose = parts.filter((p) => p.files === 1);
+  if (chains.length < 2 && loose.length === 0) return "";
+
+  const total = parts.reduce((n, p) => n + p.files, 0);
+  const one = (id: string, label: string, files: number, title: string) =>
+    `<button class="part-tab" data-part="${escapeHtml(id)}" title="${escapeHtml(title)}">` +
+    `${escapeHtml(label)}<span class="count">${files}</span></button>`;
+
+  const spare = loose.reduce((n, p) => n + p.files, 0);
+
+  return `<div class="parts">` +
+    one("", "Everything", total, "Every file in the change") +
+    chains
+      .map((part) =>
+        one(
+          part.id,
+          part.label,
+          part.files,
+          `${part.path} and the ${part.files - 1} file${part.files === 2 ? "" : "s"} its calls reach`,
+        ),
+      )
+      .join("") +
+    (spare > 0
+      ? one("loose", "on their own", spare, "Files nothing else in the change calls")
+      : "") +
+    `</div>`;
 }
 
 /**

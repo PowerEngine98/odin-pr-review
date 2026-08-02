@@ -61,6 +61,45 @@ html, body {
   overflow: hidden;
 }
 
+/* One tab per part of the change that can be read on its own. Drawn like the
+   editor's own tabs rather than the forge's, because this is a place you come
+   back to rather than a page you scroll. */
+.parts {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 10px;
+  overflow-x: auto;
+  border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+.part-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.part-tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.part-tab.on {
+  color: var(--text);
+  border-bottom-color: var(--status-renamed);
+}
+.part-tab .count {
+  font-size: 11px;
+  color: var(--gutter);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
 /* ------------------------------------------------------------------ toolbar */
 
 /* Everything stacks into columns rather than running across the top: a

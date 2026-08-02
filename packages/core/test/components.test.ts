@@ -1,0 +1,152 @@
+import { describe, expect, it } from "vitest";
+
+import { components } from "../src/graph/components.js";
+
+import type { ChangeGraph, Edge, FileNode } from "../src/model/types.js";
+
+function file(path: string, additions = 1): FileNode {
+  return {
+    id: `n:${path}`,
+    path,
+    status: "modified",
+    language: "typescript",
+    binary: false,
+    stats: { additions, deletions: 0 },
+    hunks: [],
+    symbols: [],
+  };
+}
+
+function edge(from: string, to: string, kind: Edge["kind"] = "call"): Edge {
+  return {
+    id: `e:${from}->${to}:${kind}`,
+    from: { nodeId: `n:${from}`, path: from, side: "head", line: 1 },
+    to: { nodeId: `n:${to}`, path: to, side: "head", line: 1 },
+    change: "added",
+    kind,
+    confidence: "resolved",
+    resolver: "ts",
+  };
+}
+
+function graph(nodes: FileNode[], edges: Edge[]): ChangeGraph {
+  return {
+    nodes,
+    edges,
+    meta: { baseRef: "main", headRef: "topic", generator: "test" },
+  };
+}
+
+describe("splitting a change into what can be read on its own", () => {
+  it("keeps files that reach each other together", () => {
+    const parts = components(
+      graph(
+        [file("a.ts"), file("b.ts"), file("c.ts")],
+        [edge("a.ts", "b.ts"), edge("b.ts", "c.ts")],
+      ),
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.files).toBe(3);
+  });
+
+  it("separates files that do not", () => {
+    // The point of the whole thing: a pull request carrying two unrelated
+    // changes is two reviews, and reading it as one picture means holding both
+    // at once.
+    const parts = components(
+      graph(
+        [file("a.ts"), file("b.ts"), file("x.ts"), file("y.ts")],
+        [edge("a.ts", "b.ts"), edge("x.ts", "y.ts")],
+      ),
+    );
+    expect(parts).toHaveLength(2);
+    expect(parts.map((p) => p.label).sort()).toEqual(["a.ts", "x.ts"]);
+  });
+
+  it("names a part after where its call chain starts", () => {
+    const parts = components(
+      graph(
+        [file("entry.ts"), file("middle.ts"), file("leaf.ts")],
+        [edge("entry.ts", "middle.ts"), edge("middle.ts", "leaf.ts")],
+      ),
+    );
+    expect(parts[0]!.label).toBe("entry.ts");
+  });
+
+  it("prefers the busiest entry when several files call in", () => {
+    const parts = components(
+      graph(
+        [file("one.ts"), file("two.ts"), file("shared.ts"), file("also.ts")],
+        [
+          edge("one.ts", "shared.ts"),
+          edge("two.ts", "shared.ts"),
+          edge("two.ts", "also.ts"),
+        ],
+      ),
+    );
+    expect(parts[0]!.label).toBe("two.ts");
+  });
+
+  it("falls back to the first file when the calls go in a circle", () => {
+    // Nothing in a cycle is the start of it, so any name is as arbitrary as any
+    // other. Taking the first by path at least means the same name every run.
+    const parts = components(
+      graph(
+        [file("beta.ts"), file("alpha.ts")],
+        [edge("alpha.ts", "beta.ts"), edge("beta.ts", "alpha.ts")],
+      ),
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.label).toBe("alpha.ts");
+  });
+
+  it("leaves a file nothing references as a part of its own", () => {
+    const parts = components(graph([file("lonely.ts")], []));
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.nodeIds).toEqual(["n:lonely.ts"]);
+  });
+
+  it("does not let an import merge two changes", () => {
+    // A shared type module is imported by everything, which would make the
+    // whole change one part and the split worthless.
+    const parts = components(
+      graph(
+        [file("a.ts"), file("types.ts"), file("x.ts")],
+        [edge("a.ts", "types.ts", "import"), edge("x.ts", "types.ts", "import")],
+      ),
+    );
+    expect(parts).toHaveLength(3);
+  });
+
+  it("counts imports when asked to", () => {
+    const parts = components(
+      graph(
+        [file("a.ts"), file("types.ts")],
+        [edge("a.ts", "types.ts", "import")],
+      ),
+      { includeImports: true },
+    );
+    expect(parts).toHaveLength(1);
+  });
+
+  it("puts the largest part first", () => {
+    const parts = components(
+      graph(
+        [file("solo.ts"), file("a.ts"), file("b.ts")],
+        [edge("a.ts", "b.ts")],
+      ),
+    );
+    expect(parts[0]!.files).toBe(2);
+    expect(parts[1]!.label).toBe("solo.ts");
+  });
+
+  it("splits the same way every run", () => {
+    const input = graph(
+      [file("a.ts"), file("b.ts"), file("x.ts")],
+      [edge("a.ts", "b.ts")],
+    );
+    expect(JSON.stringify(components(input))).toBe(
+      JSON.stringify(components(input)),
+    );
+  });
+});

@@ -21,6 +21,15 @@ export const CLIENT_SCRIPT = String.raw`
    * where a line and the line that replaced it sit on the same row, and so the
    * only one where both gutters carry a real number against the same code.
    */
+  /*
+   * Which part of the change is being read, as a set of file ids.
+   *
+   * Empty means all of it. A large pull request is usually several changes
+   * pushed together, and a reviewer who has finished one of them should be able
+   * to set it down rather than keep scrolling past it.
+   */
+  var focused = null;
+
   var splitMode = readMode();
   document.body.classList.toggle("split", splitMode);
 
@@ -321,8 +330,10 @@ export const CLIENT_SCRIPT = String.raw`
       event.stopPropagation();
       var edge = data.edges.find(function (e) { return e.id === id; });
       if (!edge) return;
+      // Follows the reference on the canvas and nothing more. Opening an editor
+      // here took the screen away from the picture the reader was reading; the
+      // button on a card's header is where opening a file is asked for.
       centerOn(edge.to);
-      notifyHost("navigate", edge);
     });
   });
 
@@ -402,7 +413,7 @@ export const CLIENT_SCRIPT = String.raw`
       if (!card) return;
 
       var placed = arrangement.nodes[node.id];
-      if (!placed) {
+      if (!placed || (focused && !focused[node.id])) {
         card.classList.add("hidden");
         return;
       }
@@ -595,6 +606,15 @@ export const CLIENT_SCRIPT = String.raw`
   function foldFor(root, row, side, line) {
     var covering = bandCovering(root, side, line);
     if (covering) return covering;
+
+    // Held back by the card's height rather than by a fold. The bar at the foot
+    // is the honest place to point: it says there is more below and opens it.
+    // The nearest band above would say "in this stretch of unchanged code",
+    // which is a different claim, and a false one.
+    if (row && row.classList.contains("beyond-cap")) {
+      var bar = root.querySelector(".row.more");
+      if (bar) return bar;
+    }
 
     // A row that exists but is folded away: the band above it is the one.
     if (row) {
@@ -945,6 +965,35 @@ export const CLIENT_SCRIPT = String.raw`
       expand(trigger);
     });
   });
+
+  /* ----------------------------------------------------------- the parts */
+
+  // Scoped to the strip: the markdown editor has tabs of its own, and a bare
+  // .tab caught its Write and Preview buttons too.
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".parts .part-tab"));
+  tabs.forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      var part = (data.parts || []).find(function (p) {
+        return p.id === tab.dataset.part;
+      });
+
+      focused = null;
+      if (part) {
+        focused = {};
+        part.nodes.forEach(function (id) { focused[id] = true; });
+      }
+
+      tabs.forEach(function (other) {
+        other.classList.toggle("on", other === tab);
+      });
+
+      refreshFilters();
+      // The part fills the view it was opened into; leaving the camera where it
+      // was would open a part and show the space the rest of them left behind.
+      fit();
+    });
+  });
+  if (tabs[0]) tabs[0].classList.add("on");
 
   /* -------------------------------------------------------- diff settings */
 
@@ -2048,6 +2097,7 @@ export const CLIENT_SCRIPT = String.raw`
         edge &&
         (!arrangement.nodes[edge.from] ||
           !arrangement.nodes[edge.to] ||
+          (focused && (!focused[edge.from] || !focused[edge.to])) ||
           (hideViewed && (isRead(edge.from) || isRead(edge.to))));
       g.classList.toggle(
         "hidden",
