@@ -95,7 +95,10 @@ export const CLIENT_SCRIPT = String.raw`
     var top = chromeBar ? chromeBar.getBoundingClientRect().bottom : 0;
     // Where the bar sits in the drawing's own coordinates. Everything below is
     // arithmetic on the card's placed position, not measurement of the DOM.
-    var line = (top - view.y) / view.scale;
+    // A pixel above the bar rather than level with it. Level leaves a hairline
+    // of code showing between the two once the canvas scale turns whole pixels
+    // into fractions; a pixel of overlap disappears under an opaque bar.
+    var line = (top - 1 - view.y) / view.scale;
 
     cards.forEach(function (card) {
       var title = card.querySelector(".card-title");
@@ -105,7 +108,11 @@ export const CLIENT_SCRIPT = String.raw`
       var height = parseFloat(card.style.height) || card.offsetHeight;
       var titleHeight = title.offsetHeight;
 
-      var offset = line - cardTop;
+      // Measured to the title's own top inside the card, not the card's outer
+      // edge: the border between them is a pixel, and a pixel of the code
+      // showing above a pinned header reads as a gap in the chrome. Rounded
+      // down so what is left of it goes under the bar rather than beside it.
+      var offset = Math.floor(line - cardTop - (title.offsetTop || 0));
       if (offset <= 0 || height <= titleHeight) {
         if (title.style.transform) {
           title.style.transform = "";
@@ -493,7 +500,36 @@ export const CLIENT_SCRIPT = String.raw`
     return data.nodes.find(function (n) { return n.id === id; });
   }
 
-  function anchorFor(nodeId, side, line, fileLevel) {
+  /**
+   * The visible row showing a definition, when the side asked for has none.
+   *
+   * A card is mostly head-side material: the diff's own lines, plus whatever
+   * was fetched around them, and what is fetched is fetched from the head
+   * checkout. A removed call resolves against the base checkout, so it asks for
+   * a base line the card was never given a row for, and the arrow fell back to
+   * the band standing in for that stretch — pointing at "somewhere in here"
+   * when the line it means is on screen a row or two below, with its own
+   * number, because nothing about the definition changed.
+   *
+   * Searched by name rather than by number because the two checkouts number the
+   * same line differently, and the name is what the arrow is about.
+   */
+  function definitionRow(body, symbol) {
+    if (!symbol) return null;
+
+    var rows = body.querySelectorAll(".row.split, .row.flat");
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      if (row.offsetParent === null) continue;
+      var texts = row.querySelectorAll(".text");
+      for (var t = 0; t < texts.length; t++) {
+        if (texts[t].textContent.indexOf(symbol) >= 0) return row;
+      }
+    }
+    return null;
+  }
+
+  function anchorFor(nodeId, side, line, fileLevel, symbol) {
     var card = document.getElementById("card-" + cssId(nodeId));
     var node = nodeFor(nodeId);
     if (!card || !node) return null;
@@ -513,7 +549,10 @@ export const CLIENT_SCRIPT = String.raw`
     // A row inside a closed gap, or below the cap, has no position to point at;
     // the fold that would reveal it does.
     if (!row || row.offsetParent === null) {
-      var fold = foldFor(body, row, side, line);
+      // The line itself, if it is on screen under the other side's number,
+      // before the band that would only say which stretch it is in.
+      var named = definitionRow(body, symbol);
+      var fold = named || foldFor(body, row, side, line);
       if (!fold) return { y: node.y + node.height / 2, node: node };
       row = fold;
     }
@@ -617,7 +656,9 @@ export const CLIENT_SCRIPT = String.raw`
       if (!group) return;
 
       var from = anchorFor(edge.from, edge.fromSide, edge.fromLine, false);
-      var to = anchorFor(edge.to, edge.toSide, edge.toLine, edge.kind === "import");
+      var to = anchorFor(
+        edge.to, edge.toSide, edge.toLine, edge.kind === "import", edge.symbol,
+      );
       if (!from || !to) return;
 
       var goesRight = to.node.x + to.node.width / 2 >= from.node.x + from.node.width / 2;
@@ -711,9 +752,16 @@ export const CLIENT_SCRIPT = String.raw`
     // them. The name goes on the band, so a reference is never invisible only
     // because the code around it is.
     if (!row || row.offsetParent === null) {
-      var band = foldFor(body, row, side, line);
-      if (band) foldedSymbol(band, edge, role);
-      return;
+      // Same answer the arrow reached: the line under the other side's number
+      // when it is on screen, and only then the band standing in for it.
+      var named = role === "in" ? definitionRow(body, edge.symbol) : null;
+      if (named) {
+        row = named;
+      } else {
+        var band = foldFor(body, row, side, line);
+        if (band) foldedSymbol(band, edge, role);
+        return;
+      }
     }
 
     // Split puts the base and head of the change in panes of their own, so the
@@ -2175,7 +2223,7 @@ export const CLIENT_SCRIPT = String.raw`
   function buildMarks() {
     marks.forEach(function (m) { m.el.remove(); });
     marks = [];
-    if (!markLayer || !(data.comments || []).length) return;
+    if (!markLayer || !(data.comments || []).length) { refreshRemarkCounts(); return; }
 
     threadsOf(data.comments).forEach(function (thread) {
       var node = data.nodes.find(function (n) { return n.path === thread.root.path; });
@@ -2200,6 +2248,7 @@ export const CLIENT_SCRIPT = String.raw`
     });
 
     placeMarks();
+    refreshRemarkCounts();
   }
 
   /** The author's picture, or their initials when the page has none. */
@@ -2667,6 +2716,100 @@ export const CLIENT_SCRIPT = String.raw`
     if (event.key === "f") fit();
     if (event.key === "Escape") { clearHighlight(); clearSelection(); closeThread(); }
   });
+
+  /* ------------------------------------------------------- the card's header */
+
+  /**
+   * Puts a string on the clipboard, or as close as the host allows.
+   *
+   * Webviews do not always grant the clipboard API, and saying nothing at all
+   * would leave the reader pasting whatever was there before.
+   */
+  function copyText(value, mark) {
+    var done = function () {
+      if (!mark) return;
+      mark.classList.add("done");
+      window.setTimeout(function () { mark.classList.remove("done"); }, 1200);
+    };
+
+    var fallback = function () {
+      var field = document.createElement("textarea");
+      field.value = value;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      document.body.appendChild(field);
+      field.select();
+      try {
+        if (document.execCommand("copy")) done();
+      } catch (e) {
+        /* nothing left to try */
+      }
+      field.remove();
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(done, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  cards.forEach(function (card) {
+    var copy = card.querySelector(".copy-path");
+    if (copy) {
+      copy.addEventListener("click", function (event) {
+        event.stopPropagation();
+        copyText(card.dataset.path || "", copy);
+      });
+    }
+
+    var unfold = card.querySelector(".unfold");
+    if (unfold) {
+      unfold.addEventListener("click", function (event) {
+        event.stopPropagation();
+        // Everything the card is holding back, in one go: what is past its
+        // height cap and what is behind every band. Pressed again it returns
+        // the card to the shape the layout gave it.
+        var open = !card.classList.contains("expanded");
+        card.classList.toggle("expanded", open);
+        card.querySelectorAll(".row.gap.expandable").forEach(function (band) {
+          setGapOpen(band, open);
+        });
+        recompute();
+      });
+    }
+
+    var remarks = card.querySelector(".remarks");
+    if (remarks) {
+      remarks.addEventListener("click", function (event) {
+        event.stopPropagation();
+        // Straight to the first thing anybody said about this file, which is
+        // what a count is asking to be pressed for.
+        var first = marks.filter(function (mark) {
+          return mark.thread.root.path === card.dataset.path;
+        })[0];
+        if (first) showThread(first.thread, first.el);
+      });
+    }
+  });
+
+  /** The count on each card's header, kept level with what is on the page. */
+  function refreshRemarkCounts() {
+    var totals = {};
+    marks.forEach(function (mark) {
+      var path = mark.thread.root.path;
+      totals[path] = (totals[path] || 0) + mark.thread.comments.length;
+    });
+
+    cards.forEach(function (card) {
+      var button = card.querySelector(".remarks");
+      if (!button) return;
+      var count = totals[card.dataset.path] || 0;
+      button.hidden = count === 0;
+      button.querySelector(".tally").textContent = count;
+    });
+  }
 
   /* ------------------------------------------------------------ host bridge */
 

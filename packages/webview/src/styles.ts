@@ -551,15 +551,53 @@ input[type="checkbox"]:checked::after {
 .card.is-viewed .card-title .viewed { opacity: 1; }
 .card-title .viewed input { margin: 0; cursor: pointer; }
 
+/* The forge's file-header controls, grouped at the end of the title. */
+.card-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.card-controls > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: calc(var(--font-size) - 2px);
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+.card-controls > button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+/* Said out loud, because a checkbox alone on a file header is a question with
+   no wording: read what? */
+.card-title .viewed-label {
+  font-size: calc(var(--font-size) - 2px);
+  color: var(--muted);
+}
+.card.is-viewed .card-title .viewed-label { color: var(--text); }
+/* Nothing said about this file yet, so nothing to say about it. */
+.card-controls .remarks .tally { font-variant-numeric: tabular-nums; }
+
 /* Opening the file is a separate intention from reading the change to it, so it
-   gets a control of its own rather than a modifier on the filename. Quiet until
-   the card is under the pointer, like the reviewed box beside it. */
+   gets a control of its own rather than a modifier on the filename. */
 .card-title .jump {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  margin-left: auto;
   width: 20px;
   height: 20px;
   padding: 0;
@@ -572,14 +610,13 @@ input[type="checkbox"]:checked::after {
   transition: opacity 120ms ease, background-color 120ms ease;
 }
 .card:hover .card-title .jump { opacity: 0.8; }
+.card-title .jump { opacity: 0.8; }
 .card-title .jump:hover {
   opacity: 1;
   color: var(--text);
   background: color-mix(in srgb, var(--text) 14%, transparent);
 }
-/* With the jump button present it is the one pushed to the end, and the box
-   follows it rather than claiming the space itself. */
-.card-title .jump + .viewed { margin-left: 6px; }
+
 
 .card.is-viewed { opacity: 0.45; }
 /* Settled by its callers rather than by a click: dimmed like the rest, but

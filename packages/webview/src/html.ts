@@ -550,6 +550,18 @@ function plainTools(): string {
  * served from disk, where nothing here can reach an editor, and a button that
  * silently does nothing is worse than no button.
  */
+/* Both directions at once: this opens what a card is not showing, and closes
+   it again. */
+const UNFOLD_ICON =
+  `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<path d="M5 6.2 8 3.2l3 3M5 9.8l3 3 3-3" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+const SPEECH_ICON =
+  `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<path d="M2.5 3.4h11a1 1 0 0 1 1 1v5.6a1 1 0 0 1-1 1H8l-3.4 2.6V11H2.5a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z" ` +
+  `fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
+
 const JUMP_ICON =
   `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
   `<path d="M9.5 2.5H13v3.5M13 2.5L8 7.5" fill="none" stroke="currentColor" ` +
@@ -755,8 +767,18 @@ function card(
   return `<div class="card status-${node.node.status}${unresolved}${test}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
   <div class="card-title" title="${escapeHtml(node.path)}">${escapeHtml(title.name)}${was}${stats}${note}` +
-    `<button class="jump" title="Jump to file" aria-label="Jump to file" hidden>${JUMP_ICON}</button>` +
-    `<label class="viewed" title="Mark as reviewed"><input type="checkbox" class="viewed-box"></label></div>
+    // The controls the forge puts on a file header, in the order it puts them:
+    // the path, the whole file, whether it has been read, and what has been
+    // said about it. Grouped at the end so the name keeps the middle.
+    `<span class="card-controls">` +
+    `<button class="copy-path" title="Copy the path" aria-label="Copy the path">${COPY_ICON}</button>` +
+    `<button class="unfold" title="Show the whole file" aria-label="Show the whole file">${UNFOLD_ICON}</button>` +
+    `<button class="jump" title="Open the file" aria-label="Open the file" hidden>${JUMP_ICON}</button>` +
+    `<label class="viewed" title="Mark as reviewed">` +
+    `<input type="checkbox" class="viewed-box"><span class="viewed-label">Viewed</span></label>` +
+    `<button class="remarks" title="Comments on this file" aria-label="Comments on this file" hidden>` +
+    `${SPEECH_ICON}<span class="tally">0</span></button>` +
+    `</span></div>
   <div class="card-body split-view">${split}${bar(pairs.length - splitCap)}</div>
   <div class="card-body unified-view">${unified}${bar(node.rows.length - unifiedCap)}</div>
 </div>`;

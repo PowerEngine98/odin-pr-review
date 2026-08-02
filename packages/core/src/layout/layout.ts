@@ -109,8 +109,14 @@ export function layoutGraph(
   return { unified: options.unified === true, nodes: placed, edges: routed, ...bounds, metrics };
 }
 
-/** Width of the buttons a card title carries at its end, plus their spacing. */
-const TITLE_CONTROLS = 46;
+/**
+ * Width of the controls a card title carries at its end, plus their spacing.
+ *
+ * Copy the path, show the whole file, open it, mark it read, and the count of
+ * what has been said about it. Set aside here rather than measured, because the
+ * card is sized before anything is in a browser to measure.
+ */
+const TITLE_CONTROLS = 168;
 
 // ---------------------------------------------------------------- measurement
 
