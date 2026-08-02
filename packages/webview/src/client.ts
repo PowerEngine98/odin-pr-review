@@ -576,7 +576,8 @@ export const CLIENT_SCRIPT = String.raw`
    * a line fell through to the truncation bar or the middle of the card, and
    * claimed a position it had no reason to claim.
    */
-  function foldFor(root, row, side, line) {
+  /** The visible band that says it stands in for this line, or nothing. */
+  function bandCovering(root, side, line) {
     var from = side === "base" ? "data-base-from" : "data-head-from";
     var to = side === "base" ? "data-base-to" : "data-head-to";
 
@@ -588,6 +589,12 @@ export const CLIENT_SCRIPT = String.raw`
         return band;
       }
     }
+    return null;
+  }
+
+  function foldFor(root, row, side, line) {
+    var covering = bandCovering(root, side, line);
+    if (covering) return covering;
 
     // A row that exists but is folded away: the band above it is the one.
     if (row) {
@@ -754,11 +761,16 @@ export const CLIENT_SCRIPT = String.raw`
     if (!row || row.offsetParent === null) {
       // Same answer the arrow reached: the line under the other side's number
       // when it is on screen, and only then the band standing in for it.
-      var named = role === "in" ? definitionRow(body, edge.symbol) : null;
+      var named = definitionRow(body, edge.symbol);
       if (named) {
         row = named;
       } else {
-        var band = foldFor(body, row, side, line);
+        // Only a band that says it holds this line. foldFor falls back to the
+        // nearest one and then to the truncation bar, which is the right answer
+        // for aiming an arrow -- an arrow must land somewhere -- and the wrong
+        // one for a name: a name on a band the line is not in is a claim about
+        // where the code is, and it would be false.
+        var band = bandCovering(body, side, line);
         if (band) foldedSymbol(band, edge, role);
         return;
       }
