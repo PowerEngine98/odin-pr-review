@@ -74,6 +74,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private graph: ChangeGraph | undefined;
   private pulls: PullRequestSummary[] = [];
   private branch = "";
+  /** Something is being fetched, and the view says so rather than sitting blank. */
+  private loading = false;
 
   constructor(private readonly viewed: ViewedStore) {}
 
@@ -106,6 +108,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
           toLine: edge.to.line,
           toSide: edge.to.side,
         });
+        return;
+      }
+      if (message.type === "ready") {
+        void this.view?.webview.postMessage({ type: "loading", value: this.loading });
         return;
       }
       if (message.type === "review") {
@@ -155,6 +161,19 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     if (!this.graph) this.render();
   }
 
+  /**
+   * Whether a fetch is in flight.
+   *
+   * Sent as a message rather than redrawn: the list under it is still the last
+   * good one, and replacing the document would lose the reader's scroll and
+   * whatever they had typed in the filter. Kept on the instance too, so a view
+   * resolved mid-fetch comes up with the bar already running.
+   */
+  setLoading(on: boolean): void {
+    this.loading = on;
+    void this.view?.webview.postMessage({ type: "loading", value: on });
+  }
+
   /** Reflects a change made elsewhere, without redrawing the list. */
   apply(paths: string[], viewed: boolean): void {
     void this.view?.webview.postMessage({ type: "setViewed", paths, viewed });
@@ -166,6 +185,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
     this.view.webview.html = html(
+      this.loading,
       this.graph,
       dark ? DARK_THEME : LIGHT_THEME,
       this.viewed,
@@ -176,6 +196,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
 }
 
 function html(
+  loading: boolean,
   graph: ChangeGraph | undefined,
   theme: Theme,
   viewed: ViewedStore,
@@ -200,6 +221,31 @@ function html(
   --status-phantom: ${theme.status.phantom};
 }
 * { box-sizing: border-box; }
+
+/* Something is running. Indeterminate, because asking the forge how far along
+   it is costs another round trip -- the same reason the editor's own
+   notifications draw it this way. */
+.loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  height: 2px;
+  overflow: hidden;
+  background: transparent;
+}
+.loading span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: var(--vscode-progressBar-background, var(--vscode-textLink-foreground));
+  animation: odin-progress 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes odin-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(350%); }
+}
 body {
   margin: 0;
   padding: 4px 0;
@@ -504,9 +550,22 @@ button {
   cursor: pointer;
 }
 </style></head><body>
+<div class="loading" ${loading ? "" : "hidden"}><span></span></div>
 ${body}
 <script>
 const vscodeApi = acquireVsCodeApi();
+
+window.addEventListener("message", (event) => {
+  const message = event.data || {};
+  if (message.type !== "loading") return;
+  const bar = document.querySelector(".loading");
+  if (bar) bar.hidden = message.value !== true;
+});
+
+// A message sent while this document was still loading is dropped, so the
+// document asks rather than waiting to be told. Without it a fetch that
+// finished during a redraw left the bar running with nothing behind it.
+vscodeApi.postMessage({ type: "ready" });
 
 document.querySelectorAll(".folder").forEach((folder) => {
   folder.addEventListener("click", (event) => {

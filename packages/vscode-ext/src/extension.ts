@@ -111,11 +111,18 @@ async function refreshPullRequests(): Promise<void> {
   const repo = await repositoryRoot(true);
   if (!repo) return;
 
-  const [pulls, branch] = await Promise.all([
-    listPullRequests({ cwd: repo }),
-    currentBranch({ cwd: repo }),
-  ]);
-  sidebar.setPullRequests(pulls, branch ?? "");
+  sidebar.setLoading(true);
+  try {
+    const [pulls, branch] = await Promise.all([
+      listPullRequests({ cwd: repo }),
+      currentBranch({ cwd: repo }),
+    ]);
+    sidebar.setPullRequests(pulls, branch ?? "");
+  } finally {
+    // Whatever happened, the bar stops: a progress bar that never ends says
+    // the tool is still trying when it has given up.
+    sidebar.setLoading(false);
+  }
 }
 
 /**
