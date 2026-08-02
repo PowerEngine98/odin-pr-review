@@ -144,14 +144,13 @@ worth the height.
 An import names a file rather than a position in it, so those arrows meet the
 card at its title instead of landing on whatever line one happens to hold.
 
-Every arrow carries two places to press: a dot where it leaves, which puts its
-destination in the middle of the screen, and a dashed run just before its head,
-which brings you back. Where it lands, the name it resolved to is boxed in the
-change's own colour — the arrow reaches the line, and the box says which word on
-it, which is the difference between "somewhere in here" and the answer. Following a reference across a large change otherwise
-means finding the other end by eye and then finding your way home the same way.
-The dashes sit on the approach rather than past the head, because past the head
-is inside the card, and cards are drawn over arrows.
+Every arrow carries two places to press. A dot where it leaves puts its
+destination in the middle of the screen. Where it lands, the name it resolved to
+is boxed in the change's own colour — the arrow reaches the line, the box says
+which word on it, which is the difference between "somewhere in here" and the
+answer — and pressing that box brings you back to the call. Following a
+reference across a large change otherwise means finding the other end by eye and
+then finding your way home the same way.
 
 Source: [`docs/examples/graph.html`](docs/examples/graph.html).
 
