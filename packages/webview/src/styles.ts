@@ -698,13 +698,38 @@ body:not(.split) .card-body.split-view { display: none; }
    and the head number on the right, which is how this card answers "where is
    this line in each checkout". */
 .row.flat { padding: 0 var(--padding); }
-.row.flat.add { background: var(--add-bg); color: var(--added); }
-.row.flat.del { background: var(--del-bg); color: var(--removed); }
+.row.flat.add { background-color: var(--add-bg); color: var(--added); }
+.row.flat.del { background-color: var(--del-bg); color: var(--removed); }
 .row.flat.add .marker, .row.flat.del .marker { color: inherit; }
 .row.flat .num.new {
   width: var(--right-gutter-width);
   padding-right: 0;
   padding-left: 8px;
+}
+
+/* An edge marker down both sides of the card, in the diff's own colours, so a
+   run of changed lines is visible from further out than the code inside it can
+   be read -- and so a row whose other side is empty still says what happened to
+   it. Painted as the row's own background under the padding, which is the strip
+   between the card border and where a pane begins. */
+.row.flat.add,
+.row.split:has(.side.add):not(:has(.side.del)) {
+  background-image:
+    linear-gradient(to right, var(--added) 0 3px, transparent 3px),
+    linear-gradient(to left, var(--added) 0 3px, transparent 3px);
+}
+.row.flat.del,
+.row.split:has(.side.del):not(:has(.side.add)) {
+  background-image:
+    linear-gradient(to right, var(--removed) 0 3px, transparent 3px),
+    linear-gradient(to left, var(--removed) 0 3px, transparent 3px);
+}
+/* A line rewritten in place: what it was on the left, what it became on the
+   right, which is the same story the two panes tell. */
+.row.split:has(.side.del):has(.side.add) {
+  background-image:
+    linear-gradient(to right, var(--removed) 0 3px, transparent 3px),
+    linear-gradient(to left, var(--added) 0 3px, transparent 3px);
 }
 
 .row.split { padding: 0 var(--padding); }
