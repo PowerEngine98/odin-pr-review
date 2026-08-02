@@ -39,6 +39,9 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
      to sit behind code rather than under text — managed two. */
   --action: #007C36;
   --action-ink: #ffffff;
+  /* The wash over a picked range. Yellow because it is a selection, not a
+     verdict: nothing has been said about these lines yet. */
+  --pick-wash: color-mix(in srgb, var(--warning) 22%, transparent);
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -975,11 +978,27 @@ body:not(.split) .card-body.split-view { display: none; }
    Laid on as an image rather than a colour: the row's own background already
    says added or removed, and replacing it would cost that while the reader is
    choosing what to say about it. The wash tints, it does not overwrite. */
+/* The wash goes over whatever the row already is. It has to be repeated per
+   shape because the change markers down the card's edges are background layers
+   too, and a single background-image would replace them rather than sit on
+   them -- which is how picking a changed line stopped looking picked at all. */
 .row.picked {
-  background-image: linear-gradient(
-    color-mix(in srgb, var(--warning) 20%, transparent),
-    color-mix(in srgb, var(--warning) 20%, transparent)
-  );
+  background-image: linear-gradient(var(--pick-wash), var(--pick-wash));
+}
+.row.split.picked .side {
+  background-image: linear-gradient(var(--pick-wash), var(--pick-wash));
+}
+.row.flat.add.picked {
+  background-image:
+    linear-gradient(var(--pick-wash), var(--pick-wash)),
+    linear-gradient(to right, var(--added) 0 3px, transparent 3px),
+    linear-gradient(to left, var(--added) 0 3px, transparent 3px);
+}
+.row.flat.del.picked {
+  background-image:
+    linear-gradient(var(--pick-wash), var(--pick-wash)),
+    linear-gradient(to right, var(--removed) 0 3px, transparent 3px),
+    linear-gradient(to left, var(--removed) 0 3px, transparent 3px);
 }
 .card.picking { user-select: none; }
 

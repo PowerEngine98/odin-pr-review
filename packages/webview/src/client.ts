@@ -662,7 +662,10 @@ export const CLIENT_SCRIPT = String.raw`
       var group = document.querySelector('g.edge[data-id="' + edge.id + '"]');
       if (!group) return;
 
-      var from = anchorFor(edge.from, edge.fromSide, edge.fromLine, false);
+      // The name matters at both ends: a call site whose row is folded away is
+      // found the same way its definition is, rather than falling back to the
+      // band and leaving the arrow to start from a stretch of unchanged code.
+      var from = anchorFor(edge.from, edge.fromSide, edge.fromLine, false, edge.symbol);
       var to = anchorFor(
         edge.to, edge.toSide, edge.toLine, edge.kind === "import", edge.symbol,
       );
