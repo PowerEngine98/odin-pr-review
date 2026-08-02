@@ -88,13 +88,16 @@ single shared column interleaves the two numbering schemes and reads as nonsense
 on any file that both gained and lost lines. A line that exists on one side only
 leaves the other column empty, the way the forge leaves it: a stand-in number
 there is either the same value repeated down a whole insertion, or a number the
-line does not have.
+line does not have. A wholly added or deleted file is the exception — it has one
+numbering, and both columns carry it, because an empty column down a whole card
+reads as a column that failed to draw.
 
 | Gesture | Effect |
 | --- | --- |
 | Hover an arrow | Isolate it, show the resolved reference and its confidence |
 | Click an arrow | Travel to the definition it points at |
 | Click the dot at an arrow's start | Put its destination in the middle of the screen |
+| Click a boxed name at either end | Travel to the other end |
 | Click the dashes before an arrowhead | Go back to where that arrow came from |
 | Click a filename | Isolate that file and everything it touches |
 | Scroll / ⌘-scroll | Pan / zoom around the cursor |
@@ -147,13 +150,13 @@ worth the height.
 An import names a file rather than a position in it, so those arrows meet the
 card at its title instead of landing on whatever line one happens to hold.
 
-Every arrow carries two places to press. A dot where it leaves puts its
-destination in the middle of the screen. Where it lands, the name it resolved to
-is boxed in the change's own colour — the arrow reaches the line, the box says
-which word on it, which is the difference between "somewhere in here" and the
-answer — and pressing that box brings you back to the call. Following a
-reference across a large change otherwise means finding the other end by eye and
-then finding your way home the same way.
+Both ends of an arrow carry a box around the name, in the change's own colour:
+the call at the near end, the definition it resolved to at the far one. The
+arrow reaches a line; the box says which word on it, which is the difference
+between "somewhere in here" and the answer. Pressing either box travels to the
+other end, and a dot where the arrow leaves does the same for the destination.
+Following a reference across a large change otherwise means finding the other
+end by eye and then finding your way home the same way.
 
 Source: [`docs/examples/graph.html`](docs/examples/graph.html).
 
