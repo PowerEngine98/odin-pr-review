@@ -272,6 +272,25 @@ export const CLIENT_SCRIPT = String.raw`
     apply();
   }
 
+  /**
+   * Brings a card to the top of the view rather than to the middle of it.
+   *
+   * A file is read from its first line down, and a tall one centred on its
+   * middle opens halfway through itself with its beginning above the bar. The
+   * top of the card lands under the chrome with a little room to spare, which
+   * is where the eye starts.
+   */
+  function showFromTop(nodeId) {
+    var node = data.nodes.find(function (n) { return n.id === nodeId; });
+    if (!node) return;
+    var rect = viewport.getBoundingClientRect();
+    var ceiling = chromeBar ? chromeBar.getBoundingClientRect().height : 0;
+
+    view.x = rect.width / 2 - (node.x + node.width / 2) * view.scale;
+    view.y = ceiling + 20 - node.y * view.scale;
+    travelTo(nodeId);
+  }
+
   function centerOn(nodeId, scale) {
     var node = data.nodes.find(function (n) { return n.id === nodeId; });
     if (!node) return;
@@ -279,6 +298,11 @@ export const CLIENT_SCRIPT = String.raw`
     if (scale) view.scale = clamp(scale, MIN_SCALE, MAX_SCALE);
     view.x = rect.width / 2 - (node.x + node.width / 2) * view.scale;
     view.y = rect.height / 2 - (node.y + node.height / 2) * view.scale;
+    travelTo(nodeId);
+  }
+
+  /** The flight itself, shared by both ways of arriving at a card. */
+  function travelTo(nodeId) {
     canvas.style.transition = "transform 320ms cubic-bezier(.22,.61,.36,1)";
     // Hold the promotion for the whole flight, or the layer would be given
     // back mid-animation and the browser would repaint every frame of it.
@@ -2342,7 +2366,9 @@ export const CLIENT_SCRIPT = String.raw`
       next = rest[0] && rest[0].id;
     }
 
-    if (next) centerOn(next);
+    // At its top, not its middle: the next file is about to be read from its
+    // first line, and a tall card centred opens halfway through itself.
+    if (next) showFromTop(next);
   }
 
   // The sidebar and the canvas show the same marks, so the host keeps them
