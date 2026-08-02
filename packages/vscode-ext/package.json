@@ -2,6 +2,7 @@
   "name": "odin-pr-review",
   "displayName": "Odin PR Review",
   "description": "Review a pull request as a graph: files are vertices, call-site references are edges.",
+  "icon": "media/icon.png",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
