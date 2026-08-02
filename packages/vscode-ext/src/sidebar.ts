@@ -373,7 +373,14 @@ body {
 .status-modified .box { color: var(--status-modified); background: color-mix(in srgb, var(--status-modified) 16%, transparent); }
 .status-deleted .box  { color: var(--status-deleted); background: color-mix(in srgb, var(--status-deleted) 16%, transparent); }
 .status-renamed .box  { color: var(--status-renamed); background: color-mix(in srgb, var(--status-renamed) 16%, transparent); }
-.status-phantom .box  { color: var(--status-phantom); background: transparent; }
+/* Dashed, like the canvas draws it: a file the change never touched is here
+   because something points at it, and the broken border says the box stands
+   for something outside the change rather than part of it. */
+.status-phantom .box  {
+  color: var(--status-phantom);
+  background: transparent;
+  border-style: dashed;
+}
 
 /* Drawn rather than left to the platform: a native checkbox is stark white on
    a dark editor and drags the eye away from the file names, which are the
