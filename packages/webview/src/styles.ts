@@ -164,14 +164,28 @@ html, body {
   border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
 }
 
+/* Docked at the foot of the canvas, out of the drawing's way. It used to run
+   across the top, where it cost the picture a row of height on every screen
+   for something read once and then only consulted. */
 .toolbar {
+  position: fixed;
+  right: 14px;
+  bottom: 52px;
+  z-index: 20;
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 8px 14px;
-  overflow-x: auto;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
   font-size: 12px;
 }
+/* The spacer earned its keep in a full-width bar; in a corner it would push
+   everything apart. */
+.toolbar .spacer { display: none; }
 
 /* ------------------------------------------------------------ the pull request
 
@@ -1464,12 +1478,12 @@ body:not(.split) .card-body.split-view { display: none; }
 
 .hint {
   position: fixed;
-  right: 14px;
+  left: 14px;
   bottom: 12px;
   z-index: 20;
   color: var(--muted);
   font-size: 11px;
-  text-align: right;
+  text-align: left;
   line-height: 1.7;
   pointer-events: none;
 }

@@ -237,7 +237,6 @@ export function renderHtml(
     // single height to make room for.
     `<div class="chrome">`,
     prBar(graph, options.canReview === true),
-    toolbar(graph, layout, options.highlight),
     tabs(parts),
     // Along the bottom edge of the chrome, where a sticky card title comes to
     // rest: how much of what is on screen has been read, without having to
@@ -249,6 +248,11 @@ export function renderHtml(
     edgeLayer(full),
     cards,
     `</div></div>`,
+    // Over the canvas rather than above it. The legend and the switches are
+    // read once and then consulted; the drawing is read for as long as the
+    // review lasts, and a row of chrome across the top costs it that height on
+    // every screen.
+    toolbar(graph, layout, options.highlight),
     `<div class="marks"></div>`,
     `<div class="tooltip"></div>`,
     `<div class="thread" hidden><div class="thread-head">` +
