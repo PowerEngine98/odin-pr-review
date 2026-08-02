@@ -278,15 +278,16 @@ describe("truncating a tall card", () => {
     return buildGraph(parseUnifiedDiff(patch), { meta: META });
   }
 
-  it("stops a long file setting the height of the whole drawing", () => {
+  it("shows every line the change touched, however many there are", () => {
+    // The card is a picture of the change. Holding part of it behind a bar the
+    // reader has to notice is how a review misses something.
     const card = layoutGraph(bigGraph(500)).nodes[0]!;
-    expect(card.visibleRows).toBe(DEFAULT_METRICS.maxCardRows);
-    expect(card.hiddenRows).toBe(500 - DEFAULT_METRICS.maxCardRows);
-    // The cap plus one row for the bar that says what is being held back.
+    expect(card.visibleRows).toBe(500);
+    expect(card.hiddenRows).toBe(0);
     const expected =
       DEFAULT_METRICS.titleHeight +
       DEFAULT_METRICS.padding * 2 +
-      (DEFAULT_METRICS.maxCardRows + 1) * DEFAULT_METRICS.lineHeight;
+      500 * DEFAULT_METRICS.lineHeight;
     expect(card.height).toBe(expected);
   });
 
@@ -337,10 +338,17 @@ describe("truncating a tall card", () => {
     expect(arrow.to.y).toBe(card.y + rowOffset(row, placed.metrics));
   });
 
-  it("still truncates a card nothing points into", () => {
-    const card = layoutGraph(bigGraph(500)).nodes[0]!;
-    expect(card.visibleRows).toBeLessThan(card.rows.length);
-    expect(card.hiddenRows).toBeGreaterThan(0);
+  it("holds back only what comes after the change", () => {
+    // The bar is for rows the change did not touch and no arrow points at.
+    // With every changed line shown, a card of pure change has nothing left to
+    // hold back — and a short card is not padded out to the cap either.
+    const long = layoutGraph(bigGraph(500)).nodes[0]!;
+    expect(long.rows.every((r) => r.kind === "add")).toBe(true);
+    expect(long.hiddenRows).toBe(0);
+
+    const short = layoutGraph(bigGraph(4)).nodes[0]!;
+    expect(short.visibleRows).toBe(4);
+    expect(short.hiddenRows).toBe(0);
   });
 });
 

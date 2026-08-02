@@ -127,11 +127,16 @@ function measureNodes(
       metrics.minCardWidth,
       metrics.maxCardWidth,
     );
-    // The cap keeps one 500-line addition from setting the height of the whole
-    // drawing, but it must never hide a line something points at: an arrow into
-    // the part a card has not unrolled says which file and not where, which is
-    // the precision this tool exists for. The card grows to reach the last one.
-    const reach = lastAnchoredRow(rows, anchors.get(node.id) ?? []);
+    // The cap is for tails of unchanged context, and for nothing else. A line
+    // the change touched must never be behind it — the card is a picture of
+    // that change, and hiding part of it behind a bar the reader has to find is
+    // how a review misses something. A line an arrow points at is kept for the
+    // same reason: an arrow into the part a card has not unrolled says which
+    // file and not where.
+    const reach = Math.max(
+      lastChangedRow(rows),
+      lastAnchoredRow(rows, anchors.get(node.id) ?? []),
+    );
     const visibleRows = Math.min(
       rows.length,
       Math.max(metrics.maxCardRows, reach + 1),
@@ -168,6 +173,15 @@ function measureNodes(
  * survive, or the arrow would have nowhere to land and would fall back to the
  * card edge — losing exactly the precision the graph is for.
  */
+/** The last row the change itself touched, as an index, or -1 for none. */
+function lastChangedRow(rows: DisplayRow[]): number {
+  let last = -1;
+  rows.forEach((row, index) => {
+    if (row.kind === "add" || row.kind === "del") last = index;
+  });
+  return last;
+}
+
 /** How far down a card an arrow reaches, as a row index, or -1 for none. */
 function lastAnchoredRow(
   rows: DisplayRow[],
