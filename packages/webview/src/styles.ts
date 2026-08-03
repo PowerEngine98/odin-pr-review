@@ -97,6 +97,29 @@ html, body {
   padding: 0 10px;
   overflow-x: auto;
   background: var(--strip);
+  /* No bar. A scrollbar under a row of tabs is a second thing to read in a
+     strip whose whole job is to be read at a glance, and it appears and
+     disappears with the pointer, which moves the tabs by a pixel as it does. */
+  scrollbar-width: none;
+}
+.parts::-webkit-scrollbar { width: 0; height: 0; }
+/* What the bar was for, said by the tabs themselves: an edge with more beyond
+   it fades out, and an edge with nothing beyond it does not. The mask is on the
+   strip rather than drawn over it, so the fade is to whatever is behind — no
+   colour to keep in step with the theme. */
+.parts.more-left {
+  mask-image: linear-gradient(to right, transparent 0, #000 44px);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 44px);
+}
+.parts.more-right {
+  mask-image: linear-gradient(to left, transparent 0, #000 44px);
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 44px);
+}
+.parts.more-left.more-right {
+  mask-image: linear-gradient(to right, transparent 0, #000 44px,
+                              #000 calc(100% - 44px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 44px,
+                                      #000 calc(100% - 44px), transparent 100%);
 }
 .part-tab {
   display: inline-flex;

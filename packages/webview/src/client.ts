@@ -46,6 +46,33 @@ export const CLIENT_SCRIPT = String.raw`
   // .tab caught its Write and Preview buttons too.
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".parts .part-tab"));
 
+  /**
+   * Which ends of the tab strip have more beyond them.
+   *
+   * The strip scrolls when a change has more parts than fit, and the only thing
+   * that said so was a scrollbar — a second thing to read under a row whose job
+   * is to be read at a glance, and one that appears with the pointer and nudges
+   * the tabs as it does. The strip fades at an edge it can still travel towards
+   * and stops fading when it arrives.
+   */
+  var partStrip = document.querySelector(".parts");
+
+  function markStripEnds() {
+    if (!partStrip) return;
+    var travel = partStrip.scrollWidth - partStrip.clientWidth;
+    // A strip that fits says nothing at either end.
+    partStrip.classList.toggle("more-left", travel > 1 && partStrip.scrollLeft > 1);
+    partStrip.classList.toggle(
+      "more-right", travel > 1 && partStrip.scrollLeft < travel - 1,
+    );
+  }
+
+  if (partStrip) {
+    partStrip.addEventListener("scroll", markStripEnds, { passive: true });
+    window.addEventListener("resize", markStripEnds);
+    markStripEnds();
+  }
+
   var view = { x: 0, y: 0, scale: 1 };
   // Low enough that a part of a large change fits on screen. A tall card is
   // thousands of pixels; a floor of 0.15 meant "fit" still left most of a part
@@ -1240,6 +1267,8 @@ export const CLIENT_SCRIPT = String.raw`
       tabs.forEach(function (other) {
         other.classList.toggle("on", other === tab);
       });
+      // A tab that grows as it becomes the open one can change what fits.
+      markStripEnds();
 
       // The list beside the canvas follows the canvas: a part is a smaller
       // review, and a file list showing forty files while the drawing shows
@@ -4455,6 +4484,9 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   refreshFilters();
+  // Measured again once the fonts have settled: a strip that fitted at fallback
+  // widths may not fit at the real ones.
+  window.addEventListener("load", markStripEnds);
   // Whatever was written last time and never sent, back where it was left.
   loadDrafts();
   restoreSummary();
