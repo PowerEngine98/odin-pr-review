@@ -181,7 +181,8 @@ export async function listPullRequests(
       "--state", "open",
       "--limit", String(options.limit ?? 50),
       "--json",
-      "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt,reviewDecision",
+      "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
+        "reviewDecision,reviewRequests",
     ],
     options,
   );
@@ -199,6 +200,7 @@ export async function listPullRequests(
       createdAt: string;
       updatedAt?: string;
       reviewDecision?: string | null;
+      reviewRequests?: { login?: string; slug?: string; name?: string }[];
     }[];
 
     return parsed
@@ -221,6 +223,11 @@ export async function listPullRequests(
           summary.avatarUrl = `https://github.com/${pr.author.login}.png`;
         }
         if (pr.updatedAt) summary.updatedAt = pr.updatedAt;
+        // Who the forge is waiting on. A reviewer's own list starts here.
+        const asked = (pr.reviewRequests ?? [])
+          .map((who) => who.login ?? who.slug ?? who.name ?? "")
+          .filter(Boolean);
+        if (asked.length > 0) summary.requestedFrom = asked;
         if (pr.reviewDecision) summary.reviewDecision = pr.reviewDecision;
         return summary;
       })

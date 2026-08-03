@@ -247,6 +247,8 @@ export interface PullRequestSummary extends PullRequest {
   headSha?: string;
   /** The author's picture, inlined as a data URI by whoever renders it. */
   avatarUrl?: string;
+  /** Logins and team slugs the forge is waiting on for a review. */
+  requestedFrom?: string[];
   /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
   reviewDecision?: string;
 }

@@ -84,6 +84,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private branch = "";
   /** Which repository the list belongs to, for looking up what was read. */
   private repo = "";
+  /** Who is reading, so the list can lead with what is waiting on them. */
+  private viewer = "";
   /** Something is being fetched, and the view says so rather than sitting blank. */
   private loading = false;
   /** The part of the change the panel is showing, when it is showing one. */
@@ -188,10 +190,12 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     pulls: PullRequestSummary[],
     branch: string,
     repo = "",
+    viewer = "",
   ): void {
     this.pulls = pulls;
     this.branch = branch;
     this.repo = repo;
+    this.viewer = viewer;
     if (!this.graph) this.render();
   }
 
@@ -238,6 +242,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       this.pulls,
       this.branch,
       (pr) => this.seen?.movedOn(this.repo, pr.number, pr.headSha) === true,
+      this.viewer,
     );
   }
 }
@@ -250,10 +255,11 @@ function html(
   pulls: PullRequestSummary[] = [],
   branch = "",
   moved: (pr: PullRequestSummary) => boolean = () => false,
+  viewer = "",
 ): string {
   const body = graph
     ? header(graph, viewed) + renderTree(buildTree(graph.nodes), graph, 0, viewed)
-    : picker(pulls, branch, moved);
+    : picker(pulls, branch, moved, viewer);
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -610,6 +616,27 @@ html, body { height: 100%; }
 .tag.ok { color: var(--status-added); }
 .tag.warn { color: var(--warning); }
 .tag.muted { color: var(--muted); }
+.section.hidden { display: none; }
+/* The queue, and then everything else. Quiet enough not to compete with the
+   rows under it, present enough to say the list is in two parts. */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 4px;
+  font-size: 0.9em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.section-head .count {
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.95em;
+  color: var(--vscode-editor-background);
+  background: var(--status-modified);
+}
 .face {
   flex: 0 0 auto;
   width: 14px;
@@ -753,6 +780,11 @@ if (filter) {
     document.querySelectorAll(".pull").forEach((pull) => {
       pull.classList.toggle("hidden", needle !== "" && !pull.dataset.search.includes(needle));
     });
+    // A heading over nothing is a heading that has to be read and discounted.
+    document.querySelectorAll(".section").forEach((section) => {
+      const left = section.querySelectorAll(".pull:not(.hidden)").length;
+      section.classList.toggle("hidden", left === 0);
+    });
   });
 }
 
@@ -869,7 +901,16 @@ export function picker(
   pulls: PullRequestSummary[],
   branch: string,
   moved: (pr: PullRequestSummary) => boolean,
+  viewer = "",
 ): string {
+  // What the forge is waiting on this reader for, first and under its own
+  // heading. Everything else is context; this is the queue.
+  const mine = viewer
+    ? pulls.filter((pr) => (pr.requestedFrom ?? []).includes(viewer))
+    : [];
+  const rest = pulls.filter((pr) => !mine.includes(pr));
+  const rows = (list: PullRequestSummary[]) =>
+    list.map((pr) => pullRow(pr, branch, moved(pr))).join("");
   // Same frame either way, so the action sits in the same place whether there
   // are twenty pull requests, one, or none. A button that moves when the list
   // changes length is a button that has to be found again every time.
@@ -879,7 +920,13 @@ export function picker(
        needs it installed and signed in. You can review the current branch
        regardless.</p>`
     : `<input id="filter" class="filter" type="search" placeholder="Filter pull requests" autocomplete="off">
-       <div class="pulls">${pulls.map((pr) => pullRow(pr, branch, moved(pr))).join("")}</div>`;
+       ${mine.length > 0
+        ? `<div class="section"><div class="section-head">Waiting on you` +
+          `<span class="count">${mine.length}</span></div>` +
+          `<div class="pulls">${rows(mine)}</div></div>` +
+          `<div class="section"><div class="section-head">Everything else</div>` +
+          `<div class="pulls">${rows(rest)}</div></div>`
+        : `<div class="pulls">${rows(rest)}</div>`}`;
 
   return `<div class="picker">
   ${body}

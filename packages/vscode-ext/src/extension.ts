@@ -2,6 +2,7 @@ import {
   currentBranch,
   forgeEnv,
   git,
+  currentUser,
   listPullRequests,
   listRefs,
   inlineAvatar,
@@ -136,9 +137,12 @@ async function refreshPullRequests(): Promise<void> {
 
   sidebar.setLoading(true);
   try {
-    const [pulls, branch] = await Promise.all([
+    const [pulls, branch, me] = await Promise.all([
       listPullRequests({ cwd: repo }),
       currentBranch({ cwd: repo }),
+      // Who is reading, so the list can lead with what is waiting on them.
+      // Asked once per refresh and cached by the forge client.
+      currentUser({ cwd: repo }).catch(() => undefined),
     ]);
     // A webview will not fetch a remote image, so each author's picture travels
     // inside the document. Best-effort and in parallel: a face that will not
@@ -151,7 +155,7 @@ async function refreshPullRequests(): Promise<void> {
         else delete pr.avatarUrl;
       }),
     );
-    sidebar.setPullRequests(pulls, branch ?? "", repo);
+    sidebar.setPullRequests(pulls, branch ?? "", repo, me ?? "");
   } finally {
     // Whatever happened, the bar stops: a progress bar that never ends says
     // the tool is still trying when it has given up.
