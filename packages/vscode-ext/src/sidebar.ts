@@ -927,8 +927,34 @@ document.querySelectorAll(".asked .chip[data-author]").forEach((chip) => {
 
 const author = document.getElementById("author");
 if (author) {
+  // Asked for half a second after the typing stops. Every keystroke would be a
+  // call to the forge and a redrawn list under the cursor — and a login is
+  // typed a letter at a time, so most of those calls would be for a name
+  // nobody has. Enter still asks straight away, for anyone who would rather
+  // say when they are done.
+  let pending;
+  // Asking redraws the list, and a redraw rebuilds this box. The answer is
+  // typed into, so it says so before it goes and takes the caret back when it
+  // returns — otherwise a second letter after the pause lands nowhere.
+  const settle = () => {
+    clearTimeout(pending);
+    pending = setTimeout(() => {
+      try { sessionStorage.setItem("odin.author-typing", "1"); } catch (e) {}
+      ask({ author: author.value.trim() });
+    }, 500);
+  };
+  try {
+    if (sessionStorage.getItem("odin.author-typing") === "1") {
+      sessionStorage.removeItem("odin.author-typing");
+      author.focus();
+      author.setSelectionRange(author.value.length, author.value.length);
+    }
+  } catch (e) {}
+
+  author.addEventListener("input", settle);
   author.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
+    clearTimeout(pending);
     ask({ author: author.value.trim() });
   });
 }
