@@ -1578,11 +1578,43 @@ body:not(.split) .card-body.split-view { display: none; }
   font-size: 12px;
 }
 .check-row:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
-.check-row .mark { flex: 0 0 auto; display: inline-flex; width: 14px; }
-.check-row.passed .mark { color: var(--action); }
-.check-row.failed .mark { color: var(--removed); }
-.check-row.running .mark { color: var(--warning); }
-.check-row.skipped .mark { color: var(--gutter); }
+/* The verdict in a chip of its own. A glyph in the page's own dark green was
+   the least visible thing in a row it is the point of. */
+.check-row .mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1;
+  padding-top: 1px;
+}
+.check-row.passed .mark {
+  color: var(--added);
+  background: color-mix(in srgb, var(--added) 18%, transparent);
+}
+.check-row.failed .mark {
+  color: var(--removed);
+  background: color-mix(in srgb, var(--removed) 20%, transparent);
+}
+.check-row.running .mark {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+}
+.check-row.skipped .mark {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+/* Beside the name it belongs to, not out at the workflow: how long a check
+   took is a fact about the check. */
+.check-row .took {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .check-row .name {
   flex: 1 1 auto;
   min-width: 0;

@@ -92,3 +92,27 @@ describe("when the forge cannot be asked", () => {
       .toBeUndefined();
   });
 });
+
+describe("how long a check took", () => {
+  it("keeps the run's length when the forge reports both ends", () => {
+    const { checks } = parseChecks([
+      job({ startedAt: "2026-08-01T08:04:51Z", completedAt: "2026-08-01T08:05:00Z" }),
+    ]);
+    expect(checks[0]!.elapsedMs).toBe(9000);
+  });
+
+  it("says nothing rather than guessing when a check is still running", () => {
+    const { checks } = parseChecks([
+      job({ status: "IN_PROGRESS", conclusion: null, startedAt: "2026-08-01T08:04:51Z", completedAt: null }),
+    ]);
+    expect(checks[0]!.elapsedMs).toBeUndefined();
+  });
+
+  it("ignores a finish before its own start", () => {
+    // Clocks on two machines, and a negative duration would print as one.
+    const { checks } = parseChecks([
+      job({ startedAt: "2026-08-01T08:05:00Z", completedAt: "2026-08-01T08:04:51Z" }),
+    ]);
+    expect(checks[0]!.elapsedMs).toBeUndefined();
+  });
+});

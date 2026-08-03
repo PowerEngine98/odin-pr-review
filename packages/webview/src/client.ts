@@ -2709,9 +2709,22 @@ export const CLIENT_SCRIPT = String.raw`
       }
       row.appendChild(chrome("mark", CHECK_MARKS[check.state] || ""));
       row.appendChild(chrome("name", check.name));
+      if (check.elapsedMs !== undefined) {
+        row.appendChild(chrome("took", elapsed(check.elapsedMs)));
+      }
       if (check.workflow) row.appendChild(chrome("flow", check.workflow));
       checksList.appendChild(row);
     });
+  }
+
+  /** How long a check ran, in the coarsest unit that still says something. */
+  function elapsed(ms) {
+    var seconds = Math.round(ms / 1000);
+    if (seconds < 60) return seconds + "s";
+    var minutes = Math.floor(seconds / 60);
+    var rest = seconds % 60;
+    if (minutes < 60) return rest ? minutes + "m " + rest + "s" : minutes + "m";
+    return Math.floor(minutes / 60) + "h " + (minutes % 60) + "m";
   }
 
   if (checksButton) {

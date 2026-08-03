@@ -14,6 +14,8 @@ export interface Check {
   state: "passed" | "failed" | "running" | "skipped";
   /** The forge's page for this run, so the reader can go and look. */
   url?: string;
+  /** How long it ran for, in milliseconds, when the forge said. */
+  elapsedMs?: number;
 }
 
 /** How the checks stand as a whole. */
@@ -104,6 +106,14 @@ function readOne(entry: unknown): Check | undefined {
   const conclusion = String(value["conclusion"] ?? "").toUpperCase();
 
   const check: Check = { name, state: verdict(status, conclusion) };
+
+  // How long it took. A check that passed in eight seconds and one that passed
+  // in four minutes are the same verdict and different news.
+  const started = Date.parse(String(value["startedAt"] ?? ""));
+  const finished = Date.parse(String(value["completedAt"] ?? ""));
+  if (!Number.isNaN(started) && !Number.isNaN(finished) && finished >= started) {
+    check.elapsedMs = finished - started;
+  }
   if (typeof value["workflowName"] === "string" && value["workflowName"]) {
     check.workflow = value["workflowName"];
   }
