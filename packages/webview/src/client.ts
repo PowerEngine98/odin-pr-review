@@ -1005,6 +1005,13 @@ export const CLIENT_SCRIPT = String.raw`
   });
 
   function rerouteEdges() {
+    // Boxes are drawn fresh each pass. A part shows a fraction of the arrows,
+    // and a box left behind by a hidden one marks a name with nothing pointing
+    // at it — which reads as a reference the reader cannot find.
+    document.querySelectorAll(".symbol-box").forEach(function (box) {
+      box.remove();
+    });
+
     data.edges.forEach(function (edge) {
       var group = document.querySelector('g.edge[data-id="' + edge.id + '"]');
       if (!group) return;
@@ -1073,8 +1080,13 @@ export const CLIENT_SCRIPT = String.raw`
         home.setAttribute("cx", toX + (goesRight ? 11 : -11));
         home.setAttribute("cy", to.y);
       }
-      markSymbol(edge, "in");
-      markSymbol(edge, "out");
+      // Only for arrows that are actually on screen: a filtered-out reference
+      // has nothing to point at its name with.
+      if (!group.classList.contains("hidden") &&
+          !group.classList.contains("viewed-hidden")) {
+        markSymbol(edge, "in");
+        markSymbol(edge, "out");
+      }
 
       // Where each end wants the camera, remembered rather than recomputed on
       // the click: by then the view has moved and the numbers would be stale.
@@ -1143,11 +1155,15 @@ export const CLIENT_SCRIPT = String.raw`
     var at = text.textContent.indexOf(edge.symbol);
     if (at < 0) return;
 
-    var selector = '.symbol-box[data-edge="' + edge.id + '"][data-role="' + role + '"]';
+    // One box per name, not per arrow. A schema row is landed on by every file
+    // that reads the table, and a translucent box drawn ten times over is an
+    // opaque one — the name it was pointing out disappeared underneath it.
+    var selector = '.symbol-box[data-symbol="' + edge.symbol + '"][data-role="' + role + '"]';
     var box = row.querySelector(selector);
     if (!box) {
       box = chrome("symbol-box", "");
       box.dataset.edge = edge.id;
+      box.dataset.symbol = edge.symbol;
       box.dataset.role = role;
       box.title = role === "out"
         ? "Go to the definition this points at"
@@ -1177,11 +1193,15 @@ export const CLIENT_SCRIPT = String.raw`
    * are laid out in a row rather than on top of one another.
    */
   function foldedSymbol(band, edge, role) {
-    var selector = '.symbol-box[data-edge="' + edge.id + '"][data-role="' + role + '"]';
+    // One per name here too: a band standing in for a run of folded code can be
+    // landed on by as many arrows as the run holds lines, and the labels would
+    // be laid out one after another saying the same word.
+    var selector = '.symbol-box[data-symbol="' + edge.symbol + '"][data-role="' + role + '"]';
     var box = band.querySelector(selector);
     if (!box) {
       box = chrome("symbol-box folded", edge.symbol);
       box.dataset.edge = edge.id;
+      box.dataset.symbol = edge.symbol;
       box.dataset.role = role;
       box.title = (role === "out"
         ? "Go to the definition this points at"
