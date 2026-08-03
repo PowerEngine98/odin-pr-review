@@ -2839,8 +2839,10 @@ export const CLIENT_SCRIPT = String.raw`
   var minimapFace = minimap && minimap.querySelector(".minimap-face");
   var minimapNodes = minimap && minimap.querySelector(".minimap-nodes");
   var minimapView = minimap && minimap.querySelector(".minimap-view");
-  var MAP_WIDE = 190;
-  var MAP_TALL = 150;
+  // A square, always. A map that changes shape with the change is a second
+  // thing to read before the first one can be read, and the corner it sits in
+  // does not change shape.
+  var MAP_SIZE = 150;
   var mapFit = null;
 
   function drawMinimap() {
@@ -2850,14 +2852,16 @@ export const CLIENT_SCRIPT = String.raw`
     if (!box.width || !box.height) { minimap.hidden = true; return; }
     minimap.hidden = false;
 
-    var scale = Math.min(MAP_WIDE / box.width, MAP_TALL / box.height);
-    var width = Math.max(1, Math.round(box.width * scale));
-    var height = Math.max(1, Math.round(box.height * scale));
-    mapFit = { x: box.x, y: box.y, scale: scale };
+    var scale = Math.min(MAP_SIZE / box.width, MAP_SIZE / box.height);
+    // Centred in the square, so a tall change is a ribbon down the middle
+    // rather than a ribbon against one edge.
+    var padX = (MAP_SIZE - box.width * scale) / 2;
+    var padY = (MAP_SIZE - box.height * scale) / 2;
+    mapFit = { x: box.x, y: box.y, scale: scale, padX: padX, padY: padY };
 
-    minimapFace.setAttribute("width", width);
-    minimapFace.setAttribute("height", height);
-    minimapFace.setAttribute("viewBox", "0 0 " + width + " " + height);
+    minimapFace.setAttribute("width", MAP_SIZE);
+    minimapFace.setAttribute("height", MAP_SIZE);
+    minimapFace.setAttribute("viewBox", "0 0 " + MAP_SIZE + " " + MAP_SIZE);
 
     var parts = "";
     cards.forEach(function (card) {
@@ -2871,8 +2875,8 @@ export const CLIENT_SCRIPT = String.raw`
       var w = Math.max(2, Math.round(node.width * scale));
       var h = Math.max(2, Math.round(node.height * scale));
       parts += '<rect class="on ' + (node.status || "modified") + '" x="' +
-        Math.round((node.x - box.x) * scale) + '" y="' +
-        Math.round((node.y - box.y) * scale) + '" width="' + w +
+        Math.round(padX + (node.x - box.x) * scale) + '" y="' +
+        Math.round(padY + (node.y - box.y) * scale) + '" width="' + w +
         '" height="' + h + '" rx="1"><title>' +
         escapeHtml(node.path) + "</title></rect>";
     });
@@ -2894,35 +2898,33 @@ export const CLIENT_SCRIPT = String.raw`
     var wide = rect.width / view.scale;
     var tall = (rect.height - top) / view.scale;
 
-    // Held inside the map. The window is often wider than the drawing — zoomed
-    // out on a tall change it is wider by a factor of ten — and a frame drawn
-    // to scale then hangs off both sides, which says the reader is looking at
-    // something the map does not contain.
-    var faceWide = Number(minimapFace.getAttribute("width"));
-    var faceTall = Number(minimapFace.getAttribute("height"));
+    var x = mapFit.padX + (left - mapFit.x) * mapFit.scale;
+    var y = mapFit.padY + (upper - mapFit.y) * mapFit.scale;
+    var right = x + wide * mapFit.scale;
+    var bottom = y + tall * mapFit.scale;
 
-    var x = (left - mapFit.x) * mapFit.scale;
-    var y = (upper - mapFit.y) * mapFit.scale;
-    var w = wide * mapFit.scale;
-    var h = tall * mapFit.scale;
-
-    var right = Math.min(faceWide, x + w);
-    var bottom = Math.min(faceTall, y + h);
-    x = Math.max(0, x);
-    y = Math.max(0, y);
+    // Held inside the square, and never smaller than something worth aiming
+    // at: zoomed into one file the window is a fraction of a pixel of the
+    // drawing, and a frame drawn to scale disappears exactly when the reader
+    // most needs to know where they are.
+    var FLOOR = 10;
+    x = Math.max(0, Math.min(x, MAP_SIZE - FLOOR));
+    y = Math.max(0, Math.min(y, MAP_SIZE - FLOOR));
+    right = Math.min(MAP_SIZE, Math.max(right, x + FLOOR));
+    bottom = Math.min(MAP_SIZE, Math.max(bottom, y + FLOOR));
 
     minimapView.setAttribute("x", Math.round(x));
     minimapView.setAttribute("y", Math.round(y));
-    minimapView.setAttribute("width", Math.max(2, Math.round(right - x)));
-    minimapView.setAttribute("height", Math.max(2, Math.round(bottom - y)));
+    minimapView.setAttribute("width", Math.round(right - x));
+    minimapView.setAttribute("height", Math.round(bottom - y));
   }
 
   if (minimapFace) {
     minimapFace.addEventListener("click", function (event) {
       if (!mapFit) return;
       var box = minimapFace.getBoundingClientRect();
-      var atX = mapFit.x + (event.clientX - box.left) / mapFit.scale;
-      var atY = mapFit.y + (event.clientY - box.top) / mapFit.scale;
+      var atX = mapFit.x + (event.clientX - box.left - mapFit.padX) / mapFit.scale;
+      var atY = mapFit.y + (event.clientY - box.top - mapFit.padY) / mapFit.scale;
 
       var rect = viewport.getBoundingClientRect();
       view.x = rect.width / 2 - atX * view.scale;

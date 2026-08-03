@@ -144,9 +144,16 @@ async function refreshPullRequests(): Promise<void> {
  * something to do to someone's work without asking — the reviewer is better
  * placed to decide whether to commit or stash.
  */
+/** Checkouts already running, so a second press does not start a second one. */
+const switching = new Set<number>();
+
 async function checkout(number: number): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
+
+  // Pressing twice is easy: the list does not change until the switch is done,
+  // so the row still looks unvisited while git is halfway through moving.
+  if (switching.has(number)) return;
 
   const dirty = (await git(["status", "--porcelain"], { cwd: repo })).trim();
   if (dirty) {
@@ -163,6 +170,19 @@ async function checkout(number: number): Promise<void> {
   // and exit codes; the useful answer is where it is, and an offer to go there.
   const open = await listPullRequests({ cwd: repo }).catch(() => []);
   const pull = open.find((p) => p.number === number);
+
+  // Already here. Switching to the branch you are on is a no-op that still
+  // costs a fetch and a working-tree check, and saying nothing about it makes
+  // the button look broken.
+  const here = await currentBranch({ cwd: repo }).catch(() => undefined);
+  if (pull && here && here === pull.branch) {
+    vscode.window.showInformationMessage(
+      `Odin: already on ${pull.branch} — showing #${number}.`,
+    );
+    await review();
+    return;
+  }
+
   const elsewhere = pull ? await worktreeFor(pull.branch, { cwd: repo }) : undefined;
   if (elsewhere && elsewhere !== repo) {
     const go = "Open That Folder";
@@ -181,22 +201,27 @@ async function checkout(number: number): Promise<void> {
     return;
   }
 
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Odin: checking out #${number}` },
-    async () => {
-      try {
-        await gh(["pr", "checkout", String(number)], repo);
-      } catch (error) {
-        vscode.window.showErrorMessage(
-          `Odin: could not check out #${number}. ` +
-            `${error instanceof Error ? error.message : String(error)}`,
-        );
-        return;
-      }
-      await refreshPullRequests();
-      await review();
-    },
-  );
+  switching.add(number);
+  try {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Odin: checking out #${number}` },
+      async () => {
+        try {
+          await gh(["pr", "checkout", String(number)], repo);
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            `Odin: could not check out #${number}. ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
+          return;
+        }
+        await refreshPullRequests();
+        await review();
+      },
+    );
+  } finally {
+    switching.delete(number);
+  }
 }
 
 function gh(args: string[], cwd: string): Promise<string> {
