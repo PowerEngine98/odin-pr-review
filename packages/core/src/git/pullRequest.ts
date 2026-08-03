@@ -185,7 +185,14 @@ export async function listPullRequests(
      * different reason — to see how something came to be the way it is.
      */
     state?: PullRequestState;
-    /** Only this author's, when the reader is looking for somebody's work. */
+    /**
+     * Narrow to one author, by any part of their login.
+     *
+     * Matched here rather than by the forge, which takes a whole login and
+     * nothing else: typing the first few letters of a name is how a reader
+     * looks for somebody, and `--author 5erg` finds nothing at all while
+     * `5ergio` is right there in the list.
+     */
     author?: string;
   },
 ): Promise<PullRequestSummary[] | undefined> {
@@ -193,8 +200,10 @@ export async function listPullRequests(
     [
       "pr", "list",
       "--state", options.state ?? "open",
-      ...(options.author ? ["--author", options.author] : []),
-      "--limit", String(options.limit ?? 50),
+      // Asking for more when a name is being matched here: the forge's own
+      // limit applies before the narrowing, so a small page of everything can
+      // easily hold nothing of theirs.
+      "--limit", String(options.limit ?? (options.author ? 200 : 50)),
       "--json",
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
         "reviewDecision,reviewRequests,state,mergedAt,closedAt,baseRefName,mergeCommit",
@@ -271,6 +280,11 @@ export async function listPullRequests(
         if (pr.mergeCommit?.oid) summary.mergeCommit = pr.mergeCommit.oid;
         return summary;
       })
+      .filter(
+        (pr) =>
+          !options.author ||
+          pr.author.toLowerCase().includes(options.author.toLowerCase()),
+      )
       .sort(byActivity);
   } catch {
     return undefined;
