@@ -1570,8 +1570,8 @@ body:not(.split) .card-body.split-view { display: none; }
 .check-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
+  gap: 10px;
+  padding: 6px 8px;
   border-radius: 6px;
   color: var(--text);
   text-decoration: none;
@@ -1579,8 +1579,10 @@ body:not(.split) .card-body.split-view { display: none; }
 }
 .check-row:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
 /* The verdict in a chip of its own. A glyph in the page's own dark green was
-   the least visible thing in a row it is the point of. */
-.check-row .mark {
+   the least visible thing in a row it is the point of — and it was called
+   .mark, which the comment avatars own and position fixed, so it sat on top of
+   the name instead of beside it. */
+.check-row .verdict {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1592,37 +1594,52 @@ body:not(.split) .card-body.split-view { display: none; }
   line-height: 1;
   padding-top: 1px;
 }
-.check-row.passed .mark {
+.check-row.passed .verdict {
   color: var(--added);
   background: color-mix(in srgb, var(--added) 18%, transparent);
 }
-.check-row.failed .mark {
+.check-row.failed .verdict {
   color: var(--removed);
   background: color-mix(in srgb, var(--removed) 20%, transparent);
 }
-.check-row.running .mark {
+.check-row.running .verdict {
   color: var(--warning);
   background: color-mix(in srgb, var(--warning) 20%, transparent);
 }
-.check-row.skipped .mark {
+.check-row.skipped .verdict {
   color: var(--muted);
   background: color-mix(in srgb, var(--text) 12%, transparent);
 }
-/* Beside the name it belongs to, not out at the workflow: how long a check
-   took is a fact about the check. */
-.check-row .took {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.check-row .name {
+
+/* The job over the workflow it belongs to: two facts of different weight, and
+   a row that reads in one pass instead of three columns competing. */
+.check-row .about {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   flex: 1 1 auto;
   min-width: 0;
+}
+.check-row .name {
+  font-weight: 600;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.check-row .flow { color: var(--muted); }
+.check-row .flow {
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.check-row .took {
+  flex: 0 0 auto;
+  align-self: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .checks-empty { padding: 8px; color: var(--muted); font-size: 12px; }
 
 /* --------------------------------------------------------------- reviewers

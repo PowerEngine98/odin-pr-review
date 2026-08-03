@@ -2707,12 +2707,18 @@ export const CLIENT_SCRIPT = String.raw`
         row.rel = "noreferrer";
         row.title = "Open this run on the forge";
       }
-      row.appendChild(chrome("mark", CHECK_MARKS[check.state] || ""));
-      row.appendChild(chrome("name", check.name));
+      // Two lines: what ran, and where it ran from. The job's name is the thing
+      // being looked for; the workflow is how to find it again on the forge.
+      row.appendChild(chrome("verdict", CHECK_MARKS[check.state] || ""));
+
+      var about = chrome("about", "");
+      about.appendChild(chrome("name", check.name));
+      if (check.workflow) about.appendChild(chrome("flow", check.workflow));
+      row.appendChild(about);
+
       if (check.elapsedMs !== undefined) {
         row.appendChild(chrome("took", elapsed(check.elapsedMs)));
       }
-      if (check.workflow) row.appendChild(chrome("flow", check.workflow));
       checksList.appendChild(row);
     });
   }
