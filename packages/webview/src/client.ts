@@ -1185,6 +1185,68 @@ export const CLIENT_SCRIPT = String.raw`
   var settingsButton = document.getElementById("diff-settings");
   var settingsPanel = document.querySelector(".settings-panel");
 
+  /*
+   * What the page shows besides the drawing.
+   *
+   * Each corner of it is useful to somebody and in the way of somebody else,
+   * and which is which changes through a review — the map earns its place while
+   * finding a file and not while reading one. Kept on the device, because a
+   * preference that resets every reload is not a preference.
+   */
+  var HUD = ["reviewers", "comments", "map", "legend"];
+
+  function readHud() {
+    var shown = {};
+    HUD.forEach(function (part) { shown[part] = true; });
+    try {
+      var saved = JSON.parse(window.localStorage.getItem("odin.hud") || "{}");
+      HUD.forEach(function (part) {
+        if (saved[part] === false) shown[part] = false;
+      });
+    } catch (e) {}
+    return shown;
+  }
+
+  var hud = readHud();
+
+  function applyHud() {
+    HUD.forEach(function (part) {
+      document.body.classList.toggle("hud-no-" + part, hud[part] === false);
+    });
+    try {
+      window.localStorage.setItem("odin.hud", JSON.stringify(hud));
+    } catch (e) {}
+    // The map measures itself against the window, so it has to be told when it
+    // comes back rather than finding out on the next pan.
+    if (hud.map !== false) drawMinimap();
+  }
+
+  applyHud();
+
+  // Each corner can be dismissed from where it is. Turning something off is
+  // most often decided while looking at it, not while looking for a menu.
+  document.querySelectorAll("[data-close]").forEach(function (button) {
+    button.addEventListener("click", function (event) {
+      event.stopPropagation();
+      hud[button.dataset.close] = false;
+      applyHud();
+      var box = settingsPanel &&
+        settingsPanel.querySelector('input[data-hud="' + button.dataset.close + '"]');
+      if (box) box.checked = false;
+    });
+  });
+
+  if (settingsButton && settingsPanel) {
+    settingsPanel.querySelectorAll("input[data-hud]").forEach(function (box) {
+      var part = box.dataset.hud;
+      box.checked = hud[part] !== false;
+      box.addEventListener("change", function () {
+        hud[part] = box.checked;
+        applyHud();
+      });
+    });
+  }
+
   if (settingsButton && settingsPanel) {
     settingsPanel.querySelectorAll("input[name=diff-mode]").forEach(function (radio) {
       radio.checked = (radio.value === "split") === splitMode;
@@ -2072,10 +2134,39 @@ export const CLIENT_SCRIPT = String.raw`
       row.classList.add("picked");
       row.appendChild(chrome("pick-edge", ""));
     });
+    // A band standing in for folded code is inside the passage too. It is not
+    // a line anybody can comment on, so it is not in the range sent to the
+    // forge — but leaving it unpainted breaks the block in half and reads as
+    // two selections.
+    spanBands(card, rows, "picked");
     // A handle at each end. One row is one end, not two, so it gets one.
     rows[0].appendChild(chrome("pick-plus", "+"));
     if (rows.length > 1) {
       rows[rows.length - 1].appendChild(chrome("pick-plus", "+"));
+    }
+  }
+
+  /**
+   * Paints the bands between the first and last row of a passage.
+   *
+   * The rows of a selection are the lines it covers; the bands between them
+   * are the code it does not show. Both are inside the block being pointed at,
+   * and only one of them was being coloured.
+   */
+  function spanBands(card, rows, mark) {
+    if (rows.length < 2) return;
+    var body = visibleBody(card) || card;
+    var all = Array.prototype.slice.call(body.querySelectorAll(".row"));
+
+    var first = all.indexOf(rows[0]);
+    var last = all.indexOf(rows[rows.length - 1]);
+    if (first < 0 || last < 0) return;
+
+    for (var i = Math.min(first, last); i <= Math.max(first, last); i++) {
+      var row = all[i];
+      if (row.classList.contains("gap") && row.offsetParent !== null) {
+        row.classList.add(mark);
+      }
     }
   }
 
@@ -2933,7 +3024,7 @@ export const CLIENT_SCRIPT = String.raw`
     });
   }
 
-  var mapHead = minimap && minimap.querySelector(".minimap-head");
+  var mapHead = minimap && minimap.querySelector(".minimap-fold");
   if (mapHead) {
     var folded = false;
     try {
@@ -3294,9 +3385,17 @@ export const CLIENT_SCRIPT = String.raw`
     var side = root.side === "LEFT" ? "data-old" : "data-new";
     var from = root.startLine && root.startLine < root.line ? root.startLine : root.line;
 
+    var lit = [];
     for (var line = from; line <= root.line; line++) {
       var row = body.querySelector(".row[" + side + '="' + line + '"]');
-      if (row) row.classList.toggle("discussing", on);
+      if (row) { row.classList.toggle("discussing", on); lit.push(row); }
+    }
+
+    if (on) spanBands(card, lit, "discussing");
+    else {
+      body.querySelectorAll(".row.gap.discussing").forEach(function (band) {
+        band.classList.remove("discussing");
+      });
     }
   }
 

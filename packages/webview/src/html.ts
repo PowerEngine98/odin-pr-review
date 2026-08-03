@@ -275,9 +275,12 @@ export function renderHtml(
     `<div class="reviewers">` +
     reviewerList(graph.meta.pullRequest?.reviewers ?? []) +
     `<div class="faces" hidden></div>` +
+    `${HUD_CLOSE("comments", "the comments")}` +
     `<div class="reviewer-panel" hidden></div></div>`,
-    `<div class="minimap"><button class="minimap-head" title="Hide the map">` +
+    `<div class="minimap"><div class="minimap-head">` +
+    `<button class="minimap-fold" title="Fold the map away">` +
     `<span class="minimap-title">map</span>${CHEVRON_DOWN}</button>` +
+    `${HUD_CLOSE("map", "the map")}</div>` +
     `<svg class="minimap-face"><g class="minimap-nodes"></g>` +
     `<rect class="minimap-view"/></svg></div>`,
     `<div class="marks"></div>`,
@@ -359,6 +362,7 @@ function toolbar(
 
   // What the change is, then what to do with it: read above, pressed below.
   return `<div class="toolbar">
+  ${HUD_CLOSE("legend", "the legend and filters")}
   <span class="facts">
   <span class="legend">${legend}</span>
   ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
@@ -521,6 +525,11 @@ function prBar(graph: ChangeGraph, canReview = false): string {
       <span class="settings-group">Diff display</span>
       <label class="settings-option"><input type="radio" name="diff-mode" value="unified"><span>Unified</span></label>
       <label class="settings-option"><input type="radio" name="diff-mode" value="split"><span>Split</span></label>
+      <span class="settings-group">On screen</span>
+      <label class="settings-option"><input type="checkbox" data-hud="reviewers" checked><span>Reviewers</span></label>
+      <label class="settings-option"><input type="checkbox" data-hud="comments" checked><span>Comments</span></label>
+      <label class="settings-option"><input type="checkbox" data-hud="map" checked><span>Map</span></label>
+      <label class="settings-option"><input type="checkbox" data-hud="legend" checked><span>Legend and filters</span></label>
     </span>
   </span>
 </div>`;
@@ -551,6 +560,14 @@ const STATUS_MARK: Record<string, string> = {
   ),
   phantom: mark(`<circle cx="5" cy="5" r="1.5" fill="currentColor"/>`),
 };
+
+/** The X each corner carries, for turning that corner off from where it is. */
+const HUD_CLOSE = (part: string, what: string) =>
+  `<button class="hud-close" data-close="${part}" title="Hide ${what}" ` +
+  `aria-label="Hide ${what}">` +
+  `<svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">` +
+  `<path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8" stroke="currentColor" ` +
+  `stroke-width="1.6" stroke-linecap="round"/></svg></button>`;
 
 const CHEVRON_DOWN =
   `<svg class="chev" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">` +
@@ -609,7 +626,8 @@ function reviewerList(reviewers: Reviewer[]): string {
     })
     .join("");
 
-  return `<div class="review-list"><div class="review-head">Reviewers</div>${rows}</div>`;
+  return `<div class="review-list"><div class="review-head">Reviewers` +
+    `${HUD_CLOSE("reviewers", "the reviewers")}</div>${rows}</div>`;
 }
 
 /**

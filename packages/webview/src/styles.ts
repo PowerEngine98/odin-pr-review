@@ -1279,6 +1279,12 @@ body:not(.split) .card-body.split-view { display: none; }
 .row.discussing + .row.discussing {
   box-shadow: 0 -1px 0 0 color-mix(in srgb, var(--warning) 20%, var(--card-bg));
 }
+/* A band inside a passage takes the passage's colour, not its own. */
+.row.gap.picked,
+.row.gap.discussing {
+  background: color-mix(in srgb, var(--warning) 20%, var(--card-bg));
+  color: color-mix(in srgb, var(--text) 65%, transparent);
+}
 .row.discussing .num { color: var(--text); opacity: 0.9; }
 .row.discussing .marker { color: color-mix(in srgb, var(--text) 75%, transparent); }
 
@@ -1661,6 +1667,71 @@ body:not(.split) .card-body.split-view { display: none; }
 .toolbar #action-review[hidden] { display: none; }
 
 
+/* The X on each corner. Quiet until the corner is under the pointer: it is a
+   way out, not a thing to look at. */
+.hud-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+.review-list:hover .hud-close,
+.minimap:hover .hud-close,
+.toolbar:hover .hud-close,
+.reviewers:hover .hud-close { opacity: 1; }
+.hud-close:hover { color: var(--text); background: color-mix(in srgb, var(--text) 12%, transparent); }
+
+/* The dock's own sits in its corner rather than in the flow of the switches. */
+.toolbar > .hud-close { position: absolute; top: 6px; right: 6px; }
+/* The comments pill has no header to put it in, so it hangs off the corner. */
+.reviewers > .hud-close { align-self: flex-end; margin-top: -4px; }
+
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.minimap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.minimap-fold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 1 1 auto;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.minimap-fold:hover { color: var(--text); }
+
+/* Corners the reader has switched off. Stated with weight, because each of
+   these is shown by script that knows nothing about the preference. */
+body.hud-no-reviewers .review-list,
+body.hud-no-comments .faces,
+body.hud-no-comments .reviewer-panel,
+body.hud-no-map .minimap,
+body.hud-no-legend .toolbar { display: none !important; }
+
 /* --------------------------------------------------------------- the map
 
    The shape of the change, small, in the corner opposite the switches. A
@@ -1680,21 +1751,8 @@ body:not(.split) .card-body.split-view { display: none; }
   backdrop-filter: blur(8px);
   border: 1px solid var(--panel-edge);
 }
-.minimap-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0 2px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.minimap-head:hover { color: var(--text); }
-.minimap-head .chev { transition: transform 120ms ease; }
+
+.minimap-fold .chev { transition: transform 120ms ease; }
 .minimap.folded .chev { transform: rotate(-90deg); }
 .minimap.folded .minimap-face { display: none; }
 
