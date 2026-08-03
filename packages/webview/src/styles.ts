@@ -94,9 +94,7 @@ html, body {
   flex: 0 0 auto;
   padding: 6px 12px;
   border: 0;
-  /* The mark rides the top edge, where the strip meets the header above it,
-     rather than the bottom edge it shares with the canvas. */
-  border-top: 2px solid transparent;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -105,9 +103,15 @@ html, body {
   white-space: nowrap;
 }
 .part-tab:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
+/* The tab in front is filled rather than underlined. A rule along one edge is
+   a hairline competing with the strip's own borders; a wash of the same blue
+   the counts use says the same thing at a glance. */
 .part-tab.on {
   color: var(--text);
-  border-top-color: var(--status-renamed);
+  background: color-mix(in srgb, var(--status-renamed) 26%, transparent);
+}
+.part-tab.on:hover {
+  background: color-mix(in srgb, var(--status-renamed) 34%, transparent);
 }
 /* The count is the reason to pick one tab over another -- how much work is
    behind it -- so it is read, not glanced at. Gutter grey on a faint pill was
@@ -145,10 +149,14 @@ html, body {
 .part-tab.finished .count {
   background: color-mix(in srgb, var(--status-renamed) 22%, transparent);
 }
+/* On the tab in front the pill sits on blue already, so it darkens instead of
+   colouring: blue on blue is a pill that has to be looked for. */
 .part-tab.on .count {
   color: var(--text);
-  background: color-mix(in srgb, var(--status-renamed) 28%, transparent);
+  background: color-mix(in srgb, #000 34%, transparent);
 }
+.part-tab.on .count .done { color: var(--text); }
+.part-tab.on .count .tick { color: var(--added); }
 
 /* ------------------------------------------------------------------ toolbar */
 
