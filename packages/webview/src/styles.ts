@@ -216,7 +216,6 @@ html, body {
   gap: 12px;
   padding: 8px 14px;
   font-size: 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
 }
 
 .prbar .state {
