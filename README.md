@@ -1,8 +1,14 @@
+<img src="docs/odin.svg" alt="" width="110" align="right">
+
 # Odin PR Review
 
-``He saw over all worlds and every man's activity and understood everything he saw.``
+> He saw over all worlds and every man's activity and understood everything he saw.
 
-A new way of reviewing PRs by using graph visualization that match human intuition.
+**An Integrated Review Environment — one of the first.** Writing code has had an
+IDE for forty years; reading it has had a web page. Odin is a claim that the
+second half deserves the same treatment: one place that holds the change, the
+conversation about it, and the state of your reading, behind one set of
+gestures. If an IDE is where code is written, an IRE is where it is read.
 
 A pull request is a graph, not a list. Odin turns the diff between a branch and
 its base into a change graph: every file is a vertex, every call-site reference
@@ -14,6 +20,28 @@ the change added that relationship or took it away.
 Every picture in this README is generated from the same fixture by
 `scripts/generate-examples.sh`, and the sources are committed under
 [`docs/examples`](docs/examples).
+
+## What an Integrated Review Environment means here
+
+An IDE earned its name by putting the editor, the compiler, the debugger and the
+navigator behind one set of gestures. Review has none of that: the diff is in a
+browser tab, the code is in an editor, what you have already read is in your
+head, and following a call means searching for its name somewhere else.
+
+Odin puts those in one place.
+
+- **The change is a picture, not a list.** Files sit where their relationships
+  put them, and a reference is an arrow you can follow.
+- **Navigation is the primitive.** Click an arrow to travel; press the dot at
+  either end to jump there and back. Arrow keys walk the chain a file at a time.
+- **Reading is state.** What you have marked off, where the camera was in each
+  part of the change, which commit you last read — all of it is remembered, and
+  a branch that moved since you read it says so.
+- **The conversation lives beside the code.** Threads, reactions, replies and a
+  pending review, in the same window as the graph, going to the forge as one
+  review rather than a notification per remark.
+- **It runs where you work.** The same page is a self-contained HTML file from
+  the command line and a webview inside VS Code.
 
 ## Quick start
 
@@ -80,6 +108,19 @@ in an editor, but without losing your place.
 
 ![Following a reference](docs/interactive-focus.png)
 
+Everything the page can be told to do is behind one button. The gear holds the
+diff display (split or unified), what to show (imports, unchanged references,
+tests, whether to hide files whose relations have all been read), which corners
+of the screen to keep (reviewers, comments, the map), a key-binding panel, and
+the note about any language it could not colour.
+
+![One menu for the whole page](docs/settings.png)
+
+A change that comes apart into pieces is shown as pieces: the tabs along the top
+are the parts of the graph that do not reach each other, each with its own file
+count, its own progress and its own camera. Coming back to a part puts you where
+you left it.
+
 Cards show the change, not the file. A run of untouched code that no arrow
 reaches collapses into a single band carrying the hunk header, so a card stays
 the size of its change rather than the size of its file. Line numbers run in two
@@ -98,12 +139,14 @@ reads as a column that failed to draw.
 | Click an arrow | Travel to the definition it points at |
 | Click the dot at an arrow's start | Put its destination in the middle of the screen |
 | Click a boxed name at either end | Travel to the other end |
-| Click the dashes before an arrowhead | Go back to where that arrow came from |
+| Click the dot inside the card an arrow lands in | Go back to where that arrow came from |
 | Click a filename | Isolate that file and everything it touches |
 | Scroll / ⌘-scroll | Pan / zoom around the cursor |
 | Click a gap | Open the untouched code it stands for |
 | Click *show N more lines* | Reveal the rest of a truncated card |
-| `f` / `esc` | Fit the graph / clear the selection |
+| `h` / `esc` | Fit the graph / clear the selection |
+| `←` `→` `↑` `↓` | Walk to the next file in the chain |
+| `enter` / `c` / `F` | Mark it read / comment on it / open it in the editor |
 
 Import statements are folded into a band and their arrows hidden, both governed
 by the **imports** checkbox. An import the change added or removed is never
@@ -114,7 +157,7 @@ pushes the actual change off the bottom of the card. They are still resolved, so
 switching them on needs no rebuild — `--imports` does the same on the command
 line.
 
-Files the change touched always stay on the canvas. **hide read-through** takes
+Files the change touched always stay on the canvas. **hide viewed relations** takes
 away the untouched files once everything pointing at them has been read, since
 those are in the picture only because something referenced them; a file the
 change touched goes quiet when you tick it — dimmed, struck through in the
@@ -168,14 +211,25 @@ Install the packaged build and review without leaving the editor:
 code --install-extension dist/odin-pr-review-0.1.0.vsix
 ```
 
-![The extension](docs/vscode.png)
+![The pull-request chooser](docs/chooser.png)
 
 Before a graph exists, the sidebar lists the repository's open pull requests —
-number, title, draft or open, review state, author and age — with a filter box
-above them. Clicking one checks out its branch and builds the graph; the branch
-you are on is marked down its left edge. Checking out refuses outright while
-the working tree is dirty, since carrying uncommitted changes onto another
-branch is not a decision to make on someone's behalf.
+number, title, draft or open, review state, the author's face and how long ago
+it last moved — with a filter box above them. What the forge is waiting on
+**you** for comes first, under its own heading. Ordering is by activity rather
+than by creation, falling back to creation within the same hour so a burst of
+comments cannot reshuffle the list under you.
+
+A pull request you have opened before and that has been pushed to since carries
+a **new commits** chip: the forge goes on showing the verdict you left on a
+commit that is no longer the head, and this is the only thing in the row that
+says so.
+
+Clicking a row checks out its branch and builds the graph; the branch you are on
+is marked down its left edge. Checking out refuses outright while the working
+tree is dirty, since carrying uncommitted changes onto another branch is not a
+decision to make on someone's behalf — and while the graph is being built, the
+panel shows the mark, breathing, with the build's own progress under it.
 
 ![A thread beside the file](docs/thread.png)
 
@@ -448,17 +502,39 @@ was asked for. Reading needs no such ceremony — `odin comments` and
 
 ## Status
 
+Done:
+
 - [x] Change-graph model and reproducible JSON schema
 - [x] Unified-diff parser (added, modified, deleted, renamed, binary)
-- [x] Reference resolution for TypeScript and JavaScript, both sides of the diff
+- [x] Reference resolution for TypeScript, JavaScript, Kotlin, Python and Clojure
 - [x] Phantom vertices for referenced-but-untouched files
 - [x] Deterministic layered layout with line-level arrow anchors
 - [x] Interactive renderer: follow an arrow, isolate a file, pan and zoom
+- [x] Split and unified diff readings, switchable per reader
 - [x] SVG, Mermaid, Graphviz and terminal output
 - [x] Collapsed gaps for untouched code, with base/head line-number columns
+- [x] Syntax highlighting inside cards, using the editor's own theme
 - [x] VS Code extension: open the real file at the line an arrow points at
-- [ ] Layout pinning so a file keeps its place across pushes
-- [ ] Syntax highlighting inside cards
+- [x] Review from inside the graph: threads, replies, reactions, suggestions,
+      and a pending review that goes out as one verdict
+- [x] Sub-graphs: a large change split into the parts that do not reach each
+      other, each with its own progress and its own camera
+- [x] Keyboard review — walk the chain, mark read, comment, open the file —
+      with rebindable keys
+- [x] Progress that persists: viewed files, per-part camera, unsent drafts
+- [x] Pull-request chooser: what is waiting on you first, and which branches
+      have moved since you last read them
+- [x] A minimap, forge checks, reviewers and the conversation, each dismissable
+
+Next:
+
+- [ ] Virtualisation, so a change of a thousand files is as comfortable as one
+      of ten
+- [ ] Layout pinning, so a file keeps its place across pushes
+- [ ] Cross-package edges in monorepos that import through built declarations
+- [ ] Resolvers for more languages — the index-based engine takes a new one in
+      about a hundred lines
+- [ ] Review a pull request without checking its branch out
 
 ## Language support
 
@@ -467,6 +543,8 @@ was asked for. Reading needs no such ceremony — `odin comments` and
 | TypeScript, JavaScript | TypeScript compiler API | `resolved` | yes |
 | React (`.tsx`, `.jsx`) | TypeScript compiler API | `resolved` | yes |
 | Kotlin | symbol index | `heuristic` | yes |
+| Python | symbol index | `heuristic` | yes |
+| Clojure | symbol index | `heuristic` | yes |
 | anything else | — | — | — |
 
 A file in an unsupported language still becomes a card with its diff — it just
@@ -503,11 +581,27 @@ resolves into React's own intrinsic-element declarations, which is not somewhere
 a reviewer can usefully be sent, and the capital letter that tells them apart is
 the convention the compiler itself uses.
 
-Kotlin edges are marked `heuristic` because they come from matching call sites
-against an index of the repository's declarations rather than from a compiler.
-Ambiguity is declined rather than guessed: where two declarations share a name
-and neither the imports nor the package can separate them, no arrow is drawn.
-A missing arrow is recoverable; one that sends you to the wrong file is not.
+Kotlin, Python and Clojure edges are marked `heuristic` because they come from
+matching call sites against an index of the repository's declarations rather
+than from a compiler. None of the three can be asked where a name goes without
+running something that knows the project — a compiler daemon, a language server,
+a REPL with the code loaded — and a review tool that needed any of those would
+give different answers on the command line and in the editor.
+
+The ordering is the language's own: what the call qualifies, then what the file
+imported by name, then what it imported whole, then its own module, then a match
+that is unique in the repository. Past that, ambiguity is declined rather than
+guessed — where two declarations share a name and nothing in the file separates
+them, no arrow is drawn. A missing arrow is recoverable; one that sends you to
+the wrong file is not.
+
+Python and Clojure share one engine, since a module and a namespace are the same
+idea spelled the same way. What differs is per language: Python's relative
+imports climb from the importing file's package, its decorators are references
+worth following, and a package is its directory rather than its `__init__`;
+Clojure's `ns` form is read over the whole file because it wraps, a namespace
+maps to a path with its dashes turned into underscores, and the special forms
+every function body opens with are kept out so `let` does not draw arrows.
 
 ### Known gaps
 
@@ -519,15 +613,18 @@ A missing arrow is recoverable; one that sends you to the wrong file is not.
   nothing unchanged in it to collapse.
 - Large pull requests render every card at once. Virtualisation is needed before
   this is comfortable past a few hundred files.
+- A review still needs the branch checked out locally; there is no read-only
+  mode that works straight from the forge.
 
 ## Development
 
 ```sh
-yarn test                      # 129 unit tests
+yarn test                      # 308 unit tests
 yarn test:integration          # 6 tests inside a real VS Code extension host
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples
 ```
 
 Screenshots in `docs/` are captured from the generated `graph.html` in a browser
-at 1600×1000.
+1600px wide. The comments in them are written against the fixture, so no real
+review is reproduced here.
