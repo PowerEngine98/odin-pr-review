@@ -1,7 +1,7 @@
 import type { ParsedFile } from "../diff/parse.js";
 import { nodeId } from "../model/ids.js";
 import { isTestPath } from "./tests.js";
-import { detectLanguage } from "../model/language.js";
+import { detectDialect, detectLanguage } from "../model/language.js";
 import {
   SCHEMA_VERSION,
   type ChangeGraph,
@@ -23,7 +23,13 @@ export function filesToNodes(files: ParsedFile[]): FileNode[] {
       id: nodeId(f.path),
       path: f.path,
       status: f.status,
-      language: detectLanguage(f.path),
+      // The diff's own text decides where the path cannot: a `.sql` file that
+      // uses `plpgsql` or `EXECUTE FUNCTION` is Postgres, and only the Postgres
+      // resolver knows what those point at.
+      language: detectDialect(
+        f.path,
+        f.hunks.map((h) => h.lines.map((l) => l.text).join("\n")).join("\n"),
+      ),
       binary: f.binary,
       stats: { additions: f.additions, deletions: f.deletions },
       hunks: f.hunks,

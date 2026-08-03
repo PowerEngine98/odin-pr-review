@@ -506,7 +506,8 @@ Done:
 
 - [x] Change-graph model and reproducible JSON schema
 - [x] Unified-diff parser (added, modified, deleted, renamed, binary)
-- [x] Reference resolution for TypeScript, JavaScript, Kotlin, Python and Clojure
+- [x] Reference resolution for TypeScript, JavaScript, Kotlin, Python, Clojure
+      and SQL, including the parts that are only Postgres
 - [x] Phantom vertices for referenced-but-untouched files
 - [x] Deterministic layered layout with line-level arrow anchors
 - [x] Interactive renderer: follow an arrow, isolate a file, pan and zoom
@@ -545,6 +546,8 @@ Next:
 | Kotlin | symbol index | `heuristic` | yes |
 | Python | symbol index | `heuristic` | yes |
 | Clojure | symbol index | `heuristic` | yes |
+| SQL | name index | `heuristic` | yes |
+| PostgreSQL | name index | `heuristic` | yes |
 | anything else | — | — | — |
 
 A file in an unsupported language still becomes a card with its diff — it just
@@ -594,6 +597,21 @@ that is unique in the repository. Past that, ambiguity is declined rather than
 guessed — where two declarations share a name and nothing in the file separates
 them, no arrow is drawn. A missing arrow is recoverable; one that sends you to
 the wrong file is not.
+
+SQL is the odd one and the most reliable of them. A schema has no modules and no
+imports, so there is nothing to disambiguate with — but there is also almost
+nothing to disambiguate: two tables cannot share a name inside a schema, so a
+`REFERENCES customers` points at the migration that wrote `CREATE TABLE
+customers` and at nothing else. Migrations become a graph of what depends on
+what, which is the question asked of them most often.
+
+Postgres gets its own dialect on top, because the references a reviewer follows
+there are not portable SQL: a trigger naming the function it runs, a column
+reading a sequence through `nextval`, a partition naming its parent, a cast to a
+type somebody declared. Which one a file gets is decided by the file: nearly
+every Postgres project names its migrations `.sql`, so the extension cannot say,
+and the text is asked instead — nobody writes `$$ … $$ LANGUAGE plpgsql` by
+accident.
 
 Python and Clojure share one engine, since a module and a namespace are the same
 idea spelled the same way. What differs is per language: Python's relative

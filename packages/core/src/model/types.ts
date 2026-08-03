@@ -79,6 +79,8 @@ export type ResolverId =
   | "kotlin"
   | "python"
   | "clojure"
+  | "sql"
+  | "postgres"
   | "lsp"
   | "tree-sitter"
   | "regex"

@@ -78,6 +78,9 @@ const SHIKI_ID: Record<string, string> = {
   lua: "lua",
   markdown: "markdown",
   php: "php",
+  // Postgres has no grammar of its own; its dialect is coloured as SQL, which
+  // is what an editor does with it too.
+  postgres: "sql",
   python: "python",
   ruby: "ruby",
   rust: "rust",

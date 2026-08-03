@@ -51,7 +51,7 @@ export interface Candidate {
 /** Everything one language contributes to the engine below. */
 export interface Dialect {
   /** Matches a ResolverId, and names the resolver in the graph. */
-  id: "python" | "clojure";
+  id: "python" | "clojure" | "sql" | "postgres";
   /** VS Code language ids this dialect answers for. */
   languages: readonly string[];
   /** File extensions worth indexing, with the dot. */

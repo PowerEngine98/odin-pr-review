@@ -11,7 +11,12 @@ import {
   type ReferenceResolver,
 } from "@odin/core";
 import { KotlinResolver } from "@odin/resolver-kotlin";
-import { ClojureResolver, PythonResolver } from "@odin/resolver-lang";
+import {
+  ClojureResolver,
+  PostgresResolver,
+  PythonResolver,
+  SqlResolver,
+} from "@odin/resolver-lang";
 import { TsResolver } from "@odin/resolver-ts";
 
 export interface ResolveRequest {
@@ -61,6 +66,8 @@ export async function resolveEdges(
       roots,
       ...(resolveImports ? {} : { includeImports: false }),
     }),
+    new SqlResolver({ roots }),
+    new PostgresResolver({ roots }),
   ];
   const languages = build({ head: request.cwd }).flatMap((r) => [...r.languages]);
 

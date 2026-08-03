@@ -1,3 +1,4 @@
+import { detectDialect } from "../src/model/language.js";
 import { describe, expect, it } from "vitest";
 
 import { parseUnifiedDiff } from "../src/diff/parse.js";
@@ -179,5 +180,34 @@ describe("unquotePath", () => {
   it("decodes multi-byte octal sequences as UTF-8", () => {
     // "é" is 0xC3 0xA9 in UTF-8, which git emits as \303\251.
     expect(unquotePath('"caf\\303\\251.ts"')).toBe("café.ts");
+  });
+});
+
+describe("telling the SQL dialects apart", () => {
+  it("calls a plain schema SQL", () => {
+    expect(detectDialect("db/001.sql", "CREATE TABLE customers (id uuid);")).toBe("sql");
+  });
+
+  it("calls a schema that uses plpgsql Postgres", () => {
+    expect(
+      detectDialect("db/002.sql", "CREATE FUNCTION f() AS $$ BEGIN END $$ LANGUAGE plpgsql;"),
+    ).toBe("postgres");
+  });
+
+  it("recognises the other forms only Postgres has", () => {
+    for (const text of [
+      "CREATE TRIGGER t BEFORE UPDATE ON x EXECUTE FUNCTION touch();",
+      "number bigint DEFAULT nextval('seq')",
+      "CREATE TABLE a PARTITION OF b;",
+      "SELECT state::invoice_state",
+    ]) {
+      expect(detectDialect("db/x.sql", text)).toBe("postgres");
+    }
+  });
+
+  it("leaves a path that already says what it is alone", () => {
+    // The text is only asked where the extension is ambiguous.
+    expect(detectDialect("a.ts", "LANGUAGE plpgsql")).toBe("typescript");
+    expect(detectDialect("a.pgsql", "")).toBe("postgres");
   });
 });
