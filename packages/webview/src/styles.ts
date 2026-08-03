@@ -1661,6 +1661,60 @@ body:not(.split) .card-body.split-view { display: none; }
 .toolbar #action-review[hidden] { display: none; }
 
 
+/* --------------------------------------------------------------- the map
+
+   The shape of the change, small, in the corner opposite the switches. A
+   drawing this size is mostly off screen, and this is the only thing that says
+   which way the rest of it lies. */
+.minimap {
+  position: fixed;
+  left: 14px;
+  bottom: 12px;
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--panel-edge);
+}
+.minimap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.minimap-head:hover { color: var(--text); }
+.minimap-head .chev { transition: transform 120ms ease; }
+.minimap.folded .chev { transform: rotate(-90deg); }
+.minimap.folded .minimap-face { display: none; }
+
+.minimap-face { display: block; cursor: pointer; }
+/* The same colours the cards carry, so a rectangle here and a card there are
+   recognisably the same file. */
+.minimap-face .on { opacity: 0.75; }
+.minimap-face .added { fill: var(--status-added); }
+.minimap-face .modified { fill: var(--status-modified); }
+.minimap-face .deleted { fill: var(--status-deleted); }
+.minimap-face .renamed { fill: var(--status-renamed); }
+.minimap-face .phantom { fill: none; stroke: var(--status-phantom); stroke-width: 1; }
+/* What is on screen. An outline, because it is a window and not a thing. */
+.minimap-view {
+  fill: color-mix(in srgb, var(--text) 10%, transparent);
+  stroke: var(--text);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
 /* ------------------------------------------------------------------- checks
 
    What the forge made of the branch, in the bar and in a list under it. */

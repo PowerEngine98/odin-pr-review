@@ -161,6 +161,9 @@ export function renderHtml(
       // A file the diff never touched is in the picture only because something
       // points at it, which is what lets it follow those references' state.
       untouched: n.node.status === "phantom",
+      // What kind of change it is, for the map in the corner: it draws files as
+      // rectangles and colour is all it has to say what they are.
+      status: n.node.status,
     })),
     unified: layout.unified,
     ...(options.checks ? { checks: options.checks } : {}),
@@ -273,6 +276,10 @@ export function renderHtml(
     reviewerList(graph.meta.pullRequest?.reviewers ?? []) +
     `<div class="faces" hidden></div>` +
     `<div class="reviewer-panel" hidden></div></div>`,
+    `<div class="minimap"><button class="minimap-head" title="Hide the map">` +
+    `<span class="minimap-title">map</span>${CHEVRON_DOWN}</button>` +
+    `<svg class="minimap-face"><g class="minimap-nodes"></g>` +
+    `<rect class="minimap-view"/></svg></div>`,
     `<div class="marks"></div>`,
     `<div class="tooltip"></div>`,
     `<div class="thread" hidden><div class="thread-head">` +
@@ -544,6 +551,11 @@ const STATUS_MARK: Record<string, string> = {
   ),
   phantom: mark(`<circle cx="5" cy="5" r="1.5" fill="currentColor"/>`),
 };
+
+const CHEVRON_DOWN =
+  `<svg class="chev" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">` +
+  `<path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
 const TICK =
   `<svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">` +

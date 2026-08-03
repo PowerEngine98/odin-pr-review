@@ -91,6 +91,7 @@ export const CLIENT_SCRIPT = String.raw`
     placeMarks();
     placeThread();
     pinTitles();
+    placeMapView();
   }
 
   /**
@@ -670,6 +671,7 @@ export const CLIENT_SCRIPT = String.raw`
 
     rerouteEdges();
     placeMarks();
+    drawMinimap();
   }
 
   function nodeFor(id) {
@@ -2817,6 +2819,134 @@ export const CLIENT_SCRIPT = String.raw`
       var reach = Math.round(size * 0.31) + 10;
       mark.el.style.left = Math.round(box.left - size - reach) + "px";
       mark.el.style.top = Math.round(y - size / 2) + "px";
+    });
+  }
+
+  /* -------------------------------------------------------------- the map */
+
+  /**
+   * The shape of the change, small, in the corner.
+   *
+   * A drawing this size is mostly off screen, and panning it is a guess about
+   * which direction the rest of it is in. The map answers that: files as
+   * rectangles in the colours they carry on the canvas, and a frame showing
+   * what is currently in view. Pressing it moves there.
+   *
+   * Rebuilt when the cards move and only the frame is touched while panning,
+   * because panning is every frame and the rectangles are not.
+   */
+  var minimap = document.querySelector(".minimap");
+  var minimapFace = minimap && minimap.querySelector(".minimap-face");
+  var minimapNodes = minimap && minimap.querySelector(".minimap-nodes");
+  var minimapView = minimap && minimap.querySelector(".minimap-view");
+  var MAP_WIDE = 190;
+  var MAP_TALL = 150;
+  var mapFit = null;
+
+  function drawMinimap() {
+    if (!minimap || !minimapNodes) return;
+
+    var box = shown();
+    if (!box.width || !box.height) { minimap.hidden = true; return; }
+    minimap.hidden = false;
+
+    var scale = Math.min(MAP_WIDE / box.width, MAP_TALL / box.height);
+    var width = Math.max(1, Math.round(box.width * scale));
+    var height = Math.max(1, Math.round(box.height * scale));
+    mapFit = { x: box.x, y: box.y, scale: scale };
+
+    minimapFace.setAttribute("width", width);
+    minimapFace.setAttribute("height", height);
+    minimapFace.setAttribute("viewBox", "0 0 " + width + " " + height);
+
+    var parts = "";
+    cards.forEach(function (card) {
+      if (card.classList.contains("hidden") ||
+          card.classList.contains("viewed-hidden")) return;
+      var node = nodeFor(card.dataset.id);
+      if (!node) return;
+
+      // At this size a card is a few pixels; a file that rounds away is a file
+      // the reader cannot see is there.
+      var w = Math.max(2, Math.round(node.width * scale));
+      var h = Math.max(2, Math.round(node.height * scale));
+      parts += '<rect class="on ' + (node.status || "modified") + '" x="' +
+        Math.round((node.x - box.x) * scale) + '" y="' +
+        Math.round((node.y - box.y) * scale) + '" width="' + w +
+        '" height="' + h + '" rx="1"><title>' +
+        escapeHtml(node.path) + "</title></rect>";
+    });
+    minimapNodes.innerHTML = parts;
+
+    placeMapView();
+  }
+
+  /** The frame showing what is on screen, in the map's own units. */
+  function placeMapView() {
+    if (!minimap || minimap.hidden || !minimapView || !mapFit) return;
+
+    var rect = viewport.getBoundingClientRect();
+    var top = chromeBar ? chromeBar.getBoundingClientRect().height : 0;
+
+    // The window, expressed in the drawing's coordinates, then in the map's.
+    var left = (-view.x) / view.scale;
+    var upper = (top - view.y) / view.scale;
+    var wide = rect.width / view.scale;
+    var tall = (rect.height - top) / view.scale;
+
+    // Held inside the map. The window is often wider than the drawing — zoomed
+    // out on a tall change it is wider by a factor of ten — and a frame drawn
+    // to scale then hangs off both sides, which says the reader is looking at
+    // something the map does not contain.
+    var faceWide = Number(minimapFace.getAttribute("width"));
+    var faceTall = Number(minimapFace.getAttribute("height"));
+
+    var x = (left - mapFit.x) * mapFit.scale;
+    var y = (upper - mapFit.y) * mapFit.scale;
+    var w = wide * mapFit.scale;
+    var h = tall * mapFit.scale;
+
+    var right = Math.min(faceWide, x + w);
+    var bottom = Math.min(faceTall, y + h);
+    x = Math.max(0, x);
+    y = Math.max(0, y);
+
+    minimapView.setAttribute("x", Math.round(x));
+    minimapView.setAttribute("y", Math.round(y));
+    minimapView.setAttribute("width", Math.max(2, Math.round(right - x)));
+    minimapView.setAttribute("height", Math.max(2, Math.round(bottom - y)));
+  }
+
+  if (minimapFace) {
+    minimapFace.addEventListener("click", function (event) {
+      if (!mapFit) return;
+      var box = minimapFace.getBoundingClientRect();
+      var atX = mapFit.x + (event.clientX - box.left) / mapFit.scale;
+      var atY = mapFit.y + (event.clientY - box.top) / mapFit.scale;
+
+      var rect = viewport.getBoundingClientRect();
+      view.x = rect.width / 2 - atX * view.scale;
+      view.y = rect.height / 2 - atY * view.scale;
+      apply(200);
+    });
+  }
+
+  var mapHead = minimap && minimap.querySelector(".minimap-head");
+  if (mapHead) {
+    var folded = false;
+    try {
+      folded = window.localStorage.getItem("odin.map") === "folded";
+    } catch (e) {}
+    minimap.classList.toggle("folded", folded);
+
+    mapHead.addEventListener("click", function () {
+      folded = !minimap.classList.contains("folded");
+      minimap.classList.toggle("folded", folded);
+      mapHead.title = folded ? "Show the map" : "Hide the map";
+      try {
+        window.localStorage.setItem("odin.map", folded ? "folded" : "open");
+      } catch (e) {}
+      if (!folded) drawMinimap();
     });
   }
 
