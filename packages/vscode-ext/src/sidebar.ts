@@ -470,10 +470,14 @@ input.seen:checked::after {
 .row.seen-marked .name { text-decoration: line-through; }
 
 .name { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
-.row .seen { margin-left: auto; }
+/* The counts line up down the right rather than trailing each filename. Ragged
+   against names of every length they were a column that could not be read as
+   one; against the edge they can be compared without reading a single name. */
+.counts { margin-left: auto; }
+.row .seen { margin-left: 10px; }
 .status-phantom .name { color: var(--muted); }
 
-.counts { flex: 0 0 auto; font-size: 0.9em; }
+.counts { flex: 0 0 auto; font-size: 0.9em; font-variant-numeric: tabular-nums; }
 .counts .added { color: var(--added); }
 .counts .removed { color: var(--removed); }
 .counts .untouched { color: var(--muted); }
