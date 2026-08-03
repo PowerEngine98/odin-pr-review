@@ -4,6 +4,7 @@ import {
   git,
   listPullRequests,
   listRefs,
+  inlineAvatar,
   inlineAvatars,
   listReviewComments,
   worktreeFor,
@@ -19,6 +20,7 @@ import { buildGraphForRepo } from "./graph.js";
 import { GraphPanel } from "./panel.js";
 import { ChangeSidebar } from "./sidebar.js";
 import { activeTheme } from "./theme.js";
+import { SeenStore } from "./seen.js";
 import { ViewedStore } from "./viewed.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
@@ -36,6 +38,9 @@ let viewed: ViewedStore;
 /** The sidebar's view of the most recent review. */
 let sidebar: ChangeSidebar;
 
+/** Which commit of each pull request this reviewer has already read. */
+let seen: SeenStore;
+
 /** Enough of the last review to act on it without rebuilding. */
 let last: { repo: string; baseRef?: string } | undefined;
 
@@ -45,7 +50,8 @@ export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.assets = context.extensionUri;
 
   viewed = new ViewedStore(context.workspaceState);
-  sidebar = new ChangeSidebar(viewed);
+  seen = new SeenStore(context.workspaceState);
+  sidebar = new ChangeSidebar(viewed, seen);
 
   // Populated in the background so activation is not held up by the network.
   void refreshPullRequests();
@@ -134,7 +140,18 @@ async function refreshPullRequests(): Promise<void> {
       listPullRequests({ cwd: repo }),
       currentBranch({ cwd: repo }),
     ]);
-    sidebar.setPullRequests(pulls, branch ?? "");
+    // A webview will not fetch a remote image, so each author's picture travels
+    // inside the document. Best-effort and in parallel: a face that will not
+    // load leaves an initial, and nothing waits on the network for long.
+    await Promise.all(
+      pulls.map(async (pr) => {
+        if (!pr.avatarUrl) return;
+        const data = await inlineAvatar(pr.avatarUrl).catch(() => undefined);
+        if (data) pr.avatarUrl = data;
+        else delete pr.avatarUrl;
+      }),
+    );
+    sidebar.setPullRequests(pulls, branch ?? "", repo);
   } finally {
     // Whatever happened, the bar stops: a progress bar that never ends says
     // the tool is still trying when it has given up.
@@ -288,6 +305,15 @@ async function review(baseRef?: string): Promise<void> {
         }
 
         viewed.open(repo, graph.meta.baseRef, graph.meta.headRef);
+        // What is being read, so the list can say later when it has moved on.
+        if (graph.meta.pullRequest && graph.meta.headSha) {
+          seen.mark(
+            repo,
+            graph.meta.pullRequest.number,
+            graph.meta.headSha,
+            new Date().toISOString(),
+          );
+        }
 
         // Loaded before the first paint. Colouring the code a beat after it
         // appears would redraw the whole page and take the reviewer's scroll

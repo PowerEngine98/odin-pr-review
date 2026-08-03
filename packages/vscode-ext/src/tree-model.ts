@@ -128,8 +128,18 @@ export function ago(iso: string, now = Date.now()): string {
   const then = Date.parse(iso);
   if (Number.isNaN(then)) return "";
 
+  // Hours and minutes matter now that the list is ordered by activity: the
+  // difference between a branch pushed to ten minutes ago and one pushed to
+  // this morning is the difference between joining a conversation and starting
+  // one, and "today" said both.
+  const minutes = Math.floor((now - then) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+
   const days = Math.floor((now - then) / 86_400_000);
-  if (days <= 0) return "today";
   if (days === 1) return "yesterday";
   if (days < 30) return `${days}d ago`;
 

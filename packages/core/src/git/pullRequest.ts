@@ -164,11 +164,13 @@ export function run(
 }
 
 /**
- * The open pull requests on this repository, newest first.
+ * The open pull requests on this repository, most recently active first.
  *
- * Ordered by creation rather than by update, because "what is in flight" is a
- * more stable thing to scan than "what was touched last", which reshuffles
- * under the reader whenever anyone comments.
+ * Activity is what a reviewer is actually looking for: the branch somebody
+ * pushed to an hour ago is the one waiting on them, and the one that has not
+ * moved in a fortnight is not. Within the same hour the order falls back to
+ * creation, so a burst of comments across several pull requests does not
+ * reshuffle them under the reader between one refresh and the next.
  */
 export async function listPullRequests(
   options: GitOptions & { timeoutMs?: number; limit?: number },
@@ -178,7 +180,8 @@ export async function listPullRequests(
       "pr", "list",
       "--state", "open",
       "--limit", String(options.limit ?? 50),
-      "--json", "number,title,url,headRefName,isDraft,author,createdAt,reviewDecision",
+      "--json",
+      "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt,reviewDecision",
     ],
     options,
   );
@@ -190,9 +193,11 @@ export async function listPullRequests(
       title: string;
       url: string;
       headRefName: string;
+      headRefOid?: string;
       isDraft: boolean;
       author?: { login?: string };
       createdAt: string;
+      updatedAt?: string;
       reviewDecision?: string | null;
     }[];
 
@@ -207,11 +212,45 @@ export async function listPullRequests(
           author: pr.author?.login ?? "",
           createdAt: pr.createdAt,
         };
+        // The commit the branch is on, so a reader can be told when it has
+        // moved since they last looked at it.
+        if (pr.headRefOid) summary.headSha = pr.headRefOid;
+        // `pr list` does not carry a picture, and the forge serves one at a
+        // predictable address. Whoever draws it has to inline it anyway.
+        if (pr.author?.login) {
+          summary.avatarUrl = `https://github.com/${pr.author.login}.png`;
+        }
+        if (pr.updatedAt) summary.updatedAt = pr.updatedAt;
         if (pr.reviewDecision) summary.reviewDecision = pr.reviewDecision;
         return summary;
       })
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : a.number - b.number));
+      .sort(byActivity);
   } catch {
     return [];
   }
+}
+
+/**
+ * Most recently active first, with creation as the tie-break.
+ *
+ * "Same hour" rather than "same instant": two pull requests touched minutes
+ * apart are, to a reader scanning the list, equally recent, and letting a
+ * comment on one of them jump it above the other every few minutes makes the
+ * list impossible to learn. The hour is coarse enough to hold still and fine
+ * enough to keep today above yesterday.
+ */
+export function byActivity(
+  a: PullRequestSummary,
+  b: PullRequestSummary,
+): number {
+  const hourA = hourOf(a.updatedAt ?? a.createdAt);
+  const hourB = hourOf(b.updatedAt ?? b.createdAt);
+  if (hourA !== hourB) return hourA < hourB ? 1 : -1;
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+  return a.number - b.number;
+}
+
+/** An ISO timestamp cut back to the hour, which is all the order uses. */
+function hourOf(stamp: string): string {
+  return stamp.slice(0, 13);
 }

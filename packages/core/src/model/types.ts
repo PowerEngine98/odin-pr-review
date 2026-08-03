@@ -241,6 +241,12 @@ export interface PullRequestSummary extends PullRequest {
   author: string;
   /** ISO-8601, as the forge reports it. */
   createdAt: string;
+  /** ISO-8601 of the last thing that happened to it. */
+  updatedAt?: string;
+  /** The commit the head branch points at. */
+  headSha?: string;
+  /** The author's picture, inlined as a data URI by whoever renders it. */
+  avatarUrl?: string;
   /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
   reviewDecision?: string;
 }

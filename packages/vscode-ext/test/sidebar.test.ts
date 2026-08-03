@@ -153,11 +153,16 @@ describe("progress through a change", () => {
   });
 });
 
-describe("how long ago a pull request was opened", () => {
+describe("how long ago a pull request last moved", () => {
   const now = Date.parse("2026-08-01T12:00:00Z");
 
-  it("says today for something opened today", () => {
-    expect(ago("2026-08-01T02:00:00Z", now)).toBe("today");
+  it("counts minutes, because the list is ordered by activity", () => {
+    expect(ago("2026-08-01T11:59:40Z", now)).toBe("just now");
+    expect(ago("2026-08-01T11:41:00Z", now)).toBe("19m ago");
+  });
+
+  it("counts hours through the rest of the day", () => {
+    expect(ago("2026-08-01T02:00:00Z", now)).toBe("10h ago");
   });
 
   it("names yesterday rather than counting it", () => {

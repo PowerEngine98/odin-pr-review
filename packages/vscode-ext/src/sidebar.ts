@@ -19,6 +19,7 @@ import {
   rowSearchText,
   type Folder,
 } from "./tree-model.js";
+import type { SeenStore } from "./seen.js";
 import type { ViewedStore } from "./viewed.js";
 
 /**
@@ -81,12 +82,17 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private graph: ChangeGraph | undefined;
   private pulls: PullRequestSummary[] = [];
   private branch = "";
+  /** Which repository the list belongs to, for looking up what was read. */
+  private repo = "";
   /** Something is being fetched, and the view says so rather than sitting blank. */
   private loading = false;
   /** The part of the change the panel is showing, when it is showing one. */
   private part: Set<string> | undefined;
 
-  constructor(private readonly viewed: ViewedStore) {}
+  constructor(
+    private readonly viewed: ViewedStore,
+    private readonly seen?: SeenStore,
+  ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -178,9 +184,14 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   }
 
   /** The pull requests to choose from before a graph has been built. */
-  setPullRequests(pulls: PullRequestSummary[], branch: string): void {
+  setPullRequests(
+    pulls: PullRequestSummary[],
+    branch: string,
+    repo = "",
+  ): void {
     this.pulls = pulls;
     this.branch = branch;
+    this.repo = repo;
     if (!this.graph) this.render();
   }
 
@@ -226,6 +237,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       this.viewed,
       this.pulls,
       this.branch,
+      (pr) => this.seen?.movedOn(this.repo, pr.number, pr.headSha) === true,
     );
   }
 }
@@ -237,10 +249,11 @@ function html(
   viewed: ViewedStore,
   pulls: PullRequestSummary[] = [],
   branch = "",
+  moved: (pr: PullRequestSummary) => boolean = () => false,
 ): string {
   const body = graph
     ? header(graph, viewed) + renderTree(buildTree(graph.nodes), graph, 0, viewed)
-    : picker(pulls, branch);
+    : picker(pulls, branch, moved);
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -585,10 +598,35 @@ html, body { height: 100%; }
   font-size: 0.9em;
 }
 .tag.open { color: var(--status-added); }
+/* Pushed to since this reader last opened it. Filled rather than outlined like
+   the others: it is the one thing in the row that is news. */
+.tag.fresh {
+  color: var(--vscode-editor-background);
+  background: var(--warning);
+  border-color: var(--warning);
+  font-weight: 600;
+}
 .tag.draft { color: var(--muted); }
 .tag.ok { color: var(--status-added); }
 .tag.warn { color: var(--warning); }
 .tag.muted { color: var(--muted); }
+.face {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: -2px;
+}
+.face.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75em;
+  font-weight: 700;
+  color: var(--muted);
+  background: color-mix(in srgb, currentColor 18%, transparent);
+}
 button {
   margin: 0;
   font: inherit;
@@ -827,7 +865,11 @@ if (treeFilter) {
  * activity, because "what is in flight" holds still while "what was touched
  * last" reshuffles whenever anyone comments.
  */
-function picker(pulls: PullRequestSummary[], branch: string): string {
+export function picker(
+  pulls: PullRequestSummary[],
+  branch: string,
+  moved: (pr: PullRequestSummary) => boolean,
+): string {
   // Same frame either way, so the action sits in the same place whether there
   // are twenty pull requests, one, or none. A button that moves when the list
   // changes length is a button that has to be found again every time.
@@ -837,12 +879,28 @@ function picker(pulls: PullRequestSummary[], branch: string): string {
        needs it installed and signed in. You can review the current branch
        regardless.</p>`
     : `<input id="filter" class="filter" type="search" placeholder="Filter pull requests" autocomplete="off">
-       <div class="pulls">${pulls.map((pr) => pullRow(pr, branch)).join("")}</div>`;
+       <div class="pulls">${pulls.map((pr) => pullRow(pr, branch, moved(pr))).join("")}</div>`;
 
   return `<div class="picker">
   ${body}
   <div class="footer"><button id="review">Review This Branch</button></div>
 </div>`;
+}
+
+/**
+ * The author, as a picture.
+ *
+ * A face is recognised before a name is read, and the question this list
+ * answers most often is "whose is this". Inlined by the caller, because a
+ * webview will not fetch a remote image; a login with no picture keeps its
+ * initial, which is still faster to scan than a word.
+ */
+function face(pr: PullRequestSummary): string {
+  const who = escapeHtml(pr.author || "?");
+  if (pr.avatarUrl) {
+    return `<img class="face" src="${escapeHtml(pr.avatarUrl)}" alt="${who}">`;
+  }
+  return `<span class="face letter">${escapeHtml((pr.author || "?").slice(0, 1).toUpperCase())}</span>`;
 }
 
 /** `APPROVED` and friends, said the way a reader would say them. */
@@ -852,7 +910,11 @@ const DECISION: Record<string, { label: string; tone: string }> = {
   REVIEW_REQUIRED: { label: "review required", tone: "muted" },
 };
 
-function pullRow(pr: PullRequestSummary, branch: string): string {
+function pullRow(
+  pr: PullRequestSummary,
+  branch: string,
+  moved: boolean,
+): string {
   const current = pr.branch === branch;
   const decision = pr.reviewDecision ? DECISION[pr.reviewDecision] : undefined;
 
@@ -867,8 +929,17 @@ function pullRow(pr: PullRequestSummary, branch: string): string {
     `<div class="line meta">` +
     (pr.draft ? `<span class="tag draft">draft</span>` : `<span class="tag open">open</span>`) +
     (decision ? `<span class="tag ${decision.tone}">${decision.label}</span>` : "") +
+    // Pushed to since this reviewer last opened it. The forge goes on showing
+    // the verdict they left on a commit that is no longer the head, and this is
+    // the only thing in the list that says so.
+    (moved ? `<span class="tag fresh">new commits</span>` : "") +
+    face(pr) +
     `<span class="author">${escapeHtml(pr.author)}</span>` +
-    `<span class="when">${escapeHtml(ago(pr.createdAt))}</span>` +
+    // When it last moved, not when it was opened: the list is ordered by
+    // activity, and a column that disagreed with the order would read as a
+    // sorting bug.
+    `<span class="when" title="${escapeHtml(`opened ${ago(pr.createdAt)}`)}">` +
+    `${escapeHtml(ago(pr.updatedAt ?? pr.createdAt))}</span>` +
     `</div></div>`
   );
 }
