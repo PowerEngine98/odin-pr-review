@@ -204,6 +204,11 @@ export function renderHtml(
       },
     ],
     canReview: options.canReview === true,
+    // What a half-written review is filed under between page loads: the pull
+    // request if there is one, the pair of refs if there is not.
+    review: graph.meta.pullRequest
+      ? `pr:${graph.meta.pullRequest.number}`
+      : `${graph.meta.baseRef}..${graph.meta.headRef}`,
     viewer: options.viewer ?? "",
     viewerFace: options.viewerFace ?? "",
     comments: comments.map((c) => ({

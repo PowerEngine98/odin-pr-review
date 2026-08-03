@@ -1800,6 +1800,45 @@ export const CLIENT_SCRIPT = String.raw`
    */
   var unsent = {};
 
+  /**
+   * Where this review's unsent words live between page loads.
+   *
+   * A webview is rebuilt for any number of reasons that have nothing to do
+   * with the reviewer: switching diff modes, reloading the window, the
+   * extension being updated under them. Keeping half-written comments in a
+   * variable meant every one of those threw the sentence away, which is the
+   * kind of small betrayal that teaches people to draft somewhere else first.
+   */
+  var DRAFT_STORE = "odin.drafts:" + (data.review || "here");
+
+  function saveDrafts() {
+    try {
+      if (drafts.length === 0 && Object.keys(unsent).length === 0) {
+        window.localStorage.removeItem(DRAFT_STORE);
+        return;
+      }
+      window.localStorage.setItem(
+        DRAFT_STORE,
+        JSON.stringify({ drafts: drafts, unsent: unsent }),
+      );
+    } catch (e) {
+      // A full or disabled store is not worth interrupting a review over; the
+      // drafts still live for as long as the page does.
+    }
+  }
+
+  function loadDrafts() {
+    try {
+      var held = JSON.parse(window.localStorage.getItem(DRAFT_STORE) || "{}");
+      if (held && Array.isArray(held.drafts)) drafts = held.drafts;
+      if (held && held.unsent && typeof held.unsent === "object") {
+        unsent = held.unsent;
+      }
+    } catch (e) {
+      // Unreadable is the same as absent.
+    }
+  }
+
   function rememberOn(root, key) {
     var field = bodyOf(root);
     if (!field) return;
@@ -1807,13 +1846,20 @@ export const CLIENT_SCRIPT = String.raw`
     field.value = unsent[key] || "";
   }
 
-  function forget(key) { delete unsent[key]; }
+  function forget(key) {
+    delete unsent[key];
+    saveDrafts();
+  }
 
   document.addEventListener("input", function (event) {
     var field = event.target;
     if (!field || !field.dataset || !field.dataset.key) return;
     if (field.value.trim()) unsent[field.dataset.key] = field.value;
-    else forget(field.dataset.key);
+    else delete unsent[field.dataset.key];
+    // Written on every keystroke rather than on a timer: the event this is
+    // guarding against is the page going away without warning, and a timer
+    // that had not fired yet is exactly as good as no timer at all.
+    saveDrafts();
   });
 
   var blockCounter = 0;
@@ -2045,8 +2091,15 @@ export const CLIENT_SCRIPT = String.raw`
       composer.hidden = true;
       pending = null;
       clearSelection();
+      saveDrafts();
       refreshReview();
     });
+  }
+
+  /** The review's own summary box, which outlives the panel being closed. */
+  function restoreSummary() {
+    if (!panel) return;
+    rememberOn(panel, "review");
   }
 
   function refreshReview() {
@@ -2087,6 +2140,7 @@ export const CLIENT_SCRIPT = String.raw`
       panel.querySelectorAll(".drop").forEach(function (button) {
         button.addEventListener("click", function () {
           drafts.splice(Number(button.dataset.index), 1);
+          saveDrafts();
           refreshReview();
           markCommentedLines();
         });
@@ -2727,7 +2781,10 @@ export const CLIENT_SCRIPT = String.raw`
   window.addEventListener("message", function (event) {
     var message = event.data;
     if (message && message.type === "reviewSubmitted") {
+      // Sent is the one thing that is not a draft any more.
       drafts = [];
+      unsent = {};
+      saveDrafts();
       if (panel) {
         panel.hidden = true;
         bodyOf(panel).value = "";
@@ -4309,6 +4366,9 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   refreshFilters();
+  // Whatever was written last time and never sent, back where it was left.
+  loadDrafts();
+  restoreSummary();
   refreshReview();
   buildMarks();
   fit();
