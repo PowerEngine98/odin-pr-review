@@ -6,6 +6,7 @@ import {
   listRefs,
   inlineAvatars,
   listReviewComments,
+  worktreeFor,
   serializeGraph,
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
@@ -154,6 +155,29 @@ async function checkout(number: number): Promise<void> {
       `Odin: ${count} uncommitted change${count === 1 ? "" : "s"} in this ` +
         `worktree. Commit or stash before switching to #${number}.`,
     );
+    return;
+  }
+
+  // A branch cannot be checked out twice, and a repository with worktrees very
+  // often has this one open elsewhere. Git says so in a sentence about locks
+  // and exit codes; the useful answer is where it is, and an offer to go there.
+  const open = await listPullRequests({ cwd: repo }).catch(() => []);
+  const pull = open.find((p) => p.number === number);
+  const elsewhere = pull ? await worktreeFor(pull.branch, { cwd: repo }) : undefined;
+  if (elsewhere && elsewhere !== repo) {
+    const go = "Open That Folder";
+    const answer = await vscode.window.showWarningMessage(
+      `Odin: #${number} is already checked out at ${elsewhere}.`,
+      { modal: false, detail: "A branch can only be checked out once." },
+      go,
+    );
+    if (answer === go) {
+      await vscode.commands.executeCommand(
+        "vscode.openFolder",
+        vscode.Uri.file(elsewhere),
+        { forceNewWindow: true },
+      );
+    }
     return;
   }
 
