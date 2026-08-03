@@ -59,6 +59,12 @@ export function activate(context: vscode.ExtensionContext): void {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     vscode.commands.registerCommand("odin.showGraph", () => GraphPanel.revealCurrent()),
+    // The graph is the width it is given, and this list is most of what it is
+    // not being given. Folding the bar away is the one thing its own title bar
+    // can do for the picture beside it.
+    vscode.commands.registerCommand("odin.hideSidebar", () =>
+      vscode.commands.executeCommand("workbench.action.closeSidebar"),
+    ),
     vscode.commands.registerCommand("odin.chooser", () => sidebar.showChooser()),
     vscode.commands.registerCommand("odin.refresh", () =>
       review(last?.baseRef),

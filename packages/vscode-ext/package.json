@@ -90,6 +90,12 @@
         "title": "Focus a File in the Graph",
         "category": "Odin",
         "enablement": "false"
+      },
+      {
+        "command": "odin.hideSidebar",
+        "title": "Hide the Side Bar",
+        "category": "Odin",
+        "icon": "$(layout-sidebar-left-off)"
       }
     ],
     "configuration": {
@@ -146,7 +152,7 @@
           "group": "navigation@0"
         },
         {
-          "command": "odin.showGraph",
+          "command": "odin.hideSidebar",
           "when": "view == odin.changes",
           "group": "navigation@1"
         },
