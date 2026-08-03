@@ -96,6 +96,12 @@
         "title": "Hide the Side Bar",
         "category": "Odin",
         "icon": "$(layout-sidebar-left-off)"
+      },
+      {
+        "command": "odin.showExplorer",
+        "title": "Back to the File Explorer",
+        "category": "Odin",
+        "icon": "$(files)"
       }
     ],
     "configuration": {
@@ -152,14 +158,19 @@
           "group": "navigation@0"
         },
         {
-          "command": "odin.hideSidebar",
+          "command": "odin.showExplorer",
           "when": "view == odin.changes",
           "group": "navigation@1"
         },
         {
-          "command": "odin.refresh",
+          "command": "odin.hideSidebar",
           "when": "view == odin.changes",
           "group": "navigation@2"
+        },
+        {
+          "command": "odin.refresh",
+          "when": "view == odin.changes",
+          "group": "navigation@3"
         }
       ]
     }

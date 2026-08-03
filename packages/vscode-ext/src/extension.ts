@@ -63,6 +63,12 @@ export function activate(context: vscode.ExtensionContext): void {
     // The graph is the width it is given, and this list is most of what it is
     // not being given. Folding the bar away is the one thing its own title bar
     // can do for the picture beside it.
+    // The list replaces the explorer in the same bar, and going back to the
+    // files is otherwise a hunt through the activity bar for the icon that was
+    // there a moment ago.
+    vscode.commands.registerCommand("odin.showExplorer", () =>
+      vscode.commands.executeCommand("workbench.view.explorer"),
+    ),
     vscode.commands.registerCommand("odin.hideSidebar", () =>
       vscode.commands.executeCommand("workbench.action.closeSidebar"),
     ),
