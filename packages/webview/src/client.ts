@@ -85,8 +85,11 @@ export const CLIENT_SCRIPT = String.raw`
     // screen coordinates, so a view that moves without telling them leaves them
     // behind, or hidden off the edge as if they did not exist.
     placeComposer();
-    placeThread();
+    // Marks first: the thread is placed against its mark, and placing it before
+    // the mark had moved left it a frame behind — enough, after a flight across
+    // the canvas, to sit on the wrong side of the file it belongs to.
     placeMarks();
+    placeThread();
     pinTitles();
   }
 
@@ -3200,15 +3203,52 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   /** Under the mark that opened it, and inside the window. */
+  /**
+   * Puts the thread in the space beside the file rather than over it.
+   *
+   * Its top right corner meets the mark, so the box opens away from the card
+   * into the empty canvas on that side: a reader answering a remark is reading
+   * the code it is about, and a panel over that code takes away the thing being
+   * discussed. It falls to the other side when that side has no room, and never
+   * climbs into the chrome — the tabs and the pull request stay reachable while
+   * a thread is open.
+   */
   function placeThread() {
     if (!threadBox || threadBox.hidden || !openMark) return;
+
     var mark = openMark.getBoundingClientRect();
+    var ceiling = (chromeBar ? chromeBar.getBoundingClientRect().bottom : 0) + 8;
+    var gap = 10;
+
+    // The box would rather be narrow than be over the code it is about, so it
+    // takes the room beside the file and shrinks into it, down to the width a
+    // sentence still reads at. Below that it is not a thread any more and goes
+    // to the other side instead.
+    var WIDEST = 430;
+    var NARROWEST = 300;
+    var beside = mark.left - gap - 8;
+    threadBox.style.width =
+      Math.round(Math.max(NARROWEST, Math.min(WIDEST, beside))) + "px";
+
     var box = threadBox.getBoundingClientRect();
-    var left = Math.min(Math.max(8, mark.left - 8), window.innerWidth - box.width - 8);
-    var below = mark.bottom + 8;
-    var top = below + box.height > window.innerHeight - 8
-      ? Math.max(8, mark.top - box.height - 8)
-      : below;
+
+    // Left of the mark by preference, which is away from the card it points at.
+    // When neither side has room for the whole box, it goes to the side with
+    // more of it and hugs that edge: a box that overhangs the window by fifty
+    // pixels covers fifty pixels of code, where the other side would cover the
+    // width of the whole thing.
+    var roomRight = window.innerWidth - 8 - (mark.right + gap);
+    var left;
+    if (beside >= box.width) left = mark.left - gap - box.width;
+    else if (roomRight >= box.width) left = mark.right + gap;
+    else left = Math.max(8, window.innerWidth - box.width - 8);
+
+    var top = mark.top;
+    if (top + box.height > window.innerHeight - 8) {
+      top = window.innerHeight - box.height - 8;
+    }
+    if (top < ceiling) top = ceiling;
+
     threadBox.style.left = Math.round(left) + "px";
     threadBox.style.top = Math.round(top) + "px";
   }

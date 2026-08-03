@@ -1980,8 +1980,19 @@ body:not(.split) .card-body.split-view { display: none; }
 }
 
 .remark { display: flex; gap: 8px; padding: 7px 0; }
-.remark + .remark { border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
-.remark .face { width: 22px; height: 22px; flex: 0 0 auto; }
+/* Everything after the opening remark is an answer to it, and sits under it:
+   a flat list of four faces is four people talking, not a conversation. */
+.remark + .remark {
+  border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  padding-left: 20px;
+}
+.remark .face {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+}
 .remark .said { min-width: 0; flex: 1 1 auto; }
 .remark .who { color: var(--text); font-weight: 600; }
 .remark .when { color: var(--muted); margin-left: 6px; font-size: 11px; }
