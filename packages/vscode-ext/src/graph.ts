@@ -22,6 +22,7 @@ import {
   PostgresResolver,
   PythonResolver,
   SqlResolver,
+  withDatabase,
 } from "@odin/resolver-lang";
 import { TsResolver } from "@odin/resolver-ts";
 
@@ -138,6 +139,9 @@ export async function buildGraphForRepo(
         graph = attachEdges(graph, await resolver.resolve(probes), {
           resolver: "ts",
         });
+        // Schema objects become a vertex of their own, so a migration points at
+        // the table it touches rather than at whichever file declared it.
+        graph = withDatabase(graph, { root: headRoot });
       } finally {
         await resolver.dispose();
       }

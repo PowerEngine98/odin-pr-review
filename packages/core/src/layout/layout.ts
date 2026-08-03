@@ -7,6 +7,7 @@ import {
   displayRows,
   pairRows,
   sideOf,
+  singlePane,
   titleLength,
   type DisplayRow,
   type RowPair,
@@ -163,7 +164,7 @@ function measureNodes(
     // would be blank from top to bottom, and a card twice as wide as it needs to
     // be to show that is a card that says nothing twice.
     const panes =
-      unified || node.status === "added" || node.status === "deleted" ? 1 : 2;
+      unified || singlePane(node) ? 1 : 2;
     const contentWidth = unified
       ? widest * metrics.charWidth +
         metrics.gutterWidth +

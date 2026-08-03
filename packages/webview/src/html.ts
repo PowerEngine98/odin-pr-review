@@ -4,6 +4,7 @@ import {
   components,
   describeGaps,
   pairRows,
+  singlePane,
   type ReviewComment,
   type ChangeGraph,
   type DisplayRow,
@@ -977,7 +978,7 @@ function card(
   // A file that exists on one side only has a single numbering, so both gutters
   // carry it: an empty column down a whole card reads as a column that failed
   // to draw, and the numbers are not in doubt — there is only one set of them.
-  const single = node.node.status === "added" || node.node.status === "deleted";
+  const single = singlePane(node.node);
   // Both ways of reading the change are written into the document and the page
   // shows one of them. Re-rendering on the switch would mean shipping the
   // renderer and the diff to the browser; this costs markup instead, which

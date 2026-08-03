@@ -16,6 +16,7 @@ import {
   PostgresResolver,
   PythonResolver,
   SqlResolver,
+  withDatabase,
 } from "@odin/resolver-lang";
 import { TsResolver } from "@odin/resolver-ts";
 
@@ -109,7 +110,10 @@ export async function resolveEdges(
     try {
       const results = await resolver.resolve(probes);
       const withEdges = attachEdges(graph, results, { resolver: "ts" });
-      return annotateCoverage(withEdges, languages);
+      // Schema objects become a vertex of their own, so a migration points at
+      // the table it touches rather than at whichever file declared it.
+      const withSchema = withDatabase(withEdges, { root: headRoot });
+      return annotateCoverage(withSchema, languages);
     } finally {
       await resolver.dispose();
     }

@@ -540,6 +540,21 @@ export interface CardTitle {
   note: string;
 }
 
+/**
+ * Whether a card is drawn as one column of code rather than two.
+ *
+ * A file that exists on one side only has one text to show, and a schema is not
+ * a diff at all — it is a list of what the database holds, which has no before
+ * and after to set beside each other.
+ */
+export function singlePane(node: FileNode): boolean {
+  return (
+    node.kind === "database" ||
+    node.status === "added" ||
+    node.status === "deleted"
+  );
+}
+
 export function cardTitle(node: FileNode): CardTitle {
   // A count of zero says nothing. "+54 −0" reads as though something was
   // removed and invites a second look at a file that only gained lines.
@@ -552,9 +567,13 @@ export function cardTitle(node: FileNode): CardTitle {
   return {
     name: basename(node.path),
     was: node.prevPath ? `← ${basename(node.prevPath)}` : "",
-    stats: untouched
-      ? "untouched"
-      : [additions, deletions].filter(Boolean).join(" "),
+    // A schema card is not a file that nothing happened to; it is a drawing of
+    // what the change talks to.
+    stats: node.kind === "database"
+      ? "schema"
+      : untouched
+        ? "untouched"
+        : [additions, deletions].filter(Boolean).join(" "),
     additions,
     deletions,
     note:

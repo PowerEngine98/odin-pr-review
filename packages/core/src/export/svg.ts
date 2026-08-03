@@ -1,5 +1,5 @@
 import type { GraphLayout, PlacedEdge, PlacedNode } from "../layout/layout.js";
-import { cardTitle, type DisplayRow } from "../layout/display.js";
+import { cardTitle, singlePane, type DisplayRow } from "../layout/display.js";
 import { fitText, rowOffset, textCapacity } from "../layout/layout.js";
 import { DARK_THEME, type Theme } from "../layout/theme.js";
 import type { EdgeChange } from "../model/types.js";
@@ -108,7 +108,7 @@ function card(
   // A card is two panes wide — the base of the change beside the head of it —
   // unless the file exists on one side only, which needs one.
   const panes =
-    unified || node.node.status === "added" || node.node.status === "deleted" ? 1 : 2;
+    unified || singlePane(node.node) ? 1 : 2;
   const paneWidth = (node.width - metrics.padding * 2) / panes;
   const capacity = textCapacity(node.width, metrics, panes);
 

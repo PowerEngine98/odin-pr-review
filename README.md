@@ -508,6 +508,8 @@ Done:
 - [x] Unified-diff parser (added, modified, deleted, renamed, binary)
 - [x] Reference resolution for TypeScript, JavaScript, Kotlin, Python, Clojure
       and SQL, including the parts that are only Postgres
+- [x] The database schema as a vertex: tables and functions as rows, with the
+      migrations that use them pointing at the row rather than at each other
 - [x] Phantom vertices for referenced-but-untouched files
 - [x] Deterministic layered layout with line-level arrow anchors
 - [x] Interactive renderer: follow an arrow, isolate a file, pan and zoom
@@ -612,6 +614,20 @@ type somebody declared. Which one a file gets is decided by the file: nearly
 every Postgres project names its migrations `.sql`, so the extension cannot say,
 and the text is asked instead — nobody writes `$$ … $$ LANGUAGE plpgsql` by
 accident.
+
+### The schema as a vertex
+
+A migration set read as a graph of files answers the wrong question. Nobody asks
+which migration mentions which other migration; they ask what this change does
+to the `invoices` table, and what else touches it. The table is the thing, and
+in a diff it is only ever implied — a name on a line in one file and a name on a
+line in another.
+
+So the objects are lifted out and given a card of their own: one per schema, a
+row per table, view, function, sequence or type that the change touches. Every
+reference lands on the row it names rather than on the file that happens to
+declare it, and each object points at whatever created it — so the migration
+that made a table is one arrow away, in the direction the question is asked.
 
 Python and Clojure share one engine, since a module and a namespace are the same
 idea spelled the same way. What differs is per language: Python's relative

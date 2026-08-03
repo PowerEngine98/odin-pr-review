@@ -157,6 +157,15 @@ export interface FileNode {
   resolution?: ResolutionStatus;
   /** Matches this ecosystem's conventions for test code. */
   isTest?: boolean;
+  /**
+   * What this vertex stands for.
+   *
+   * A file, unless something assembled it. The database vertex is a drawing of
+   * a schema rather than a thing on disk: its rows are the tables and functions
+   * the change touches, and the arrows that land on them come from the
+   * migrations and procedures that use them.
+   */
+  kind?: "file" | "database";
 }
 
 /** One end of an edge: a precise position inside a node. */

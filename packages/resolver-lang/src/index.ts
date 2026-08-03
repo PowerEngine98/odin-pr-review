@@ -6,6 +6,7 @@ import { DialectResolver, type DialectResolverOptions } from "./resolver.js";
 export { CLOJURE } from "./clojure.js";
 export { PYTHON } from "./python.js";
 export { POSTGRES, SQL } from "./sql.js";
+export { withDatabase, type DatabaseOptions } from "./database.js";
 export { DialectResolver, type DialectResolverOptions } from "./resolver.js";
 export { buildIndex, indexFile, type SymbolIndex } from "./index-build.js";
 export type { Candidate, Declaration, Dialect, FileFacts } from "./types.js";
