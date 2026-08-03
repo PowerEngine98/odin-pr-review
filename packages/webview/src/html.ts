@@ -270,6 +270,7 @@ export function renderHtml(
     `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
     edgeLayer(full),
     cards,
+    schemaMarks(full),
     portLayer(full),
     `</div></div>`,
     // Who has said something, and where. Docked under the chrome on the side
@@ -1223,6 +1224,33 @@ function pane(
     `<span class="text">${code(row, coloured?.get(row), palette)}</span></span>`;
 }
 
+/**
+ * The mark a schema card wears.
+ *
+ * A card whose rows are tables is not a file, and the fastest way to say so is
+ * the shape everybody already reads as a database. Drawn beside the card rather
+ * than inside it, since a card clips its own contents.
+ */
+const SCHEMA_MARK =
+  '<svg viewBox="0 0 48 42" width="44" height="38" aria-hidden="true">' +
+  '<ellipse cx="24" cy="9" rx="17" ry="6.6"/>' +
+  '<path d="M7 9v23c0 3.6 7.6 6.6 17 6.6s17-3 17-6.6V9"/>' +
+  '<path d="M7 17c0 3.6 7.6 6.6 17 6.6s17-3 17-6.6"/>' +
+  '<path d="M7 25c0 3.6 7.6 6.6 17 6.6s17-3 17-6.6"/>' +
+  "</svg>";
+
+function schemaMarks(layout: GraphLayout): string {
+  return layout.nodes
+    .filter((n) => n.node.kind === "database")
+    .map(
+      (n) =>
+        `<div class="schema-mark" data-id="${escapeHtml(n.node.id)}" ` +
+        `style="left:${Math.round(n.x + n.width / 2 - 22)}px;top:${n.y - 46}px">` +
+        `${SCHEMA_MARK}</div>`,
+    )
+    .join("");
+}
+
 function edgeLayer(layout: GraphLayout): string {
   // Sized in page units rather than in stroke widths: the stem is cut short by
   // exactly the head's length, and a head that grew with the stroke — the wire
@@ -1244,8 +1272,19 @@ function edgeLayer(layout: GraphLayout): string {
     `#arrow-unchanged path, .head-unchanged { fill: var(--unchanged); }` +
     `</style>`;
 
+  const schema = new Set(
+    layout.nodes.filter((n) => n.node.kind === "database").map((n) => n.node.id),
+  );
+
   const paths = layout.edges.map((edge) => {
     const { stem, head, full } = wire(edge);
+    // An arrow into or out of a schema card describes the shape of the
+    // database rather than a change to it, and is never hidden by a filter
+    // about references that did not change.
+    const structural =
+      schema.has(edge.edge.to.nodeId) || schema.has(edge.edge.from.nodeId)
+        ? " schema"
+        : "";
     // Two places to press. The dot where the arrow leaves takes you to where it
     // lands; the dashes past where it lands take you back. Following a
     // reference across a large graph otherwise means finding the other end by
@@ -1256,7 +1295,7 @@ function edgeLayer(layout: GraphLayout): string {
     const port =
       `<circle class="port out" cx="${edge.from.x + away * PORT_GAP}" cy="${edge.from.y}" r="4.5">` +
       `<title>Go to the definition this points at</title></circle>`;
-    return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
+    return `<g class="edge ${edge.edge.change} ${edge.edge.kind}${structural}" data-id="${escapeHtml(edge.id)}">` +
       `<path class="hit" d="${full}"/>` +
       `<path class="wire" d="${stem}"/>` +
       `<path class="head" d="${head}" marker-end="url(#arrow-${edge.edge.change})"/>` +

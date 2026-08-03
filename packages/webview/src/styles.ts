@@ -1132,6 +1132,23 @@ body:not(.split) .card-body.split-view { display: none; }
   opacity: 0;
 }
 
+/* The mark a schema card wears, drawn beside the card because a card clips its
+   own contents. Sized and placed in canvas units, so it travels with the
+   drawing rather than floating over it. */
+.schema-mark {
+  position: absolute;
+  color: var(--status-renamed);
+  opacity: 0.75;
+  pointer-events: none;
+}
+.schema-mark svg { fill: none; stroke: currentColor; stroke-width: 1.7; }
+
+/* An arrow that says what holds what, rather than what calls what. Dashed like
+   an import, since it is a fact about the shape rather than about the change. */
+.edges g.edge.schema path.wire { stroke: var(--status-renamed); opacity: 0.55; }
+.edges g.edge.schema .port { stroke: var(--status-renamed); }
+#arrow-schema path { fill: var(--status-renamed); }
+
 /* -------------------------------------------------------------------- edges */
 
 /* Two of them: the arrows, under the cards, and the dots at their heads, over

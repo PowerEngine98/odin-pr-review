@@ -774,6 +774,8 @@ export const CLIENT_SCRIPT = String.raw`
       });
     });
 
+    placeSchemaMarks();
+
     var tallest = 0;
     data.nodes.forEach(function (node) {
       var card = document.getElementById("card-" + cssId(node.id));
@@ -796,6 +798,31 @@ export const CLIENT_SCRIPT = String.raw`
     rerouteEdges();
     placeMarks();
     drawMinimap();
+  }
+
+  /**
+   * Keeps a schema's mark over its card.
+   *
+   * Cards are re-placed as the reader filters and switches parts, and the mark
+   * is drawn beside its card rather than inside it — a card clips its own
+   * contents — so it has to follow rather than be positioned once.
+   */
+  var schemaMarks = Array.prototype.slice.call(
+    document.querySelectorAll(".schema-mark"),
+  );
+
+  function placeSchemaMarks() {
+    schemaMarks.forEach(function (mark) {
+      var node = nodeFor(mark.dataset.id);
+      var card = node && document.getElementById("card-" + cssId(node.id));
+      if (!node || !card) return;
+      var away = card.classList.contains("hidden") ||
+        card.classList.contains("viewed-hidden");
+      mark.hidden = away;
+      if (away) return;
+      mark.style.left = Math.round(node.x + node.width / 2 - 22) + "px";
+      mark.style.top = Math.round(node.y - 46) + "px";
+    });
   }
 
   function nodeFor(id) {
@@ -2753,7 +2780,11 @@ export const CLIENT_SCRIPT = String.raw`
     edgeGroups.forEach(function (g) {
       var edge = data.edges.find(function (e) { return e.id === g.dataset.id; });
       var isImport = g.classList.contains("import");
-      var isUnchanged = g.classList.contains("unchanged");
+      // What holds what is not a reference that failed to change: a schema link
+      // is the drawing of the database, and hiding it leaves the tables
+      // floating with nothing to say where they came from.
+      var isUnchanged =
+        g.classList.contains("unchanged") && !g.classList.contains("schema");
       var gone =
         edge &&
         (!arrangement.nodes[edge.from] ||
