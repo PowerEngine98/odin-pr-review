@@ -177,7 +177,10 @@ html, body {
 .chrome {
   position: fixed;
   inset: 0 0 auto 0;
-  z-index: 20;
+  /* Above the reviewers, because its own menus open downward across them. A
+     z-index inside the bar cannot beat one outside it: the bar is a stacking
+     context, so everything it contains is stacked as the bar itself. */
+  z-index: 30;
   background: var(--card-bg);
 }
 
