@@ -1705,24 +1705,11 @@ body:not(.split) .card-body.split-view { display: none; }
 .minimap-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  justify-content: flex-end;
+  height: 14px;
+  margin-bottom: -4px;
 }
-.minimap-fold {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex: 1 1 auto;
-  padding: 0 2px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.minimap-fold:hover { color: var(--text); }
+
 
 /* Corners the reader has switched off. Stated with weight, because each of
    these is shown by script that knows nothing about the preference. */
@@ -1752,11 +1739,10 @@ body.hud-no-legend .toolbar { display: none !important; }
   border: 1px solid var(--panel-edge);
 }
 
-.minimap-fold .chev { transition: transform 120ms ease; }
-.minimap.folded .chev { transform: rotate(-90deg); }
-.minimap.folded .minimap-face { display: none; }
 
-.minimap-face { display: block; cursor: pointer; }
+/* Clipped: the map shows a window of the drawing when the reader is zoomed
+   in, and the files outside it stop at the edge. */
+.minimap-face { display: block; cursor: pointer; overflow: hidden; }
 /* The same colours the cards carry, so a rectangle here and a card there are
    recognisably the same file. */
 .minimap-face .on { opacity: 0.75; }
@@ -1766,10 +1752,13 @@ body.hud-no-legend .toolbar { display: none !important; }
 .minimap-face .renamed { fill: var(--status-renamed); }
 .minimap-face .phantom { fill: none; stroke: var(--status-phantom); stroke-width: 1; }
 /* What is on screen. An outline, because it is a window and not a thing. */
+/* Drawn over the files, so it has to beat a saturated green: a hairline in the
+   text colour vanished into the rectangles it was supposed to sit on. */
 .minimap-view {
-  fill: color-mix(in srgb, var(--text) 10%, transparent);
-  stroke: var(--text);
-  stroke-width: 1;
+  fill: color-mix(in srgb, #fff 14%, transparent);
+  stroke: #fff;
+  stroke-width: 1.5;
+  paint-order: stroke;
   pointer-events: none;
 }
 

@@ -277,9 +277,9 @@ export function renderHtml(
     `<div class="faces" hidden></div>` +
     `${HUD_CLOSE("comments", "the comments")}` +
     `<div class="reviewer-panel" hidden></div></div>`,
+    // No title and no fold: the map is a picture, it says what it is, and the
+    // only thing worth offering is a way to be rid of it.
     `<div class="minimap"><div class="minimap-head">` +
-    `<button class="minimap-fold" title="Fold the map away">` +
-    `<span class="minimap-title">map</span>${CHEVRON_DOWN}</button>` +
     `${HUD_CLOSE("map", "the map")}</div>` +
     `<svg class="minimap-face"><g class="minimap-nodes"></g>` +
     `<rect class="minimap-view"/></svg></div>`,

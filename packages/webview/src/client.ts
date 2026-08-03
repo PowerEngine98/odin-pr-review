@@ -153,6 +153,9 @@ export const CLIENT_SCRIPT = String.raw`
     view.y = Math.round(view.y * dpr) / dpr;
     paint();
     canvas.classList.remove("moving");
+    // The map's window follows the reader, but only once they have stopped:
+    // redrawing every rectangle on every frame of a drag is work nobody sees.
+    drawMinimap();
   }
 
   /* ------------------------------------------------------------ pan & zoom */
@@ -2936,10 +2939,52 @@ export const CLIENT_SCRIPT = String.raw`
   var MAP_SIZE = 150;
   var mapFit = null;
 
+  /**
+   * What the map should be a map of.
+   *
+   * The whole change while the reader can see most of it, and a window around
+   * them once they cannot. Zoomed into one file, a map of everything draws the
+   * view as a speck: true, and no use for the question being asked of it —
+   * which is what is next to me. The window is three times what is on screen,
+   * so the frame stays a third of the map and the neighbours are the rest.
+   */
+  function mapRegion() {
+    var box = shown();
+    if (!box.width || !box.height) return box;
+
+    var rect = viewport.getBoundingClientRect();
+    var top = chromeBar ? chromeBar.getBoundingClientRect().height : 0;
+    var wide = rect.width / view.scale;
+    var tall = (rect.height - top) / view.scale;
+
+    var want = Math.max(wide, tall) * 3;
+    if (want >= Math.max(box.width, box.height)) return box;
+
+    // Centred on the view, then pushed back inside the drawing so the map is
+    // never mostly empty at an edge.
+    var midX = (-view.x) / view.scale + wide / 2;
+    var midY = (top - view.y) / view.scale + tall / 2;
+    var size = want;
+
+    // A square window, so the square map is not letterboxed while zoomed in.
+    // Each axis is held inside the drawing on its own: a change is often far
+    // taller than it is wide, and the window can fit across it while being a
+    // slice of it downwards.
+    var width = Math.min(size, box.width);
+    var height = Math.min(size, box.height);
+
+    return {
+      x: Math.min(Math.max(midX - width / 2, box.x), box.x + box.width - width),
+      y: Math.min(Math.max(midY - height / 2, box.y), box.y + box.height - height),
+      width: width,
+      height: height,
+    };
+  }
+
   function drawMinimap() {
     if (!minimap || !minimapNodes) return;
 
-    var box = shown();
+    var box = mapRegion();
     if (!box.width || !box.height) { minimap.hidden = true; return; }
     minimap.hidden = false;
 
@@ -3021,25 +3066,6 @@ export const CLIENT_SCRIPT = String.raw`
       view.x = rect.width / 2 - atX * view.scale;
       view.y = rect.height / 2 - atY * view.scale;
       apply(200);
-    });
-  }
-
-  var mapHead = minimap && minimap.querySelector(".minimap-fold");
-  if (mapHead) {
-    var folded = false;
-    try {
-      folded = window.localStorage.getItem("odin.map") === "folded";
-    } catch (e) {}
-    minimap.classList.toggle("folded", folded);
-
-    mapHead.addEventListener("click", function () {
-      folded = !minimap.classList.contains("folded");
-      minimap.classList.toggle("folded", folded);
-      mapHead.title = folded ? "Show the map" : "Hide the map";
-      try {
-        window.localStorage.setItem("odin.map", folded ? "folded" : "open");
-      } catch (e) {}
-      if (!folded) drawMinimap();
     });
   }
 
