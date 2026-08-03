@@ -3060,12 +3060,19 @@ export const CLIENT_SCRIPT = String.raw`
     // mark grows with the zoom and a guess made at one scale is wrong at every
     // other.
     var markSize = Math.max(26, Math.min(76, Math.round(28 * view.scale)));
-    var wants = 8 + 430 + 10 + markSize + Math.round(markSize * 0.31) + 10 + 8;
+    // The last term is breathing room: the file should not arrive with its
+    // edge against the conversation about it.
+    var wants = 8 + 430 + 10 + markSize + Math.round(markSize * 0.31) + 10 + 40;
     var centred = rect.width / 2 - (node.x + node.width / 2) * view.scale;
     var beside = wants - node.x * view.scale;
-    view.x = rect.width - wants > node.width * view.scale * 0.5
-      ? Math.min(centred, beside)
-      : centred;
+    // The file goes wherever leaves the most room, which is the further right
+    // of the two — centred is only enough when the file is wide enough to reach
+    // past the conversation on its own. Clamped so it cannot be pushed so far
+    // that the code itself runs out of window.
+    view.x = Math.min(
+      Math.max(centred, beside),
+      rect.width - 260 - node.x * view.scale,
+    );
     view.y = rect.height / 2 - y * view.scale;
     travelTo(mark.nodeId);
 

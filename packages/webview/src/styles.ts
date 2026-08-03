@@ -1262,6 +1262,14 @@ body:not(.split) .card-body.split-view { display: none; }
   background-image: none;
   box-shadow: none;
 }
+/* One block of colour, not a stack of rows that happen to share one. Each row
+   paints a pixel up into the one above so the boundary between two lit lines
+   does not show as a hairline once the canvas scale turns whole pixels into
+   fractions. */
+.row.picked + .row.picked,
+.row.discussing + .row.discussing {
+  box-shadow: 0 -1px 0 0 color-mix(in srgb, var(--warning) 20%, var(--card-bg));
+}
 .row.discussing .num { color: var(--text); opacity: 0.9; }
 .row.discussing .marker { color: color-mix(in srgb, var(--text) 75%, transparent); }
 
