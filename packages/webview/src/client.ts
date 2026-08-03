@@ -107,6 +107,12 @@ export const CLIENT_SCRIPT = String.raw`
   function paint() {
     canvas.style.transform =
       "translate(" + view.x + "px," + view.y + "px) scale(" + view.scale + ")";
+    // What one device pixel is worth in the canvas's own units. The seams
+    // between rows of the same colour are closed by painting a little way into
+    // the neighbour, and a fixed amount shrinks with the zoom: at a third of
+    // full size a one-pixel overlap covers a third of a pixel, and the hairline
+    // comes back everywhere at once.
+    canvas.style.setProperty("--zoom", String(view.scale));
     // Everything pinned to a line moves with it: the composer, the open thread,
     // and the marks in the margin. The marks especially — they are placed from
     // screen coordinates, so a view that moves without telling them leaves them

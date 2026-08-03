@@ -966,12 +966,16 @@ body:not(.split) .card-body.split-view { display: none; }
    closes the seam without touching layout: a shadow occupies no space, so
    nothing that measures rows can notice. Adjacency does the work of a wrapper
    element, which would break the sibling rules that open and close gaps. */
-.row.split:has(.side.add) + .row.split .side.add { box-shadow: 0 -1px 0 0 var(--add-bg); }
-.row.split:has(.side.del) + .row.split .side.del { box-shadow: 0 -1px 0 0 var(--del-bg); }
-.row.split:has(.side.empty) + .row.split .side.empty { box-shadow: 0 -1px 0 0 var(--gap-bg); }
-.row.flat.add + .row.flat.add { box-shadow: 0 -1px 0 0 var(--add-bg); }
-.row.flat.del + .row.flat.del { box-shadow: 0 -1px 0 0 var(--del-bg); }
-.row.gap + .row.gap { box-shadow: 0 -1px 0 0 var(--gap-bg); }
+/* Measured in the canvas's own units, which the page keeps in step with the
+   zoom: one device pixel is 1px at full size and 8px at an eighth of it, and a
+   seam is a device pixel wide wherever the reader happens to be. */
+.canvas { --seam: calc(-1px / var(--zoom, 1)); }
+.row.split:has(.side.add) + .row.split .side.add { box-shadow: 0 var(--seam) 0 0 var(--add-bg); }
+.row.split:has(.side.del) + .row.split .side.del { box-shadow: 0 var(--seam) 0 0 var(--del-bg); }
+.row.split:has(.side.empty) + .row.split .side.empty { box-shadow: 0 var(--seam) 0 0 var(--gap-bg); }
+.row.flat.add + .row.flat.add { box-shadow: 0 var(--seam) 0 0 var(--add-bg); }
+.row.flat.del + .row.flat.del { box-shadow: 0 var(--seam) 0 0 var(--del-bg); }
+.row.gap + .row.gap { box-shadow: 0 var(--seam) 0 0 var(--gap-bg); }
 
 /* A collapsed run of untouched code, banded the way a diff viewer marks the
    part of a file it is not showing. */
