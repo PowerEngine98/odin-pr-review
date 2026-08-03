@@ -327,6 +327,10 @@ function html(
   --status-deleted: ${theme.status.deleted};
   --status-renamed: ${theme.status.renamed};
   --status-phantom: ${theme.status.phantom};
+  /* The forge's own colour for a change that landed. Nothing in the diff
+     palette is purple — a renamed file is blue — and "merged" is a state of the
+     pull request rather than of a file, so it gets its own. */
+  --merged: #a371f7;
 }
 * { box-sizing: border-box; }
 
@@ -670,7 +674,7 @@ html, body { height: 100%; }
 .tag.ok { color: var(--status-added); }
 .tag.warn { color: var(--warning); }
 .tag.muted { color: var(--muted); }
-.tag.merged { color: var(--status-renamed); }
+.tag.merged { color: var(--merged); }
 .tag.closed { color: var(--status-deleted); }
 /* The search box and the question behind it, on one line. */
 .find { display: flex; align-items: center; gap: 6px; }
@@ -720,12 +724,18 @@ html, body { height: 100%; }
   background: transparent;
   cursor: pointer;
 }
-.chip:hover { color: var(--vscode-foreground); }
+.chip:hover { color: var(--vscode-foreground); border-color: currentColor; }
+/* Chosen, in the state's own colour and outlined — the same pill the row wears
+   when it is in that state, so the question and the answer are drawn alike.
+   The colours are the forge's: green open, purple merged, red closed. */
 .chip.on {
-  color: var(--vscode-editor-background);
-  background: var(--status-modified);
-  border-color: var(--status-modified);
+  color: var(--vscode-foreground);
+  border-color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
+.chip.on[data-state="open"]   { color: var(--status-added); }
+.chip.on[data-state="merged"] { color: var(--merged); }
+.chip.on[data-state="closed"] { color: var(--status-deleted); }
 .section.hidden { display: none; }
 /* The queue, and then everything else. Quiet enough not to compete with the
    rows under it, present enough to say the list is in two parts. */
@@ -905,7 +915,7 @@ if (funnel && asked) {
 
 /** Asks the host for a different set of pull requests. */
 function ask(change) {
-  vscode.postMessage({ type: "asked", ...change });
+  vscodeApi.postMessage({ type: "asked", ...change });
 }
 
 document.querySelectorAll(".asked .chip[data-state]").forEach((chip) => {
