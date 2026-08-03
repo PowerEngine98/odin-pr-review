@@ -1158,6 +1158,28 @@ body:not(.split) .card-body.split-view { display: none; }
 .card.asleep.status-deleted  { background: color-mix(in srgb, var(--status-deleted) 28%, var(--card-bg)); }
 .card.asleep.status-renamed  { background: color-mix(in srgb, var(--status-renamed) 24%, var(--card-bg)); }
 .card.asleep.status-phantom  { background: var(--card-bg); }
+/* A card being read as two panes says the same thing at a distance: what the
+   file was down the left, what it became down the right. One flat colour threw
+   that away at exactly the zoom where the split is the only thing still legible
+   about the card. Files that exist on one side only keep their one colour,
+   because they are drawn as one pane. */
+body.split .card.asleep.status-modified,
+body.split .card.asleep.status-renamed {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--removed) 20%, var(--card-bg)) 0 50%,
+    color-mix(in srgb, var(--added) 20%, var(--card-bg)) 50% 100%
+  );
+}
+/* A file that only gained lines has nothing to say down its left, and one that
+   only lost them has nothing to say down its right. Painting both halves would
+   put a colour on a side where nothing happened. */
+body.split .card.asleep.only-added {
+  background: color-mix(in srgb, var(--added) 20%, var(--card-bg));
+}
+body.split .card.asleep.only-removed {
+  background: color-mix(in srgb, var(--removed) 20%, var(--card-bg));
+}
 .edges g.edge.viewed-hidden { display: none; }
 .card.dim { opacity: 0.32; }
 .card.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }

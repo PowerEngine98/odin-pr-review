@@ -1024,7 +1024,15 @@ function card(
 
   const unresolved = title.note ? " unresolved" : "";
   const test = node.node.isTest ? " is-test" : "";
-  return `<div class="card status-${node.node.status}${unresolved}${test}" id="card-${cssId(node.id)}" ` +
+  // Which sides of the file actually changed, for the reading of a card too
+  // small to show its lines: a two-pane card painted half red would be
+  // claiming removals from a file that only ever gained.
+  const oneWay = node.node.stats.deletions === 0
+    ? " only-added"
+    : node.node.stats.additions === 0
+      ? " only-removed"
+      : "";
+  return `<div class="card status-${node.node.status}${unresolved}${test}${oneWay}" id="card-${cssId(node.id)}" ` +
     `data-id="${escapeHtml(node.id)}" data-path="${escapeHtml(node.path)}" style="${style}">
   <div class="card-title" title="${escapeHtml(node.path)}">` +
     // The same mark the file list puts beside the name, so a card and its row
