@@ -212,6 +212,9 @@ async function checkout(number: number): Promise<void> {
     await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Odin: checking out #${number}` },
       async () => {
+        // The graph on screen belongs to the branch being left, so it goes now
+        // rather than sitting there looking current while git moves under it.
+        await GraphPanel.showLoading(`Checking out #${number}`);
         try {
           await gh(["pr", "checkout", String(number)], repo);
         } catch (error) {
@@ -219,6 +222,7 @@ async function checkout(number: number): Promise<void> {
             `Odin: could not check out #${number}. ` +
               `${error instanceof Error ? error.message : String(error)}`,
           );
+          await GraphPanel.stopLoading(`Could not check out #${number}.`);
           return;
         }
         await refreshPullRequests();
@@ -256,6 +260,10 @@ async function review(baseRef?: string): Promise<void> {
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: "Odin" },
     async (progress) => {
+      // Reading a diff, resolving its references and laying them out is several
+      // seconds on a large change. The mark says so in the panel the reviewer
+      // is watching, not only in a notification in the corner.
+      await GraphPanel.showLoading("Reading the change");
       try {
         const { graph, shown, layout, layoutWithTests, unifiedLayout, unifiedWithTests } =
           await buildGraphForRepo({
@@ -263,12 +271,18 @@ async function review(baseRef?: string): Promise<void> {
           ...(base ? { baseRef: base } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
-          report: (message) => progress.report({ message }),
+          report: (message) => {
+            progress.report({ message });
+            GraphPanel.note(message);
+          },
         });
 
         if (graph.nodes.length === 0) {
           vscode.window.showInformationMessage(
             `Odin: nothing differs between ${graph.meta.baseRef} and the current branch.`,
+          );
+          await GraphPanel.stopLoading(
+            `Nothing differs between ${graph.meta.baseRef} and this branch.`,
           );
           return;
         }
@@ -307,6 +321,9 @@ async function review(baseRef?: string): Promise<void> {
         sidebar.setGraph(graph);
         last = { repo, ...(base ? { baseRef: base } : {}) };
       } catch (error) {
+        await GraphPanel.stopLoading(
+          error instanceof Error ? error.message : String(error),
+        );
         await reportFailure(repo, error);
       }
     },

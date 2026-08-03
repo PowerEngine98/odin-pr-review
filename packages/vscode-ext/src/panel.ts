@@ -18,11 +18,14 @@ import {
   type ReviewComment,
   type ReviewEvent,
 } from "@odin/core";
+import { readFile } from "node:fs/promises";
+
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { renderHtml } from "@odin/webview";
 import * as vscode from "vscode";
 
 import { baseUri } from "./baseContent.js";
+import { pageMark, waitingPage } from "./loading.js";
 import { activeTheme } from "./theme.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
@@ -111,6 +114,19 @@ export class GraphPanel {
       return GraphPanel.current;
     }
 
+    // The panel a loader is already running in, if the reviewer has been
+    // watching one: the graph belongs in the frame they have been looking at,
+    // not in a second one beside it.
+    const panel = GraphPanel.claimPending() ?? GraphPanel.frame();
+
+    GraphPanel.current = new GraphPanel(
+      panel, graph, layout, repo, withTests, viewed, highlight, alternate,
+    );
+    return GraphPanel.current;
+  }
+
+  /** A webview panel of our own, titled and iconed, with nothing in it yet. */
+  private static frame(): vscode.WebviewPanel {
     const panel = vscode.window.createWebviewPanel(
       "odin.graph",
       "Odin: Change Graph",
@@ -131,11 +147,69 @@ export class GraphPanel {
         dark: vscode.Uri.joinPath(GraphPanel.assets, "media", "odin-dark.svg"),
       };
     }
+    return panel;
+  }
 
-    GraphPanel.current = new GraphPanel(
-      panel, graph, layout, repo, withTests, viewed, highlight, alternate,
-    );
-    return GraphPanel.current;
+  /** The waiting panel, handed over once and forgotten. */
+  private static claimPending(): vscode.WebviewPanel | undefined {
+    const panel = GraphPanel.pending;
+    GraphPanel.pending = undefined;
+    GraphPanel.waiting = false;
+    return panel;
+  }
+
+  /** Open and empty, waiting on a graph that is still being built. */
+  private static pending: vscode.WebviewPanel | undefined;
+  /** Whether a loader is currently on screen, in whichever panel. */
+  private static waiting = false;
+
+  /**
+   * The mark, pulsing, while there is nothing yet to show.
+   *
+   * Building a graph means reading a diff, resolving every reference in it and
+   * laying the result out, which on a large change is several seconds of an
+   * editor that looks like it did nothing. The notification says a number; this
+   * says it in the place the reviewer is already looking.
+   */
+  static async showLoading(note: string): Promise<void> {
+    let panel = GraphPanel.current?.panel ?? GraphPanel.pending;
+    if (!panel) {
+      panel = GraphPanel.frame();
+      // Closed while it waits, and the wait is over: holding on to a disposed
+      // panel would throw the moment the graph tried to move in.
+      panel.onDidDispose(() => {
+        GraphPanel.pending = undefined;
+        GraphPanel.waiting = false;
+      });
+    }
+    if (!GraphPanel.current) GraphPanel.pending = panel;
+    GraphPanel.waiting = true;
+
+    panel.webview.html = await waitingHtml(panel.webview, note, true);
+    // Brought forward without stealing the cursor: the reviewer may well be
+    // typing somewhere else while this builds.
+    panel.reveal(vscode.ViewColumn.One, true);
+  }
+
+  /** A line of progress, without restarting the animation. */
+  static note(message: string): void {
+    if (!GraphPanel.waiting) return;
+    const panel = GraphPanel.current?.panel ?? GraphPanel.pending;
+    void panel?.webview.postMessage({ type: "note", message });
+  }
+
+  /**
+   * Ends the wait with words instead of a graph.
+   *
+   * Something has to replace the pulse when the build finds nothing or fails,
+   * or the page goes on promising a picture that is not coming.
+   */
+  static async stopLoading(note: string): Promise<void> {
+    if (!GraphPanel.waiting) return;
+    const panel = GraphPanel.current?.panel ?? GraphPanel.pending;
+    GraphPanel.waiting = false;
+    if (!panel) return;
+    panel.webview.html = await waitingHtml(panel.webview, note, false);
   }
 
   /** Brings the existing graph back to the front, if there is one. */
@@ -513,6 +587,8 @@ export class GraphPanel {
 
   private render(layout: GraphLayout): void {
     this.layout = layout;
+    // Whatever was being waited for has arrived.
+    GraphPanel.waiting = false;
     const dark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
@@ -666,6 +742,42 @@ export class GraphPanel {
     this.panel.dispose();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
   }
+}
+
+/**
+ * The mark, read off disk once and kept.
+ *
+ * Inlined rather than linked: the panel loads no local resources at all, and
+ * one drawing is not a reason to open that door.
+ */
+let mark: string | undefined;
+
+async function odinMark(): Promise<string> {
+  if (mark !== undefined) return mark;
+  if (!GraphPanel.assets) return (mark = "");
+  try {
+    const file = vscode.Uri.joinPath(GraphPanel.assets, "media", "odin.svg").fsPath;
+    mark = pageMark(await readFile(file, "utf8"));
+  } catch {
+    // No drawing is better than no page: the words still say what is going on.
+    mark = "";
+  }
+  return mark;
+}
+
+/** The waiting page, with the panel's own policy and the mark inlined. */
+async function waitingHtml(
+  webview: vscode.Webview,
+  note: string,
+  pulsing: boolean,
+): Promise<string> {
+  return waitingPage({
+    mark: await odinMark(),
+    note,
+    pulsing,
+    nonce: nonce(),
+    cspSource: webview.cspSource,
+  });
 }
 
 function nonce(): string {
