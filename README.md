@@ -525,11 +525,11 @@ Done:
 - [x] Pull-request chooser: what is waiting on you first, and which branches
       have moved since you last read them
 - [x] A minimap, forge checks, reviewers and the conversation, each dismissable
+- [x] Virtualisation: a card more than a screen and a half away, or zoomed past
+      legibility, is not rendered
 
 Next:
 
-- [ ] Virtualisation, so a change of a thousand files is as comfortable as one
-      of ten
 - [ ] Layout pinning, so a file keeps its place across pushes
 - [ ] Cross-package edges in monorepos that import through built declarations
 - [ ] Resolvers for more languages — the index-based engine takes a new one in
@@ -611,8 +611,9 @@ every function body opens with are kept out so `let` does not draw arrows.
   maps back to source would recover them.
 - A file with hundreds of added lines becomes a very tall card, since there is
   nothing unchanged in it to collapse.
-- Large pull requests render every card at once. Virtualisation is needed before
-  this is comfortable past a few hundred files.
+- Large pull requests still build every card's markup up front, even though only
+  what is near the screen is rendered. Past a few thousand files the document
+  itself becomes the cost.
 - A review still needs the branch checked out locally; there is no read-only
   mode that works straight from the forge.
 

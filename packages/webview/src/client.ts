@@ -92,6 +92,61 @@ export const CLIENT_SCRIPT = String.raw`
     placeThread();
     pinTitles();
     placeMapView();
+    virtualise();
+  }
+
+  /**
+   * How much of the drawing is worth rendering.
+   *
+   * A card is a few hundred rows of markup, and a change of four hundred files
+   * is most of a million elements the browser is laying out and painting on
+   * every frame — nearly all of it for cards that are nowhere near the screen,
+   * or so far zoomed out that the code inside is a smudge.
+   *
+   * Their contents are skipped rather than removed: the card keeps its size and
+   * its place, so nothing moves, the arrows still land where they landed, and
+   * the drawing is the same drawing. What comes back is a repaint, not a
+   * re-layout.
+   */
+  var VIRTUAL_PAD = 1.5;
+  /**
+   * Below this, a line of code is under two pixels tall.
+   *
+   * At that size a card is already a coloured block to the eye; rendering the
+   * text in it costs everything and shows nothing.
+   */
+  var LEGIBLE = 0.12;
+
+  function virtualise() {
+    if (!cards.length) return;
+
+    var rect = viewport.getBoundingClientRect();
+    var top = chromeBar ? chromeBar.getBoundingClientRect().height : 0;
+    var wide = rect.width / view.scale;
+    var tall = (rect.height - top) / view.scale;
+    var left = -view.x / view.scale - wide * VIRTUAL_PAD;
+    var upper = (top - view.y) / view.scale - tall * VIRTUAL_PAD;
+    var right = left + wide * (1 + VIRTUAL_PAD * 2);
+    var lower = upper + tall * (1 + VIRTUAL_PAD * 2);
+    var smudged = view.scale < LEGIBLE;
+
+    var woke = false;
+    cards.forEach(function (card) {
+      var node = nodeFor(card.dataset.id);
+      if (!node) return;
+      // A screen and a half of slack either way, so a card is awake and
+      // measured well before any arrow that lands on it can be seen.
+      var near = !smudged &&
+        node.x + node.width > left && node.x < right &&
+        node.y + node.height > upper && node.y < lower;
+      if (near === !card.classList.contains("asleep")) return;
+      card.classList.toggle("asleep", !near);
+      if (near) woke = true;
+    });
+
+    // An arrow anchored to a card that was not being rendered was anchored to
+    // its middle; now that the card is real again, ask it where the line is.
+    if (woke) rerouteEdges();
   }
 
   /**

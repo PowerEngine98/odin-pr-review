@@ -1142,6 +1142,22 @@ body:not(.split) .card-body.split-view { display: none; }
 
 .card.hidden,
 .card.viewed-hidden { display: none; }
+/* Too far away, or too far out, to be worth rendering. The box keeps its size
+   and its border — only what is written inside it is skipped — so the drawing
+   is the same drawing and nothing moves when it comes back. */
+.card.asleep {
+  content-visibility: hidden;
+  contain-intrinsic-size: auto;
+}
+/* Zoomed out past legibility, a card's contents are a smudge — but the smudge
+   still carried the shape and the colour of the change, and skipping it left
+   the drawing a field of empty boxes. The card takes its own status colour
+   instead, so what a reader is orienting by survives. */
+.card.asleep.status-added    { background: color-mix(in srgb, var(--status-added) 30%, var(--card-bg)); }
+.card.asleep.status-modified { background: color-mix(in srgb, var(--status-modified) 22%, var(--card-bg)); }
+.card.asleep.status-deleted  { background: color-mix(in srgb, var(--status-deleted) 28%, var(--card-bg)); }
+.card.asleep.status-renamed  { background: color-mix(in srgb, var(--status-renamed) 24%, var(--card-bg)); }
+.card.asleep.status-phantom  { background: var(--card-bg); }
 .edges g.edge.viewed-hidden { display: none; }
 .card.dim { opacity: 0.32; }
 .card.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
@@ -1831,8 +1847,10 @@ body.hud-no-map .minimap { display: none !important; }
 /* Drawn over the files, so it has to beat a saturated green: a hairline in the
    text colour vanished into the rectangles it was supposed to sit on. */
 .minimap-view {
-  fill: color-mix(in srgb, #fff 14%, transparent);
-  stroke: #fff;
+  /* Faint: it is a frame around what you are already looking at, not a thing to
+     look at. At full strength it washed out the very rectangles it sits on. */
+  fill: color-mix(in srgb, #fff 6%, transparent);
+  stroke: color-mix(in srgb, #fff 62%, transparent);
   stroke-width: 1.5;
   paint-order: stroke;
   pointer-events: none;
