@@ -42,6 +42,9 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
   /* The edge of a floating panel: the same shade as the strip of tabs, so the
      chrome reads as surfaces meeting rather than as boxes drawn on a page. */
   --panel-edge: color-mix(in srgb, var(--text) 8%, var(--card-bg));
+  /* The band the tabs sit on. Anything that runs along it takes the same
+     colour, so the only mark on that strip is the one that means something. */
+  --strip: color-mix(in srgb, var(--text) 8%, var(--card-bg));
   /* The wash over a picked range. Yellow because it is a selection, not a
      verdict: nothing has been said about these lines yet. */
   --pick-wash: color-mix(in srgb, var(--warning) 22%, transparent);
@@ -71,7 +74,7 @@ html, body {
    part is a mark on the page. */
 .done-bar {
   height: 2px;
-  background: transparent;
+  background: var(--strip);
 }
 .done-bar span {
   display: block;
@@ -93,7 +96,7 @@ html, body {
   gap: 2px;
   padding: 0 10px;
   overflow-x: auto;
-  background: color-mix(in srgb, var(--text) 8%, var(--card-bg));
+  background: var(--strip);
 }
 .part-tab {
   display: inline-flex;
