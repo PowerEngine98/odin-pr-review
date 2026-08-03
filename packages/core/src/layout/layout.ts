@@ -100,9 +100,11 @@ export function layoutGraph(
     (e) => byId.has(e.from.nodeId) && byId.has(e.to.nodeId),
   );
 
+  const parts = partOrder(graph);
   assignRanks(placed, byId, edges);
-  orderWithinRanks(placed, byId, edges, partOrder(graph));
+  orderWithinRanks(placed, byId, edges, parts);
   assignCoordinates(placed, byId, edges, metrics);
+  bandParts(placed, parts, metrics);
 
   const routed = routeEdges(edges, byId, metrics);
   const bounds = measureBounds(placed, metrics);
@@ -408,10 +410,55 @@ function assignRanks(
  */
 function partOrder(graph: ChangeGraph): Map<string, number> {
   const rank = new Map<string, number>();
-  components(graph).forEach((part, index) => {
-    for (const id of part.nodeIds) rank.set(id, index);
+  const parts = components(graph);
+  // Everything that stands alone shares the last place, the way the tabs put
+  // them all under "on their own" rather than giving each its own name.
+  const alone = parts.filter((p) => p.files > 1).length;
+  parts.forEach((part, index) => {
+    const place = part.files > 1 ? index : alone;
+    for (const id of part.nodeIds) rank.set(id, place);
   });
   return rank;
+}
+
+/**
+ * Gives each part of the change a stripe of the canvas to itself.
+ *
+ * Ordering the columns by part stops files interleaving inside a column, but a
+ * part spans several columns and their heights are packed independently, so one
+ * part's tall card still ran alongside the next part's short one. Read as a
+ * whole, the drawing was still several stories at the same altitude.
+ *
+ * So each part is moved down as a block, below everything before it. Positions
+ * within a part are untouched — every arrow keeps the shape the layout gave it
+ * — and the drawing grows taller by the gaps between the bands, which is the
+ * price of being able to read "everything" the way the tabs read.
+ */
+function bandParts(
+  nodes: PlacedNode[],
+  part: Map<string, number>,
+  metrics: LayoutMetrics,
+): void {
+  const bands = new Map<number, PlacedNode[]>();
+  for (const node of nodes) {
+    const place = part.get(node.id) ?? part.size;
+    const band = bands.get(place);
+    if (band) band.push(node);
+    else bands.set(place, [node]);
+  }
+
+  let top = metrics.margin;
+  for (const place of [...bands.keys()].sort((a, b) => a - b)) {
+    const band = bands.get(place)!;
+    const highest = band.reduce((min, n) => Math.min(min, n.y), Infinity);
+    const shift = top - highest;
+    let bottom = top;
+    for (const node of band) {
+      node.y += shift;
+      bottom = Math.max(bottom, node.y + node.height);
+    }
+    top = bottom + metrics.rowGap * 6;
+  }
 }
 
 function orderWithinRanks(
