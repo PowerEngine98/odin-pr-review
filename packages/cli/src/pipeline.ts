@@ -11,6 +11,7 @@ import {
   type ReferenceResolver,
 } from "@odin/core";
 import { KotlinResolver } from "@odin/resolver-kotlin";
+import { ClojureResolver, PythonResolver } from "@odin/resolver-lang";
 import { TsResolver } from "@odin/resolver-ts";
 
 export interface ResolveRequest {
@@ -49,6 +50,14 @@ export async function resolveEdges(
       ...(resolveImports ? {} : { includeImports: false }),
     }),
     new KotlinResolver({
+      roots,
+      ...(resolveImports ? {} : { includeImports: false }),
+    }),
+    new PythonResolver({
+      roots,
+      ...(resolveImports ? {} : { includeImports: false }),
+    }),
+    new ClojureResolver({
       roots,
       ...(resolveImports ? {} : { includeImports: false }),
     }),

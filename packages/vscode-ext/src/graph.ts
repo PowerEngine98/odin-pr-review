@@ -17,6 +17,7 @@ import {
   type GraphLayout,
 } from "@odin/core";
 import { KotlinResolver } from "@odin/resolver-kotlin";
+import { ClojureResolver, PythonResolver } from "@odin/resolver-lang";
 import { TsResolver } from "@odin/resolver-ts";
 
 
@@ -77,6 +78,14 @@ export async function buildGraphForRepo(
       ...(request.includeImports ? {} : { includeImports: false }),
     }),
     new KotlinResolver({
+      roots,
+      ...(request.includeImports ? {} : { includeImports: false }),
+    }),
+    new PythonResolver({
+      roots,
+      ...(request.includeImports ? {} : { includeImports: false }),
+    }),
+    new ClojureResolver({
       roots,
       ...(request.includeImports ? {} : { includeImports: false }),
     }),

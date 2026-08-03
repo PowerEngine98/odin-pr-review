@@ -77,6 +77,8 @@ export type Confidence = "resolved" | "heuristic" | "guess";
 export type ResolverId =
   | "ts"
   | "kotlin"
+  | "python"
+  | "clojure"
   | "lsp"
   | "tree-sitter"
   | "regex"

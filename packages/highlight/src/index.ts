@@ -62,6 +62,7 @@ export interface Highlighter {
 const SHIKI_ID: Record<string, string> = {
   c: "c",
   cpp: "cpp",
+  clojure: "clojure",
   csharp: "csharp",
   css: "css",
   dockerfile: "docker",
@@ -100,6 +101,7 @@ const SHIKI_ID: Record<string, string> = {
 const GRAMMARS: Record<string, () => Promise<LanguageInput>> = {
   c: () => import("@shikijs/langs/c"),
   cpp: () => import("@shikijs/langs/cpp"),
+  clojure: () => import("@shikijs/langs/clojure"),
   csharp: () => import("@shikijs/langs/csharp"),
   css: () => import("@shikijs/langs/css"),
   docker: () => import("@shikijs/langs/docker"),

@@ -22,6 +22,9 @@
     },
     {
       "path": "../highlight"
+    },
+    {
+      "path": "../resolver-lang"
     }
   ]
 }

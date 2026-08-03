@@ -5,12 +5,24 @@
     "outDir": "./dist",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2022"],
-    "types": ["node", "vscode"],
+    "lib": [
+      "ES2022"
+    ],
+    "types": [
+      "node",
+      "vscode"
+    ],
     "composite": false,
     "declaration": false,
     "declarationMap": false,
     "noEmit": true
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../resolver-lang"
+    }
+  ]
 }
