@@ -135,6 +135,10 @@ export function renderHtml(
     // The pane width depends on the card, which the page measures for itself.
     padding: layout.metrics.padding,
     gutterWidth: layout.metrics.gutterWidth,
+    // Needed to lay a part out on its own: the space the engine leaves between
+    // columns, and the margin it keeps around the whole drawing.
+    columnGap: layout.metrics.columnGap,
+    margin: layout.metrics.margin,
     // Cards come from the arrangement that includes everything, so the markup
     // holds every file; only positions and visibility change with the toggle.
     nodes: full.nodes.map((n) => ({

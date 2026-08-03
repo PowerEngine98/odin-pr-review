@@ -460,10 +460,112 @@ export const CLIENT_SCRIPT = String.raw`
     return card.querySelector(splitMode ? ".card-body.split-view" : ".card-body.unified-view");
   }
 
+  /**
+   * Positions for one part of the change, closed up.
+   *
+   * A part keeps the coordinates the whole change gave it, and those were
+   * chosen with forty other files in the picture: columns as wide as the widest
+   * card anywhere, rows spaced for cards that are no longer on screen. Read on
+   * its own, a part of three files was three cards in the corners of an empty
+   * canvas.
+   *
+   * The cards keep their sizes and their column order, which is what the arrows
+   * were routed around; only the space between them closes. Each column takes
+   * the width of the widest card still in it, and the whole part is brought
+   * back to the margin.
+   */
+  function packed(arrangement) {
+    var columns = {};
+    var order = [];
+    var top = Infinity;
+
+    data.nodes.forEach(function (node) {
+      if (!focused[node.id]) return;
+      var placed = arrangement.nodes[node.id];
+      if (!placed) return;
+      if (!columns[placed.column]) { columns[placed.column] = []; order.push(placed.column); }
+      columns[placed.column].push({ id: node.id, placed: placed });
+      top = Math.min(top, placed.y);
+    });
+
+    order.sort(function (a, b) { return a - b; });
+
+    // Vertical bands nobody in this part occupies. Rows were spaced for files
+    // that are no longer here, and a part read on its own should not open with
+    // two screens of nothing between its second and third card. Gaps close to
+    // the same clearance the engine leaves; the order and the rough alignment
+    // that keeps arrows level survive, because only the empty stretches move.
+    var spans = [];
+    order.forEach(function (column) {
+      columns[column].forEach(function (entry) {
+        spans.push([entry.placed.y, entry.placed.y + entry.placed.height]);
+      });
+    });
+    spans.sort(function (a, b) { return a[0] - b[0]; });
+
+    var lifts = [];
+    var lifted = 0;
+    var reach = -Infinity;
+    spans.forEach(function (span) {
+      if (reach !== -Infinity && span[0] - reach > data.rowGap) {
+        lifted += span[0] - reach - data.rowGap;
+      }
+      lifts.push({ from: span[0], by: lifted });
+      reach = Math.max(reach, span[1]);
+    });
+
+    var liftFor = function (y) {
+      var by = 0;
+      for (var i = 0; i < lifts.length; i++) {
+        if (lifts[i].from > y) break;
+        by = lifts[i].by;
+      }
+      return by;
+    };
+
+    var out = {};
+    var x = data.margin;
+    var right = data.margin;
+    var bottom = data.margin;
+
+    order.forEach(function (column) {
+      var widest = columns[column].reduce(function (max, entry) {
+        return Math.max(max, entry.placed.width || 0);
+      }, 0);
+
+      columns[column].forEach(function (entry) {
+        var y = entry.placed.y - liftFor(entry.placed.y) - top + data.margin;
+        // Centred in the column the way the engine centres them, so a narrow
+        // card beside a wide one keeps its arrows level.
+        var offset = Math.round((widest - (entry.placed.width || 0)) / 2);
+        out[entry.id] = {
+          x: x + offset,
+          y: y,
+          width: entry.placed.width,
+          height: entry.placed.height,
+          column: entry.placed.column,
+        };
+        bottom = Math.max(bottom, y + entry.placed.height);
+      });
+
+      x += widest + data.columnGap;
+      right = x;
+    });
+
+    return {
+      nodes: out,
+      width: Math.round(right + data.margin),
+      height: Math.round(bottom + data.margin),
+    };
+  }
+
   function recompute() {
     var showTests = document.getElementById("filter-tests").checked;
     var hideViewed = document.getElementById("filter-viewed").checked;
     var arrangement = arrangementFor(showTests);
+    // A part is laid out for itself rather than shown in the space the whole
+    // change left for it.
+    if (focused) arrangement = packed(arrangement);
 
     // What counts as read: marked by hand, or accounted for by everything that
     // referenced it having been marked.
