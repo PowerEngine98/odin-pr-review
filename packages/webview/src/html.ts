@@ -270,8 +270,12 @@ export function renderHtml(
     // come back to rather than a thing to find again.
     `<div class="reviewers">` +
     reviewerList(graph.meta.pullRequest?.reviewers ?? []) +
+    // The way out sits beside the pill rather than under it: under it is where
+    // the list of threads opens, and a cross in that space reads as belonging
+    // to the thread it happens to be nearest.
+    `<div class="faces-row">` +
     `<div class="faces" hidden></div>` +
-    `${HUD_CLOSE("comments", "the comments")}` +
+    `${HUD_CLOSE("comments", "the comments")}</div>` +
     `<div class="reviewer-panel" hidden></div></div>`,
     // No title and no fold: the map is a picture, it says what it is, and the
     // only thing worth offering is a way to be rid of it.

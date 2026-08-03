@@ -1733,8 +1733,16 @@ body:not(.split) .card-body.split-view { display: none; }
 .reviewers:hover .hud-close { opacity: 1; }
 .hud-close:hover { color: var(--text); background: color-mix(in srgb, var(--text) 12%, transparent); }
 
-/* The comments pill has no header to put it in, so it hangs off the corner. */
-.reviewers > .hud-close { align-self: flex-end; margin-top: -4px; }
+/* The comments pill has no header to put its cross in, so the cross sits
+   alongside it — to the right, clear of the space the thread list opens into. */
+.faces-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+/* No pill, nothing to close. */
+.faces-row:has(.faces[hidden]) { display: none; }
 
 .review-head {
   display: flex;
@@ -1754,7 +1762,7 @@ body:not(.split) .card-body.split-view { display: none; }
 /* Corners the reader has switched off. Stated with weight, because each of
    these is shown by script that knows nothing about the preference. */
 body.hud-no-reviewers .review-list,
-body.hud-no-comments .faces,
+body.hud-no-comments .faces-row,
 body.hud-no-comments .reviewer-panel,
 body.hud-no-map .minimap { display: none !important; }
 
