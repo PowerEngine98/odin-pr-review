@@ -1,4 +1,5 @@
 import { sortGraph } from "../graph/build.js";
+import { components } from "../graph/components.js";
 import type { ChangeGraph, Edge, FileNode, Side } from "../model/types.js";
 import {
   anchorRowForLine,
@@ -100,7 +101,7 @@ export function layoutGraph(
   );
 
   assignRanks(placed, byId, edges);
-  orderWithinRanks(placed, byId, edges);
+  orderWithinRanks(placed, byId, edges, partOrder(graph));
   assignCoordinates(placed, byId, edges, metrics);
 
   const routed = routeEdges(edges, byId, metrics);
@@ -391,14 +392,45 @@ function assignRanks(
  * Four sweeps in each direction, which is well past the point of diminishing
  * returns for the graph sizes a pull request produces.
  */
+/**
+ * Which part of the change each file belongs to, in the order the parts are
+ * offered.
+ *
+ * The tabs above the drawing already split a change into the pieces that do not
+ * reach each other, largest first, with the files nothing calls at the end. The
+ * drawing itself ignored that and laid every file out together, so a change of
+ * six independent stories came out as one interleaved thicket — and the same
+ * file sat in a different place depending on which tab was open.
+ *
+ * Grouping the whole drawing the way the parts are grouped costs nothing and
+ * buys both: the parts stack down the canvas in the order they are listed, and
+ * a part opened on its own keeps the shape it had in the picture of everything.
+ */
+function partOrder(graph: ChangeGraph): Map<string, number> {
+  const rank = new Map<string, number>();
+  components(graph).forEach((part, index) => {
+    for (const id of part.nodeIds) rank.set(id, index);
+  });
+  return rank;
+}
+
 function orderWithinRanks(
   nodes: PlacedNode[],
   byId: Map<string, PlacedNode>,
   edges: Edge[],
+  part: Map<string, number>,
 ): void {
+  // Files whose part is unknown sort after every known one rather than at the
+  // front, which is where an absent number would otherwise put them.
+  const partOf = (node: PlacedNode) => part.get(node.id) ?? part.size;
+
   const ranks = groupByRank(nodes);
   for (const group of ranks) {
-    group.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    group.sort(
+      (a, b) =>
+        partOf(a) - partOf(b) ||
+        (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+    );
     group.forEach((node, i) => { node.order = i; });
   }
 
@@ -427,8 +459,11 @@ function orderWithinRanks(
           : linked.reduce((sum, n) => sum + n.order, 0) / linked.length,
       );
     }
+    // The part comes first and the barycentre second: a sweep may tidy a file's
+    // place among its own part, never move it out of one.
     group.sort(
       (a, b) =>
+        partOf(a) - partOf(b) ||
         key.get(a.id)! - key.get(b.id)! ||
         a.order - b.order ||
         (a.path < b.path ? -1 : 1),
