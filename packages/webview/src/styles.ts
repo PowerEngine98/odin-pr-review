@@ -194,7 +194,12 @@ html, body {
   position: fixed;
   right: 14px;
   bottom: 52px;
-  z-index: 20;
+  /* Above the marks in the margin: a face drawn over the switches makes them
+     look pressable through it, and the panel is the thing being read. */
+  z-index: 24;
+  /* A change in six languages nothing could read is a long sentence, and the
+     panel is a corner of a drawing, not a column of prose. */
+  max-width: 320px;
   display: flex;
   align-items: stretch;
   flex-direction: column;
@@ -863,17 +868,17 @@ input[type="checkbox"]:checked::after {
 }
 .card.unresolved { border-style: dashed; }
 
-/* A pill radius on a box that has wrapped turns it into a circle, which is
-   what a narrow editor panel does to it. Fixed radius, one line, and let the
-   toolbar scroll instead. */
+/* Wraps within the panel rather than stretching it. A fixed radius, because a
+   pill radius on a box of two or three lines turns it into a lozenge. */
 .toolbar .gaps {
-  align-self: center;
+  align-self: stretch;
   color: var(--warning);
   border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent);
   background: color-mix(in srgb, var(--warning) 12%, transparent);
   border-radius: 5px;
-  padding: 1px 8px;
-  white-space: nowrap;
+  padding: 2px 8px;
+  white-space: normal;
+  line-height: 1.4;
   flex: 0 0 auto;
 }
 
