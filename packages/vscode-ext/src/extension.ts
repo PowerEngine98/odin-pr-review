@@ -161,7 +161,7 @@ async function refreshPullRequests(): Promise<void> {
 
   sidebar.setLoading(true);
   try {
-    const [pulls, branch, me] = await Promise.all([
+    const [answer, branch, me] = await Promise.all([
       listPullRequests({
         cwd: repo,
         state: asked.state,
@@ -172,6 +172,10 @@ async function refreshPullRequests(): Promise<void> {
       // Asked once per refresh and cached by the forge client.
       currentUser({ cwd: repo }).catch(() => undefined),
     ]);
+    // Nothing at all is not the same as nothing matching: a forge that could not
+    // be reached, or gave up, would otherwise be reported as "there are none".
+    const pulls = answer ?? [];
+
     // A webview will not fetch a remote image, so each author's picture travels
     // inside the document. Best-effort and in parallel: a face that will not
     // load leaves an initial, and nothing waits on the network for long.
@@ -185,7 +189,7 @@ async function refreshPullRequests(): Promise<void> {
     );
     known.clear();
     for (const pull of pulls) known.set(pull.number, pull);
-    sidebar.setPullRequests(pulls, branch ?? "", repo, me ?? "");
+    sidebar.setPullRequests(pulls, branch ?? "", repo, me ?? "", answer !== undefined);
   } finally {
     // Whatever happened, the bar stops: a progress bar that never ends says
     // the tool is still trying when it has given up.
@@ -243,7 +247,7 @@ async function checkout(number: number): Promise<void> {
   // A branch cannot be checked out twice, and a repository with worktrees very
   // often has this one open elsewhere. Git says so in a sentence about locks
   // and exit codes; the useful answer is where it is, and an offer to go there.
-  const open = await listPullRequests({ cwd: repo }).catch(() => []);
+  const open = (await listPullRequests({ cwd: repo }).catch(() => [])) ?? [];
   const pull = open.find((p) => p.number === number);
 
   // Already here. Switching to the branch you are on is a no-op that still

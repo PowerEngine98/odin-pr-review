@@ -94,6 +94,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private viewer = "";
   /** What the list last asked the forge for. */
   private asked: Query = { state: "open", author: "" };
+  /** Whether the forge answered at all, as opposed to answering with nothing. */
+  private reached = true;
   /** Something is being fetched, and the view says so rather than sitting blank. */
   private loading = false;
   /** The part of the change the panel is showing, when it is showing one. */
@@ -243,7 +245,9 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     branch: string,
     repo = "",
     viewer = "",
+    reached = true,
   ): void {
+    this.reached = reached;
     this.pulls = pulls;
     this.branch = branch;
     this.repo = repo;
@@ -296,6 +300,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       (pr) => this.seen?.movedOn(this.repo, pr.number, pr.headSha) === true,
       this.viewer,
       this.asked,
+      this.reached,
     );
   }
 }
@@ -310,10 +315,11 @@ function html(
   moved: (pr: PullRequestSummary) => boolean = () => false,
   viewer = "",
   asked: Query = { state: "open", author: "" },
+  reached = true,
 ): string {
   const body = graph
     ? header(graph, viewed) + renderTree(buildTree(graph.nodes), graph, 0, viewed)
-    : picker(pulls, branch, moved, viewer, asked);
+    : picker(pulls, branch, moved, viewer, asked, reached);
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -700,7 +706,8 @@ html, body { height: 100%; }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 6px 0 2px;
+  /* Room under it, so the question and the first answer are not one block. */
+  margin: 6px 0 12px;
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
   border-radius: 6px;
@@ -743,7 +750,7 @@ html, body { height: 100%; }
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px 4px;
+  padding: 10px 10px 4px;
   font-size: 0.9em;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -1089,6 +1096,7 @@ export function picker(
   moved: (pr: PullRequestSummary) => boolean,
   viewer = "",
   asked: Query = { state: "open", author: "" },
+  reached = true,
 ): string {
   // What the forge is waiting on this reader for, first and under its own
   // heading. Everything else is context; this is the queue.
@@ -1115,11 +1123,17 @@ export function picker(
     filterPanel(asked, viewer);
 
   const found = pulls.length === 0
-    ? `<p class="empty">No ${asked.state === "all" ? "" : `${asked.state} `}pull ` +
-      `requests${asked.author ? ` by ${escapeHtml(asked.author)}` : ""} found.</p>` +
-      `<p class="empty small">Odin asks the <code>gh</code> command line, so this ` +
-      `needs it installed and signed in. You can review the current branch ` +
-      `regardless.</p>`
+    ? !reached
+      // The question was never answered, which is not an answer of none.
+      ? `<p class="empty">The forge did not answer.</p>` +
+        `<p class="empty small">Odin asks the <code>gh</code> command line, so this ` +
+        `needs it installed and signed in — and a slow or unreachable forge looks ` +
+        `the same from here. You can review the current branch regardless.</p>`
+      : `<p class="empty">No ${asked.state === "all" ? "" : `${asked.state} `}pull ` +
+        `requests${asked.author ? ` by ${escapeHtml(asked.author)}` : ""} found.</p>` +
+        `<p class="empty small">Odin asks the <code>gh</code> command line, so this ` +
+        `needs it installed and signed in. You can review the current branch ` +
+        `regardless.</p>`
     : mine.length > 0
       ? `<div class="section"><div class="section-head">Waiting on you` +
         `<span class="count">${mine.length}</span></div>` +

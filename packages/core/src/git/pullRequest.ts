@@ -188,7 +188,7 @@ export async function listPullRequests(
     /** Only this author's, when the reader is looking for somebody's work. */
     author?: string;
   },
-): Promise<PullRequestSummary[]> {
+): Promise<PullRequestSummary[] | undefined> {
   const json = await run(
     [
       "pr", "list",
@@ -199,9 +199,18 @@ export async function listPullRequests(
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
         "reviewDecision,reviewRequests,state,mergedAt,closedAt,baseRefName,mergeCommit",
     ],
-    options,
+    {
+      ...options,
+      // A list of fifty with every field the row needs takes a couple of
+      // seconds against a busy repository, and longer when the token has to be
+      // refreshed first. The old four-second ceiling turned a slow answer into
+      // "there are none", which is a different and much worse statement.
+      timeoutMs: options.timeoutMs ?? 20_000,
+    },
   );
-  if (!json) return [];
+  // Nothing came back at all: no `gh`, not signed in, or it gave up. That is
+  // not the same as an empty answer, and the difference is worth carrying.
+  if (!json) return undefined;
 
   try {
     const parsed = JSON.parse(json) as {
@@ -264,7 +273,7 @@ export async function listPullRequests(
       })
       .sort(byActivity);
   } catch {
-    return [];
+    return undefined;
   }
 }
 
