@@ -2376,6 +2376,8 @@ export const CLIENT_SCRIPT = String.raw`
    */
   var pickHint = chrome("pick-hint", "+");
   pickHint.hidden = true;
+  /** Kept in step with the stylesheet, which draws the button this wide. */
+  var PICK_HINT_WIDTH = 18;
 
   document.addEventListener("pointerover", function (event) {
     var rail = event.target.closest(".num, .marker, .pick-hint");
@@ -2390,11 +2392,24 @@ export const CLIENT_SCRIPT = String.raw`
       return;
     }
 
-    // Placed from the pane the rail belongs to, so on a split card it lands in
-    // the half the reader is pointing at rather than always in the left one.
+    // On the number itself, at the end of it, rather than out in the code.
+    //
+    // Two reasons. The rail is what the reader is already pointing at, so the
+    // button should be under the pointer rather than a journey away — hover,
+    // slide across, drag is one movement when they are touching and three when
+    // they are not. And the code column is code: a button sitting in it covered
+    // whatever the line began with, on the one row the reader is looking at.
+    //
+    // Measured from the row under the pointer rather than from the metrics, so
+    // it lands in the half of a split card the pointer is in without the page
+    // having to know which half that is.
     var pane = rail.closest(".side");
-    var left = (pane ? pane.offsetLeft : 0) + data.gutterWidth + 3;
-    pickHint.style.left = left + "px";
+    var number = row.querySelector(".num");
+    if (pane) number = pane.querySelector(".num") || number;
+    var left = number
+      ? number.offsetLeft + number.offsetWidth - PICK_HINT_WIDTH - 1
+      : (pane ? pane.offsetLeft : 0) + data.gutterWidth + 3;
+    pickHint.style.left = Math.max(0, left) + "px";
     pickHint.hidden = false;
     if (pickHint.parentNode !== row) row.appendChild(pickHint);
   });
