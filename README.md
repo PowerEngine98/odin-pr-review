@@ -1,13 +1,15 @@
 # Odin PR Review
 
-> *“He saw over all worlds and every man's activity and understood everything he
-> saw.”*
->
-> — Snorri Sturluson, *Prose Edda*, Chapter 38
+<img src="docs/odin.svg" alt="" width="200" align="left">
 
-<img src="docs/odin.svg" alt="" width="110" align="right">
+*“He saw over all worlds and every man's activity and understood everything he
+saw.”*
 
-**An Integrated Review Environment — one of the first.** Writing code has had an
+— Snorri Sturluson, *Prose Edda*, Chapter 38
+
+---
+
+**An Integrated Review Environment (IRE) — one of the first.** Writing code has had an
 IDE for forty years; reading it has had a web page. Odin is a claim that the
 second half deserves the same treatment: one place that holds the change, the
 conversation about it, and the state of your reading, behind one set of
