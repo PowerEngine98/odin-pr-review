@@ -2166,6 +2166,13 @@ export const CLIENT_SCRIPT = String.raw`
     pickHint.hidden = true;
   }, true);
 
+  /** Any commentable row under the pointer, wherever on it the pointer is. */
+  function extendableRow(event) {
+    if (!data.canReview) return null;
+    var row = event.target.closest(".row");
+    return row && row.classList.contains("in-diff") ? row : null;
+  }
+
   cards.forEach(function (card) {
     card.addEventListener("pointerdown", function (event) {
       // The handle belongs to the pick already made; pressing it must not be
@@ -2200,7 +2207,11 @@ export const CLIENT_SCRIPT = String.raw`
       if (!dragging || !picking || picking.card !== card) return;
       // Buttons, not button: pointermove reports what is still held down.
       if (!(event.buttons & 1)) return;
-      var row = commentableRow(event);
+      // Extending, not starting: the rail says where a remark may begin, and
+      // once it has begun the reader is dragging down the code itself. Asking
+      // for the rail again meant a drag that left the numbers column stopped
+      // extending, which reads as the gesture having been dropped.
+      var row = extendableRow(event);
       if (!row || row === picking.to) return;
       picking.to = row;
       paintSelection(card, rowsBetween(card, picking.from, row));
