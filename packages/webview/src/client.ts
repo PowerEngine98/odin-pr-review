@@ -1005,6 +1005,7 @@ export const CLIENT_SCRIPT = String.raw`
   });
 
   function rerouteEdges() {
+    var routed = [];
     // Boxes are drawn fresh each pass. A part shows a fraction of the arrows,
     // and a box left behind by a hidden one marks a name with nothing pointing
     // at it — which reads as a reference the reader cannot find.
@@ -1094,6 +1095,101 @@ export const CLIENT_SCRIPT = String.raw`
       group.dataset.fromY = from.y;
       group.dataset.toX = toX;
       group.dataset.toY = to.y;
+
+      routed.push({
+        edge: edge,
+        group: group,
+        start: { x: startX, y: startY },
+        from: { x: fromX, y: from.y },
+        to: { x: toX, y: to.y },
+        goesRight: goesRight,
+        hidden: group.classList.contains("hidden") ||
+          group.classList.contains("viewed-hidden"),
+      });
+    });
+
+    mergeRuns(routed);
+  }
+
+  /**
+   * Several references to one place, drawn as one road.
+   *
+   * A file that reads the same table on ten lines drew ten curves along the
+   * same corridor, arriving at the same row: ten times the ink for one fact,
+   * and a thicket where a single arrow would have said it. They are gathered
+   * instead — a short stem from each line to a junction just clear of the card,
+   * and one line from there to where they are all going.
+   *
+   * Only where they agree on everything: the same source card, the same
+   * destination row, and the same kind of change. An added reference and a
+   * removed one to the same table are two different facts and stay two arrows.
+   */
+  function mergeRuns(routed) {
+    var runs = {};
+    routed.forEach(function (r) {
+      if (r.hidden) return;
+      var key = r.edge.from + "|" + r.edge.to + "|" + r.edge.toLine + "|" +
+        r.edge.toSide + "|" + r.edge.change + "|" + r.edge.kind;
+      (runs[key] = runs[key] || []).push(r);
+    });
+
+    Object.keys(runs).forEach(function (key) {
+      var run = runs[key];
+      run.forEach(function (r) {
+        var trunk = r.group.querySelector("path.trunk");
+        if (trunk) trunk.setAttribute("d", "");
+        r.group.classList.remove("gathered", "trunk-carrier");
+      });
+      if (run.length < 2) return;
+
+      // The junction sits clear of the card the arrows leave, at the middle of
+      // the lines it gathers: near enough that each stem is obviously a stem,
+      // far enough that they have separated from their own rows.
+      var first = run[0];
+      var reach = Math.abs(first.to.x - first.from.x);
+      var away = first.goesRight ? 1 : -1;
+      var joinX = first.from.x + away * Math.max(46, Math.min(160, reach * 0.16));
+      var joinY = run.reduce(function (sum, r) { return sum + r.from.y; }, 0) / run.length;
+
+      run.forEach(function (r) {
+        // Each line keeps its own short stem into the junction, so the row it
+        // comes from is still the thing you press and still says where it is.
+        var bend = Math.max(18, Math.abs(joinX - r.start.x) * 0.55);
+        var stem = [
+          { x: r.start.x, y: r.start.y },
+          { x: r.start.x + away * bend, y: r.start.y },
+          { x: joinX - away * bend, y: joinY },
+          { x: joinX, y: joinY },
+        ];
+        var wire = r.group.querySelector("path.wire");
+        if (wire) wire.setAttribute("d", bezierPath(stem));
+        var hit = r.group.querySelector("path.hit");
+        if (hit) hit.setAttribute("d", bezierPath(stem));
+        var head = r.group.querySelector("path.head");
+        if (head) head.setAttribute("d", "");
+        r.group.classList.add("gathered");
+      });
+
+      // One of them carries the road onwards, and the head that lands.
+      var carrier = run[0];
+      var dx = Math.max(40, Math.abs(carrier.to.x - joinX) * 0.45);
+      var road = [
+        { x: joinX, y: joinY },
+        { x: joinX + away * dx, y: joinY },
+        { x: carrier.to.x - away * dx, y: carrier.to.y },
+        { x: carrier.to.x, y: carrier.to.y },
+      ];
+      var cut = shortenCurve(road, 13);
+      var trunk = carrier.group.querySelector("path.trunk");
+      if (trunk) trunk.setAttribute("d", bezierPath(cut));
+      var head = carrier.group.querySelector("path.head");
+      if (head) {
+        head.setAttribute(
+          "d",
+          "M " + cut[3].x + " " + cut[3].y + " L " + carrier.to.x + " " + carrier.to.y,
+        );
+      }
+      carrier.group.classList.add("trunk-carrier");
     });
   }
 

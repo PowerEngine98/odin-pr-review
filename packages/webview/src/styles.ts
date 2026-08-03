@@ -1179,6 +1179,18 @@ body:not(.split) .card-body.split-view { display: none; }
   pointer-events: stroke;
   cursor: pointer;
 }
+/* The road a gathered run travels once its stems have met. Drawn like the
+   stems, because it is the same journey continued. */
+.edges path.trunk { fill: none; stroke-width: 1.8; opacity: 0.85; transition: opacity 160ms ease, stroke-width 160ms ease; }
+.edges g.edge.added    path.trunk { stroke: var(--added); }
+.edges g.edge.removed  path.trunk { stroke: var(--removed); }
+.edges g.edge.unchanged path.trunk { stroke: var(--unchanged); }
+.edges g.edge.schema   path.trunk { stroke: var(--status-renamed); opacity: 0.55; }
+.edges g.edge.import   path.trunk { stroke-dasharray: 4 4; opacity: 0.5; }
+.edges g.edge.dim path.trunk { opacity: 0.12; }
+.edges g.edge.active path.trunk { opacity: 1; stroke-width: 3; }
+.edges g.edge.hidden path.trunk { display: none; }
+
 .edges g.edge.added    path.wire { stroke: var(--added); }
 .edges g.edge.removed  path.wire { stroke: var(--removed); }
 .edges g.edge.unchanged path.wire { stroke: var(--unchanged); }
