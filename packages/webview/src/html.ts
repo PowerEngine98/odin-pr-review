@@ -811,7 +811,8 @@ function reviewPanel(): string {
 function hint(): string {
   return `<div class="hint">
   click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
-  scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear
+  scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear<br>
+  <b>arrows</b> to move between files &middot; <b>enter</b> to mark read &middot; <b>c</b> to comment on the file
 </div>`;
 }
 

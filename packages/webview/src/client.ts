@@ -1147,6 +1147,9 @@ export const CLIENT_SCRIPT = String.raw`
     // badge while two on overlapping passages stay separate.
     var spans = {};
     var add = function (c, draft) {
+      // A remark about the file belongs to no line, so there is no line to
+      // mark. The card's own comment count is where it shows.
+      if (c.line === undefined) return;
       var start = c.startLine || c.line;
       var key = c.path + " " + c.side + " " + start + " " + c.line;
       var span = spans[key];
@@ -1213,6 +1216,9 @@ export const CLIENT_SCRIPT = String.raw`
 
   /** What a half-written comment is filed under: the span it is about. */
   function composerKey(where) {
+    // A remark about the file has no line to key on, and one draft per file is
+    // the right number of them.
+    if (where.line === undefined) return "c:" + where.path + ":file";
     return "c:" + where.path + ":" + where.side + ":" +
       (where.startLine || where.line) + "-" + where.line;
   }
@@ -1792,10 +1798,14 @@ export const CLIENT_SCRIPT = String.raw`
       forget(composerKey(pending));
       drafts.push({
         path: pending.path,
+        // Absent for a remark about the file itself, which the forge is told
+        // about by its subject rather than by a line.
         line: pending.line,
         // Carried only for a real span: the forge rejects a start equal to the
         // end, and a one-line comment is not a span.
-        startLine: pending.startLine < pending.line ? pending.startLine : undefined,
+        startLine: pending.line !== undefined && pending.startLine < pending.line
+          ? pending.startLine
+          : undefined,
         side: pending.side,
         body: body,
       });
@@ -1828,9 +1838,13 @@ export const CLIENT_SCRIPT = String.raw`
         drafts.length + (drafts.length === 1 ? " comment" : " comments");
       panel.querySelector(".review-list").innerHTML = drafts
         .map(function (d, i) {
-          var where = d.startLine && d.startLine < d.line
-            ? d.startLine + "–" + d.line
-            : String(d.line);
+          // A remark about the file says so, rather than showing a line it
+          // does not have.
+          var where = d.line === undefined
+            ? "whole file"
+            : d.startLine && d.startLine < d.line
+              ? d.startLine + "–" + d.line
+              : String(d.line);
           return '<div class="review-item"><span class="where">' +
             escapeHtml(d.path.split("/").pop()) + ":" + where +
             '</span><span class="what">' + escapeHtml(d.body.slice(0, 90)) +
@@ -3294,7 +3308,133 @@ export const CLIENT_SCRIPT = String.raw`
     }
     if (event.key === "f") fit();
     if (event.key === "Escape") { clearHighlight(); clearSelection(); closeThread(); }
+
+    // Reading a change is mostly the same three actions in a loop: go to the
+    // next file, say something about it, mark it read. Doing that from the
+    // keyboard means never leaving the file to reach for the mouse.
+    var here = cardAtCentre();
+    if (event.key === "ArrowRight") { step(here, 1, 0); event.preventDefault(); }
+    if (event.key === "ArrowLeft") { step(here, -1, 0); event.preventDefault(); }
+    if (event.key === "ArrowDown") { step(here, 0, 1); event.preventDefault(); }
+    if (event.key === "ArrowUp") { step(here, 0, -1); event.preventDefault(); }
+
+    if (event.key === "Enter" && here) {
+      var box = here.querySelector(".viewed-box");
+      if (box) { box.checked = !box.checked; box.dispatchEvent(new Event("change")); }
+      event.preventDefault();
+    }
+
+    if ((event.key === "c" || event.key === "C") && here) {
+      composeOnFile(here);
+      event.preventDefault();
+    }
   });
+
+  /**
+   * The card the reader is looking at.
+   *
+   * Taken from the middle of the canvas rather than from anything clicked: the
+   * keyboard has no cursor, and after arriving somewhere the thing being read
+   * is whatever the view was moved to. A card covering the centre wins outright;
+   * failing that, the nearest one to it, so the keys still work when the view
+   * is parked between two files.
+   */
+  function cardAtCentre() {
+    var top = chromeBar ? chromeBar.getBoundingClientRect().height : 0;
+    var x = window.innerWidth / 2;
+    var y = top + (window.innerHeight - top) / 2;
+
+    var best = null;
+    var nearest = Infinity;
+
+    cards.forEach(function (card) {
+      if (card.classList.contains("hidden") ||
+          card.classList.contains("viewed-hidden")) return;
+      var box = card.getBoundingClientRect();
+      if (box.width === 0) return;
+
+      if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) {
+        nearest = -1;
+        best = card;
+        return;
+      }
+      if (nearest === -1) return;
+
+      var dx = Math.max(box.left - x, 0, x - box.right);
+      var dy = Math.max(box.top - y, 0, y - box.bottom);
+      var distance = Math.hypot(dx, dy);
+      if (distance < nearest) { nearest = distance; best = card; }
+    });
+
+    return best;
+  }
+
+  /**
+   * Moves to the nearest card in one direction.
+   *
+   * Distance along the direction asked for counts double against distance to
+   * the side of it, so pressing right takes the next file to the right rather
+   * than one slightly right and a long way down.
+   */
+  function step(from, dx, dy) {
+    if (!from) return;
+    var start = nodeFor(from.dataset.id);
+    if (!start) return;
+
+    var fromX = start.x + start.width / 2;
+    var fromY = start.y + start.height / 2;
+
+    var best = null;
+    var score = Infinity;
+
+    cards.forEach(function (card) {
+      if (card === from) return;
+      if (card.classList.contains("hidden") ||
+          card.classList.contains("viewed-hidden")) return;
+      var node = nodeFor(card.dataset.id);
+      if (!node) return;
+
+      var toX = node.x + node.width / 2;
+      var toY = node.y + node.height / 2;
+      var along = (toX - fromX) * dx + (toY - fromY) * dy;
+      if (along <= 0) return;
+
+      var aside = Math.abs((toX - fromX) * dy) + Math.abs((toY - fromY) * dx);
+      var cost = along + aside * 2;
+      if (cost < score) { score = cost; best = node; }
+    });
+
+    if (best) showFromTop(best.id);
+  }
+
+  /**
+   * A remark about the file rather than about a line in it.
+   *
+   * Not everything worth saying is about a line: "this file should not exist"
+   * belongs to the file, and pinning it to line one makes it read as a note
+   * about an import. The forge has a place for these; this is how to reach it
+   * without hunting for a line to hang it on.
+   */
+  function composeOnFile(card) {
+    if (!composer || !data.canReview) return;
+    var node = nodeFor(card.dataset.id);
+    if (!node) return;
+
+    clearSelection();
+    pending = { path: node.path, side: "RIGHT" };
+    composer.querySelector(".composer-where").textContent =
+      "Add a comment on " + node.path.split("/").pop();
+
+    rememberOn(composer, composerKey(pending));
+    setTab(composer, "write");
+    composer.hidden = false;
+
+    // Pinned under the card's own title, which is what it is about.
+    anchorRow = card.querySelector(".card-title");
+    anchorLines = [];
+    placeComposer();
+    bodyOf(composer).focus();
+  }
 
   /* ------------------------------------------------------- the card's header */
 

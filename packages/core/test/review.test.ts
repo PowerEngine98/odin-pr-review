@@ -181,3 +181,35 @@ describe("carrying the pictures", () => {
     }
   });
 });
+
+describe("a remark about the file rather than a line", () => {
+  const base = { number: 7, event: "COMMENT" as const, body: "" };
+
+  it("says what it is about instead of pointing at a line", () => {
+    // "This file should not exist" belongs to the file. Pinned to line one it
+    // reads as a note about an import, and the forge rejects a comment that
+    // carries neither a line nor a subject.
+    const payload = reviewPayload({
+      ...base,
+      comments: [{ path: "a.kt", side: "RIGHT", body: "does this belong here?" }],
+    });
+    expect(payload.comments).toEqual([
+      { path: "a.kt", subject_type: "file", body: "does this belong here?" },
+    ]);
+  });
+
+  it("still sends a line comment as a line comment", () => {
+    const payload = reviewPayload({
+      ...base,
+      comments: [
+        { path: "a.kt", line: 12, side: "RIGHT", body: "here" },
+        { path: "b.kt", side: "LEFT", body: "and this file" },
+      ],
+    });
+    const [line, file] = payload.comments as Record<string, unknown>[];
+    expect(line).toHaveProperty("line", 12);
+    expect(line).not.toHaveProperty("subject_type");
+    expect(file).toHaveProperty("subject_type", "file");
+    expect(file).not.toHaveProperty("line");
+  });
+});

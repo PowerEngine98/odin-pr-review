@@ -48,7 +48,14 @@ export const REACTIONS = [
  */
 export interface DraftComment {
   path: string;
-  line: number;
+  /**
+   * The line the remark is about, or absent for one about the file itself.
+   *
+   * Not everything worth saying is about a line. "This file should not exist"
+   * belongs to the file, and pinning it to line one makes it look like a note
+   * about an import.
+   */
+  line?: number;
   /** Top of the passage, when the comment covers more than one line. */
   startLine?: number;
   side: "LEFT" | "RIGHT";
@@ -200,14 +207,20 @@ export function reviewPayload(request: SubmitRequest): Record<string, unknown> {
       ? {
           comments: request.comments.map((c) => ({
             path: c.path,
-            line: c.line,
-            side: c.side,
-            // Sent only for a real span. A start equal to the end is rejected,
-            // so a one-line comment must carry no start at all — and a start
-            // below the end would be a range written backwards.
-            ...(c.startLine !== undefined && c.startLine < c.line
-              ? { start_line: c.startLine, start_side: c.side }
-              : {}),
+            // A remark about the file carries no line and says so: the forge
+            // rejects a comment with neither a line nor a subject.
+            ...(c.line === undefined
+              ? { subject_type: "file" }
+              : {
+                  line: c.line,
+                  side: c.side,
+                  // Sent only for a real span. A start equal to the end is
+                  // rejected, so a one-line comment must carry no start at all
+                  // — and a start below the end would be a range backwards.
+                  ...(c.startLine !== undefined && c.startLine < c.line
+                    ? { start_line: c.startLine, start_side: c.side }
+                    : {}),
+                }),
             body: c.body,
           })),
         }
