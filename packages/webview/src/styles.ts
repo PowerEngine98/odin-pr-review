@@ -90,13 +90,14 @@ html, body {
 /* A lighter band between two darker ones — the pull request above, the canvas
    below — so the bars separate by tone rather than by a rule drawn between
    them. The colour is the one the rule used to be. */
+/* Holds the colour, and holds still. */
+.parts-rail { background: var(--strip); }
 .parts {
   display: flex;
   align-items: stretch;
   gap: 2px;
   padding: 0 10px;
   overflow-x: auto;
-  background: var(--strip);
   /* No bar. A scrollbar under a row of tabs is a second thing to read in a
      strip whose whole job is to be read at a glance, and it appears and
      disappears with the pointer, which moves the tabs by a pixel as it does. */
@@ -944,6 +945,9 @@ input[type="checkbox"]:checked::after {
 
 .card-body { padding: var(--padding) 0; }
 /* Both readings of the change are in the document; the page shows one. */
+/* Only one body is in the document at a time — the other waits in a template —
+   so there is nothing to hide. The rule stays as a belt: a body that somehow
+   ends up live in the wrong reading is invisible rather than doubled. */
 body.split .card-body.unified-view,
 body:not(.split) .card-body.split-view { display: none; }
 

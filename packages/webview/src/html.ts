@@ -388,7 +388,11 @@ function tabs(parts: Component[]): string {
 
   const spare = loose.reduce((n, p) => n + p.files, 0);
 
-  return `<div class="parts">` +
+  // The strip that scrolls sits inside a rail that does not. The rail carries
+  // the background: the fade at a travelling edge is drawn by masking the
+  // strip, and a mask takes the element's own background with it — which left a
+  // notch of the header showing through at exactly the edge being pointed at.
+  return `<div class="parts-rail"><div class="parts">` +
     one("", "Everything", total, "Every file in the change") +
     chains
       .map((part) =>
@@ -403,7 +407,7 @@ function tabs(parts: Component[]): string {
     (spare > 0
       ? one("loose", "on their own", spare, "Files nothing else in the change calls")
       : "") +
-    `</div>`;
+    `</div></div>`;
 }
 
 /**
@@ -1051,8 +1055,9 @@ function card(
     `<button class="remarks" data-hint="Go to the first comment on this file" title="Comments on this file" aria-label="Comments on this file" hidden>` +
     `${SPEECH_ICON}<span class="tally">0</span></button>` +
     `</span></div>
-  <div class="card-body split-view">${split}${bar(pairs.length - splitCap)}</div>
-  <div class="card-body unified-view">${unified}${bar(node.rows.length - unifiedCap)}</div>
+  ${primaryBody(layout.unified,
+    `<div class="card-body split-view">${split}${bar(pairs.length - splitCap)}</div>`,
+    `<div class="card-body unified-view">${unified}${bar(node.rows.length - unifiedCap)}</div>`)}
 </div>`;
 }
 
@@ -1416,17 +1421,64 @@ function cssId(id: string): string {
  * string inside a card, and the width the layout engine measured is still the
  * width the line takes.
  */
+/**
+ * One line of code, coloured.
+ *
+ * Runs are merged before they become markup. A grammar emits a token per
+ * lexical unit — a name, the dot after it, the space after that — and most
+ * neighbours land on the same colour, so a line arrives as a dozen tokens and
+ * needs three spans. Whitespace never needs one at all: there is nothing in a
+ * run of spaces for a colour to show, and leaving it unwrapped lets the plain
+ * runs either side of it join up.
+ *
+ * The saving is the document's size, which is most of what a large change
+ * costs the browser: on a forty-file change these spans were half of every
+ * element on the page.
+ */
+/**
+ * The two readings of a card: the one being read, and the one in reserve.
+ *
+ * Only one of them is in the document. A card carries a few hundred rows and a
+ * change carries dozens of cards, and having both readings live doubled every
+ * element on the page for a mode the reader is not in — style, layout and
+ * memory paid twice over for something invisible.
+ *
+ * The other reading waits in a `template`, which the browser parses into a
+ * fragment of its own rather than into the page: no styles resolved, nothing
+ * laid out, nothing painted. Switching modes swaps the two over, which is one
+ * move per card and nothing to rebuild.
+ */
+function primaryBody(unified: boolean, split: string, flat: string): string {
+  const live = unified ? flat : split;
+  const spare = unified ? split : flat;
+  return `${live}<template class="spare-body">${spare}</template>`;
+}
+
 function code(row: DisplayRow, tokens?: CodeToken[], palette?: Palette): string {
   if (!tokens || tokens.length === 0 || !palette) return escapeHtml(row.text);
 
-  return tokens
-    .map((token) => {
-      const name = palette.classFor(token);
-      return name
-        ? `<span class="${name}">${escapeHtml(token.text)}</span>`
-        : escapeHtml(token.text);
-    })
-    .join("");
+  const parts: string[] = [];
+  let run = "";
+  let runClass: string | undefined;
+
+  const flush = () => {
+    if (!run) return;
+    parts.push(runClass ? `<span class="${runClass}">${escapeHtml(run)}</span>` : escapeHtml(run));
+    run = "";
+  };
+
+  for (const token of tokens) {
+    // Whitespace joins whichever run it finds itself in.
+    const name = /^\s*$/.test(token.text) ? runClass : palette.classFor(token);
+    if (name !== runClass) {
+      flush();
+      runClass = name;
+    }
+    run += token.text;
+  }
+  flush();
+
+  return parts.join("");
 }
 
 function escapeHtml(value: string): string {

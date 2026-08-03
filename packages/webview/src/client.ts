@@ -543,7 +543,40 @@ export const CLIENT_SCRIPT = String.raw`
 
   /** The body showing the change the way it is currently being read. */
   function visibleBody(card) {
-    return card.querySelector(splitMode ? ".card-body.split-view" : ".card-body.unified-view");
+    return card.querySelector(".card-body");
+  }
+
+  /**
+   * Brings the other reading of a card into the document, and puts this one
+   * away.
+   *
+   * Only one body is ever live: the spare waits in a template, which the
+   * browser holds as a fragment rather than as part of the page. Swapping is a
+   * move each way, and costs nothing until the reader asks for the other
+   * reading.
+   */
+  function swapBody(card) {
+    var spare = card.querySelector("template.spare-body");
+    var live = card.querySelector(".card-body");
+    if (!spare || !live || !spare.content.firstElementChild) return;
+
+    var incoming = spare.content.firstElementChild;
+    spare.content.removeChild(incoming);
+    card.replaceChild(incoming, live);
+    spare.content.appendChild(live);
+  }
+
+  /** Whether a card is showing the reading the reader has chosen. */
+  function readingMatches(card) {
+    var body = card.querySelector(".card-body");
+    if (!body) return true;
+    return body.classList.contains(splitMode ? "split-view" : "unified-view");
+  }
+
+  function applyDiffMode() {
+    cards.forEach(function (card) {
+      if (!readingMatches(card)) swapBody(card);
+    });
   }
 
   /**
@@ -1225,16 +1258,22 @@ export const CLIENT_SCRIPT = String.raw`
     recompute();
   }
 
-  document.querySelectorAll(".row.more, .row.gap.expandable").forEach(function (trigger) {
-    trigger.addEventListener("click", function (event) {
-      event.stopPropagation();
-      expand(trigger);
-    });
-    trigger.addEventListener("keydown", function (event) {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      expand(trigger);
-    });
+  // Delegated rather than bound per row. There are thousands of these on a
+  // large change, and the body carrying them is swapped whole when the reader
+  // changes how the diff is read — listeners hung on the old rows would go with
+  // them, and the new ones would arrive inert.
+  document.addEventListener("click", function (event) {
+    var trigger = event.target.closest(".row.more, .row.gap.expandable");
+    if (!trigger) return;
+    event.stopPropagation();
+    expand(trigger);
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    var trigger = event.target.closest && event.target.closest(".row.more, .row.gap.expandable");
+    if (!trigger) return;
+    event.preventDefault();
+    expand(trigger);
   });
 
   /* ----------------------------------------------------------- the parts */
@@ -1405,6 +1444,7 @@ export const CLIENT_SCRIPT = String.raw`
       window.localStorage.setItem("odin.diff-mode", splitMode ? "split" : "unified");
     } catch (e) {}
 
+    applyDiffMode();
     recompute();
     buildMarks();
   }
@@ -4483,6 +4523,9 @@ export const CLIENT_SCRIPT = String.raw`
     if (host) host.postMessage({ type: type, payload: payload });
   }
 
+  // The page is built for whichever reading the graph was laid out in; the
+  // reader may have chosen the other one last time.
+  applyDiffMode();
   refreshFilters();
   // Measured again once the fonts have settled: a strip that fitted at fallback
   // widths may not fit at the real ones.
