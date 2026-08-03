@@ -434,15 +434,15 @@ html, body {
 /* Stacking the rest of the toolbar into columns freed a great deal of width,
    so branch names get most of it. Real ones are long and the tail is the part
    that identifies them. */
-/* A rule between the groups, so the bar reads as sections rather than as one
-   long run of unrelated things. */
-.toolbar > .gaps,
-.toolbar > .filters,
-.toolbar > button {
-  border-left: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  padding-left: 16px;
+/* The rules that separated the groups were vertical, from when this ran across
+   the top of the page. Stacked in a corner they became lines down the left of
+   the switches, marking nothing. The one that divides the panel now runs
+   between its two halves, which is where the division actually is. */
+.toolbar > .filters {
+  border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  padding-top: 8px;
 }
-.toolbar > .gaps { border-left-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+.toolbar > .gaps { color: var(--warning); }
 
 .legend, .filters, .toolbar button { flex: 0 0 auto; }
 .toolbar .spacer { flex: 1; }
