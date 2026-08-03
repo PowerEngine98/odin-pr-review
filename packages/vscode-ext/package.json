@@ -159,7 +159,7 @@
         },
         {
           "command": "odin.showExplorer",
-          "when": "view == odin.changes",
+          "when": "view == odin.changes && !odin.hasGraph",
           "group": "navigation@1"
         },
         {

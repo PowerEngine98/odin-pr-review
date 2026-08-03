@@ -2881,6 +2881,25 @@ export const CLIENT_SCRIPT = String.raw`
       }
       return;
     }
+    // A reference in the file list: go and look at the line, on the canvas.
+    // Opening an editor took the screen away from the picture the reader was
+    // reading — the file list is a way around the graph, not out of it.
+    if (message && message.type === "line") {
+      var to = data.nodes.find(function (n) { return n.path === message.path; });
+      if (to) {
+        var side = message.side === "base" ? "base" : "head";
+        var spot = anchorFor(to.id, side, message.line, false);
+        highlightNode(to.id);
+        // Reading size, so the line arrived at can actually be read.
+        view.scale = clamp(1, MIN_SCALE, MAX_SCALE);
+        centerPoint(
+          to.x + to.width / 2,
+          spot ? spot.y : to.y + to.height / 2,
+          to.id,
+        );
+      }
+      return;
+    }
     if (message && message.type === "focus") {
       var target = data.nodes.find(function (n) { return n.path === message.path; });
       if (target) {

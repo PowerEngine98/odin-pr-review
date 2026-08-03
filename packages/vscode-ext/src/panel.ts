@@ -227,14 +227,28 @@ export class GraphPanel {
     void GraphPanel.current?.panel.webview.postMessage({ type: "focus", path });
   }
 
-  /** Follows a reference, for the sidebar's reference rows. */
-  static async follow(target: {
+  /**
+   * Follows a reference from the file list, on the canvas.
+   *
+   * The graph is the thing being read; a row in the list is a way around it,
+   * not a way out of it. Opening an editor here took the whole screen away from
+   * the picture — the card's own button is where opening a file is asked for.
+   */
+  static follow(target: {
     toPath: string;
     toLine: number;
     toSide: "base" | "head";
-  }): Promise<void> {
+  }): void {
     if (!target.toPath) return;
-    await GraphPanel.current?.reveal(target.toPath, target.toLine, target.toSide);
+    const panel = GraphPanel.current;
+    if (!panel) return;
+    panel.panel.reveal(vscode.ViewColumn.One, true);
+    void panel.panel.webview.postMessage({
+      type: "line",
+      path: target.toPath,
+      line: target.toLine,
+      side: target.toSide,
+    });
   }
 
   /**
@@ -695,18 +709,26 @@ export class GraphPanel {
     await vscode.window.showTextDocument(document, {
       viewColumn: vscode.ViewColumn.Beside,
       preserveFocus: true,
-      preview: true,
+      // Its own tab: a preview tab is replaced by whatever is opened next.
+      preview: false,
       selection: new vscode.Selection(target, target),
     });
   }
 
-  /** Shows a file the way a reviewer expects: as a diff against the base. */
+  /**
+   * Shows a file the way a reviewer expects: as a diff against the base.
+   *
+   * Its own tab, kept: a preview tab is replaced by the next thing opened, so
+   * reading three files in a row left one. And never focused — the graph is
+   * what the reader is in, and the file is opened to be glanced at beside it,
+   * with the canvas exactly where they left it.
+   */
   private async openDiff(path: string): Promise<void> {
     const targets = diffTargetsFor(this.graph, this.repo, path);
     const options = {
       viewColumn: vscode.ViewColumn.Beside,
       preserveFocus: true,
-      preview: true,
+      preview: false,
     };
 
     if (!targets.base) {
