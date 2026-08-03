@@ -3047,7 +3047,19 @@ export const CLIENT_SCRIPT = String.raw`
     view.scale = clamp(1, MIN_SCALE, MAX_SCALE);
 
     var rect = viewport.getBoundingClientRect();
-    view.x = rect.width / 2 - (node.x + node.width / 2) * view.scale;
+
+    // Room made before the thread needs it. The box opens into the space left
+    // of the mark, and centring the file leaves that space to chance — on a
+    // narrow window there is none, and the thread lands over the code it is
+    // quoting. The file is parked far enough right that its own margin holds
+    // the conversation, and centred instead when the window is too narrow for
+    // both.
+    var wants = 8 + 430 + 10 + 40;
+    var centred = rect.width / 2 - (node.x + node.width / 2) * view.scale;
+    var beside = wants - node.x * view.scale;
+    view.x = rect.width - wants > node.width * view.scale * 0.5
+      ? Math.min(centred, beside)
+      : centred;
     view.y = rect.height / 2 - y * view.scale;
     travelTo(mark.nodeId);
 
@@ -3346,7 +3358,9 @@ export const CLIENT_SCRIPT = String.raw`
     // sentence still reads at. Below that it is not a thread any more and goes
     // to the other side instead.
     var WIDEST = 430;
-    var NARROWEST = 300;
+    // Narrow enough to sit beside a file, wide enough that the reply box keeps
+    // its toolbar on one or two rows rather than shedding buttons.
+    var NARROWEST = 340;
     var beside = mark.left - gap - 8;
     threadBox.style.width =
       Math.round(Math.max(NARROWEST, Math.min(WIDEST, beside))) + "px";

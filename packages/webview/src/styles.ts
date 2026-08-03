@@ -1365,9 +1365,13 @@ body:not(.split) .card-body.split-view { display: none; }
   overflow: hidden;
   background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
 }
+/* Wraps rather than clips. The box narrows to fit the space beside a file, and
+   a toolbar that keeps its width in a narrower box loses its last buttons off
+   the edge — silently, which is the worst way to lose a control. */
 .editor-tabs {
   display: flex;
   align-items: stretch;
+  flex-wrap: wrap;
   gap: 2px;
   border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
   background: color-mix(in srgb, var(--bg) 60%, var(--text) 5%);
@@ -1390,6 +1394,8 @@ body:not(.split) .card-body.split-view { display: none; }
 .md-tools {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0;
   margin-left: auto;
   padding: 0 4px;
