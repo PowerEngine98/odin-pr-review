@@ -3054,7 +3054,13 @@ export const CLIENT_SCRIPT = String.raw`
     // quoting. The file is parked far enough right that its own margin holds
     // the conversation, and centred instead when the window is too narrow for
     // both.
-    var wants = 8 + 430 + 10 + 40;
+    // Everything that has to fit to the left of the file: the window's own
+    // margin, the widest the thread gets, the gap between them, and the mark
+    // with the room its pointer needs. Measured rather than guessed, because a
+    // mark grows with the zoom and a guess made at one scale is wrong at every
+    // other.
+    var markSize = Math.max(26, Math.min(76, Math.round(28 * view.scale)));
+    var wants = 8 + 430 + 10 + markSize + Math.round(markSize * 0.31) + 10 + 8;
     var centred = rect.width / 2 - (node.x + node.width / 2) * view.scale;
     var beside = wants - node.x * view.scale;
     view.x = rect.width - wants > node.width * view.scale * 0.5
@@ -3100,12 +3106,44 @@ export const CLIENT_SCRIPT = String.raw`
     reviewerPanel.hidden = true;
   });
 
+  /**
+   * Lights the lines a thread is about, and puts them out again.
+   *
+   * The bracket in the margin says where the remark starts and stops, which is
+   * enough while reading and not enough while answering: the reader is looking
+   * for the lines, and a mark four pixels wide is not the answer. The same
+   * wash a pick uses says it outright.
+   */
+  function lightRows(thread, on) {
+    if (!thread) return;
+    var root = thread.root;
+    var card = document.getElementById("card-" + cssId(nodeIdFor(root.path)));
+    if (!card) return;
+
+    var body = visibleBody(card) || card;
+    var side = root.side === "LEFT" ? "data-old" : "data-new";
+    var from = root.startLine && root.startLine < root.line ? root.startLine : root.line;
+
+    for (var line = from; line <= root.line; line++) {
+      var row = body.querySelector(".row[" + side + '="' + line + '"]');
+      if (row) row.classList.toggle("discussing", on);
+    }
+  }
+
+  /** The card a path belongs to. */
+  function nodeIdFor(path) {
+    var node = data.nodes.find(function (n) { return n.path === path; });
+    return node ? node.id : "";
+  }
+
   function showThread(thread, el) {
     if (!threadBox) return;
+    if (openThread) lightRows(openThread, false);
     closeMenus();
     if (openMark) openMark.classList.remove("is-open");
     openThread = thread;
     openMark = el;
+    lightRows(thread, true);
     el.classList.add("is-open");
 
     var root = thread.root;
@@ -3396,6 +3434,8 @@ export const CLIENT_SCRIPT = String.raw`
     if (send) send.textContent = "Reply";
     threadBox.hidden = true;
     if (openMark) openMark.classList.remove("is-open");
+    lightRows(openThread, false);
+    openThread = null;
     openMark = null;
   }
 

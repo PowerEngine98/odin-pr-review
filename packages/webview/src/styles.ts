@@ -1242,6 +1242,29 @@ body:not(.split) .card-body.split-view { display: none; }
 .row.picked .num { color: var(--text); opacity: 0.9; }
 .row.picked .marker { color: color-mix(in srgb, var(--text) 75%, transparent); }
 
+/* The lines an open thread is about. The same wash a pick uses, because it is
+   the same statement: these are the lines being talked about. */
+.row.discussing {
+  background-color: color-mix(in srgb, var(--warning) 20%, var(--card-bg));
+  background-image: none;
+}
+.row.split.discussing .side,
+.row.split.discussing .side.add,
+.row.split.discussing .side.del,
+.row.split.discussing .side.empty {
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+}
+.row.flat.discussing.add,
+.row.flat.discussing.del {
+  background-color: color-mix(in srgb, var(--warning) 20%, var(--card-bg));
+  background-image: none;
+  box-shadow: none;
+}
+.row.discussing .num { color: var(--text); opacity: 0.9; }
+.row.discussing .marker { color: color-mix(in srgb, var(--text) 75%, transparent); }
+
 .card.picking { user-select: none; }
 
 /* The same button the pick's own handles are, offered before there is a pick:
