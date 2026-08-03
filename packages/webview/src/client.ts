@@ -3372,11 +3372,11 @@ export const CLIENT_SCRIPT = String.raw`
     // more of it and hugs that edge: a box that overhangs the window by fifty
     // pixels covers fifty pixels of code, where the other side would cover the
     // width of the whole thing.
-    var roomRight = window.innerWidth - 8 - (mark.right + gap);
-    var left;
-    if (beside >= box.width) left = mark.left - gap - box.width;
-    else if (roomRight >= box.width) left = mark.right + gap;
-    else left = Math.max(8, window.innerWidth - box.width - 8);
+    // Always to the left, never over the file. The other side is where the code
+    // is: a thread that flips onto it hides the lines it is quoting, and a
+    // reader answering a remark is reading them. Where the left is too narrow
+    // the box has already shrunk to fit; below that it hugs the edge.
+    var left = Math.max(8, mark.left - gap - box.width);
 
     var top = mark.top;
     if (top + box.height > window.innerHeight - 8) {
