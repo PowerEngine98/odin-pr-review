@@ -2558,6 +2558,32 @@ export const CLIENT_SCRIPT = String.raw`
 
   /* --------------------------------------------------------------- tooltip */
 
+  /**
+   * The whole of a line the card had to cut.
+   *
+   * A card is capped in width, so a long line ends in an ellipsis — and the
+   * ellipsis can be hiding the very thing the line was written for: a url, a
+   * key, a magic number. Going to the file to read it is the trip the graph
+   * exists to save, so hovering the line says the rest of it here.
+   */
+  var clipped = null;
+
+  document.addEventListener("pointerover", function (event) {
+    var text = event.target.closest && event.target.closest(".row .text");
+    if (!text) {
+      if (clipped) { tooltip.classList.remove("visible"); clipped = null; }
+      return;
+    }
+    // Only when there is something to reveal: a tooltip repeating a line the
+    // reader can already see is noise on every line of the card.
+    if (text.scrollWidth <= text.clientWidth + 1) return;
+
+    clipped = text;
+    tooltip.innerHTML = '<div class="target">' + escapeHtml(text.textContent) + "</div>";
+    tooltip.classList.add("visible");
+    moveTooltip(event);
+  });
+
   function showTooltip(event, id) {
     var edge = data.edges.find(function (e) { return e.id === id; });
     if (!edge) return;

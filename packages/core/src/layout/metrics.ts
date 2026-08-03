@@ -57,7 +57,11 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   lineNumberRight: 50,
   rightGutterWidth: 52,
   minCardWidth: 240,
-  maxCardWidth: 1180,
+  // Wide enough that a changed line of ordinary length fits even in the split
+  // reading, where each pane gets half. Past this a card stops being readable
+  // as a shape on the canvas, and what is cut is context rather than anything
+  // the change touched — with the whole line a hover away wherever it is cut.
+  maxCardWidth: 1900,
   columnGap: 140,
   rowGap: 56,
   margin: 48,

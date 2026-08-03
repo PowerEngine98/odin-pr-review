@@ -1226,7 +1226,7 @@ body.split .card.asleep.only-removed {
 .tooltip {
   position: fixed;
   z-index: 30;
-  max-width: 440px;
+  max-width: 620px;
   padding: 7px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
@@ -1246,7 +1246,13 @@ body.split .card.asleep.only-removed {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.tooltip .target { color: var(--text); }
+/* A line revealed here is read, not skimmed: it keeps its own spacing and
+   breaks wherever it has to rather than being clipped a second time. */
+.tooltip .target {
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 .tooltip .meta { color: var(--muted); }
 .tooltip .meta .at { color: var(--gutter); margin: 0 1px; }
 .tooltip .meta .line { color: var(--text); opacity: 0.75; }
