@@ -483,6 +483,7 @@ function prBar(graph: ChangeGraph, canReview = false, notes = ""): string {
     <button id="diff-settings" class="icon-button" data-hint="How the change is laid out" title="Diff settings" aria-label="Diff settings">${GEAR}</button>
     <span class="settings-panel" hidden>
       <span class="settings-title">Settings</span>
+      <span class="settings-rule"></span>
       <span class="settings-group">Diff display</span>
       <label class="settings-option"><input type="radio" name="diff-mode" value="unified"><span>Unified</span></label>
       <label class="settings-option"><input type="radio" name="diff-mode" value="split"><span>Split</span></label>
@@ -493,7 +494,7 @@ function prBar(graph: ChangeGraph, canReview = false, notes = ""): string {
       <label class="settings-option" title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"><span>Tests</span></label>
       <label class="settings-option" title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed"><span>Hide viewed relations</span></label>
       <span class="settings-rule"></span>
-      <span class="settings-group">On screen</span>
+      <span class="settings-group">View</span>
       <label class="settings-option"><input type="checkbox" data-hud="reviewers" checked><span>Reviewers</span></label>
       <label class="settings-option"><input type="checkbox" data-hud="comments" checked><span>Comments</span></label>
       <label class="settings-option"><input type="checkbox" data-hud="map" checked><span>Map</span></label>
