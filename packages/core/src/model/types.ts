@@ -251,6 +251,16 @@ export interface PullRequestSummary extends PullRequest {
   requestedFrom?: string[];
   /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
   reviewDecision?: string;
+  /** Where it ended up. Open unless the forge says otherwise. */
+  state?: "open" | "merged" | "closed";
+  /** ISO-8601, when it was merged. */
+  mergedAt?: string;
+  /** ISO-8601, when it was closed without merging. */
+  closedAt?: string;
+  /** The branch it targets, which a finished change no longer has checked out. */
+  baseRef?: string;
+  /** The commit a merged change landed as, which outlives its branch. */
+  mergeCommit?: string;
 }
 
 /** One contributor to the change under review. */

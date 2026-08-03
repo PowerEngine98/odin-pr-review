@@ -4,6 +4,7 @@ import {
   git,
   currentUser,
   listPullRequests,
+  type PullRequestSummary,
   listRefs,
   inlineAvatar,
   inlineAvatars,
@@ -83,6 +84,14 @@ export function activate(context: vscode.ExtensionContext): void {
     // And the way back in. The change list is still there behind the list of
     // pull requests, so returning to it costs nothing and rebuilds nothing.
     vscode.commands.registerCommand("odin.showChanges", () => sidebar.showChanges()),
+    // A different question for the forge: which pull requests, and whose.
+    vscode.commands.registerCommand(
+      "odin.askForPulls",
+      (query: { state: typeof asked.state; author: string }) => {
+        asked = query;
+        return refreshPullRequests();
+      },
+    ),
     vscode.commands.registerCommand("odin.refresh", () =>
       review(last?.baseRef),
     ),
@@ -129,7 +138,19 @@ async function handleUri(uri: vscode.Uri): Promise<void> {
 }
 
 /**
- * Fills the sidebar's chooser with whatever is open on the forge.
+ * What the list asks the forge for, which the reader can change.
+ *
+ * Open by default, because reviewing is what this is for. A change that has
+ * already landed is read for a different reason — to see how something came to
+ * be the way it is — and that is a question worth being able to ask.
+ */
+let asked: { state: "open" | "merged" | "closed" | "all"; author: string } = {
+  state: "open",
+  author: "",
+};
+
+/**
+ * Fills the sidebar's chooser with whatever the forge answers.
  *
  * Best-effort and silent on failure: `gh` may be missing or signed out, and the
  * ability to review the branch you are on does not depend on it.
@@ -141,7 +162,11 @@ async function refreshPullRequests(): Promise<void> {
   sidebar.setLoading(true);
   try {
     const [pulls, branch, me] = await Promise.all([
-      listPullRequests({ cwd: repo }),
+      listPullRequests({
+        cwd: repo,
+        state: asked.state,
+        ...(asked.author ? { author: asked.author } : {}),
+      }),
       currentBranch({ cwd: repo }),
       // Who is reading, so the list can lead with what is waiting on them.
       // Asked once per refresh and cached by the forge client.
@@ -158,6 +183,8 @@ async function refreshPullRequests(): Promise<void> {
         else delete pr.avatarUrl;
       }),
     );
+    known.clear();
+    for (const pull of pulls) known.set(pull.number, pull);
     sidebar.setPullRequests(pulls, branch ?? "", repo, me ?? "");
   } finally {
     // Whatever happened, the bar stops: a progress bar that never ends says
@@ -177,9 +204,27 @@ async function refreshPullRequests(): Promise<void> {
 /** Checkouts already running, so a second press does not start a second one. */
 const switching = new Set<number>();
 
+/**
+ * The pull requests the list last fetched, by number.
+ *
+ * Kept so that pressing a row can act on what the forge said about it — whether
+ * it is still open, which branch it targeted, where its head commit is — without
+ * asking again and without the sidebar having to send it all back.
+ */
+const known = new Map<number, PullRequestSummary>();
+
 async function checkout(number: number): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
+
+  // A change that has already landed is read, not checked out: there is nothing
+  // to work on, usually no branch left to work on it with, and switching the
+  // working tree to look at history is a large price for a look.
+  const finished = known.get(number);
+  if (finished && finished.state && finished.state !== "open") {
+    await readFinished(finished);
+    return;
+  }
 
   // Pressing twice is easy: the list does not change until the switch is done,
   // so the row still looks unvisited while git is halfway through moving.
@@ -258,6 +303,65 @@ async function checkout(number: number): Promise<void> {
   }
 }
 
+/**
+ * Reads a pull request that is no longer being worked on.
+ *
+ * A merged or closed change has usually lost its branch, so there is nothing to
+ * check out and nothing to check out *to* — the reader is not going to push to
+ * it. The forge keeps the head commit reachable under `refs/pull/<n>/head`
+ * whatever happened to the branch, so it is fetched and read where it lies,
+ * against the point it forked from. The working tree is never touched.
+ */
+async function readFinished(pull: PullRequestSummary): Promise<void> {
+  const repo = await repositoryRoot();
+  if (!repo) return;
+
+  await GraphPanel.showLoading(`Fetching #${pull.number}`);
+  try {
+    await git(["fetch", "--quiet", "origin", `refs/pull/${pull.number}/head`], {
+      cwd: repo,
+    });
+  } catch {
+    // Older forges and some mirrors do not publish that ref. The head commit
+    // may still be here from when the branch was.
+  }
+
+  const head = pull.headSha ?? (await revision(repo, "FETCH_HEAD"));
+  if (!head) {
+    await GraphPanel.stopLoading(
+      `Could not find the commits for #${pull.number}. The forge may not publish ` +
+        `them any more.`,
+    );
+    return;
+  }
+
+  // Where it forked from, so the diff is what this change did rather than
+  // everything that has happened on the base branch since.
+  const base = pull.baseRef
+    ? await revision(repo, `origin/${pull.baseRef}`) ?? pull.baseRef
+    : undefined;
+  const forked = base ? await mergeBase(repo, base, head) : undefined;
+
+  await review(forked ?? base, head);
+}
+
+/** A ref's commit, or nothing when this checkout has never heard of it. */
+async function revision(repo: string, ref: string): Promise<string | undefined> {
+  const sha = (await git(["rev-parse", "--verify", "--quiet", ref], { cwd: repo })
+    .catch(() => "")).trim();
+  return sha || undefined;
+}
+
+async function mergeBase(
+  repo: string,
+  base: string,
+  head: string,
+): Promise<string | undefined> {
+  const sha = (await git(["merge-base", base, head], { cwd: repo })
+    .catch(() => "")).trim();
+  return sha || undefined;
+}
+
 function gh(args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -274,7 +378,7 @@ export function deactivate(): void {
   // Nothing to tear down: temporary checkouts are removed as they are used.
 }
 
-async function review(baseRef?: string): Promise<void> {
+async function review(baseRef?: string, headRef?: string): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
 
@@ -293,6 +397,7 @@ async function review(baseRef?: string): Promise<void> {
           await buildGraphForRepo({
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
+          ...(headRef ? { headRef } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
           report: (message) => {

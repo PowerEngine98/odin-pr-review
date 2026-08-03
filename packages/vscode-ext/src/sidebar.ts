@@ -30,6 +30,12 @@ import type { ViewedStore } from "./viewed.js";
  * loading the codicon font, which a webview would have to be granted access to
  * and ship a copy of.
  */
+/** The funnel the forge query hides behind. */
+const FUNNEL =
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
+  '<path fill="currentColor" d="M1.5 2.5h13a.5.5 0 0 1 .38.83L10 9v4.2a.5.5 0 0 1-.72.45l-2.5-1.25A.5.5 0 0 1 6.5 12V9L1.12 3.33a.5.5 0 0 1 .38-.83Z"/>' +
+  "</svg>";
+
 const CHEVRON =
   '<svg class="chev" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' +
   '<path fill="currentColor" d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/>' +
@@ -86,6 +92,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private repo = "";
   /** Who is reading, so the list can lead with what is waiting on them. */
   private viewer = "";
+  /** What the list last asked the forge for. */
+  private asked: Query = { state: "open", author: "" };
   /** Something is being fetched, and the view says so rather than sitting blank. */
   private loading = false;
   /** The part of the change the panel is showing, when it is showing one. */
@@ -112,6 +120,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       paths?: string[];
       viewed?: boolean;
       number?: number;
+      state?: string;
+      author?: string;
     }) => {
       if (message.type === "open" && message.path) {
         void vscode.commands.executeCommand("odin.openFile", message.path);
@@ -142,6 +152,16 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
       if (message.type === "viewed" && message.paths) {
         this.viewed.set(message.paths, message.viewed === true);
+        return;
+      }
+      // A different question for the forge, rather than a search of the answer.
+      if (message.type === "asked") {
+        this.asked = {
+          state: (message.state ?? this.asked.state) as Query["state"],
+          author: message.author ?? this.asked.author,
+        };
+        this.render();
+        void vscode.commands.executeCommand("odin.askForPulls", this.asked);
         return;
       }
       if (message.type === "checkout" && typeof message.number === "number") {
@@ -275,6 +295,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       this.branch,
       (pr) => this.seen?.movedOn(this.repo, pr.number, pr.headSha) === true,
       this.viewer,
+      this.asked,
     );
   }
 }
@@ -288,10 +309,11 @@ function html(
   branch = "",
   moved: (pr: PullRequestSummary) => boolean = () => false,
   viewer = "",
+  asked: Query = { state: "open", author: "" },
 ): string {
   const body = graph
     ? header(graph, viewed) + renderTree(buildTree(graph.nodes), graph, 0, viewed)
-    : picker(pulls, branch, moved, viewer);
+    : picker(pulls, branch, moved, viewer, asked);
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <style>
@@ -648,6 +670,62 @@ html, body { height: 100%; }
 .tag.ok { color: var(--status-added); }
 .tag.warn { color: var(--warning); }
 .tag.muted { color: var(--muted); }
+.tag.merged { color: var(--status-renamed); }
+.tag.closed { color: var(--status-deleted); }
+/* The search box and the question behind it, on one line. */
+.find { display: flex; align-items: center; gap: 6px; }
+.find .filter { flex: 1 1 auto; }
+.funnel {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.funnel:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+.funnel.on { color: var(--status-modified); border-color: var(--status-modified); }
+/* What the list asks the forge for, as opposed to what the box searches. */
+.asked {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 2px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
+  border-radius: 6px;
+}
+.asked[hidden] { display: none; }
+.asked-group {
+  font-size: 0.9em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 2px; }
+.chip {
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.9em;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+}
+.chip:hover { color: var(--vscode-foreground); }
+.chip.on {
+  color: var(--vscode-editor-background);
+  background: var(--status-modified);
+  border-color: var(--status-modified);
+}
 .section.hidden { display: none; }
 /* The queue, and then everything else. Quiet enough not to compete with the
    rows under it, present enough to say the list is in two parts. */
@@ -805,6 +883,46 @@ document.querySelectorAll(".pull").forEach((pull) => {
   });
 });
 
+const funnel = document.getElementById("funnel");
+const asked = document.querySelector(".asked");
+if (funnel && asked) {
+  // Re-opened after a redraw, since changing the question rebuilds the list and
+  // a panel that shut on every press would be unusable.
+  try {
+    if (sessionStorage.getItem("odin.asked-open") === "1") {
+      asked.hidden = false;
+      funnel.classList.add("on");
+    }
+  } catch (e) {}
+  funnel.addEventListener("click", () => {
+    asked.hidden = !asked.hidden;
+    funnel.classList.toggle("on", !asked.hidden);
+    try {
+      sessionStorage.setItem("odin.asked-open", asked.hidden ? "0" : "1");
+    } catch (e) {}
+  });
+}
+
+/** Asks the host for a different set of pull requests. */
+function ask(change) {
+  vscode.postMessage({ type: "asked", ...change });
+}
+
+document.querySelectorAll(".asked .chip[data-state]").forEach((chip) => {
+  chip.addEventListener("click", () => ask({ state: chip.dataset.state }));
+});
+document.querySelectorAll(".asked .chip[data-author]").forEach((chip) => {
+  chip.addEventListener("click", () => ask({ author: chip.dataset.author }));
+});
+
+const author = document.getElementById("author");
+if (author) {
+  author.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    ask({ author: author.value.trim() });
+  });
+}
+
 const filter = document.getElementById("filter");
 if (filter) {
   filter.addEventListener("input", () => {
@@ -934,6 +1052,7 @@ export function picker(
   branch: string,
   moved: (pr: PullRequestSummary) => boolean,
   viewer = "",
+  asked: Query = { state: "open", author: "" },
 ): string {
   // What the forge is waiting on this reader for, first and under its own
   // heading. Everything else is context; this is the queue.
@@ -946,19 +1065,34 @@ export function picker(
   // Same frame either way, so the action sits in the same place whether there
   // are twenty pull requests, one, or none. A button that moves when the list
   // changes length is a button that has to be found again every time.
-  const body = pulls.length === 0
-    ? `<p class="empty">No open pull requests found.</p>
-       <p class="empty small">Odin asks the <code>gh</code> command line, so this
-       needs it installed and signed in. You can review the current branch
-       regardless.</p>`
-    : `<input id="filter" class="filter" type="search" placeholder="Filter pull requests" autocomplete="off">
-       ${mine.length > 0
-        ? `<div class="section"><div class="section-head">Waiting on you` +
-          `<span class="count">${mine.length}</span></div>` +
-          `<div class="pulls">${rows(mine)}</div></div>` +
-          `<div class="section"><div class="section-head">Everything else</div>` +
-          `<div class="pulls">${rows(rest)}</div></div>`
-        : `<div class="pulls">${rows(rest)}</div>`}`;
+  //
+  // The question stays on screen when the answer is empty, which is exactly
+  // when it needs changing: "nothing is open" is the moment a reader wants to
+  // ask for what was merged.
+  const find =
+    `<div class="find">` +
+    `<input id="filter" class="filter" type="search" ` +
+    `placeholder="Filter pull requests" autocomplete="off">` +
+    `<button id="funnel" class="funnel" title="What the list asks the forge for" ` +
+    `aria-label="Filters">${FUNNEL}</button>` +
+    `</div>` +
+    filterPanel(asked, viewer);
+
+  const found = pulls.length === 0
+    ? `<p class="empty">No ${asked.state === "all" ? "" : `${asked.state} `}pull ` +
+      `requests${asked.author ? ` by ${escapeHtml(asked.author)}` : ""} found.</p>` +
+      `<p class="empty small">Odin asks the <code>gh</code> command line, so this ` +
+      `needs it installed and signed in. You can review the current branch ` +
+      `regardless.</p>`
+    : mine.length > 0
+      ? `<div class="section"><div class="section-head">Waiting on you` +
+        `<span class="count">${mine.length}</span></div>` +
+        `<div class="pulls">${rows(mine)}</div></div>` +
+        `<div class="section"><div class="section-head">Everything else</div>` +
+        `<div class="pulls">${rows(rest)}</div></div>`
+      : `<div class="pulls">${rows(rest)}</div>`;
+
+  const body = find + found;
 
   return `<div class="picker">
   ${body}
@@ -980,6 +1114,49 @@ function face(pr: PullRequestSummary): string {
     return `<img class="face" src="${escapeHtml(pr.avatarUrl)}" alt="${who}">`;
   }
   return `<span class="face letter">${escapeHtml((pr.author || "?").slice(0, 1).toUpperCase())}</span>`;
+}
+
+/**
+ * What the list is asking the forge for.
+ *
+ * Separate from the text box above it, which searches what has already
+ * arrived. This changes the question: a merged change is not in the answer to
+ * "what is open", however hard the box is searched.
+ */
+export interface Query {
+  state: "open" | "merged" | "closed" | "all";
+  /** A login, or empty for anyone. */
+  author: string;
+}
+
+const STATES: { value: Query["state"]; label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "merged", label: "Merged" },
+  { value: "closed", label: "Closed" },
+  { value: "all", label: "All" },
+];
+
+function filterPanel(asked: Query, viewer: string): string {
+  const chip = (state: { value: Query["state"]; label: string }) =>
+    `<button class="chip${asked.state === state.value ? " on" : ""}" ` +
+    `data-state="${state.value}">${state.label}</button>`;
+
+  return `<div class="asked" hidden>
+  <div class="asked-group">State</div>
+  <div class="chips">${STATES.map(chip).join("")}</div>
+  <div class="asked-group">Author</div>
+  <div class="chips">` +
+    `<button class="chip${asked.author === "" ? " on" : ""}" data-author="">Anyone</button>` +
+    (viewer
+      ? `<button class="chip${asked.author === viewer ? " on" : ""}" ` +
+        `data-author="${escapeHtml(viewer)}">Mine</button>`
+      : "") +
+    `</div>
+  <input id="author" class="filter" type="search" autocomplete="off"
+         placeholder="Any other login" value="${escapeHtml(
+           asked.author && asked.author !== viewer ? asked.author : "",
+         )}">
+</div>`;
 }
 
 /** `APPROVED` and friends, said the way a reader would say them. */
@@ -1006,7 +1183,13 @@ function pullRow(
     `<span class="title">${escapeHtml(pr.title)}</span>` +
     `</div>` +
     `<div class="line meta">` +
-    (pr.draft ? `<span class="tag draft">draft</span>` : `<span class="tag open">open</span>`) +
+    (pr.state === "merged"
+      ? `<span class="tag merged">merged</span>`
+      : pr.state === "closed"
+        ? `<span class="tag closed">closed</span>`
+        : pr.draft
+          ? `<span class="tag draft">draft</span>`
+          : `<span class="tag open">open</span>`) +
     (decision ? `<span class="tag ${decision.tone}">${decision.label}</span>` : "") +
     // Pushed to since this reviewer last opened it. The forge goes on showing
     // the verdict they left on a commit that is no longer the head, and this is

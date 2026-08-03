@@ -1897,16 +1897,16 @@ body.hud-no-map .minimap { display: none !important; }
    drawn at a fraction of it: the map stays quiet, and one rectangle in it does
    not. */
 .minimap-face .on.here {
-  opacity: 1;
-  fill-opacity: 0.22;
-  stroke-width: 1.5;
+  opacity: 0.5;
+  fill-opacity: 0.16;
+  stroke-width: 1;
   paint-order: stroke;
 }
-.minimap-face .added.here   { stroke: var(--status-added); }
-.minimap-face .modified.here { stroke: var(--status-modified); }
-.minimap-face .deleted.here { stroke: var(--status-deleted); }
-.minimap-face .renamed.here { stroke: var(--status-renamed); }
-.minimap-face .phantom.here { stroke: var(--status-phantom); }
+.minimap-face .added.here    { stroke: color-mix(in srgb, var(--status-added) 62%, transparent); }
+.minimap-face .modified.here { stroke: color-mix(in srgb, var(--status-modified) 62%, transparent); }
+.minimap-face .deleted.here  { stroke: color-mix(in srgb, var(--status-deleted) 62%, transparent); }
+.minimap-face .renamed.here  { stroke: color-mix(in srgb, var(--status-renamed) 62%, transparent); }
+.minimap-face .phantom.here  { stroke: color-mix(in srgb, var(--status-phantom) 62%, transparent); }
 /* What is on screen. An outline, because it is a window and not a thing. */
 /* Drawn over the files, so it has to beat a saturated green: a hairline in the
    text colour vanished into the rectangles it was supposed to sit on. */

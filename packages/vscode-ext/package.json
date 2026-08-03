@@ -108,6 +108,11 @@
         "title": "Back to the File Explorer",
         "category": "Odin",
         "icon": "$(files)"
+      },
+      {
+        "command": "odin.askForPulls",
+        "title": "Ask the Forge for Pull Requests",
+        "category": "Odin"
       }
     ],
     "configuration": {
@@ -182,6 +187,12 @@
           "command": "odin.refresh",
           "when": "view == odin.changes",
           "group": "navigation@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "odin.askForPulls",
+          "when": "false"
         }
       ]
     }

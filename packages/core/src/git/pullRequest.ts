@@ -163,8 +163,11 @@ export function run(
   });
 }
 
+/** Which pull requests to ask the forge for. */
+export type PullRequestState = "open" | "merged" | "closed" | "all";
+
 /**
- * The open pull requests on this repository, most recently active first.
+ * The pull requests on this repository, most recently active first.
  *
  * Activity is what a reviewer is actually looking for: the branch somebody
  * pushed to an hour ago is the one waiting on them, and the one that has not
@@ -173,16 +176,28 @@ export function run(
  * reshuffle them under the reader between one refresh and the next.
  */
 export async function listPullRequests(
-  options: GitOptions & { timeoutMs?: number; limit?: number },
+  options: GitOptions & {
+    timeoutMs?: number;
+    limit?: number;
+    /**
+     * Which pull requests to ask for. Open by default, since that is what a
+     * reviewer is here to do; a change that has already landed is read for a
+     * different reason — to see how something came to be the way it is.
+     */
+    state?: PullRequestState;
+    /** Only this author's, when the reader is looking for somebody's work. */
+    author?: string;
+  },
 ): Promise<PullRequestSummary[]> {
   const json = await run(
     [
       "pr", "list",
-      "--state", "open",
+      "--state", options.state ?? "open",
+      ...(options.author ? ["--author", options.author] : []),
       "--limit", String(options.limit ?? 50),
       "--json",
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
-        "reviewDecision,reviewRequests",
+        "reviewDecision,reviewRequests,state,mergedAt,closedAt,baseRefName,mergeCommit",
     ],
     options,
   );
@@ -201,6 +216,11 @@ export async function listPullRequests(
       updatedAt?: string;
       reviewDecision?: string | null;
       reviewRequests?: { login?: string; slug?: string; name?: string }[];
+      state?: string;
+      mergedAt?: string | null;
+      closedAt?: string | null;
+      baseRefName?: string;
+      mergeCommit?: { oid?: string } | null;
     }[];
 
     return parsed
@@ -229,6 +249,17 @@ export async function listPullRequests(
           .filter(Boolean);
         if (asked.length > 0) summary.requestedFrom = asked;
         if (pr.reviewDecision) summary.reviewDecision = pr.reviewDecision;
+
+        // How it ended, and what is left of it to read. A merged change no
+        // longer has its branch — the merge commit is the only thing that
+        // still points at what it did.
+        const state = String(pr.state ?? "OPEN").toUpperCase();
+        summary.state =
+          state === "MERGED" ? "merged" : state === "CLOSED" ? "closed" : "open";
+        if (pr.mergedAt) summary.mergedAt = pr.mergedAt;
+        if (pr.closedAt) summary.closedAt = pr.closedAt;
+        if (pr.baseRefName) summary.baseRef = pr.baseRefName;
+        if (pr.mergeCommit?.oid) summary.mergeCommit = pr.mergeCommit.oid;
         return summary;
       })
       .sort(byActivity);
