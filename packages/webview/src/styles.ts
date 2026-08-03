@@ -1790,6 +1790,32 @@ body.hud-no-map .minimap { display: none !important; }
 /* Clipped: the map shows a window of the drawing when the reader is zoomed
    in, and the files outside it stop at the edge. */
 .minimap-face { display: block; cursor: pointer; overflow: hidden; }
+
+/* While the drawing is still settling. Hidden rather than absent, so the box
+   keeps its size and the corner does not jump when the map arrives. */
+.minimap.waiting .minimap-face { visibility: hidden; }
+.minimap-wait {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  pointer-events: none;
+}
+.minimap.waiting .minimap-wait { display: flex; }
+.minimap-wait svg {
+  width: 46px;
+  height: 46px;
+  animation: breathe 1.7s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.3; transform: scale(0.93); }
+  50%      { opacity: 1;   transform: scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .minimap-wait svg { animation: none; opacity: 0.7; }
+}
 /* The same colours the cards carry, so a rectangle here and a card there are
    recognisably the same file. */
 /* Quieter than the cards themselves. A card is mostly dark with a thin

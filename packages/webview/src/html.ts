@@ -18,6 +18,7 @@ import {
 } from "@odin/core";
 
 import { CLIENT_SCRIPT } from "./client.js";
+import { ODIN_MARK } from "./mark.js";
 import { stylesheet } from "./styles.js";
 
 export interface RenderOptions {
@@ -279,10 +280,15 @@ export function renderHtml(
     `<div class="reviewer-panel" hidden></div></div>`,
     // No title and no fold: the map is a picture, it says what it is, and the
     // only thing worth offering is a way to be rid of it.
-    `<div class="minimap"><div class="minimap-head">` +
+    `<div class="minimap waiting"><div class="minimap-head">` +
     `${HUD_CLOSE("map", "the map")}</div>` +
     `<svg class="minimap-face"><g class="minimap-nodes"></g>` +
-    `<rect class="minimap-view"/></svg></div>`,
+    `<rect class="minimap-view"/></svg>` +
+    // The map is drawn, redrawn as the cards settle to their real heights, and
+    // redrawn again once the camera has framed the change — three pictures in
+    // the first second, none of which is the answer. The mark stands in until
+    // the shape stops moving.
+    `<div class="minimap-wait">${ODIN_MARK}</div></div>`,
     `<div class="marks"></div>`,
     `<div class="tooltip"></div>`,
     `<div class="thread" hidden><div class="thread-head">` +

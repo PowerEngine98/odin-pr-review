@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { pageMark, waitingPage } from "../src/loading.js";
+import { waitingPage } from "../src/loading.js";
 
 const page = (over: Partial<Parameters<typeof waitingPage>[0]> = {}) =>
   waitingPage({
@@ -11,20 +11,6 @@ const page = (over: Partial<Parameters<typeof waitingPage>[0]> = {}) =>
     cspSource: "vscode-webview:",
     ...over,
   });
-
-/** The drawing is written for a 24px slot in the activity bar. */
-describe("preparing the mark for the page", () => {
-  it("takes the file's own size off, so the page can set one", () => {
-    const ready = pageMark('<svg viewBox="0 0 24 24" width="24" height="24"><g/></svg>');
-    expect(ready).not.toContain('width="24"');
-    expect(ready).not.toContain('height="24"');
-    expect(ready).toContain('viewBox="0 0 24 24"');
-  });
-
-  it("drops the comment explaining the file", () => {
-    expect(pageMark("<!-- artwork -->\n<svg/>")).toBe("<svg/>");
-  });
-});
 
 describe("the page shown while there is no graph", () => {
   it("says what is being waited for", () => {

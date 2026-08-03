@@ -18,14 +18,12 @@ import {
   type ReviewComment,
   type ReviewEvent,
 } from "@odin/core";
-import { readFile } from "node:fs/promises";
-
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
-import { renderHtml } from "@odin/webview";
+import { ODIN_MARK, renderHtml } from "@odin/webview";
 import * as vscode from "vscode";
 
 import { baseUri } from "./baseContent.js";
-import { pageMark, waitingPage } from "./loading.js";
+import { waitingPage } from "./loading.js";
 import { activeTheme } from "./theme.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
@@ -744,35 +742,16 @@ export class GraphPanel {
   }
 }
 
-/**
- * The mark, read off disk once and kept.
- *
- * Inlined rather than linked: the panel loads no local resources at all, and
- * one drawing is not a reason to open that door.
- */
-let mark: string | undefined;
-
-async function odinMark(): Promise<string> {
-  if (mark !== undefined) return mark;
-  if (!GraphPanel.assets) return (mark = "");
-  try {
-    const file = vscode.Uri.joinPath(GraphPanel.assets, "media", "odin.svg").fsPath;
-    mark = pageMark(await readFile(file, "utf8"));
-  } catch {
-    // No drawing is better than no page: the words still say what is going on.
-    mark = "";
-  }
-  return mark;
-}
-
 /** The waiting page, with the panel's own policy and the mark inlined. */
 async function waitingHtml(
   webview: vscode.Webview,
   note: string,
   pulsing: boolean,
 ): Promise<string> {
+  // The same drawing the map's own loader uses, carried as markup rather than
+  // read off disk: this panel is granted no local resources at all.
   return waitingPage({
-    mark: await odinMark(),
+    mark: ODIN_MARK,
     note,
     pulsing,
     nonce: nonce(),

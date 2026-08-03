@@ -3014,8 +3014,30 @@ export const CLIENT_SCRIPT = String.raw`
     };
   }
 
+  /**
+   * Whether the map has stopped changing shape.
+   *
+   * The first second of a page is three different maps: one drawn before the
+   * cards have their real heights, one after they settle, one after the camera
+   * frames the change. Showing all three is a flicker in the corner of the eye
+   * that says something is wrong. The mark stands in until a redraw goes by
+   * without another following it.
+   */
+  var mapSettled = false;
+  var mapSettling = null;
+
+  function settleMap() {
+    if (mapSettled) return;
+    if (mapSettling) window.clearTimeout(mapSettling);
+    mapSettling = window.setTimeout(function () {
+      mapSettled = true;
+      minimap.classList.remove("waiting");
+    }, 260);
+  }
+
   function drawMinimap() {
     if (!minimap || !minimapNodes) return;
+    if (!mapSettled) settleMap();
 
     var box = mapRegion();
     if (!box.width || !box.height) { minimap.hidden = true; return; }

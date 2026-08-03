@@ -83,18 +83,3 @@ export function waitingPage(options: WaitingPage): string {
   });
 </script></body></html>`;
 }
-
-/**
- * The activity-bar drawing, ready to be dropped into a page.
- *
- * The file is drawn for a 24px slot and carries a comment explaining itself;
- * neither belongs in a 104px loader, and the size has to come off the element
- * for the CSS box to have any say.
- */
-export function pageMark(svg: string): string {
-  return svg
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/\swidth="[^"]*"/, "")
-    .replace(/\sheight="[^"]*"/, "")
-    .trim();
-}
