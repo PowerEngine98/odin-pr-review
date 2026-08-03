@@ -1227,7 +1227,7 @@ body:not(.split) .card-body.split-view { display: none; }
 .row.split.picked .side.del,
 .row.split.picked .side.empty {
   background: transparent;
-  box-shadow: none;
+  box-shadow: none !important;
   opacity: 1;
 }
 .row.flat.picked.add,
@@ -1248,12 +1248,16 @@ body:not(.split) .card-body.split-view { display: none; }
   background-color: color-mix(in srgb, var(--warning) 20%, var(--card-bg));
   background-image: none;
 }
+/* The seam-closing shadow a run of added lines paints into its neighbour is
+   selected through :has(), which outweighs anything written here — so the green
+   line kept showing between two lit rows. Stated outright, since the wash is
+   the one thing that must win on these rows. */
 .row.split.discussing .side,
 .row.split.discussing .side.add,
 .row.split.discussing .side.del,
 .row.split.discussing .side.empty {
   background: transparent;
-  box-shadow: none;
+  box-shadow: none !important;
   opacity: 1;
 }
 .row.flat.discussing.add,
