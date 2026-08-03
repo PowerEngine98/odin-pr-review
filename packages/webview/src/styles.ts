@@ -81,13 +81,16 @@ html, body {
 /* One tab per part of the change that can be read on its own. Drawn like the
    editor's own tabs rather than the forge's, because this is a place you come
    back to rather than a page you scroll. */
+/* A lighter band between two darker ones — the pull request above, the canvas
+   below — so the bars separate by tone rather than by a rule drawn between
+   them. The colour is the one the rule used to be. */
 .parts {
   display: flex;
   align-items: stretch;
   gap: 2px;
   padding: 0 10px;
   overflow-x: auto;
-  border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, var(--card-bg));
 }
 .part-tab {
   display: inline-flex;
@@ -173,7 +176,6 @@ html, body {
   inset: 0 0 auto 0;
   z-index: 20;
   background: var(--card-bg);
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
 }
 
 /* Docked at the foot of the canvas, out of the drawing's way. It used to run
