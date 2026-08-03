@@ -1262,18 +1262,27 @@ export const CLIENT_SCRIPT = String.raw`
     var pane = row.querySelector(".side." + (side === "base" ? "base" : "head") + " .text");
     var text = pane || row.querySelector(".text");
     if (!text) return;
-    var at = text.textContent.indexOf(edge.symbol);
+    // The name to point at is the one written here. Both ends usually spell it
+    // the same way; generated code does not — a table called "account" is
+    // "ACCOUNT" in Kotlin — so when the destination name is nowhere on this
+    // line, the name this end wrote is used instead.
+    var word = edge.symbol;
+    var at = text.textContent.indexOf(word);
+    if (at < 0 && role === "out" && edge.fromSymbol) {
+      word = edge.fromSymbol;
+      at = text.textContent.indexOf(word);
+    }
     if (at < 0) return;
 
     // One box per name, not per arrow. A schema row is landed on by every file
     // that reads the table, and a translucent box drawn ten times over is an
     // opaque one — the name it was pointing out disappeared underneath it.
-    var selector = '.symbol-box[data-symbol="' + edge.symbol + '"][data-role="' + role + '"]';
+    var selector = '.symbol-box[data-symbol="' + word + '"][data-role="' + role + '"]';
     var box = row.querySelector(selector);
     if (!box) {
       box = chrome("symbol-box", "");
       box.dataset.edge = edge.id;
-      box.dataset.symbol = edge.symbol;
+      box.dataset.symbol = word;
       box.dataset.role = role;
       box.title = role === "out"
         ? "Go to the definition this points at"
@@ -1292,7 +1301,7 @@ export const CLIENT_SCRIPT = String.raw`
     // fixed offset: which column the text begins in depends on the mode and,
     // in split, on which pane the word is in.
     box.style.left = (text.offsetLeft + (at - 1) * data.charWidth) + "px";
-    box.style.width = ((edge.symbol.length + 1) * data.charWidth) + "px";
+    box.style.width = ((word.length + 1) * data.charWidth) + "px";
   }
 
   /**

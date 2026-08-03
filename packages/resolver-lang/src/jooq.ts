@@ -27,6 +27,8 @@ export interface JooqReference {
   object: Declaration;
   /** What the code did with it. */
   kind: "type" | "call";
+  /** The identifier as the code spells it: `ACCOUNT`, `NotificationRecord`. */
+  written: string;
   /** The line, trimmed, for the hover label. */
   label: string;
 }
@@ -85,6 +87,7 @@ export function jooqReferences(
             side: where.side,
             object: object.object,
             kind: object.kind,
+            written: object.written,
             label: line.text.trim().slice(0, 120),
           });
         }
@@ -114,8 +117,8 @@ function position(line: DiffLine): { line: number; side: "base" | "head" } | und
 function objectsNamed(
   text: string,
   index: SymbolIndex,
-): { object: Declaration; kind: "type" | "call" }[] {
-  const out: { object: Declaration; kind: "type" | "call" }[] = [];
+): { object: Declaration; kind: "type" | "call"; written: string }[] {
+  const out: { object: Declaration; kind: "type" | "call"; written: string }[] = [];
   const seen = new Set<string>();
 
   for (const match of text.matchAll(/\b[A-Za-z][A-Za-z0-9_]{2,}\b/g)) {
@@ -147,6 +150,9 @@ function objectsNamed(
         object,
         // Calling a routine is a call; naming a table or a type is not.
         kind: object.kind === "function" || object.kind === "procedure" ? "call" : "type",
+        // Kept so the mark at this end can sit on the word that is actually
+        // there: the schema says `account`, the code says `ACCOUNT`.
+        written: word,
       });
     }
   }

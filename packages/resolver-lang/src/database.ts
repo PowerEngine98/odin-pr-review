@@ -180,7 +180,12 @@ export function withDatabase(
     if (!seat || reference.node.id === seat.node.id) continue;
     edges.push(
       link(
-        { nodeId: reference.node.id, side: reference.side, line: reference.line },
+        {
+          nodeId: reference.node.id,
+          side: reference.side,
+          line: reference.line,
+          symbolName: reference.written,
+        },
         {
           nodeId: seat.node.id,
           side: "head",

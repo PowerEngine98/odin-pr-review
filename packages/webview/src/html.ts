@@ -195,6 +195,10 @@ export function renderHtml(
       kind: e.edge.kind,
       confidence: e.edge.confidence,
       symbol: e.edge.to.symbolName ?? "",
+      // What the far end is called here, when the two ends spell it
+      // differently — generated code says `ACCOUNT` for a table called
+      // `account`, and the mark has to sit on the word that is written.
+      fromSymbol: e.edge.from.symbolName ?? "",
       label: e.edge.label ?? "",
     })),
     parts: [
