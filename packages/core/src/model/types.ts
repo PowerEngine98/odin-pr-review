@@ -81,6 +81,7 @@ export type ResolverId =
   | "clojure"
   | "sql"
   | "postgres"
+  | "jooq"
   | "lsp"
   | "tree-sitter"
   | "regex"

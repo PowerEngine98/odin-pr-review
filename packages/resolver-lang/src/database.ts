@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import type { ChangeGraph, Edge, FileNode, Hunk } from "@odin/core";
 
 import { buildIndex } from "./index-build.js";
+import { jooqReferences, type JooqReference } from "./jooq.js";
 import { POSTGRES } from "./sql.js";
 import type { Declaration } from "./types.js";
 
@@ -42,6 +45,21 @@ export function withDatabase(
   );
   if (sql.size === 0) return graph;
 
+  // Read once per file and kept, since a file is asked about as many times as
+  // it has lines that name something.
+  const texts = new Map<string, string | undefined>();
+  const read = (path: string): string | undefined => {
+    if (texts.has(path)) return texts.get(path);
+    let text: string | undefined;
+    try {
+      text = readFileSync(join(options.root, path), "utf8");
+    } catch {
+      text = undefined;
+    }
+    texts.set(path, text);
+    return text;
+  };
+
   // Only the edges SQL produced: an arrow between two TypeScript files that
   // happens to end in a `.sql` name is not a schema reference.
   const schemaEdges = graph.edges.filter(
@@ -55,6 +73,12 @@ export function withDatabase(
   const index = buildIndex(options.root, POSTGRES);
   const byPath = new Map(graph.nodes.map((n) => [n.path, n]));
 
+  // Code that reaches the same tables through generated classes. jOOQ names an
+  // object the way the database names it with the case changed, so the link is
+  // read rather than guessed — and it is the link a reviewer cannot see, since
+  // the two ends are in different languages under different spellings.
+  const generated: JooqReference[] = jooqReferences(graph.nodes, index, read);
+
   // Which object each edge actually landed on, taken from the declaration the
   // resolver chose rather than guessed at again here.
   const wanted = new Map<string, Declaration>();
@@ -65,6 +89,13 @@ export function withDatabase(
       (d) => d.path === target.path && d.line === edge.to.line,
     );
     if (found) wanted.set(`${found.scope}.${found.kind}.${found.name}`, found);
+  }
+  for (const reference of generated) {
+    wanted.set(key(reference.object), reference.object);
+  }
+  // A schema names the card; it is not one of the things on it.
+  for (const [id, object] of [...wanted]) {
+    if (object.kind === "schema") wanted.delete(id);
   }
   if (wanted.size === 0) return graph;
 
@@ -143,6 +174,27 @@ export function withDatabase(
     );
   }
 
+  // And the code that names the same objects through generated classes.
+  for (const reference of generated) {
+    const seat = placement.get(key(reference.object));
+    if (!seat || reference.node.id === seat.node.id) continue;
+    edges.push(
+      link(
+        { nodeId: reference.node.id, side: reference.side, line: reference.line },
+        {
+          nodeId: seat.node.id,
+          side: "head",
+          line: seat.line,
+          symbolName: reference.object.name,
+        },
+        reference.side === "base" ? "removed" : "added",
+        reference.kind,
+        reference.label,
+        "jooq",
+      ),
+    );
+  }
+
   return { ...graph, nodes, edges };
 }
 
@@ -195,6 +247,7 @@ function link(
   change: Edge["change"],
   kind: Edge["kind"],
   label?: string,
+  resolver: Edge["resolver"] = "sql",
 ): Edge {
   const id = createHash("sha1")
     .update(`${from.nodeId}:${from.line}|${to.nodeId}:${to.line}|${kind}`)
@@ -207,7 +260,7 @@ function link(
     change,
     kind,
     confidence: "heuristic",
-    resolver: "sql",
+    resolver,
     ...(label ? { label } : {}),
   };
 }

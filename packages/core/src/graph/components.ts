@@ -41,9 +41,18 @@ export function components(
   options: ComponentOptions = {},
 ): Component[] {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  // The schema is in every part and belongs to none: nearly everything in a
+  // backend touches the database, so letting those links group the change would
+  // fuse the whole of it into one part and take away the very split that makes
+  // a large review readable.
+  const schema = new Set(
+    graph.nodes.filter((n) => n.kind === "database").map((n) => n.id),
+  );
   const links = graph.edges.filter(
     (e) =>
       (options.includeImports === true || e.kind !== "import") &&
+      !schema.has(e.from.nodeId) &&
+      !schema.has(e.to.nodeId) &&
       byId.has(e.from.nodeId) &&
       byId.has(e.to.nodeId),
   );
@@ -87,7 +96,8 @@ export function components(
   }
 
   return groups
-    .map((group) => describe(group, links))
+    .filter((group) => group.some((n) => n.kind !== "database"))
+    .map((group) => describe(group, links, [...schema]))
     .sort(
       (a, b) =>
         b.files - a.files ||
@@ -105,7 +115,11 @@ export function components(
  * and any name would be as arbitrary as any other, so it takes the first file
  * by path and stays predictable.
  */
-function describe(group: FileNode[], links: Edge[]): Component {
+function describe(
+  group: FileNode[],
+  links: Edge[],
+  schemaIds: string[] = [],
+): Component {
   const ids = new Set(group.map((n) => n.id));
   const inside = links.filter(
     (e) => ids.has(e.from.nodeId) && ids.has(e.to.nodeId),
@@ -130,7 +144,8 @@ function describe(group: FileNode[], links: Edge[]): Component {
     id: head.id,
     label: head.path.split("/").pop() ?? head.path,
     path: head.path,
-    nodeIds: sorted.map((n) => n.id),
+    // The schema travels with every part, since every part may talk to it.
+    nodeIds: [...sorted.map((n) => n.id), ...schemaIds],
     files: group.length,
     additions: group.reduce((n, f) => n + f.stats.additions, 0),
     deletions: group.reduce((n, f) => n + f.stats.deletions, 0),

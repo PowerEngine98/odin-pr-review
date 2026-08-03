@@ -148,44 +148,18 @@ function measureNodes(
     // Split sizes the panes from the widest line on either side: they have to
     // be equal or the divider between them wanders down the card.
     //
-    // Measured over the lines the change touched, and over the lines an arrow
-    // lands on, before every line. A card is capped in width, and something has
-    // to be cut when the cap is reached — but it must never be the change. A
-    // long line of untouched context could otherwise take the whole allowance
-    // and leave an added line ending in an ellipsis, which sends the reader to
-    // the file to read the very thing the card exists to show.
-    const changed = (row?: DisplayRow) =>
-      row && (row.kind === "add" || row.kind === "del") ? row.text.length : 0;
-    const anchored = new Set(
-      (anchors.get(node.id) ?? []).map((a) => a.line),
-    );
-    const lands = (row?: DisplayRow) =>
-      row && row.kind !== "gap" &&
-      (anchored.has(row.newLine ?? -1) || anchored.has(row.oldLine ?? -1))
-        ? row.text.length
-        : 0;
-
-    const important = unified
-      ? rows.reduce((max, row) => Math.max(max, changed(row), lands(row)), 0)
-      : pairs.reduce(
-          (max, pair) =>
-            Math.max(
-              max,
-              changed(pair.left), changed(pair.right),
-              lands(pair.left), lands(pair.right),
-            ),
-          0,
-        );
-    const everything = unified
+    // Every line, because a wider card is never at the expense of a narrower
+    // one: the panes are sized to what the card holds, and the cap is the only
+    // thing that ever cuts. Sizing by the changed lines alone made a card that
+    // an arrow lands on as narrow as the single line it lands on, and clipped
+    // the context around it that was fetched to give the arrow somewhere to go.
+    const widest = unified
       ? rows.reduce((max, row) => Math.max(max, row.text.length), 0)
       : pairs.reduce(
           (max, pair) =>
             Math.max(max, pair.left?.text.length ?? 0, pair.right?.text.length ?? 0),
           0,
         );
-    // A card with nothing changed in it — a phantom pulled in by an arrow — is
-    // sized by what it does have.
-    const widest = important > 0 ? important : everything;
     // A band runs across both panes, so it needs the whole width rather than
     // half of it — it is the one row that is not split.
     const widestBand = pairs.reduce(

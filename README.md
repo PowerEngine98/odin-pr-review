@@ -510,6 +510,8 @@ Done:
       and SQL, including the parts that are only Postgres
 - [x] The database schema as a vertex: tables and functions as rows, with the
       migrations that use them pointing at the row rather than at each other
+- [x] jOOQ: generated constants, records, enums and routines resolved back to
+      the schema objects they were generated from
 - [x] Phantom vertices for referenced-but-untouched files
 - [x] Deterministic layered layout with line-level arrow anchors
 - [x] Interactive renderer: follow an arrow, isolate a file, pan and zoom
@@ -615,7 +617,7 @@ every Postgres project names its migrations `.sql`, so the extension cannot say,
 and the text is asked instead — nobody writes `$$ … $$ LANGUAGE plpgsql` by
 accident.
 
-### The schema as a vertex
+### The schema as a vertex, and the code that talks to it
 
 A migration set read as a graph of files answers the wrong question. Nobody asks
 which migration mentions which other migration; they ask what this change does
@@ -628,6 +630,24 @@ row per table, view, function, sequence or type that the change touches. Every
 reference lands on the row it names rather than on the file that happens to
 declare it, and each object points at whatever created it — so the migration
 that made a table is one arrow away, in the direction the question is asked.
+
+Code reaches the same objects through generated classes, and that link is the one
+a reviewer cannot see: a migration renames a type and the projection that reads
+it is in another language, in another directory, under a name that does not
+match. jOOQ generates mechanically — a table becomes a constant in upper snake
+and a class in pascal, its rows become `…Record`, an enum keeps its name, a
+function becomes a routine — so the name in the code is the name in the database
+with the case changed, and the arrow can be read rather than guessed.
+`NotificationRecord` lands on `table notification`, `LaborNotificationType` on
+`type labor_notification_type`, `NOTIFICATION.asterisk()` on the table it names.
+Only in files that import jOOQ: a `NotificationRecord` that has nothing to do
+with the database is an ordinary class name, and linking it because the
+repository uses jOOQ elsewhere would be a confident lie.
+
+Schema links do not split the change into parts. Nearly everything in a backend
+touches the database, so letting them group it would fuse the whole review into
+one part and take away the split that makes a large one readable; the schema
+travels into every part instead.
 
 Python and Clojure share one engine, since a module and a namespace are the same
 idea spelled the same way. What differs is per language: Python's relative
