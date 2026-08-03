@@ -1313,6 +1313,25 @@ body:not(.split) .card-body.split-view { display: none; }
    the connection in their head instead of seeing it. */
 /* Wide enough for the toolbar to sit on one row: a box that writes markdown
    and hides half its buttons is worse than one that never offered them. */
+/* The writer's own face, the size a remark's is: the box they are typing in
+   should look like the remark it is about to become. */
+.composer-face { display: inline-flex; flex: 0 0 auto; }
+.composer-face .writer {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.composer-face .writer.initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--status-renamed);
+}
+
 .composer, .review {
   position: fixed;
   z-index: 40;
@@ -1590,17 +1609,6 @@ body:not(.split) .card-body.split-view { display: none; }
 }
 .toolbar #action-review[hidden] { display: none; }
 
-.hint {
-  position: fixed;
-  left: 14px;
-  bottom: 12px;
-  z-index: 20;
-  color: var(--muted);
-  font-size: 11px;
-  text-align: left;
-  line-height: 1.7;
-  pointer-events: none;
-}
 
 /* ------------------------------------------------------------------- checks
 

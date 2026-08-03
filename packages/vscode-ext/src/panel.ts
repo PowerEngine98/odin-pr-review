@@ -1,5 +1,6 @@
 import {
   DARK_THEME,
+  inlineAvatar,
   inlineAvatars,
   readChecks,
   LIGHT_THEME,
@@ -189,6 +190,8 @@ export class GraphPanel {
   private highlight: Highlighter | undefined;
   /** Who the reader is, so only their own remarks offer edit and delete. */
   private viewer = "";
+  /** The reader's own face, for the box they write in. */
+  private viewerFace = "";
 
   /**
    * Keeps the forge's verdict on the branch up to date while the panel is open.
@@ -216,9 +219,16 @@ export class GraphPanel {
     this.comments = comments;
     // Asked for once, alongside the comments that need it.
     void currentUser({ cwd: this.repo })
-      .then((login) => {
+      .then(async (login) => {
         if (!login || login === this.viewer) return;
         this.viewer = login;
+        // Their own face, inlined like every other face here: a webview will
+        // not fetch one, and a composer with everybody's picture but the
+        // writer's own looks like it belongs to somebody else.
+        this.viewerFace =
+          (await inlineAvatar(`https://github.com/${login}.png?size=64`).catch(
+            () => undefined,
+          )) ?? "";
         this.render(this.layout);
       })
       .catch(() => undefined);
@@ -534,6 +544,7 @@ export class GraphPanel {
       comments: this.comments,
       canReview: Boolean(this.graph.meta.pullRequest),
       ...(this.viewer ? { viewer: this.viewer } : {}),
+      ...(this.viewerFace ? { viewerFace: this.viewerFace } : {}),
     });
   }
 

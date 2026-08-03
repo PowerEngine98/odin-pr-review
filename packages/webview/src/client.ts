@@ -1342,6 +1342,24 @@ export const CLIENT_SCRIPT = String.raw`
    * number and a removed one no right, so taking the ends alone would fail on
    * any selection that happens to start or finish on the wrong kind of line.
    */
+  /**
+   * Puts the reader's own face on the box they are writing in.
+   *
+   * Every other remark in the page carries the face of whoever wrote it, and a
+   * composer without one reads as somebody else's box. Falls back to initials,
+   * as the remarks do, when there is no picture to be had.
+   */
+  function showWriter() {
+    var slot = composer && composer.querySelector(".composer-face");
+    if (!slot) return;
+    slot.textContent = "";
+    if (!data.viewer) { slot.hidden = true; return; }
+    slot.hidden = false;
+    slot.appendChild(
+      face({ author: data.viewer, avatar: data.viewerFace }, "writer"),
+    );
+  }
+
   function compose(card, rows, event) {
     var node = nodeFor(card.dataset.id);
     if (!node) return;
@@ -1366,6 +1384,7 @@ export const CLIENT_SCRIPT = String.raw`
         ? "Add a comment on line " + mark + end
         : "Add a comment on lines " + mark + start + "–" + mark + end;
 
+    showWriter();
     rememberOn(composer, composerKey(pending));
     setTab(composer, "write");
     composer.hidden = false;
@@ -3499,7 +3518,7 @@ export const CLIENT_SCRIPT = String.raw`
    * at all. Stored under one key so clearing it restores the defaults whole.
    */
   var ACTIONS = [
-    { id: "fit", says: "Fit the drawing", key: "f" },
+    { id: "fit", says: "Fit the drawing", key: "h" },
     { id: "open", says: "Open the file in the editor", key: "F" },
     { id: "read", says: "Mark the file read", key: "Enter" },
     { id: "comment", says: "Comment on the file", key: "c" },
@@ -3752,6 +3771,7 @@ export const CLIENT_SCRIPT = String.raw`
     composer.querySelector(".composer-where").textContent =
       "Add a comment on " + node.path.split("/").pop();
 
+    showWriter();
     rememberOn(composer, composerKey(pending));
     setTab(composer, "write");
     composer.hidden = false;

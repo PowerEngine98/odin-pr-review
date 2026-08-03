@@ -60,6 +60,8 @@ export interface RenderOptions {
   canReview?: boolean;
   /** Who the reader is signed in as, for deciding what they may edit. */
   viewer?: string;
+  /** Their picture, as a data uri, for the box they write in. */
+  viewerFace?: string;
   /**
    * Syntax colouring, already loaded for the languages in this change.
    *
@@ -199,6 +201,7 @@ export function renderHtml(
     ],
     canReview: options.canReview === true,
     viewer: options.viewer ?? "",
+    viewerFace: options.viewerFace ?? "",
     comments: comments.map((c) => ({
       id: c.id,
       path: c.path,
@@ -281,7 +284,6 @@ export function renderHtml(
       `</div></div>`,
     composer(),
     reviewPanel(),
-    hint(),
     `<script${nonce}>window.__ODIN__=${jsonForScript(viewModel)};</script>`,
     `<script${nonce}>${CLIENT_SCRIPT}</script>`,
     `</body></html>`,
@@ -670,7 +672,7 @@ const RING =
  */
 function composer(): string {
   return `<div class="composer" hidden>
-  <div class="composer-head"><span class="composer-where"></span></div>
+  <div class="composer-head"><span class="composer-face"></span><span class="composer-where"></span></div>
   ${editor({ placeholder: "Leave a comment", rows: 5 })}
   <div class="composer-actions">
     <button class="composer-cancel">Cancel</button>
@@ -814,13 +816,6 @@ function reviewPanel(): string {
 </div>`;
 }
 
-function hint(): string {
-  return `<div class="hint">
-  click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
-  scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>arrows</b> to move between files<br>
-  <b>enter</b> to mark read &middot; <b>c</b> to comment &middot; <b>F</b> to open &middot; keys are listed under <b>keys</b>
-</div>`;
-}
 
 /**
  * Colours a card's code, one contiguous run at a time.
