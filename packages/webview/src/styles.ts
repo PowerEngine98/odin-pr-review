@@ -403,12 +403,15 @@ html, body {
 .prbar .viewed-count .tally { color: var(--text); font-weight: 600; }
 .prbar .ring { color: var(--status-renamed); }
 
+/* Filled rather than outlined, like every other state in this page: an outline
+   in the tag's own colour drew a ring brighter than the words inside it. */
 .prbar .tag {
-  border: 1px solid currentColor;
+  border: 0;
   border-radius: 999px;
-  padding: 0 7px;
+  padding: 1px 8px;
   font-size: 11px;
   flex: 0 0 auto;
+  background: color-mix(in srgb, currentColor 18%, transparent);
 }
 .prbar .tag.ok { color: var(--added); }
 .prbar .tag.warn { color: var(--warning); }

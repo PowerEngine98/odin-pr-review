@@ -2779,6 +2779,9 @@ export const CLIENT_SCRIPT = String.raw`
     'a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" ' +
     'stroke-width="1.4" stroke-linejoin="round"/></svg>';
 
+  /** The threads on screen, as the faces row currently stands for them. */
+  var onScreen = [];
+
   var reviewerDock = document.querySelector(".reviewers");
   var faceRow = reviewerDock && reviewerDock.querySelector(".faces");
   var reviewerPanel = reviewerDock && reviewerDock.querySelector(".reviewer-panel");
@@ -2825,10 +2828,11 @@ export const CLIENT_SCRIPT = String.raw`
     // opens the same list. A menu per person was five menus saying one thing.
     faceRow.title = here.length + (here.length === 1 ? " thread" : " threads") +
       " on what is on screen";
-    faceRow.onclick = function (event) {
-      event.stopPropagation();
-      toggleThreadList(here);
-    };
+    faceRow.setAttribute("role", "button");
+    faceRow.setAttribute("tabindex", "0");
+    // Held on the row rather than on its children, and read at press time, so
+    // it survives the row being rebuilt as the view changes.
+    onScreen = here;
 
     var icon = document.createElement("span");
     icon.className = "speech";
@@ -2897,6 +2901,38 @@ export const CLIENT_SCRIPT = String.raw`
     reviewerPanel.hidden = false;
   }
 
+  /**
+   * Takes the reader to a remark and opens it.
+   *
+   * At the line, and at a size the line can be read at: a remark is about
+   * words, and arriving at the zoom a whole change is taken in at shows a green
+   * rectangle where the words were.
+   *
+   * The thread opens after the flight rather than before. It is placed beside
+   * its mark, and a mark that is still moving would leave it somewhere the
+   * reader has already left.
+   */
+  function goToRemark(mark) {
+    var node = nodeFor(mark.nodeId);
+    if (!node) return;
+
+    var side = mark.thread.root.side === "LEFT" ? "base" : "head";
+    var anchor = anchorFor(mark.nodeId, side, mark.thread.root.line, false);
+    var y = anchor ? anchor.y : node.y + node.height / 2;
+
+    view.scale = clamp(1, MIN_SCALE, MAX_SCALE);
+
+    var rect = viewport.getBoundingClientRect();
+    view.x = rect.width / 2 - (node.x + node.width / 2) * view.scale;
+    view.y = rect.height / 2 - y * view.scale;
+    travelTo(mark.nodeId);
+
+    window.setTimeout(function () {
+      placeMarks();
+      if (!mark.el.hidden) showThread(mark.thread, mark.el);
+    }, 360);
+  }
+
   /** Under the chrome, which changes height with what it has to say. */
   function place() {
     if (!reviewerDock) return;
@@ -2905,6 +2941,22 @@ export const CLIENT_SCRIPT = String.raw`
   }
 
   window.addEventListener("resize", place);
+
+  // Delegated: every part of the pill is the same control, including the space
+  // its padding leaves and the border around it, and it keeps working after the
+  // faces are rebuilt for a different part of the change.
+  if (faceRow) {
+    faceRow.addEventListener("click", function (event) {
+      event.stopPropagation();
+      toggleThreadList(onScreen);
+    });
+    faceRow.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleThreadList(onScreen);
+    });
+  }
 
   document.addEventListener("click", function (event) {
     if (!reviewerDock || reviewerPanel.hidden) return;
