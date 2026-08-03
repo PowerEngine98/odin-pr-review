@@ -2748,6 +2748,12 @@ export const CLIENT_SCRIPT = String.raw`
 
   /* --------------------------------------------------------- the reviewers */
 
+  var SPEECH =
+    '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
+    '<path d="M2.6 3.4h10.8a1 1 0 0 1 1 1v5.6a1 1 0 0 1-1 1H8l-3.4 2.6V11H2.6' +
+    'a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.4" stroke-linejoin="round"/></svg>';
+
   var reviewerDock = document.querySelector(".reviewers");
   var faceRow = reviewerDock && reviewerDock.querySelector(".faces");
   var reviewerPanel = reviewerDock && reviewerDock.querySelector(".reviewer-panel");
@@ -2789,16 +2795,27 @@ export const CLIENT_SCRIPT = String.raw`
     faceRow.hidden = here.length === 0;
     if (here.length === 0) return;
 
+    // The row is one control, so it is one control: the faces say who is
+    // talking and pressing any of them — or the icon, or the space between —
+    // opens the same list. A menu per person was five menus saying one thing.
+    faceRow.title = here.length + (here.length === 1 ? " thread" : " threads") +
+      " on what is on screen";
+    faceRow.onclick = function (event) {
+      event.stopPropagation();
+      toggleThreadList(here);
+    };
+
+    var icon = document.createElement("span");
+    icon.className = "speech";
+    icon.innerHTML = SPEECH;
+    faceRow.appendChild(icon);
+
     // Reversed, so the row reads left to right while each face still overlaps
     // the one after it rather than being overlapped by it.
     order.slice().reverse().forEach(function (who) {
       var el = face(first[who], "reviewer");
       el.title = who + " — " + counts[who] +
         (counts[who] === 1 ? " comment" : " comments");
-      el.addEventListener("click", function (event) {
-        event.stopPropagation();
-        toggleThreadList(here);
-      });
       faceRow.appendChild(el);
     });
 
@@ -2827,19 +2844,23 @@ export const CLIENT_SCRIPT = String.raw`
       var root = mark.thread.root;
       var button = document.createElement("button");
       button.className = "remark-link";
+      // Whose remark it is, said in the way the rest of the page says it.
+      button.appendChild(face(root, "who-face"));
+
+      var about = chrome("about", "");
 
       var where = root.path.split("/").pop() + ":" +
         (root.startLine && root.startLine < root.line
           ? root.startLine + "\u2013" + root.line
           : root.line);
       var replies = mark.thread.comments.length - 1;
-      button.appendChild(
+      about.appendChild(
         chrome("where", where + (replies > 0
           ? "  \u00b7  " + replies + (replies === 1 ? " reply" : " replies")
           : "")),
       );
-      button.appendChild(chrome("by", root.author));
-      button.appendChild(chrome("said", root.body.replace(/\s+/g, " ").slice(0, 90)));
+      about.appendChild(chrome("said", root.body.replace(/\s+/g, " ").slice(0, 90)));
+      button.appendChild(about);
 
       button.addEventListener("click", function (event) {
         event.stopPropagation();

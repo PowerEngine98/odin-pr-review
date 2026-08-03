@@ -1727,7 +1727,9 @@ body:not(.split) .card-body.split-view { display: none; }
 .faces {
   display: flex;
   flex-direction: row-reverse;
-  padding: 4px;
+  align-items: center;
+  cursor: pointer;
+  padding: 4px 8px 4px 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
@@ -1746,6 +1748,16 @@ body:not(.split) .card-body.split-view { display: none; }
   transition: transform 120ms ease;
 }
 .faces .reviewer:last-child { margin-left: 0; }
+/* At the head of the row, which is its right in a row that runs backwards: the
+   faces say who, the icon says what they are. */
+.faces .speech {
+  display: inline-flex;
+  align-items: center;
+  order: -1;
+  margin-left: 8px;
+  color: var(--muted);
+}
+.faces:hover .speech { color: var(--text); }
 .faces .reviewer:hover,
 .faces .reviewer.on { transform: translateY(-2px) scale(1.06); z-index: 2; }
 .faces .reviewer.initials {
@@ -1775,8 +1787,8 @@ body:not(.split) .card-body.split-view { display: none; }
 }
 .reviewer-panel .remark-link {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 8px;
   width: 100%;
   padding: 6px 8px;
   border: 0;
@@ -1795,7 +1807,29 @@ body:not(.split) .card-body.split-view { display: none; }
   font-size: 11px;
   color: var(--status-renamed);
 }
-.reviewer-panel .by { color: var(--text); }
+.reviewer-panel .who-face {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  object-fit: cover;
+}
+.reviewer-panel .who-face.initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--status-renamed);
+}
+.reviewer-panel .about {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
 .reviewer-panel .said {
   color: var(--muted);
   overflow: hidden;
