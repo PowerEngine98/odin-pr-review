@@ -1893,6 +1893,20 @@ body.hud-no-map .minimap { display: none !important; }
 .minimap-face .deleted { fill: var(--status-deleted); }
 .minimap-face .renamed { fill: var(--status-renamed); }
 .minimap-face .phantom { fill: none; stroke: var(--status-phantom); stroke-width: 1; }
+/* Where the reader is. Its own colour at full strength around the block that is
+   drawn at a fraction of it: the map stays quiet, and one rectangle in it does
+   not. */
+.minimap-face .on.here {
+  opacity: 1;
+  fill-opacity: 0.22;
+  stroke-width: 1.5;
+  paint-order: stroke;
+}
+.minimap-face .added.here   { stroke: var(--status-added); }
+.minimap-face .modified.here { stroke: var(--status-modified); }
+.minimap-face .deleted.here { stroke: var(--status-deleted); }
+.minimap-face .renamed.here { stroke: var(--status-renamed); }
+.minimap-face .phantom.here { stroke: var(--status-phantom); }
 /* What is on screen. An outline, because it is a window and not a thing. */
 /* Drawn over the files, so it has to beat a saturated green: a hairline in the
    text colour vanished into the rectangles it was supposed to sit on. */

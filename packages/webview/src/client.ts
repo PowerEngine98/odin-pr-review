@@ -3254,6 +3254,10 @@ export const CLIENT_SCRIPT = String.raw`
     if (!minimap || !minimapNodes) return;
     if (!mapSettled) settleMap();
 
+    // Whatever the middle of the screen is on, which is the same file the
+    // keyboard walks and the same one the reader is reading.
+    var here = cardAtCentre();
+
     var box = mapRegion();
     if (!box.width || !box.height) { minimap.hidden = true; return; }
     minimap.hidden = false;
@@ -3280,7 +3284,11 @@ export const CLIENT_SCRIPT = String.raw`
       // the reader cannot see is there.
       var w = Math.max(2, Math.round(node.width * scale));
       var h = Math.max(2, Math.round(node.height * scale));
-      parts += '<rect class="on ' + (node.status || "modified") + '" x="' +
+      // The file the reader is on, outlined. A map of forty rectangles answers
+      // "what shape is this change"; it only answers "where am I in it" if one
+      // of them is you.
+      var mine = here && card === here ? " here" : "";
+      parts += '<rect class="on ' + (node.status || "modified") + mine + '" x="' +
         Math.round(padX + (node.x - box.x) * scale) + '" y="' +
         Math.round(padY + (node.y - box.y) * scale) + '" width="' + w +
         '" height="' + h + '" rx="1"><title>' +
