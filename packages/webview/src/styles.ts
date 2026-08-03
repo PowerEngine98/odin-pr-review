@@ -64,9 +64,11 @@ html, body {
 /* How much of what is on screen has been read. Full width, because it is about
    the whole view rather than any one card, and pinned to the chrome's lower
    edge so a title sliding up to the bar meets it there. */
+/* The empty part of the bar is the strip it runs along, so only the filled
+   part is a mark on the page. */
 .done-bar {
   height: 2px;
-  background: color-mix(in srgb, var(--text) 10%, transparent);
+  background: transparent;
 }
 .done-bar span {
   display: block;
@@ -94,7 +96,6 @@ html, body {
   flex: 0 0 auto;
   padding: 6px 12px;
   border: 0;
-  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -163,12 +164,15 @@ html, body {
 /* Everything stacks into columns rather than running across the top: a
    docked editor panel is narrow, and a row of eight items wraps into a mess
    long before it runs out of things to say. */
+/* The same surface a card's title sits on, so a pinned header sliding up to
+   the bar arrives at the colour it was already wearing rather than crossing an
+   edge between two greys. Opaque, which also makes the blur that was standing
+   in for solidity unnecessary. */
 .chrome {
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 20;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--card-bg);
   border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
 }
 
