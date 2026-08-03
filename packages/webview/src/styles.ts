@@ -39,6 +39,9 @@ export function stylesheet(theme: Theme, metrics: LayoutMetrics): string {
      to sit behind code rather than under text — managed two. */
   --action: #007C36;
   --action-ink: #ffffff;
+  /* The edge of a floating panel: the same shade as the strip of tabs, so the
+     chrome reads as surfaces meeting rather than as boxes drawn on a page. */
+  --panel-edge: color-mix(in srgb, var(--text) 8%, var(--card-bg));
   /* The wash over a picked range. Yellow because it is a selection, not a
      verdict: nothing has been said about these lines yet. */
   --pick-wash: color-mix(in srgb, var(--warning) 22%, transparent);
@@ -194,7 +197,7 @@ html, body {
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
-  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border: 1px solid var(--panel-edge);
   font-size: 12px;
 }
 /* The spacer earned its keep in a full-width bar; in a corner it would push
@@ -273,7 +276,7 @@ html, body {
   padding: 12px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
 }
 .settings-title { font-size: 13px; font-weight: 600; color: var(--text); }
@@ -302,7 +305,7 @@ html, body {
   padding: 4px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
 }
 .state-item {
@@ -1049,7 +1052,7 @@ body:not(.split) .card-body.split-view { display: none; }
   padding: 7px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   font-size: 11px;
   line-height: 1.5;
   pointer-events: none;
@@ -1258,7 +1261,7 @@ body:not(.split) .card-body.split-view { display: none; }
   padding: 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   font-size: 12px;
 }
 .composer {
@@ -1578,7 +1581,7 @@ body:not(.split) .card-body.split-view { display: none; }
   padding: 6px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
 }
 .check-row {
@@ -1677,7 +1680,7 @@ body:not(.split) .card-body.split-view { display: none; }
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
-  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border: 1px solid var(--panel-edge);
   font-size: 12px;
 }
 .review-head {
@@ -1739,7 +1742,7 @@ body:not(.split) .card-body.split-view { display: none; }
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(8px);
-  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border: 1px solid var(--panel-edge);
 }
 /* Overlapped, and the one under the pointer comes forward: a row of faces is
    one object saying who is in the conversation, not five separate buttons. */
@@ -1783,7 +1786,7 @@ body:not(.split) .card-body.split-view { display: none; }
   padding: 6px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
   font-size: 12px;
 }
@@ -1940,7 +1943,7 @@ body:not(.split) .card-body.split-view { display: none; }
   padding: 10px 12px 12px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
   font-size: 12px;
 }
@@ -2044,7 +2047,7 @@ body:not(.split) .card-body.split-view { display: none; }
   padding: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
 }
 .picker button {
@@ -2085,7 +2088,7 @@ body:not(.split) .card-body.split-view { display: none; }
   padding: 4px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
-  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border: 1px solid var(--panel-edge);
   box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
 }
 .menu button {
