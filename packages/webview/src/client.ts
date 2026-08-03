@@ -847,6 +847,15 @@ export const CLIENT_SCRIPT = String.raw`
            p[2].x + " " + p[2].y + ", " + p[3].x + " " + p[3].y;
   }
 
+  // The return dots, by the edge they belong to. Looked up once: they are in
+  // their own layer, and finding them by attribute selector on every reroute
+  // means escaping an id that came out of a file path.
+  var homePorts = {};
+  document.querySelectorAll("#ports g.edge").forEach(function (group) {
+    var circle = group.querySelector("circle.port.in");
+    if (circle) homePorts[group.dataset.id] = circle;
+  });
+
   function rerouteEdges() {
     data.edges.forEach(function (edge) {
       var group = document.querySelector('g.edge[data-id="' + edge.id + '"]');
@@ -909,8 +918,9 @@ export const CLIENT_SCRIPT = String.raw`
         dot.setAttribute("cy", from.y);
       }
       // Its opposite number, on the side the arrow arrives from, so the way
-      // back is where the reader is already looking.
-      var home = group.querySelector("circle.port.in");
+      // back is where the reader is already looking. It lives in the layer over
+      // the cards, not in this group: a dot inside a card is a dot under it.
+      var home = homePorts[edge.id];
       if (home) {
         home.setAttribute("cx", toX + (goesRight ? 11 : -11));
         home.setAttribute("cy", to.y);
@@ -1092,7 +1102,7 @@ export const CLIENT_SCRIPT = String.raw`
     card.classList.add("flash");
   }
 
-  document.querySelectorAll("#edges g.edge .port").forEach(function (port) {
+  document.querySelectorAll(".edges g.edge .port").forEach(function (port) {
     port.addEventListener("click", function (event) {
       event.stopPropagation();
       var group = port.closest("g.edge");

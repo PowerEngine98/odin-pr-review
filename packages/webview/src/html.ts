@@ -263,6 +263,7 @@ export function renderHtml(
     `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
     edgeLayer(full),
     cards,
+    portLayer(full),
     `</div></div>`,
     // Who has said something, and where. Docked under the chrome on the side
     // the canvas is least busy, because a comment on a change is a thing to
@@ -1222,19 +1223,9 @@ function edgeLayer(layout: GraphLayout): string {
     // Clear of the card, not on its edge: half a dot under the border is a
     // smudge, and this one is meant to be pressed.
     const away = edge.fromSide === "right" ? 1 : -1;
-    // Inside the card rather than out in the canvas: the head is already at the
-    // border, and a dot beyond it sits in the space the arrow just crossed. The
-    // strip between the border and the code is empty and belongs to this row.
-    const back = edge.toSide === "left" ? 1 : -1;
     const port =
       `<circle class="port out" cx="${edge.from.x + away * PORT_GAP}" cy="${edge.from.y}" r="4.5">` +
-      `<title>Go to the definition this points at</title></circle>` +
-      // The same dot at the far end. An arrow read forwards leaves the reader
-      // somewhere they did not choose to be, and the way home was a shape they
-      // had to find by eye; this is the same journey offered in reverse, in the
-      // same place they pressed to make it.
-      `<circle class="port in" cx="${edge.to.x + back * PORT_GAP}" cy="${edge.to.y}" r="4.5">` +
-      `<title>Go back to where this is called from</title></circle>`;
+      `<title>Go to the definition this points at</title></circle>`;
     return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
       `<path class="hit" d="${full}"/>` +
       `<path class="wire" d="${stem}"/>` +
@@ -1243,8 +1234,33 @@ function edgeLayer(layout: GraphLayout): string {
       `</g>`;
   });
 
-  return `<svg id="edges" width="${layout.width}" height="${layout.height}">` +
+  return `<svg id="edges" class="edges" width="${layout.width}" height="${layout.height}">` +
     `<defs>${markers}</defs>${style}${paths.join("")}</svg>`;
+}
+
+/**
+ * The way back, drawn over the cards rather than under them.
+ *
+ * The dot at an arrow's head belongs just inside the card it arrives at — the
+ * head is already on the border, and a dot beyond it sits out in the canvas the
+ * arrow has just crossed. But the cards are drawn after the arrows, so a dot
+ * inside one is a dot underneath it. It gets its own layer, laid over the
+ * cards, holding nothing but these.
+ */
+function portLayer(layout: GraphLayout): string {
+  // An arrow read forwards leaves the reader somewhere they did not choose to
+  // be, and the way home was a shape they had to find by eye; this is the same
+  // journey offered in reverse, in the same place they pressed to make it.
+  const ports = layout.edges.map((edge) => {
+    const back = edge.toSide === "left" ? 1 : -1;
+    return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
+      `<circle class="port in" cx="${edge.to.x + back * PORT_GAP}" cy="${edge.to.y}" r="4.5">` +
+      `<title>Go back to where this is called from</title></circle></g>`;
+  });
+
+  return `<svg id="ports" class="edges" width="${layout.width}" height="${layout.height}">` +
+    ports.join("") +
+    `</svg>`;
 }
 
 /**

@@ -1103,7 +1103,10 @@ body:not(.split) .card-body.split-view { display: none; }
 
 /* -------------------------------------------------------------------- edges */
 
-#edges {
+/* Two of them: the arrows, under the cards, and the dots at their heads, over
+   the cards. A dot belongs just inside the card it points into, and the cards
+   are painted after the arrows, so it would otherwise be painted over. */
+.edges {
   position: absolute;
   inset: 0;
   overflow: visible;
@@ -1128,18 +1131,18 @@ body:not(.split) .card-body.split-view { display: none; }
   pointer-events: stroke;
   cursor: pointer;
 }
-#edges g.edge.added    path.wire { stroke: var(--added); }
-#edges g.edge.removed  path.wire { stroke: var(--removed); }
-#edges g.edge.unchanged path.wire { stroke: var(--unchanged); }
-#edges g.edge.import   path.wire { stroke-dasharray: 4 4; opacity: 0.5; }
+.edges g.edge.added    path.wire { stroke: var(--added); }
+.edges g.edge.removed  path.wire { stroke: var(--removed); }
+.edges g.edge.unchanged path.wire { stroke: var(--unchanged); }
+.edges g.edge.import   path.wire { stroke-dasharray: 4 4; opacity: 0.5; }
 
-#edges g.edge.hidden { display: none; }
-#edges g.edge.dim path.wire { opacity: 0.12; }
-#edges g.edge.active path.wire { opacity: 1; stroke-width: 3; }
+.edges g.edge.hidden { display: none; }
+.edges g.edge.dim path.wire { opacity: 0.12; }
+.edges g.edge.active path.wire { opacity: 1; stroke-width: 3; }
 
 .card.hidden,
 .card.viewed-hidden { display: none; }
-#edges g.edge.viewed-hidden { display: none; }
+.edges g.edge.viewed-hidden { display: none; }
 .card.dim { opacity: 0.32; }
 .card.active { box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 22%, transparent); }
 .card.flash { animation: flash 900ms ease-out; }
@@ -2471,34 +2474,34 @@ body.hud-no-map .minimap { display: none !important; }
    dot at its start jumps to the definition, the dashes past its head jump back
    to the call. On a change of any size the alternative is finding the other end
    by eye, and then finding your way home the same way. */
-#edges .port {
+.edges .port {
   cursor: pointer;
   pointer-events: all;
   transition: opacity 120ms ease;
 }
-#edges circle.port {
+.edges circle.port {
   fill: var(--bg);
   stroke-width: 2.5;
   opacity: 0.9;
 }
 /* The way home. Quieter than the dot that sets out, because it is only worth
    looking for once the reader has arrived. */
-#edges circle.port.in { opacity: 0.65; }
-#edges g.edge:hover circle.port.in,
-#edges g.edge.active circle.port.in { opacity: 1; }
-#edges g.edge.added .port { stroke: var(--added); }
-#edges g.edge.removed .port { stroke: var(--removed); }
-#edges g.edge.unchanged .port { stroke: var(--unchanged); }
+.edges circle.port.in { opacity: 0.65; }
+.edges g.edge:hover circle.port.in,
+.edges g.edge.active circle.port.in { opacity: 1; }
+.edges g.edge.added .port { stroke: var(--added); }
+.edges g.edge.removed .port { stroke: var(--removed); }
+.edges g.edge.unchanged .port { stroke: var(--unchanged); }
 
-#edges g.edge:hover .port,
-#edges g.edge.active .port { opacity: 1; }
-#edges circle.port:hover { fill: var(--added); }
-#edges g.edge.removed circle.port:hover { fill: var(--removed); }
-#edges g.edge.unchanged circle.port:hover { fill: var(--unchanged); }
+.edges g.edge:hover .port,
+.edges g.edge.active .port { opacity: 1; }
+.edges circle.port:hover { fill: var(--added); }
+.edges g.edge.removed circle.port:hover { fill: var(--removed); }
+.edges g.edge.unchanged circle.port:hover { fill: var(--unchanged); }
 
 /* A dimmed edge keeps its ports out of the way with it. */
-#edges g.edge.dim .port { opacity: 0.1; pointer-events: none; }
-#edges g.edge.hidden .port { display: none; }
+.edges g.edge.dim .port { opacity: 0.1; pointer-events: none; }
+.edges g.edge.hidden .port { display: none; }
 
 /* The word an arrow lands on, boxed. The arrow reaches the line; this says
    which name on it, which is the difference between "somewhere in here" and
