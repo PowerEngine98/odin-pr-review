@@ -1,6 +1,7 @@
 # Odin PR Review
 
-> He saw over all worlds and every man's activity and understood everything he saw.
+> *“He saw over all worlds and every man's activity and understood everything he
+> saw.”*
 >
 > — Snorri Sturluson, *Prose Edda*, Chapter 38
 
