@@ -1044,6 +1044,17 @@ export const CLIENT_SCRIPT = String.raw`
         other.classList.toggle("on", other === tab);
       });
 
+      // The list beside the canvas follows the canvas: a part is a smaller
+      // review, and a file list showing forty files while the drawing shows
+      // five is two answers to the same question.
+      notifyHost("part", {
+        paths: part
+          ? part.nodes
+              .map(function (id) { var node = nodeFor(id); return node && node.path; })
+              .filter(Boolean)
+          : null,
+      });
+
       refreshFilters();
       refreshTally();
       // The part fills the view it was opened into; leaving the camera where it

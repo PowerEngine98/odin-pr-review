@@ -220,6 +220,9 @@ async function review(baseRef?: string): Promise<void> {
           { dark: isDark(), ...(theme ? { theme } : {}) },
         );
 
+        // The list follows whichever part the panel is showing.
+        GraphPanel.onPart = (paths) => sidebar.setPart(paths);
+
         const panel = GraphPanel.show(
           shown, layout, repo, layoutWithTests, viewed, highlight,
           { layout: unifiedLayout, withTests: unifiedWithTests },

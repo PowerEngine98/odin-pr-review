@@ -11,7 +11,14 @@ import {
 } from "@odin/core";
 import * as vscode from "vscode";
 
-import { ago, buildTree, progressOf, rowSearchText, type Folder } from "./tree-model.js";
+import {
+  ago,
+  buildTree,
+  partOf,
+  progressOf,
+  rowSearchText,
+  type Folder,
+} from "./tree-model.js";
 import type { ViewedStore } from "./viewed.js";
 
 /**
@@ -76,6 +83,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private branch = "";
   /** Something is being fetched, and the view says so rather than sitting blank. */
   private loading = false;
+  /** The part of the change the panel is showing, when it is showing one. */
+  private part: Set<string> | undefined;
 
   constructor(private readonly viewed: ViewedStore) {}
 
@@ -138,8 +147,22 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     this.render();
   }
 
+  /**
+   * Narrows the list to one part of the change.
+   *
+   * The panel splits a large change into the pieces that do not reach each
+   * other, and a list showing forty files while the drawing shows five is two
+   * answers to the same question. Undefined means all of it again.
+   */
+  setPart(paths: string[] | undefined): void {
+    this.part = paths ? new Set(paths) : undefined;
+    if (this.graph) this.render();
+  }
+
   setGraph(graph: ChangeGraph | undefined): void {
     this.graph = graph;
+    // A new graph is a new set of parts, so whatever was open is gone.
+    this.part = undefined;
     // The way back only exists when there is something to go back from, and
     // the title bar decides that from this key rather than from the markup.
     void vscode.commands.executeCommand("setContext", "odin.hasGraph", Boolean(graph));
@@ -179,6 +202,18 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ type: "setViewed", paths, viewed });
   }
 
+  /**
+   * The change as the list should show it: all of it, or one part.
+   *
+   * An edge is kept only when both of its ends are in the part, so the
+   * references under a file are the ones the reader can actually follow from
+   * where they are.
+   */
+  private showing(): ChangeGraph | undefined {
+    if (!this.graph) return undefined;
+    return partOf(this.graph, this.part ? [...this.part] : undefined);
+  }
+
   private render(): void {
     if (!this.view) return;
     const dark =
@@ -186,7 +221,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
     this.view.webview.html = html(
       this.loading,
-      this.graph,
+      this.showing(),
       dark ? DARK_THEME : LIGHT_THEME,
       this.viewed,
       this.pulls,

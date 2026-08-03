@@ -69,7 +69,14 @@ interface RemarkMessage {
   payload: { id: number; content?: string; body?: string };
 }
 
+/** Which part of the change the reader has opened, or all of it. */
+interface PartMessage {
+  type: "part";
+  payload: { paths: string[] | null };
+}
+
 type Message =
+  | PartMessage
   | NavigateMessage
   | OpenMessage
   | ViewedMessage
@@ -148,6 +155,14 @@ export class GraphPanel {
     if (!target.toPath) return;
     await GraphPanel.current?.reveal(target.toPath, target.toLine, target.toSide);
   }
+
+  /**
+   * Told when the reader opens one part of the change.
+   *
+   * The panel has no idea the file list exists; the extension wires the two
+   * together, and either can be present without the other.
+   */
+  static onPart: ((paths: string[] | undefined) => void) | undefined;
 
   private withTests: GraphLayout | undefined;
   /** The same graph in the other diff mode, for the page's own switch. */
@@ -515,6 +530,10 @@ export class GraphPanel {
    */
   private async handle(message: Message): Promise<void> {
     try {
+      if (message.type === "part") {
+        GraphPanel.onPart?.(message.payload.paths ?? undefined);
+        return;
+      }
       if (message.type === "navigate") {
         await this.reveal(
           message.payload.toPath,

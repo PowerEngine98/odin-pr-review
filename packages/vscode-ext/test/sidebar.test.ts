@@ -4,7 +4,7 @@ import type { FileNode } from "@odin/core";
 
 import type { ChangeGraph } from "@odin/core";
 
-import { ago, buildTree, progressOf, rowSearchText } from "../src/tree-model.js";
+import { ago, buildTree, partOf, progressOf, rowSearchText } from "../src/tree-model.js";
 
 function file(path: string): FileNode {
   return {
@@ -190,5 +190,48 @@ describe("what the filter matches", () => {
   it("still finds a file by the name it used to have", () => {
     // A rename is exactly when someone searches for the old name.
     expect(rowSearchText({ name: "Feed.tsx", was: "← Stream.tsx" })).toContain("stream.tsx");
+  });
+});
+
+describe("narrowing the list to one part of the change", () => {
+  const graph: ChangeGraph = {
+    nodes: [file("a.ts"), file("b.ts"), file("far.ts")],
+    edges: [
+      {
+        id: "e:a-b",
+        from: { nodeId: "n:a.ts", path: "a.ts", side: "head", line: 1 },
+        to: { nodeId: "n:b.ts", path: "b.ts", side: "head", line: 1 },
+        change: "added",
+        kind: "call",
+        confidence: "resolved",
+        resolver: "ts",
+      },
+      {
+        id: "e:b-far",
+        from: { nodeId: "n:b.ts", path: "b.ts", side: "head", line: 2 },
+        to: { nodeId: "n:far.ts", path: "far.ts", side: "head", line: 1 },
+        change: "added",
+        kind: "call",
+        confidence: "resolved",
+        resolver: "ts",
+      },
+    ],
+    meta: { baseRef: "main", headRef: "topic", generator: "test" },
+  };
+
+  it("keeps only the files in the part", () => {
+    const shown = partOf(graph, ["a.ts", "b.ts"]);
+    expect(shown.nodes.map((n) => n.path)).toEqual(["a.ts", "b.ts"]);
+  });
+
+  it("drops a reference that leaves the part", () => {
+    // A row pointing at a file that is not in the list is a row that cannot be
+    // followed, which is worse than not offering it.
+    const shown = partOf(graph, ["a.ts", "b.ts"]);
+    expect(shown.edges.map((e) => e.id)).toEqual(["e:a-b"]);
+  });
+
+  it("gives back the whole change when no part is open", () => {
+    expect(partOf(graph, undefined)).toBe(graph);
   });
 });

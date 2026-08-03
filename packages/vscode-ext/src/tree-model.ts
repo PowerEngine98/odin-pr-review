@@ -150,3 +150,26 @@ export function ago(iso: string, now = Date.now()): string {
 export function rowSearchText(title: { name: string; was: string }): string {
   return `${title.name} ${title.was}`.trim().toLowerCase();
 }
+
+/**
+ * The change narrowed to one part of itself.
+ *
+ * The panel splits a large change into the pieces that do not reach each
+ * other, and the list follows: showing forty files beside a drawing of five is
+ * two answers to one question. An edge survives only when both of its ends do,
+ * so the references under a file are the ones that can be followed from where
+ * the reader is standing.
+ */
+export function partOf(graph: ChangeGraph, paths?: readonly string[]): ChangeGraph {
+  if (!paths) return graph;
+
+  const inside = new Set(paths);
+  const nodes = graph.nodes.filter((n) => inside.has(n.path));
+  const ids = new Set(nodes.map((n) => n.id));
+
+  return {
+    ...graph,
+    nodes,
+    edges: graph.edges.filter((e) => ids.has(e.from.nodeId) && ids.has(e.to.nodeId)),
+  };
+}
