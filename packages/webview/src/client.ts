@@ -499,6 +499,24 @@ export const CLIENT_SCRIPT = String.raw`
     });
   }
 
+  document.querySelectorAll("path.road-hit").forEach(function (road) {
+    var group = road.parentNode;
+    road.addEventListener("mouseenter", function (event) {
+      highlightEdge(group.dataset.id);
+      showTooltip(event, group.dataset.id);
+    });
+    road.addEventListener("mousemove", moveTooltip);
+    road.addEventListener("mouseleave", function () {
+      clearHighlight();
+      tooltip.classList.remove("visible");
+    });
+    road.addEventListener("click", function (event) {
+      event.stopPropagation();
+      var edge = data.edges.find(function (e) { return e.id === group.dataset.id; });
+      if (edge) centerOn(edge.to);
+    });
+  });
+
   document.querySelectorAll("path.hit").forEach(function (hit) {
     var group = hit.parentNode;
     var id = group.dataset.id;
@@ -1175,6 +1193,8 @@ export const CLIENT_SCRIPT = String.raw`
       run.forEach(function (r) {
         var trunk = r.group.querySelector("path.trunk");
         if (trunk) trunk.setAttribute("d", "");
+        var roadHit = r.group.querySelector("path.road-hit");
+        if (roadHit) roadHit.setAttribute("d", "");
         r.group.classList.remove("gathered", "trunk-carrier");
       });
       if (run.length < 2) return;
@@ -1222,6 +1242,13 @@ export const CLIENT_SCRIPT = String.raw`
       if (trunk) {
         trunk.setAttribute("d", bezierPath(cut));
         trunk.dataset.run = key;
+      }
+      // The road is most of what the eye follows, so it is what the pointer
+      // finds. Its own hit path, along the whole of it, rather than the stem's.
+      var roadHit = carrier.group.querySelector("path.road-hit");
+      if (roadHit) {
+        roadHit.setAttribute("d", bezierPath(road));
+        roadHit.dataset.run = key;
       }
       var head = carrier.group.querySelector("path.head");
       if (head) {

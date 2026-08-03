@@ -1309,8 +1309,10 @@ function edgeLayer(layout: GraphLayout): string {
     return `<g class="edge ${edge.edge.change} ${edge.edge.kind}${structural}" data-id="${escapeHtml(edge.id)}">` +
       `<path class="hit" d="${full}"/>` +
       `<path class="wire" d="${stem}"/>` +
-      // The road onwards, when this arrow is the one carrying a gathered run.
-      // Empty until the page decides which arrows travel together.
+      // The road onwards, when this arrow is the one carrying a gathered run,
+      // and the wider invisible stroke that makes it pressable. Both empty
+      // until the page decides which arrows travel together.
+      `<path class="road-hit" d=""/>` +
       `<path class="trunk" d=""/>` +
       `<path class="head" d="${head}" marker-end="url(#arrow-${edge.edge.change})"/>` +
       port +

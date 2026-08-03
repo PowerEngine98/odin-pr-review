@@ -1161,18 +1161,28 @@ body:not(.split) .card-body.split-view { display: none; }
   pointer-events: none;
 }
 
-#edges path.wire {
+.edges path.wire {
   fill: none;
   stroke-width: 1.8;
   opacity: 0.85;
   transition: opacity 160ms ease, stroke-width 160ms ease;
 }
 /* Carries the head and nothing else: the stem already stopped where it starts. */
-#edges path.head {
+.edges path.head {
   fill: none;
   stroke: none;
 }
-#edges path.hit {
+/* The road's own hit area. Same trick as the stem's: a wide transparent stroke,
+   so the line a reader is following is the line they can point at. */
+.edges path.road-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.edges path.hit {
   fill: none;
   stroke: transparent;
   stroke-width: 14;
