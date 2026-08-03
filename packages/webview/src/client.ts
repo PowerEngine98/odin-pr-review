@@ -73,6 +73,17 @@ export const CLIENT_SCRIPT = String.raw`
     markStripEnds();
   }
 
+  /**
+   * Whether the drawing includes what stands outside the change.
+   *
+   * The schema is not a file anybody wrote in this branch; it is a picture of
+   * where the change lands. Worth having by default, and worth being able to
+   * put away — read at the top so that everything which decides what is on
+   * screen agrees about it.
+   */
+  var showInfra = true;
+  var isInfra = {};
+
   var view = { x: 0, y: 0, scale: 1 };
   // Low enough that a part of a large change fits on screen. A tall card is
   // thousands of pixels; a floor of 0.15 meant "fit" still left most of a part
@@ -703,7 +714,10 @@ export const CLIENT_SCRIPT = String.raw`
       if (!card) return;
 
       var placed = arrangement.nodes[node.id];
-      if (!placed || (focused && !focused[node.id])) {
+      // A vertex standing for something outside the change goes when the reader
+      // says they do not want it, whatever the arrangement holds.
+      if (!placed || (focused && !focused[node.id]) ||
+          (!showInfra && isInfra[node.id])) {
         card.classList.add("hidden");
         return;
       }
@@ -2874,6 +2888,11 @@ export const CLIENT_SCRIPT = String.raw`
    */
   function refreshFilters() {
     var showImports = document.getElementById("filter-imports").checked;
+    // The schema card, the mark above it and every arrow that reaches it. Kept
+    // apart from the other switches because it is not a kind of reference — it
+    // is a piece of the drawing that stands for something outside the change.
+    var infra = document.getElementById("filter-infra");
+    showInfra = !infra || infra.checked;
     var showUnchanged = document.getElementById("filter-unchanged").checked;
     var showTests = document.getElementById("filter-tests").checked;
     var hideViewed = document.getElementById("filter-viewed").checked;
@@ -2909,7 +2928,10 @@ export const CLIENT_SCRIPT = String.raw`
           (hideViewed && (isRead(edge.from) || isRead(edge.to))));
       g.classList.toggle(
         "hidden",
-        (isImport && !showImports) || (isUnchanged && !showUnchanged) || Boolean(gone),
+        (isImport && !showImports) ||
+          (isUnchanged && !showUnchanged) ||
+          (!showInfra && g.classList.contains("schema")) ||
+          Boolean(gone),
       );
     });
 
@@ -3180,7 +3202,26 @@ export const CLIENT_SCRIPT = String.raw`
     refreshFilters();
   });
 
-  ["filter-imports", "filter-unchanged", "filter-tests", "filter-viewed"].forEach(function (id) {
+  // Remembered, like the diff mode: a reader who does not want the database in
+  // their picture does not want to say so again on every page.
+  var infraBox = document.getElementById("filter-infra");
+  if (infraBox) {
+    try {
+      if (window.localStorage.getItem("odin.infra") === "off") infraBox.checked = false;
+    } catch (e) {}
+    infraBox.addEventListener("change", function () {
+      try {
+        window.localStorage.setItem("odin.infra", infraBox.checked ? "on" : "off");
+      } catch (e) {}
+    });
+  }
+
+  /** The vertices that stand for something outside the change. */
+  data.nodes.forEach(function (n) {
+    if ((n.path || "").indexOf("database/") === 0) isInfra[n.id] = true;
+  });
+
+  ["filter-imports", "filter-unchanged", "filter-tests", "filter-viewed", "filter-infra"].forEach(function (id) {
     var input = document.getElementById(id);
     if (input) input.addEventListener("change", refreshFilters);
   });

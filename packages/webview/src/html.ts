@@ -428,6 +428,10 @@ function tabs(parts: Component[]): string {
  */
 function prBar(graph: ChangeGraph, canReview = false, notes = ""): string {
   const meta = graph.meta;
+  // A switch for something the change does not have is a switch that teaches
+  // the reader nothing, so the database only appears in the menu when there is
+  // a schema on the canvas.
+  const hasSchema = graph.nodes.some((n) => n.kind === "database");
   const pull = meta.pullRequest;
   const authors = meta.authors ?? [];
   const commits = authors.reduce((n, a) => n + a.commits, 0);
@@ -510,6 +514,9 @@ function prBar(graph: ChangeGraph, canReview = false, notes = ""): string {
       <label class="settings-option"><input type="checkbox" id="filter-unchanged"><span>Unchanged references</span></label>
       <label class="settings-option" title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"><span>Tests</span></label>
       <label class="settings-option" title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed"><span>Hide viewed relations</span></label>
+      ${hasSchema
+        ? `<label class="settings-option" title="The database schema as a card of its own, and the migrations and generated code that reach it"><input type="checkbox" id="filter-infra" checked><span>Database</span></label>`
+        : ""}
       <span class="settings-rule"></span>
       <span class="settings-group">View</span>
       <label class="settings-option"><input type="checkbox" data-hud="reviewers" checked><span>Reviewers</span></label>
