@@ -896,12 +896,19 @@ export const CLIENT_SCRIPT = String.raw`
       }
 
       // The dot rides the tail of the arrow, the dashes carry on past its head.
-      var dot = group.querySelector("circle.port");
+      var dot = group.querySelector("circle.port.out");
       if (dot) {
         // Clear of the card, not on its edge: half a dot under the border is a
         // smudge, and this one is meant to be pressed.
         dot.setAttribute("cx", portX);
         dot.setAttribute("cy", from.y);
+      }
+      // Its opposite number, on the side the arrow arrives from, so the way
+      // back is where the reader is already looking.
+      var home = group.querySelector("circle.port.in");
+      if (home) {
+        home.setAttribute("cx", toX + (goesRight ? -9 : 9));
+        home.setAttribute("cy", to.y);
       }
       markSymbol(edge, "in");
       markSymbol(edge, "out");
@@ -1087,7 +1094,9 @@ export const CLIENT_SCRIPT = String.raw`
       var edge = data.edges.find(function (e) { return e.id === group.dataset.id; });
       if (!edge) return;
 
-      travel(edge.id, true);
+      // The dot at the tail goes to the definition; the one at the head comes
+      // back. Same gesture, opposite ends.
+      travel(edge.id, port.classList.contains("out"));
     });
   });
 

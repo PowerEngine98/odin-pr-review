@@ -2339,6 +2339,11 @@ body:not(.split) .card-body.split-view { display: none; }
   stroke-width: 2.5;
   opacity: 0.9;
 }
+/* The way home. Quieter than the dot that sets out, because it is only worth
+   looking for once the reader has arrived. */
+#edges circle.port.in { opacity: 0.65; }
+#edges g.edge:hover circle.port.in,
+#edges g.edge.active circle.port.in { opacity: 1; }
 #edges g.edge.added .port { stroke: var(--added); }
 #edges g.edge.removed .port { stroke: var(--removed); }
 #edges g.edge.unchanged .port { stroke: var(--unchanged); }

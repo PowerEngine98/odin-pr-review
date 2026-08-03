@@ -1203,9 +1203,16 @@ function edgeLayer(layout: GraphLayout): string {
     // Clear of the card, not on its edge: half a dot under the border is a
     // smudge, and this one is meant to be pressed.
     const away = edge.fromSide === "right" ? 1 : -1;
+    const back = edge.toSide === "left" ? -1 : 1;
     const port =
       `<circle class="port out" cx="${edge.from.x + away * PORT_GAP}" cy="${edge.from.y}" r="4.5">` +
-      `<title>Go to the definition this points at</title></circle>`;
+      `<title>Go to the definition this points at</title></circle>` +
+      // The same dot at the far end. An arrow read forwards leaves the reader
+      // somewhere they did not choose to be, and the way home was a shape they
+      // had to find by eye; this is the same journey offered in reverse, in the
+      // same place they pressed to make it.
+      `<circle class="port in" cx="${edge.to.x + back * PORT_GAP}" cy="${edge.to.y}" r="4.5">` +
+      `<title>Go back to where this is called from</title></circle>`;
     return `<g class="edge ${edge.edge.change} ${edge.edge.kind}" data-id="${escapeHtml(edge.id)}">` +
       `<path class="hit" d="${full}"/>` +
       `<path class="wire" d="${stem}"/>` +
