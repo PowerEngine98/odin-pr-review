@@ -80,6 +80,12 @@
         "icon": "$(arrow-left)"
       },
       {
+        "command": "odin.showChanges",
+        "title": "Back to the Change List",
+        "category": "Odin",
+        "icon": "$(arrow-right)"
+      },
+      {
         "command": "odin.checkout",
         "title": "Check Out a Pull Request",
         "category": "Odin",
@@ -154,7 +160,12 @@
       "view/title": [
         {
           "command": "odin.chooser",
-          "when": "view == odin.changes && odin.hasGraph",
+          "when": "view == odin.changes && odin.hasGraph && !odin.onChooser",
+          "group": "navigation@0"
+        },
+        {
+          "command": "odin.showChanges",
+          "when": "view == odin.changes && odin.hasGraph && odin.onChooser",
           "group": "navigation@0"
         },
         {

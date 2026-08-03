@@ -90,6 +90,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private loading = false;
   /** The part of the change the panel is showing, when it is showing one. */
   private part: Set<string> | undefined;
+  /** Whether the list of pull requests is showing over the change list. */
+  private chooser = false;
 
   constructor(
     private readonly viewed: ViewedStore,
@@ -98,6 +100,9 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
+    // Said once at the start too, so the title bar is right before anything
+    // has been opened rather than only after the first switch.
+    this.announce();
     view.webview.options = { enableScripts: true, localResourceRoots: [] };
 
     view.webview.onDidReceiveMessage((message: {
@@ -147,8 +152,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       // panel keeps the one it is showing, so stepping back to look at the
       // list does not throw away the reading it took to get here.
       if (message.type === "chooser") {
-        this.graph = undefined;
-        this.render();
+        this.showChooser();
       }
     });
 
@@ -171,18 +175,46 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     this.graph = graph;
     // A new graph is a new set of parts, so whatever was open is gone.
     this.part = undefined;
-    // The way back only exists when there is something to go back from, and
-    // the title bar decides that from this key rather than from the markup.
-    void vscode.commands.executeCommand("setContext", "odin.hasGraph", Boolean(graph));
+    // A graph that has just arrived is the thing to look at.
+    if (graph) this.chooser = false;
+    this.announce();
     this.render();
   }
 
-  /** Back to the list of pull requests, from the view's own title bar. */
+  /**
+   * Back to the list of pull requests, from the view's own title bar.
+   *
+   * The change list is set aside rather than thrown away: stepping over to see
+   * what else is open should not cost the reading it took to get here, and the
+   * way back is one press.
+   */
   showChooser(): void {
-    // Only this view forgets the graph. The panel keeps the one it is showing,
-    // so stepping back to look at the list does not throw away the reading it
-    // took to get here.
-    this.setGraph(undefined);
+    this.chooser = true;
+    this.announce();
+    this.render();
+  }
+
+  /** And back again, to the change list that is still there. */
+  showChanges(): void {
+    if (!this.graph) return;
+    this.chooser = false;
+    this.announce();
+    this.render();
+  }
+
+  /**
+   * What the title bar is allowed to offer.
+   *
+   * Two facts, because the bar needs both: whether there is a change list to
+   * go back to at all, and whether the reader is currently looking at it.
+   */
+  private announce(): void {
+    void vscode.commands.executeCommand(
+      "setContext", "odin.hasGraph", Boolean(this.graph),
+    );
+    void vscode.commands.executeCommand(
+      "setContext", "odin.onChooser", this.chooser || !this.graph,
+    );
   }
 
   /** The pull requests to choose from before a graph has been built. */
@@ -196,7 +228,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     this.branch = branch;
     this.repo = repo;
     this.viewer = viewer;
-    if (!this.graph) this.render();
+    if (!this.graph || this.chooser) this.render();
   }
 
   /**
@@ -225,7 +257,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
    * where they are.
    */
   private showing(): ChangeGraph | undefined {
-    if (!this.graph) return undefined;
+    if (!this.graph || this.chooser) return undefined;
     return partOf(this.graph, this.part ? [...this.part] : undefined);
   }
 

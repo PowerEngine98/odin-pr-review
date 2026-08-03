@@ -80,6 +80,9 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.executeCommand("workbench.action.closeSidebar"),
     ),
     vscode.commands.registerCommand("odin.chooser", () => sidebar.showChooser()),
+    // And the way back in. The change list is still there behind the list of
+    // pull requests, so returning to it costs nothing and rebuilds nothing.
+    vscode.commands.registerCommand("odin.showChanges", () => sidebar.showChanges()),
     vscode.commands.registerCommand("odin.refresh", () =>
       review(last?.baseRef),
     ),
