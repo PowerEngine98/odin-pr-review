@@ -1834,10 +1834,11 @@ body.hud-no-map .minimap { display: none !important; }
 }
 /* The same colours the cards carry, so a rectangle here and a card there are
    recognisably the same file. */
-/* Quieter than the cards themselves. A card is mostly dark with a thin
-   coloured border; a map rectangle is the colour solid, so at the same opacity
-   the map shouts over the drawing it is a map of. */
-.minimap-face .on { opacity: 0.4; }
+/* Quieter than the cards themselves, and measurably so: an added row inside a
+   card sits at about luminance 31 against this background, and a map rectangle
+   at full strength reached 57 — nearly twice as loud as the thing it is a map
+   of. This lands it under the code's own green, which is where a map belongs. */
+.minimap-face .on { opacity: 0.07; }
 .minimap-face .added { fill: var(--status-added); }
 .minimap-face .modified { fill: var(--status-modified); }
 .minimap-face .deleted { fill: var(--status-deleted); }
