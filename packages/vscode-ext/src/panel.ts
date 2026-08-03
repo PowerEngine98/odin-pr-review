@@ -123,6 +123,14 @@ export class GraphPanel {
       },
     );
 
+    // The editor tints nothing here, so each theme gets the fill it needs.
+    if (GraphPanel.assets) {
+      panel.iconPath = {
+        light: vscode.Uri.joinPath(GraphPanel.assets, "media", "odin-light.svg"),
+        dark: vscode.Uri.joinPath(GraphPanel.assets, "media", "odin-dark.svg"),
+      };
+    }
+
     GraphPanel.current = new GraphPanel(
       panel, graph, layout, repo, withTests, viewed, highlight, alternate,
     );
@@ -163,6 +171,14 @@ export class GraphPanel {
    * together, and either can be present without the other.
    */
   static onPart: ((paths: string[] | undefined) => void) | undefined;
+
+  /**
+   * Where the extension's own files live.
+   *
+   * Needed for the tab icon, which is a file on disk rather than anything the
+   * page can draw: the tab belongs to the editor, not to the webview.
+   */
+  static assets: vscode.Uri | undefined;
 
   private withTests: GraphLayout | undefined;
   /** The same graph in the other diff mode, for the page's own switch. */
