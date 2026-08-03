@@ -3489,6 +3489,120 @@ export const CLIENT_SCRIPT = String.raw`
     });
   }
 
+  /* ------------------------------------------------------------ the keys */
+
+  /**
+   * What each key does, and where the reader's own choices are kept.
+   *
+   * Held on the device rather than in the page: a review is one sitting, and
+   * having to rebind after every reload is worse than not being able to rebind
+   * at all. Stored under one key so clearing it restores the defaults whole.
+   */
+  var ACTIONS = [
+    { id: "fit", says: "Fit the drawing", key: "f" },
+    { id: "open", says: "Open the file in the editor", key: "F" },
+    { id: "read", says: "Mark the file read", key: "Enter" },
+    { id: "comment", says: "Comment on the file", key: "c" },
+    { id: "right", says: "Next file to the right", key: "ArrowRight" },
+    { id: "left", says: "Next file to the left", key: "ArrowLeft" },
+    { id: "down", says: "Next file below", key: "ArrowDown" },
+    { id: "up", says: "Next file above", key: "ArrowUp" },
+    { id: "clear", says: "Clear the selection", key: "Escape" },
+  ];
+
+  var keys = readKeys();
+
+  function readKeys() {
+    var out = {};
+    ACTIONS.forEach(function (action) { out[action.id] = action.key; });
+    try {
+      var saved = JSON.parse(window.localStorage.getItem("odin.keys") || "{}");
+      Object.keys(saved).forEach(function (id) {
+        if (out[id] !== undefined && typeof saved[id] === "string") out[id] = saved[id];
+      });
+    } catch (e) {}
+    return out;
+  }
+
+  function saveKeys() {
+    try {
+      window.localStorage.setItem("odin.keys", JSON.stringify(keys));
+    } catch (e) {}
+  }
+
+  /** Which action a press means, or nothing. */
+  function actionFor(event) {
+    var found = null;
+    Object.keys(keys).forEach(function (id) {
+      if (keys[id] === event.key) found = id;
+    });
+    return found;
+  }
+
+  /** How a key is written where a reader has to recognise it. */
+  function keyName(key) {
+    if (key === " ") return "space";
+    if (key === "Enter") return "enter";
+    if (key === "Escape") return "esc";
+    if (key.indexOf("Arrow") === 0) return key.slice(5).toLowerCase() + " arrow";
+    return key;
+  }
+
+  var keysButton = document.getElementById("action-keys");
+  var keysPanel = document.querySelector(".keys-panel");
+  var rebinding = null;
+
+  function drawKeys() {
+    if (!keysPanel) return;
+    keysPanel.textContent = "";
+    keysPanel.appendChild(chrome("keys-head", "Keys"));
+
+    ACTIONS.forEach(function (action) {
+      var row = chrome("key-row", "");
+      row.appendChild(chrome("key-says", action.says));
+
+      var button = document.createElement("button");
+      button.className = "key-cap";
+      button.textContent = rebinding === action.id ? "press a key" : keyName(keys[action.id]);
+      button.classList.toggle("waiting", rebinding === action.id);
+      button.addEventListener("click", function (event) {
+        event.stopPropagation();
+        rebinding = rebinding === action.id ? null : action.id;
+        drawKeys();
+      });
+      row.appendChild(button);
+      keysPanel.appendChild(row);
+    });
+
+    var reset = document.createElement("button");
+    reset.className = "key-reset";
+    reset.textContent = "Reset to defaults";
+    reset.addEventListener("click", function (event) {
+      event.stopPropagation();
+      ACTIONS.forEach(function (action) { keys[action.id] = action.key; });
+      rebinding = null;
+      saveKeys();
+      drawKeys();
+    });
+    keysPanel.appendChild(reset);
+  }
+
+  if (keysButton && keysPanel) {
+    drawKeys();
+    keysButton.addEventListener("click", function (event) {
+      event.stopPropagation();
+      keysPanel.hidden = !keysPanel.hidden;
+      rebinding = null;
+      drawKeys();
+    });
+    document.addEventListener("click", function (event) {
+      if (keysPanel.hidden) return;
+      if (keysPanel.contains(event.target) || keysButton.contains(event.target)) return;
+      keysPanel.hidden = true;
+      rebinding = null;
+    });
+  }
+
   document.addEventListener("keydown", function (event) {
     if (event.target instanceof HTMLInputElement) return;
     if (event.target instanceof HTMLTextAreaElement) {
@@ -3500,26 +3614,45 @@ export const CLIENT_SCRIPT = String.raw`
       }
       return;
     }
-    if (event.key === "f") fit();
-    if (event.key === "Escape") { clearHighlight(); clearSelection(); closeThread(); }
+    // Waiting for a new binding: the next press is the answer, not a command.
+    if (rebinding) {
+      if (event.key === "Escape") { rebinding = null; drawKeys(); return; }
+      keys[rebinding] = event.key;
+      rebinding = null;
+      saveKeys();
+      drawKeys();
+      event.preventDefault();
+      return;
+    }
 
-    // Reading a change is mostly the same three actions in a loop: go to the
-    // next file, say something about it, mark it read. Doing that from the
-    // keyboard means never leaving the file to reach for the mouse.
+    var action = actionFor(event);
+    if (!action) return;
+
+    if (action === "fit") { fit(); return; }
+    if (action === "clear") { clearHighlight(); clearSelection(); closeThread(); return; }
+
+    // Reading a change is mostly the same few actions in a loop: go to the next
+    // file, say something about it, mark it read, open it when the graph is not
+    // enough. Doing that from the keyboard means never leaving the file to
+    // reach for the mouse.
     var here = cardAtCentre();
-    if (event.key === "ArrowRight") { step(here, 1, 0); event.preventDefault(); }
-    if (event.key === "ArrowLeft") { step(here, -1, 0); event.preventDefault(); }
-    if (event.key === "ArrowDown") { step(here, 0, 1); event.preventDefault(); }
-    if (event.key === "ArrowUp") { step(here, 0, -1); event.preventDefault(); }
+    if (action === "right") { step(here, 1, 0); event.preventDefault(); return; }
+    if (action === "left") { step(here, -1, 0); event.preventDefault(); return; }
+    if (action === "down") { step(here, 0, 1); event.preventDefault(); return; }
+    if (action === "up") { step(here, 0, -1); event.preventDefault(); return; }
+    if (!here) return;
 
-    if (event.key === "Enter" && here) {
+    if (action === "read") {
       var box = here.querySelector(".viewed-box");
       if (box) { box.checked = !box.checked; box.dispatchEvent(new Event("change")); }
       event.preventDefault();
+      return;
     }
 
-    if ((event.key === "c" || event.key === "C") && here) {
-      composeOnFile(here);
+    if (action === "comment") { composeOnFile(here); event.preventDefault(); return; }
+
+    if (action === "open") {
+      notifyHost("open", { path: here.dataset.path });
       event.preventDefault();
     }
   });

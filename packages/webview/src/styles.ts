@@ -598,6 +598,62 @@ input[type="checkbox"]:checked::after {
 /* Across the panel rather than tucked in a corner: it is the one thing here
    that acts on the drawing, and a button the width of what it sits under is
    easier to hit than one the width of its own word. */
+/* The keys, and what they do. Kept in the panel that already holds the things
+   you set rather than in a page of its own. */
+.keys-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: 290px;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+}
+.keys-head { display: block; color: var(--muted); margin-bottom: 8px; }
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+}
+.key-says { flex: 1 1 auto; color: var(--text); }
+.key-cap {
+  flex: 0 0 auto;
+  min-width: 76px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  border: 0;
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.key-cap:hover { color: var(--text); }
+/* Listening. The next press is the answer, so it says so. */
+.key-cap.waiting {
+  color: var(--bg);
+  background: var(--status-renamed);
+}
+.key-reset {
+  margin-top: 8px;
+  width: 100%;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  padding: 4px;
+  cursor: pointer;
+}
+.key-reset:hover { color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
+
+.toolbar { position: fixed; }
+.toolbar #action-keys { margin-top: 4px; }
+
 .toolbar #action-fit {
   align-self: stretch;
   text-align: center;

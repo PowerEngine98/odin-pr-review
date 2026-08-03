@@ -361,6 +361,8 @@ function toolbar(
     <label title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed"> hide viewed relations</label>
   </span>
   <button id="action-fit">fit</button>
+  <button id="action-keys">keys</button>
+  <div class="keys-panel" hidden></div>
 </div>`;
 }
 
@@ -815,8 +817,8 @@ function reviewPanel(): string {
 function hint(): string {
   return `<div class="hint">
   click an arrow to follow it &middot; click a filename to isolate &middot; ⌘/ctrl + click to open it<br>
-  scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>f</b> to fit &middot; <b>esc</b> to clear<br>
-  <b>arrows</b> to move between files &middot; <b>enter</b> to mark read &middot; <b>c</b> to comment on the file
+  scroll to pan &middot; ⌘/ctrl + scroll to zoom &middot; <b>arrows</b> to move between files<br>
+  <b>enter</b> to mark read &middot; <b>c</b> to comment &middot; <b>F</b> to open &middot; keys are listed under <b>keys</b>
 </div>`;
 }
 
