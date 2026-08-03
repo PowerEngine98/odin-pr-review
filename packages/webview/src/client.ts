@@ -912,7 +912,7 @@ export const CLIENT_SCRIPT = String.raw`
       // back is where the reader is already looking.
       var home = group.querySelector("circle.port.in");
       if (home) {
-        home.setAttribute("cx", toX + (goesRight ? -9 : 9));
+        home.setAttribute("cx", toX + (goesRight ? 11 : -11));
         home.setAttribute("cy", to.y);
       }
       markSymbol(edge, "in");
@@ -1147,11 +1147,24 @@ export const CLIENT_SCRIPT = String.raw`
 
   /* ----------------------------------------------------------- the parts */
 
+  /**
+   * Where the reader was in each part, so going back is going back.
+   *
+   * A part is a place, not a filter: leaving one halfway down its third file
+   * and returning to the top of it throws away the work of getting there. Kept
+   * for the session, which is as long as the positions it refers to last.
+   */
+  var wasAt = {};
+  var openPart = "";
+
   tabs.forEach(function (tab) {
     tab.addEventListener("click", function () {
       var part = (data.parts || []).find(function (p) {
         return p.id === tab.dataset.part;
       });
+
+      wasAt[openPart] = { x: view.x, y: view.y, scale: view.scale };
+      openPart = tab.dataset.part || "";
 
       focused = null;
       if (part) {
@@ -1176,9 +1189,19 @@ export const CLIENT_SCRIPT = String.raw`
 
       refreshFilters();
       refreshTally();
-      // The part fills the view it was opened into; leaving the camera where it
-      // was would open a part and show the space the rest of them left behind.
-      fit();
+
+      // Back where it was left, or framed if this part has not been opened
+      // before: a part opened for the first time should fill the view rather
+      // than show the space the others left behind.
+      var seen = wasAt[openPart];
+      if (seen) {
+        view.x = seen.x;
+        view.y = seen.y;
+        view.scale = seen.scale;
+        apply(200);
+      } else {
+        fit();
+      }
     });
   });
   if (tabs[0]) tabs[0].classList.add("on");
@@ -1196,7 +1219,7 @@ export const CLIENT_SCRIPT = String.raw`
    * finding a file and not while reading one. Kept on the device, because a
    * preference that resets every reload is not a preference.
    */
-  var HUD = ["reviewers", "comments", "map", "legend"];
+  var HUD = ["reviewers", "comments", "map"];
 
   function readHud() {
     var shown = {};

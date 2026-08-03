@@ -252,7 +252,7 @@ export function renderHtml(
     // One fixed block, so the two rows cannot drift apart and the canvas has a
     // single height to make room for.
     `<div class="chrome">`,
-    prBar(graph, options.canReview === true),
+    prBar(graph, options.canReview === true, notes(graph, options.highlight)),
     tabs(parts),
     // Along the bottom edge of the chrome, where a sticky card title comes to
     // rest: how much of what is on screen has been read, without having to
@@ -264,11 +264,6 @@ export function renderHtml(
     edgeLayer(full),
     cards,
     `</div></div>`,
-    // Over the canvas rather than above it. The legend and the switches are
-    // read once and then consulted; the drawing is read for as long as the
-    // review lasts, and a row of chrome across the top costs it that height on
-    // every screen.
-    toolbar(graph, layout, options.highlight),
     // Who has said something, and where. Docked under the chrome on the side
     // the canvas is least busy, because a comment on a change is a thing to
     // come back to rather than a thing to find again.
@@ -340,45 +335,6 @@ function paint(highlight: CodeHighlighter | undefined): string {
   );
 }
 
-function toolbar(
-  graph: ChangeGraph,
-  layout: GraphLayout,
-  highlight?: CodeHighlighter,
-): string {
-  const gaps = describeGaps(graph.meta.coverage);
-  const counts = layout.nodes.reduce<Record<string, number>>((acc, n) => {
-    acc[n.node.status] = (acc[n.node.status] ?? 0) + 1;
-    return acc;
-  }, {});
-
-  const legend = (["added", "modified", "deleted", "renamed", "phantom"] as const)
-    .filter((status) => counts[status])
-    .map(
-      (status) =>
-        `<span class="${status}"><span class="box">${STATUS_MARK[status]}</span>` +
-        `${counts[status]} ${status}</span>`,
-    )
-    .join("");
-
-  // What the change is, then what to do with it: read above, pressed below.
-  return `<div class="toolbar">
-  ${HUD_CLOSE("legend", "the legend and filters")}
-  <span class="facts">
-  <span class="legend">${legend}</span>
-  ${gaps ? `<span class="gaps" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>` : ""}
-  ${paint(highlight)}
-  </span>
-  <span class="filters">
-    <label title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"> imports</label>
-    <label><input type="checkbox" id="filter-unchanged"> unchanged</label>
-    <label title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"> tests</label>
-    <label title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed"> hide viewed relations</label>
-  </span>
-  <button id="action-fit">fit</button>
-  <button id="action-keys">keys</button>
-  <div class="keys-panel" hidden></div>
-</div>`;
-}
 
 /**
  * One tab per part of the change that can be read without the others.
@@ -448,7 +404,7 @@ function tabs(parts: Component[]): string {
  * whole header because no forge is involved would be a strange way to treat the
  * offline case.
  */
-function prBar(graph: ChangeGraph, canReview = false): string {
+function prBar(graph: ChangeGraph, canReview = false, notes = ""): string {
   const meta = graph.meta;
   const pull = meta.pullRequest;
   const authors = meta.authors ?? [];
@@ -521,15 +477,28 @@ function prBar(graph: ChangeGraph, canReview = false): string {
   <span class="settings-menu">
     <button id="diff-settings" class="icon-button" data-hint="How the change is laid out" title="Diff settings" aria-label="Diff settings">${GEAR}</button>
     <span class="settings-panel" hidden>
-      <span class="settings-title">Diff settings</span>
+      <span class="settings-title">Settings</span>
       <span class="settings-group">Diff display</span>
       <label class="settings-option"><input type="radio" name="diff-mode" value="unified"><span>Unified</span></label>
       <label class="settings-option"><input type="radio" name="diff-mode" value="split"><span>Split</span></label>
+      <span class="settings-rule"></span>
+      <span class="settings-group">Show</span>
+      <label class="settings-option" title="Import statements and the arrows they produce"><input type="checkbox" id="filter-imports"><span>Imports</span></label>
+      <label class="settings-option"><input type="checkbox" id="filter-unchanged"><span>Unchanged references</span></label>
+      <label class="settings-option" title="Test files reference a great deal of what they exercise, which buries the change under them"><input type="checkbox" id="filter-tests"><span>Tests</span></label>
+      <label class="settings-option" title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."><input type="checkbox" id="filter-viewed"><span>Hide viewed relations</span></label>
+      <span class="settings-rule"></span>
       <span class="settings-group">On screen</span>
       <label class="settings-option"><input type="checkbox" data-hud="reviewers" checked><span>Reviewers</span></label>
       <label class="settings-option"><input type="checkbox" data-hud="comments" checked><span>Comments</span></label>
       <label class="settings-option"><input type="checkbox" data-hud="map" checked><span>Map</span></label>
-      <label class="settings-option"><input type="checkbox" data-hud="legend" checked><span>Legend and filters</span></label>
+      <span class="settings-rule"></span>
+      <span class="settings-actions">
+        <button id="action-fit">Fit the drawing</button>
+        <button id="action-keys">Keys</button>
+      </span>
+      <div class="keys-panel" hidden></div>
+      ${notes}
     </span>
   </span>
 </div>`;
@@ -594,6 +563,26 @@ const GEAR =
   `<path fill-rule="evenodd" fill="currentColor" ` +
   `d="M8 3.3a4.7 4.7 0 1 0 0 9.4 4.7 4.7 0 0 0 0-9.4Zm0 2.6a2.1 2.1 0 1 1 0 4.2 2.1 2.1 0 0 1 0-4.2Z"/>` +
   `</svg>`;
+
+/**
+ * What the page could not do, said once and quietly.
+ *
+ * Files with diff lines and no arrows, and languages nothing could colour.
+ * Neither stops a review, and both explain something a reader would otherwise
+ * put down to a bug — so they belong where the settings are, not across the
+ * top of the drawing.
+ */
+function notes(graph: ChangeGraph, highlight?: CodeHighlighter): string {
+  const gaps = describeGaps(graph.meta.coverage);
+  const missing = paint(highlight);
+  if (!gaps && !missing) return "";
+
+  return `<span class="settings-rule"></span>` +
+    (gaps
+      ? `<span class="settings-note" title="These files have diff lines but no arrows, because nothing could read them">${escapeHtml(gaps)}</span>`
+      : "") +
+    missing;
+}
 
 /**
  * Who was asked to look, the way the forge lists them.
@@ -1233,7 +1222,10 @@ function edgeLayer(layout: GraphLayout): string {
     // Clear of the card, not on its edge: half a dot under the border is a
     // smudge, and this one is meant to be pressed.
     const away = edge.fromSide === "right" ? 1 : -1;
-    const back = edge.toSide === "left" ? -1 : 1;
+    // Inside the card rather than out in the canvas: the head is already at the
+    // border, and a dot beyond it sits in the space the arrow just crossed. The
+    // strip between the border and the code is empty and belongs to this row.
+    const back = edge.toSide === "left" ? 1 : -1;
     const port =
       `<circle class="port out" cx="${edge.from.x + away * PORT_GAP}" cy="${edge.from.y}" r="4.5">` +
       `<title>Go to the definition this points at</title></circle>` +

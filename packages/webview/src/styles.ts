@@ -305,6 +305,43 @@ html, body {
   cursor: pointer;
 }
 .settings-option:hover { color: var(--text); }
+/* One rule between groups, so the menu reads as sections rather than as a
+   column of switches. */
+.settings-rule {
+  height: 1px;
+  margin: 4px 0 2px;
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.settings-actions { display: flex; gap: 6px; }
+.settings-actions button {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.settings-actions button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+}
+/* What the page could not do. Said once, in the place explanations live. */
+.settings-note,
+.settings-panel .paint {
+  display: block;
+  color: var(--warning);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.settings-panel .keys-panel {
+  position: static;
+  width: auto;
+  margin-top: 2px;
+  box-shadow: none;
+}
 
 .state-list {
   position: absolute;
@@ -1682,17 +1719,17 @@ body:not(.split) .card-body.split-view { display: none; }
   background: transparent;
   color: var(--muted);
   cursor: pointer;
-  opacity: 0;
+  /* Always there, quietly. A way out that only appears once the pointer is
+     already inside the thing you want rid of is a way out you have to know
+     about first. */
+  opacity: 0.5;
   transition: opacity 120ms ease, color 120ms ease;
 }
 .review-list:hover .hud-close,
 .minimap:hover .hud-close,
-.toolbar:hover .hud-close,
 .reviewers:hover .hud-close { opacity: 1; }
 .hud-close:hover { color: var(--text); background: color-mix(in srgb, var(--text) 12%, transparent); }
 
-/* The dock's own sits in its corner rather than in the flow of the switches. */
-.toolbar > .hud-close { position: absolute; top: 6px; right: 6px; }
 /* The comments pill has no header to put it in, so it hangs off the corner. */
 .reviewers > .hud-close { align-self: flex-end; margin-top: -4px; }
 
@@ -1716,8 +1753,7 @@ body:not(.split) .card-body.split-view { display: none; }
 body.hud-no-reviewers .review-list,
 body.hud-no-comments .faces,
 body.hud-no-comments .reviewer-panel,
-body.hud-no-map .minimap,
-body.hud-no-legend .toolbar { display: none !important; }
+body.hud-no-map .minimap { display: none !important; }
 
 /* --------------------------------------------------------------- the map
 
