@@ -213,3 +213,20 @@ describe("a remark about the file rather than a line", () => {
     expect(file).not.toHaveProperty("line");
   });
 });
+
+describe("a comment the forge gives no line", () => {
+  it("is read as being about the file, not as an outdated line", () => {
+    // A file-level remark has neither a line nor an original line. Treating it
+    // as outdated would put it beside line zero and call it stale.
+    const [c] = parseComments(raw({ line: null, original_line: null }));
+    expect(c.wholeFile).toBe(true);
+    expect(c.outdated).toBe(false);
+  });
+
+  it("leaves a genuinely outdated comment alone", () => {
+    const [c] = parseComments(raw({ line: null, original_line: 40 }));
+    expect(c.wholeFile).toBeUndefined();
+    expect(c.outdated).toBe(true);
+    expect(c.line).toBe(40);
+  });
+});

@@ -216,6 +216,7 @@ export function renderHtml(
       ...(c.reactions ? { reactions: c.reactions } : {}),
       url: c.url,
       outdated: c.outdated,
+      ...(c.wholeFile ? { wholeFile: true } : {}),
     })),
   };
 

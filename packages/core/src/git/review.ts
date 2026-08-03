@@ -22,6 +22,8 @@ export interface ReviewComment {
   inReplyTo?: number;
   /** The forge no longer knows where this belongs; the code moved under it. */
   outdated: boolean;
+  /** About the file rather than any line in it. */
+  wholeFile?: boolean;
   /** Emoji left on this comment, most-used first. */
   reactions?: Reaction[];
 }
@@ -134,12 +136,17 @@ export function parseComments(json: string): ReviewComment[] {
       // A comment whose line is null has been outdated by later commits; the
       // original line still says where it was written, which is more useful
       // than dropping it.
+      // A comment about the file itself carries no line at all — the forge was
+      // told its subject rather than a position — and is not the same thing as
+      // one whose line has been outdated by later commits.
+      const wholeFile = c.line == null && c.original_line == null;
       const line = c.line ?? c.original_line ?? 0;
       const start = c.start_line ?? c.original_start_line ?? undefined;
       const comment: ReviewComment = {
         id: c.id,
         path: c.path,
         line,
+        ...(wholeFile ? { wholeFile: true } : {}),
         // A span whose top is the line itself is not a span; keeping it would
         // draw a one-row bracket beside every ordinary comment.
         ...(start !== undefined && start !== null && start < line
@@ -151,7 +158,10 @@ export function parseComments(json: string): ReviewComment[] {
         ...(c.user?.avatar_url ? { avatarUrl: c.user.avatar_url } : {}),
         createdAt: c.created_at,
         url: c.html_url,
-        outdated: c.line === null,
+        // Outdated means it had a line and the code moved out from under it.
+        // A remark about the file never had one, and calling it stale would be
+        // a claim about code it was never attached to.
+        outdated: c.line == null && !wholeFile,
       };
 
       const reactions = REACTIONS

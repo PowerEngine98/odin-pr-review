@@ -1254,7 +1254,7 @@ export const CLIENT_SCRIPT = String.raw`
     var add = function (c, draft) {
       // A remark about the file belongs to no line, so there is no line to
       // mark. The card's own comment count is where it shows.
-      if (c.line === undefined) return;
+      if (c.line === undefined || c.wholeFile) return;
       var start = c.startLine || c.line;
       var key = c.path + " " + c.side + " " + start + " " + c.line;
       var span = spans[key];
@@ -2607,6 +2607,11 @@ export const CLIENT_SCRIPT = String.raw`
       data.comments = normalise(message.comments);
       var was = openThread && openThread.root.id;
       buildMarks();
+      // The brackets down the margin and the badges beside them come from the
+      // same list: a reply that arrives without them leaves the page half
+      // updated, which is worse than not updating at all.
+      markCommentedLines();
+      refreshRemarkCounts();
       // Back to the conversation the reader was in, now that it has changed.
       if (was) {
         var again = marks.find(function (m) { return m.thread.root.id === was; });
@@ -2762,7 +2767,10 @@ export const CLIENT_SCRIPT = String.raw`
       if (gone) { mark.el.hidden = true; return; }
 
       var side = mark.thread.root.side === "LEFT" ? "base" : "head";
-      var anchor = anchorFor(mark.nodeId, side, mark.thread.root.line, false);
+      // A remark about the file belongs to the file, so it sits by its title.
+      var anchor = anchorFor(
+        mark.nodeId, side, mark.thread.root.line, mark.thread.root.wholeFile === true,
+      );
       if (!anchor) { mark.el.hidden = true; return; }
 
       // Screen coordinates, not canvas ones. A face drawn at a tenth of its
@@ -3002,10 +3010,12 @@ export const CLIENT_SCRIPT = String.raw`
 
       var about = chrome("about", "");
 
-      var where = root.path.split("/").pop() + ":" +
-        (root.startLine && root.startLine < root.line
-          ? root.startLine + "\u2013" + root.line
-          : root.line);
+      var where = root.path.split("/").pop() +
+        (root.wholeFile
+          ? ""
+          : ":" + (root.startLine && root.startLine < root.line
+            ? root.startLine + "\u2013" + root.line
+            : root.line));
       var replies = mark.thread.comments.length - 1;
       about.appendChild(
         chrome("where", where + (replies > 0
@@ -3124,6 +3134,7 @@ export const CLIENT_SCRIPT = String.raw`
   function lightRows(thread, on) {
     if (!thread) return;
     var root = thread.root;
+    if (root.wholeFile) return;
     var card = document.getElementById("card-" + cssId(nodeIdFor(root.path)));
     if (!card) return;
 
@@ -3155,9 +3166,11 @@ export const CLIENT_SCRIPT = String.raw`
 
     var root = thread.root;
     var where = root.path.split("/").pop() +
-      ":" + (root.startLine && root.startLine < root.line
-        ? root.startLine + "–" + root.line
-        : root.line);
+      (root.wholeFile
+        ? ""
+        : ":" + (root.startLine && root.startLine < root.line
+          ? root.startLine + "–" + root.line
+          : root.line));
     threadBox.querySelector(".thread-where").textContent = where;
 
     var body = threadBox.querySelector(".thread-body");
