@@ -1188,6 +1188,12 @@ body:not(.split) .card-body.split-view { display: none; }
 .edges g.edge.schema   path.trunk { stroke: var(--status-renamed); opacity: 0.55; }
 .edges g.edge.import   path.trunk { stroke-dasharray: 4 4; opacity: 0.5; }
 .edges g.edge.dim path.trunk { opacity: 0.12; }
+/* The road belongs to one arrow and is travelled by several, so it lights for
+   whichever of them is being followed — even while that arrow's own group is
+   the dimmed one. */
+.edges g.edge path.trunk.lit,
+.edges g.edge.schema path.trunk.lit,
+.edges g.edge.dim path.trunk.lit { opacity: 1; stroke-width: 3; }
 .edges g.edge.active path.trunk { opacity: 1; stroke-width: 3; }
 .edges g.edge.hidden path.trunk { display: none; }
 

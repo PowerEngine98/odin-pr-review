@@ -431,7 +431,22 @@ export const CLIENT_SCRIPT = String.raw`
   var edgeGroups = Array.prototype.slice.call(document.querySelectorAll("g.edge"));
   var cards = Array.prototype.slice.call(document.querySelectorAll(".card"));
 
+  /**
+   * The road a gathered run travels, lit with whichever of its arrows is.
+   *
+   * The stems belong to their own arrows but the road belongs to one of them,
+   * so following any other left the light stopping at the junction — the path
+   * to the destination went dim exactly when the reader was trying to follow
+   * it.
+   */
+  function lightRun(run) {
+    document.querySelectorAll("#edges path.trunk").forEach(function (trunk) {
+      trunk.classList.toggle("lit", Boolean(run) && trunk.dataset.run === run);
+    });
+  }
+
   function clearHighlight() {
+    lightRun(null);
     edgeGroups.forEach(function (g) { g.classList.remove("dim", "active"); });
     cards.forEach(function (c) { c.classList.remove("dim", "active"); });
   }
@@ -439,11 +454,14 @@ export const CLIENT_SCRIPT = String.raw`
   function highlightEdge(id) {
     var edge = data.edges.find(function (e) { return e.id === id; });
     if (!edge) return;
+    var run = null;
     edgeGroups.forEach(function (g) {
       var match = g.dataset.id === id;
+      if (match && g.dataset.run) run = g.dataset.run;
       g.classList.toggle("active", match);
       g.classList.toggle("dim", !match);
     });
+    lightRun(run);
     cards.forEach(function (c) {
       var match = c.dataset.id === edge.from || c.dataset.id === edge.to;
       c.classList.toggle("active", match);
@@ -464,10 +482,15 @@ export const CLIENT_SCRIPT = String.raw`
       neighbours[e.to] = true;
     });
 
+    var runs = {};
     edgeGroups.forEach(function (g) {
       var match = !!ids[g.dataset.id];
+      if (match && g.dataset.run) runs[g.dataset.run] = true;
       g.classList.toggle("active", match);
       g.classList.toggle("dim", !match);
+    });
+    document.querySelectorAll("#edges path.trunk").forEach(function (trunk) {
+      trunk.classList.toggle("lit", Boolean(runs[trunk.dataset.run]));
     });
     cards.forEach(function (c) {
       var match = !!neighbours[c.dataset.id];
@@ -1175,6 +1198,7 @@ export const CLIENT_SCRIPT = String.raw`
           { x: joinX - away * bend, y: joinY },
           { x: joinX, y: joinY },
         ];
+        r.group.dataset.run = key;
         var wire = r.group.querySelector("path.wire");
         if (wire) wire.setAttribute("d", bezierPath(stem));
         var hit = r.group.querySelector("path.hit");
@@ -1195,7 +1219,10 @@ export const CLIENT_SCRIPT = String.raw`
       ];
       var cut = shortenCurve(road, 13);
       var trunk = carrier.group.querySelector("path.trunk");
-      if (trunk) trunk.setAttribute("d", bezierPath(cut));
+      if (trunk) {
+        trunk.setAttribute("d", bezierPath(cut));
+        trunk.dataset.run = key;
+      }
       var head = carrier.group.querySelector("path.head");
       if (head) {
         head.setAttribute(
