@@ -199,7 +199,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "package": "vsce package --no-dependencies --out ../../dist/odin-pr-review-0.1.0.vsix",
+    "package": "mkdir -p ../../dist && vsce package --no-dependencies --out ../../dist/odin-pr-review-0.1.0.vsix",
     "test:integration": "node integration/run.mjs"
   },
   "dependencies": {

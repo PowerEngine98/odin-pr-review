@@ -90,6 +90,10 @@ say "Building"
 yarn build
 
 say "Packaging the extension"
+# vsce writes where it is told and does not create the directory on the way, and
+# a fresh clone has no dist/ — it is ignored, so nobody has one until something
+# builds into it.
+mkdir -p "$ROOT/dist"
 yarn --cwd packages/vscode-ext package
 
 VSIX="$ROOT/dist/odin-pr-review-0.1.0.vsix"
@@ -110,6 +114,10 @@ fi
 # The command line tool is useful on its own, and is one symlink away.
 say "The command line"
 BIN="${ODIN_BIN:-$HOME/.local/bin}"
+# A machine that has never installed anything by hand has no ~/.local/bin, and
+# refusing to make the standard place for user binaries is a strange thing to
+# refuse.
+mkdir -p "$BIN" 2>/dev/null || true
 if [ -d "$BIN" ] && [ -w "$BIN" ]; then
   ln -sf "$ROOT/packages/cli/dist/main.js" "$BIN/odin"
   note "linked $BIN/odin"

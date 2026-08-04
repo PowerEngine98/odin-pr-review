@@ -60,6 +60,10 @@ It checks what is on the machine, installs the dependencies, builds every
 package, packages the extension and installs it into VS Code — then links the
 command line tool into `~/.local/bin` if that is somewhere it can write.
 
+One line of noise is expected on the way past: `The engine "vscode" appears to
+be invalid`. VS Code requires `engines.vscode` in the extension's manifest and
+yarn 1 does not recognise it, so it says so every time and nothing is wrong.
+
 Two things it will not do for you. `gh` is what Odin asks for pull request
 titles, comments, checks and the list of what is open, so install it and run
 `gh auth login` if the script says it is missing — everything else works
