@@ -1,4 +1,4 @@
-# Odin PR Review
+# 🐦‍⬛ Odin PR Review 🐦‍⬛
 
 <img src="docs/odin.svg" alt="" width="200" align="left">
 
@@ -47,6 +47,30 @@ Odin puts those in one place.
   review rather than a notification per remark.
 - **It runs where you work.** The same page is a self-contained HTML file from
   the command line and a webview inside VS Code.
+
+## Install
+
+macOS and Linux, from a clone:
+
+```sh
+./scripts/install.sh
+```
+
+It checks what is on the machine, installs the dependencies, builds every
+package, packages the extension and installs it into VS Code — then links the
+command line tool into `~/.local/bin` if that is somewhere it can write.
+
+Two things it will not do for you. `gh` is what Odin asks for pull request
+titles, comments, checks and the list of what is open, so install it and run
+`gh auth login` if the script says it is missing — everything else works
+without it, against whatever branch is checked out. And if you have no `code`
+on the PATH the extension is built but not installed; the script says where the
+package is, and VS Code adds the command itself from **Shell Command: Install
+'code' command in PATH**. It looks inside the usual application bundles first,
+so on macOS this rarely comes up.
+
+Then open a repository in VS Code and run **Odin: Review** from the palette, or
+press the Odin mark in the activity bar to pick a pull request.
 
 ## Quick start
 
@@ -679,7 +703,8 @@ every function body opens with are kept out so `let` does not draw arrows.
 ## Development
 
 ```sh
-yarn test                      # 308 unit tests
+./scripts/install.sh           # build everything and install the extension
+yarn test                      # 343 unit tests
 yarn test:integration          # 6 tests inside a real VS Code extension host
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples
