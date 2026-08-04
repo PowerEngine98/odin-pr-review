@@ -291,12 +291,22 @@ async function checkout(number: number): Promise<void> {
         try {
           await gh(["pr", "checkout", String(number)], repo);
         } catch (error) {
-          vscode.window.showErrorMessage(
-            `Odin: could not check out #${number}. ` +
-              `${error instanceof Error ? error.message : String(error)}`,
-          );
-          await GraphPanel.stopLoading(`Could not check out #${number}.`);
-          return;
+          const said = error instanceof Error ? error.message : String(error);
+          const branch = known.get(number)?.branch ?? pull?.branch;
+
+          // The common failure is not a broken repository: it is a local branch
+          // that has moved somewhere the forge's copy has not. `gh` switches to
+          // it, cannot fast-forward, and stops — leaving the reader on a branch
+          // that is not the change they asked to see.
+          const diverged =
+            /not possible to fast-forward|diverging branches|non-fast-forward/i.test(said);
+          if (!branch || !diverged || !(await reconcile(repo, number, branch))) {
+            vscode.window.showErrorMessage(
+              `Odin: could not check out #${number}. ${said}`,
+            );
+            await GraphPanel.stopLoading(`Could not check out #${number}.`);
+            return;
+          }
         }
         await refreshPullRequests();
         await review();
@@ -364,6 +374,105 @@ async function mergeBase(
   const sha = (await git(["merge-base", base, head], { cwd: repo })
     .catch(() => "")).trim();
   return sha || undefined;
+}
+
+/**
+ * A local branch that has wandered away from the forge's copy of it.
+ *
+ * `gh pr checkout` switches to the branch and then refuses to fast-forward,
+ * which leaves the reader standing on a branch that is not the change they
+ * asked for and a message about merge strategies they did not ask about. The
+ * repository is not broken; the two copies simply disagree.
+ *
+ * What to do about it is the reader's decision and nobody else's, because the
+ * cheap answer throws away commits. So this says exactly what is on each side
+ * and offers to make the local copy match the forge — with the option of
+ * parking what is here on a branch of its own first, which costs nothing and
+ * makes the discarding undoable.
+ *
+ * Returns whether the branch now matches the forge.
+ */
+async function reconcile(
+  repo: string,
+  number: number,
+  branch: string,
+): Promise<boolean> {
+  const remote = `origin/${branch}`;
+  // `gh` has already fetched, but it may have failed before doing so.
+  await git(["fetch", "--quiet", "origin", branch], { cwd: repo }).catch(() => "");
+
+  const counts = (await git(
+    ["rev-list", "--left-right", "--count", `${remote}...HEAD`],
+    { cwd: repo },
+  ).catch(() => "")).trim().split(/\s+/);
+  const behind = Number(counts[0] ?? 0);
+  const ahead = Number(counts[1] ?? 0);
+  if (!Number.isFinite(behind) || !Number.isFinite(ahead) || ahead + behind === 0) {
+    return false;
+  }
+
+  // Anything uncommitted would go with the reset, and losing that is a
+  // different and much worse thing than losing a commit.
+  const dirty = (await git(["status", "--porcelain"], { cwd: repo })).trim();
+  if (dirty) {
+    vscode.window.showWarningMessage(
+      `Odin: ${branch} has diverged from the forge, and this worktree has ` +
+        `uncommitted changes. Commit or stash them first.`,
+    );
+    return false;
+  }
+
+  const mine = `${ahead} commit${ahead === 1 ? "" : "s"} here that the forge does not have`;
+  const theirs = `${behind} commit${behind === 1 ? "" : "s"} on the forge that this branch does not`;
+  const keep = "Back Up, Then Reset";
+  const reset = "Reset to the Forge";
+
+  const answer = await vscode.window.showWarningMessage(
+    `Odin: ${branch} has diverged from ${remote}.`,
+    {
+      modal: true,
+      detail:
+        `There ${ahead === 1 ? "is" : "are"} ${mine}, and ${theirs}.\n\n` +
+        `Resetting makes this branch exactly what the forge has, which is what ` +
+        `#${number} shows. The ${ahead === 1 ? "commit" : "commits"} here would ` +
+        `be left behind — backing up first keeps ${ahead === 1 ? "it" : "them"} ` +
+        `on a branch of their own.`,
+    },
+    keep,
+    reset,
+  );
+  if (answer !== keep && answer !== reset) return false;
+
+  if (answer === keep) {
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "");
+    const parked = `odin-backup/${branch}-${stamp}`;
+    try {
+      await git(["branch", parked], { cwd: repo });
+      vscode.window.showInformationMessage(`Odin: kept your commits on ${parked}.`);
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Odin: could not create ${parked}, so nothing was reset. ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
+  }
+
+  try {
+    // The branch `gh` left us on is the one to reset; if it left us elsewhere,
+    // go there first rather than resetting whatever happens to be checked out.
+    const here = await currentBranch({ cwd: repo }).catch(() => undefined);
+    if (here !== branch) await git(["switch", branch], { cwd: repo });
+    await git(["reset", "--hard", remote], { cwd: repo });
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `Odin: could not reset ${branch}. ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+    return false;
+  }
+
+  return true;
 }
 
 function gh(args: string[], cwd: string): Promise<string> {
