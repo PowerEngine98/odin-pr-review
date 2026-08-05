@@ -85,6 +85,10 @@ export const CLIENT_SCRIPT = String.raw`
   var isInfra = {};
 
   var view = { x: 0, y: 0, scale: 1 };
+  // The viewport size the view was last framed against, and whether the reader
+  // has moved the view since. Both are read on resize; see reframe.
+  var framed = null;
+  var placed = false;
   // Low enough that a part of a large change fits on screen. A tall card is
   // thousands of pixels; a floor of 0.15 meant "fit" still left most of a part
   // below the fold, which is the one thing fit is for.
@@ -109,6 +113,7 @@ export const CLIENT_SCRIPT = String.raw`
   var settle = 0;
 
   function apply(hold) {
+    placed = true;
     canvas.classList.add("moving");
     window.clearTimeout(settle);
     settle = window.setTimeout(rest, hold || 140);
@@ -376,6 +381,38 @@ export const CLIENT_SCRIPT = String.raw`
     view.x = (rect.width - box.width * scale) / 2 - box.x * scale;
     view.y = top + (rect.height - top - box.height * scale) / 2 - box.y * scale;
     apply();
+    // The drawing is framed against this size and nobody has moved it since,
+    // so growing the panel may as well grow the picture with it.
+    framed = { width: rect.width, height: rect.height };
+    placed = false;
+  }
+
+  /**
+   * What a resize should do to a view the reader has already chosen.
+   *
+   * Dragging the panel's edge, the side bar's, or the window's used to refit
+   * the drawing, which threw away whatever the reader had zoomed into: a nudge
+   * of a divider cost them their place and handed back the whole graph at ten
+   * per cent. A resize is a window changing size over the same picture, not a
+   * new picture, so the scale is kept and the middle of the view is held still
+   * — the room appears at the edges, where it was added.
+   *
+   * Until the view has been moved, refitting is still the kinder answer: a
+   * graph opened into a sliver of a panel should grow into the room a drag
+   * gives it. A hidden panel measures zero and is not a size to frame against,
+   * so it is left alone; the reader's own numbers are still there when it
+   * comes back.
+   */
+  function reframe() {
+    var rect = viewport.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    if (!placed) { fit(); return; }
+    if (framed) {
+      view.x += (rect.width - framed.width) / 2;
+      view.y += (rect.height - framed.height) / 2;
+      apply();
+    }
+    framed = { width: rect.width, height: rect.height };
   }
 
   /**
@@ -4827,6 +4864,6 @@ export const CLIENT_SCRIPT = String.raw`
   refreshReview();
   buildMarks();
   fit();
-  window.addEventListener("resize", fit);
+  window.addEventListener("resize", reframe);
 })();
 `;
