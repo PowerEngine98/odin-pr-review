@@ -1120,6 +1120,21 @@ body:not(.split) .card-body.split-view { display: none; }
   text-overflow: ellipsis;
 }
 
+/* Where a file ends without a newline. Sits after the last character rather
+   than in a column of its own: it belongs to that line, and a card's height is
+   counted in rows, so it must not take one. */
+.no-newline {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-left: 0.7ch;
+  color: var(--warning);
+  opacity: 0.85;
+}
+
+.no-newline svg { display: block; }
+
+.no-newline:hover { opacity: 1; }
+
 /* Rows an arrow touches get a marker so the eye can find them without
    following the line all the way back. */
 .row.anchor::after {

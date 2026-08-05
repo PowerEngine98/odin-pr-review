@@ -121,6 +121,19 @@ export function layoutGraph(
  */
 const TITLE_CONTROLS = 168;
 
+/**
+ * How wide a row needs the card to be, counted in characters.
+ *
+ * The line's own length, plus room for the mark that says the file ends without
+ * a newline: it is drawn after the last character, and a card sized to the
+ * characters alone would put it in the space it does not have and ellipsize it
+ * away — which loses the one thing on that row the code does not show.
+ */
+function roomFor(row: DisplayRow | undefined): number {
+  if (!row) return 0;
+  return row.text.length + (row.kind !== "gap" && row.noNewline ? 2 : 0);
+}
+
 // ---------------------------------------------------------------- measurement
 
 function measureNodes(
@@ -154,10 +167,9 @@ function measureNodes(
     // an arrow lands on as narrow as the single line it lands on, and clipped
     // the context around it that was fetched to give the arrow somewhere to go.
     const widest = unified
-      ? rows.reduce((max, row) => Math.max(max, row.text.length), 0)
+      ? rows.reduce((max, row) => Math.max(max, roomFor(row)), 0)
       : pairs.reduce(
-          (max, pair) =>
-            Math.max(max, pair.left?.text.length ?? 0, pair.right?.text.length ?? 0),
+          (max, pair) => Math.max(max, roomFor(pair.left), roomFor(pair.right)),
           0,
         );
     // A band runs across both panes, so it needs the whole width rather than

@@ -814,6 +814,35 @@ const UNFOLD_ICON =
   `<path d="M5 6.2 8 3.2l3 3M5 9.8l3 3 3-3" fill="none" stroke="currentColor" ` +
   `stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
+/**
+ * The mark git puts where a file ends without a newline.
+ *
+ * A circle struck through, which is what every forge draws for it, because a
+ * reviewer who has seen it once recognises it and one who has not can hover it.
+ * Nothing in the code says this: the last line looks the same either way, and
+ * the difference only appears the next time somebody appends to the file and
+ * their line lands on the end of this one.
+ */
+const NO_NEWLINE_ICON =
+  `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">` +
+  `<circle cx="8" cy="8" r="6.1" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
+  `<path d="M5.2 8h5.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+
+const NO_NEWLINE_LABEL = "No newline at end of file";
+
+/**
+ * The mark, when this row is the line git said that about.
+ *
+ * Drawn inside the row rather than on one of its own, because every card's
+ * height is worked out from how many rows it has, and a row nobody can point an
+ * arrow at would move every arrow below it.
+ */
+function noNewlineMark(row: DisplayRow | undefined): string {
+  if (!row || row.kind === "gap" || !row.noNewline) return "";
+  return `<span class="no-newline" title="${NO_NEWLINE_LABEL}" ` +
+    `aria-label="${NO_NEWLINE_LABEL}">${NO_NEWLINE_ICON}</span>`;
+}
+
 const SPEECH_ICON =
   `<svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
   `<path d="M2.5 3.4h11a1 1 0 0 1 1 1v5.6a1 1 0 0 1-1 1H8l-3.4 2.6V11H2.5a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z" ` +
@@ -1140,7 +1169,7 @@ function renderRow(
   return `<div class="row flat ${row.kind}${overflow}${row.inDiff ? " in-diff" : ""}"${anchors}>` +
     `<span class="marker">${removed}</span>` +
     `<span class="num old">${showLeft ?? ""}</span>` +
-    `<span class="text">${code(row, coloured?.get(row), palette)}</span>` +
+    `<span class="text">${code(row, coloured?.get(row), palette)}${noNewlineMark(row)}</span>` +
     `<span class="num new">${showRight ?? ""}</span>` +
     `<span class="marker right">${added}</span></div>`;
 }
@@ -1232,7 +1261,7 @@ function pane(
   return `<span class="side ${side} ${row.kind}${row.inDiff ? " in-diff" : ""}">` +
     `<span class="marker">${marker}</span>` +
     `<span class="num">${line ?? ""}</span>` +
-    `<span class="text">${code(row, coloured?.get(row), palette)}</span></span>`;
+    `<span class="text">${code(row, coloured?.get(row), palette)}${noNewlineMark(row)}</span></span>`;
 }
 
 /**

@@ -18,6 +18,15 @@ export type DisplayRow =
        * and read so that an arrow had somewhere to land.
        */
       inDiff?: boolean;
+      /**
+       * The file stops here, without a newline to end on.
+       *
+       * Git says so in the patch and every forge draws it, because it is a real
+       * difference between two files that no line of code shows: the last line
+       * looks identical either way. It is also the sort of thing a reviewer asks
+       * for a change to, so a card that hides it is hiding a remark.
+       */
+      noNewline?: boolean;
     }
   | {
       kind: "gap";
@@ -432,6 +441,7 @@ function toRow(line: DiffLine): DisplayRow {
   if (line.newLine !== undefined) row.newLine = line.newLine;
   if (line.oldAnchor !== undefined) row.oldAnchor = line.oldAnchor;
   if (line.newAnchor !== undefined) row.newAnchor = line.newAnchor;
+  if (line.noNewline) row.noNewline = true;
   return row;
 }
 
