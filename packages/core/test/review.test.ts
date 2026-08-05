@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { inlineAvatars, parseComments, reviewPayload } from "../src/git/review.js";
+import {
+  alreadyThere,
+  brokenConnection,
+  inlineAvatars,
+  parseComments,
+  reviewPayload,
+} from "../src/git/review.js";
 
 function raw(overrides: Record<string, unknown>): string {
   return JSON.stringify([
@@ -228,5 +234,75 @@ describe("a comment the forge gives no line", () => {
     expect(c.wholeFile).toBeUndefined();
     expect(c.outdated).toBe(true);
     expect(c.line).toBe(40);
+  });
+});
+
+describe("telling a broken connection from a refusal", () => {
+  it("recognises the answer that never came", () => {
+    // The one the reviewer actually saw: gh reporting that the server hung up
+    // before it replied, which says nothing about whether it read the review.
+    expect(
+      brokenConnection(
+        'Post "https://api.github.com/repos/o/r/pulls/80/reviews": unexpected EOF',
+      ),
+    ).toBe(true);
+    expect(brokenConnection("HTTP 502: Bad gateway")).toBe(true);
+    expect(brokenConnection("read tcp 10.0.0.1:1: connection reset by peer")).toBe(true);
+  });
+
+  it("leaves a refusal alone, because sending it again would fail again", () => {
+    expect(brokenConnection("HTTP 422: Validation Failed")).toBe(false);
+    expect(brokenConnection("HTTP 403: Resource not accessible")).toBe(false);
+    expect(brokenConnection("pull request review cannot be empty")).toBe(false);
+  });
+});
+
+describe("looking for a review that may already be there", () => {
+  const sent = {
+    login: "ada",
+    event: "APPROVE" as const,
+    body: "looks right",
+    since: Date.parse("2026-08-04T12:00:00Z"),
+  };
+  const posted = (overrides: Record<string, unknown> = {}) => [
+    {
+      user: { login: "ada" },
+      state: "APPROVED",
+      body: "looks right",
+      submitted_at: "2026-08-04T12:00:05Z",
+      ...overrides,
+    },
+  ];
+
+  it("finds the one just sent, so it is not sent twice", () => {
+    expect(alreadyThere(posted(), sent)).toBe(true);
+  });
+
+  it("is not fooled by somebody else's approval", () => {
+    expect(alreadyThere(posted({ user: { login: "grace" } }), sent)).toBe(false);
+  });
+
+  it("is not fooled by a different verdict", () => {
+    expect(alreadyThere(posted({ state: "CHANGES_REQUESTED" }), sent)).toBe(false);
+  });
+
+  it("is not fooled by a different summary", () => {
+    expect(alreadyThere(posted({ body: "one question" }), sent)).toBe(false);
+  });
+
+  it("ignores an old review that happens to match", () => {
+    // The same reviewer approving the same pull request with the same words
+    // last week is not this attempt, and treating it as one would swallow the
+    // review being sent now.
+    expect(alreadyThere(posted({ submitted_at: "2026-07-28T09:00:00Z" }), sent)).toBe(
+      false,
+    );
+  });
+
+  it("matches an approval with no summary, which is the usual kind", () => {
+    expect(
+      alreadyThere(posted({ body: "" }), { ...sent, body: "" }),
+    ).toBe(true);
+    expect(alreadyThere(posted({ body: null }), { ...sent, body: "" })).toBe(true);
   });
 });

@@ -189,17 +189,150 @@ export async function submitReview(
   options: GitOptions & { timeoutMs?: number },
 ): Promise<void> {
   const payload = JSON.stringify(reviewPayload(request));
+  const args = [
+    "api",
+    "--method", "POST",
+    `repos/{owner}/{repo}/pulls/${request.number}/reviews`,
+    "--input", "-",
+  ];
 
-  await write(
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await write(args, payload, options);
+      return;
+    } catch (error) {
+      const said = error instanceof Error ? error.message : String(error);
+
+      // A refusal is final: the forge read the review and would not have it,
+      // and sending the same thing again would be refused the same way.
+      if (!brokenConnection(said)) throw new ReviewNotPosted(said, false);
+
+      // A broken connection is not a refusal. The request may well have
+      // arrived and the answer been lost on the way back, so the review is
+      // looked for after every failed attempt — including the last, since what
+      // is reported afterwards depends on it. Two identical approvals on a pull
+      // request is a worse thing to leave behind than one error message.
+      const landed = await postedAlready(request, options);
+      if (landed === "yes") return;
+      // The forge cannot be reached even to ask. Sending again now would be
+      // guessing with somebody else's pull request, and saying it did not
+      // arrive would be guessing out loud.
+      if (landed === "unknown") throw new ReviewNotPosted(said, false);
+      if (attempt >= 2) throw new ReviewNotPosted(said, true);
+
+      await pause(500 * (attempt + 1));
+    }
+  }
+}
+
+/**
+ * A review that did not go out, and whether that is known or merely believed.
+ *
+ * The difference matters to the person reading the message. "It was refused"
+ * and "the connection broke and Odin could not find out" call for different
+ * next moves, and telling the second as though it were the first is how a
+ * reviewer ends up posting their verdict twice.
+ */
+export class ReviewNotPosted extends Error {
+  /** True when the pull request was read afterwards and the review was not on it. */
+  readonly verified: boolean;
+
+  constructor(message: string, verified: boolean) {
+    super(message);
+    this.name = "ReviewNotPosted";
+    this.verified = verified;
+  }
+}
+
+/**
+ * Failures where the request may have been received all the same.
+ *
+ * All of these are the connection giving way rather than the forge answering:
+ * `unexpected EOF` is the server hanging up before it replied, and a 502 or a
+ * 504 comes from something in front of the forge rather than the forge itself.
+ * None of them say whether the review was written down on the other side.
+ */
+export function brokenConnection(message: string): boolean {
+  return /unexpected EOF|\bEOF\b|connection reset|broken pipe|i\/o timeout|Client\.Timeout|TLS handshake|connection refused|HTTP 50[234]|EPIPE|ECONNRESET|ETIMEDOUT/i.test(
+    message,
+  );
+}
+
+/** Whether the review is on the pull request already — or whether that is unknowable. */
+async function postedAlready(
+  request: SubmitRequest,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<"yes" | "no" | "unknown"> {
+  const me = await viewerLogin(options);
+  if (!me) return "unknown";
+
+  const json = await read(
     [
       "api",
-      "--method", "POST",
-      `repos/{owner}/{repo}/pulls/${request.number}/reviews`,
-      "--input", "-",
+      "--paginate",
+      `repos/{owner}/{repo}/pulls/${request.number}/reviews?per_page=100`,
     ],
-    payload,
     options,
   );
+  if (json === undefined) return "unknown";
+
+  try {
+    const pages = json.replace(/\]\s*\[/g, ",").trim();
+    const reviews = JSON.parse(pages) as PostedReview[];
+    return alreadyThere(reviews, {
+      login: me,
+      event: request.event,
+      body: request.body,
+      // Ten minutes is far longer than a request takes and far shorter than the
+      // gap between two deliberate reviews of the same pull request.
+      since: Date.now() - 10 * 60_000,
+    })
+      ? "yes"
+      : "no";
+  } catch {
+    return "unknown";
+  }
+}
+
+/** A review as the forge lists it. */
+export interface PostedReview {
+  user?: { login?: string };
+  state?: string;
+  body?: string;
+  submitted_at?: string;
+}
+
+/** The state the forge gives a review, for each verdict that can be sent. */
+const STATE: Record<ReviewEvent, string> = {
+  APPROVE: "APPROVED",
+  REQUEST_CHANGES: "CHANGES_REQUESTED",
+  COMMENT: "COMMENTED",
+};
+
+/**
+ * Whether one of these reviews is the one that was just sent.
+ *
+ * Matched on all four of who, what verdict, what was written and when, because
+ * the answer decides whether a review is sent a second time. A reviewer who
+ * approved the same pull request with the same words ten minutes ago and meant
+ * to do it again is a case this gets wrong; two approvals from one click is the
+ * case worth getting right.
+ */
+export function alreadyThere(
+  reviews: readonly PostedReview[],
+  sent: { login: string; event: ReviewEvent; body: string; since: number },
+): boolean {
+  return reviews.some((review) => {
+    if (review.user?.login !== sent.login) return false;
+    if (review.state !== STATE[sent.event]) return false;
+    if ((review.body ?? "") !== sent.body) return false;
+    const at = Date.parse(review.submitted_at ?? "");
+    return Number.isFinite(at) && at >= sent.since;
+  });
+}
+
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**

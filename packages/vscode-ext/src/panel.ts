@@ -24,6 +24,7 @@ import * as vscode from "vscode";
 
 import { baseUri } from "./baseContent.js";
 import { waitingPage } from "./loading.js";
+import { failedToPost } from "./posting.js";
 import { activeTheme } from "./theme.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
@@ -366,9 +367,7 @@ export class GraphPanel {
         { cwd: this.repo },
       );
     } catch (error) {
-      vscode.window.showErrorMessage(
-        `Odin: the review was not posted. ${error instanceof Error ? error.message : String(error)}`,
-      );
+      vscode.window.showErrorMessage(failedToPost(error, pull.number));
       return;
     }
 
