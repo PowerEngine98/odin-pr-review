@@ -9,3 +9,6 @@ out/
 
 # Editors downloaded by the integration harness
 .vscode-test/
+
+# Pages written by `odin view`.
+.odin-fly/

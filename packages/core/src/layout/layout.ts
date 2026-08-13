@@ -183,9 +183,13 @@ function measureNodes(
     // be to show that is a card that says nothing twice.
     const panes =
       unified || singlePane(node) ? 1 : 2;
+    // One column of code has one column of picking marks, however many gutters
+    // are around it: a unified row can start a remark from either side, but both
+    // ends of a range are drawn at the head of the one piece of code there is.
     const contentWidth = unified
       ? widest * metrics.charWidth +
         metrics.gutterWidth +
+        metrics.pickColumn +
         metrics.rightGutterWidth +
         metrics.padding * 2
       : Math.max(
@@ -299,9 +303,15 @@ function collectAnchors(graph: ChangeGraph): Map<string, { side: Side; line: num
   return anchors;
 }
 
-/** What one of a card's two panes takes up: its gutter and this much code. */
+/**
+ * What one of a card's two panes takes up: its gutter, the column the picking
+ * marks are drawn in, and this much code.
+ *
+ * Each pane pays for a column of its own, because each has its own numbering
+ * and a remark begun in one is about that side of the change.
+ */
 export function paneWidth(characters: number, metrics: LayoutMetrics): number {
-  return metrics.gutterWidth + characters * metrics.charWidth;
+  return metrics.gutterWidth + metrics.pickColumn + characters * metrics.charWidth;
 }
 
 /**
@@ -317,7 +327,9 @@ export function textCapacity(
   panes = 2,
 ): number {
   const available =
-    (width - metrics.padding * 2) / panes - metrics.gutterWidth;
+    (width - metrics.padding * 2) / panes -
+    metrics.gutterWidth -
+    metrics.pickColumn;
   return Math.max(0, Math.floor(available / metrics.charWidth));
 }
 

@@ -12,13 +12,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc --build && yarn workspace odin-pr-review run build",
+    "build": "yarn workspace @odin/webview run build:app && tsc --build && yarn workspace odin-pr-review run build",
     "clean": "tsc --build --clean",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --build --force",
+    "typecheck": "yarn workspace @odin/webview run build:app && tsc --build --force",
     "demo": "node --experimental-strip-types scripts/demo.ts",
-    "build:libs": "tsc --build",
+    "build:libs": "yarn workspace @odin/webview run build:app && tsc --build",
     "package": "yarn build && yarn workspace odin-pr-review run package",
     "test:integration": "yarn workspace odin-pr-review run test:integration"
   },

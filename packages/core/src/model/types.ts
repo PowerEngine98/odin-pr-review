@@ -219,6 +219,11 @@ export interface GraphMeta {
   authors?: Author[];
   /** The pull request this branch belongs to, if one is open. */
   pullRequest?: PullRequest;
+  /**
+   * The head of this diff is the working tree, not a commit — so it carries
+   * changes that have not been committed and that nobody else can see.
+   */
+  worktree?: boolean;
 }
 
 /** The forge's own record of the change under review. */

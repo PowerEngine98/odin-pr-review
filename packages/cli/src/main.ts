@@ -15,7 +15,6 @@ import {
   serializeGraph,
   toDot,
   toMermaid,
-  toSvg,
   validateGraph,
   withoutTests,
   DARK_THEME,
@@ -24,7 +23,7 @@ import {
   type ReviewComment,
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
-import { renderHtml } from "@odin/webview";
+import { renderHtml, renderSvg } from "@odin/webview";
 
 import { parseArgs, USAGE, type GraphOptions } from "./args.js";
 import { resolveEdges } from "./pipeline.js";
@@ -152,8 +151,14 @@ async function render(
       const layout = layoutGraph(graph, { snippets });
       const theme = opts.light ? LIGHT_THEME : DARK_THEME;
 
+      // Drawn by the application's own components rather than by an exporter
+      // of its own, so that a change to how a card looks reaches the webview,
+      // the written page and this file at once instead of three times.
+      // `@odin/core`'s `toSvg` is still there and still exercised by the layout
+      // tests, where it is the reference picture a placement is compared
+      // against — which is a different job from being what a reviewer is sent.
       if (opts.format !== "html") {
-        return toSvg(layout, { includeImports, theme });
+        return renderSvg(layout, { includeImports, theme });
       }
 
       // Marked, but not writable: a page opened from a file has nothing to

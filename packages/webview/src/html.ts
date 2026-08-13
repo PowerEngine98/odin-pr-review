@@ -18,9 +18,10 @@ import {
   type Theme,
 } from "@odin/core";
 
-import { CLIENT_SCRIPT } from "./client.js";
+import { APP_SCRIPT, APP_STYLES } from "./generated/app.js";
+import { renderApp } from "./generated/ssr.js";
 import { ODIN_MARK } from "./mark.js";
-import { stylesheet } from "./styles.js";
+import { tokens } from "./tokens.js";
 
 export interface RenderOptions {
   theme?: Theme;
@@ -125,6 +126,17 @@ export function renderHtml(
     ),
   });
 
+  // The same cards measured the other way round. Each reading caps its own
+  // card, so the number for the mode that is not on screen has to come from
+  // the arrangement that measured it.
+  const alternate = options.alternate
+    ? new Map(
+        (options.alternate.withTests ?? options.alternate.layout).nodes.map(
+          (n) => [n.id, n],
+        ),
+      )
+    : undefined;
+
   const viewModel = {
     width: layout.width,
     height: layout.height,
@@ -133,8 +145,14 @@ export function renderHtml(
     // measuring text in the browser — the same number the layout engine used.
     charWidth: layout.metrics.charWidth,
     // Where a row's first character sits: the marker column, the base number,
-    // and the padding between that and the code.
-    textLeft: layout.metrics.padding + layout.metrics.gutterWidth,
+    // the padding between that and the code, and the strip kept clear between
+    // them for the marks a reader picks lines with. That strip is part of the
+    // answer because it is part of the card the engine measured — leave it out
+    // and everything placed from this number lands a column early.
+    textLeft:
+      layout.metrics.padding +
+      layout.metrics.gutterWidth +
+      layout.metrics.pickColumn,
     // A card's body is two panes wide, so the head side's code starts a pane in.
     // The pane width depends on the card, which the page measures for itself.
     padding: layout.metrics.padding,
@@ -166,6 +184,17 @@ export function renderHtml(
       // What kind of change it is, for the map in the corner: it draws files as
       // rectangles and colour is all it has to say what they are.
       status: n.node.status,
+      // A file, unless something assembled it. The settings menu offers the
+      // database switch only when there is a schema on the canvas, and it can
+      // only decide that for itself if the vertices say what they are.
+      ...(n.node.kind ? { kind: n.node.kind } : {}),
+      // The diff itself, coloured here where the grammar lives. Every row,
+      // including the ones behind the bar: expanding a band should reveal what
+      // is already in the page rather than ask the host for three lines.
+      rows: withTokens(n.rows, colourRows(n, options.highlight)),
+      title: cardTitle(n.node),
+      single: singlePane(n.node),
+      ...caps(n, layout, alternate?.get(n.id)),
     })),
     unified: layout.unified,
     ...(options.checks ? { checks: options.checks } : {}),
@@ -202,12 +231,52 @@ export function renderHtml(
       label: e.edge.label ?? "",
     })),
     parts: [
-      ...parts.filter((p) => p.files > 1).map((p) => ({ id: p.id, nodes: p.nodeIds })),
+      ...parts
+        .filter((p) => p.files > 1)
+        .map((p) => ({
+          id: p.id,
+          nodes: p.nodeIds,
+          // What the strip calls it. Sent rather than worked out in the page:
+          // the id happens to be the first node's id today, and a strip that
+          // silently lost its labels when that stopped being true would be
+          // worse than one that is simply told.
+          label: graph.nodes.find((n) => n.id === p.id)?.path ?? "",
+        })),
       {
         id: "loose",
         nodes: parts.filter((p) => p.files === 1).flatMap((p) => p.nodeIds),
+        label: "Loose files",
       },
     ],
+    // The forge's own facts, for the bar across the top. None of it places
+    // anything, which is why it is kept apart from the drawing.
+    meta: {
+      baseRef: graph.meta.baseRef,
+      headRef: graph.meta.headRef,
+      ...(graph.meta.authors ? { authors: graph.meta.authors } : {}),
+      ...(graph.meta.pullRequest
+        ? {
+            pullRequest: {
+              number: graph.meta.pullRequest.number,
+              title: graph.meta.pullRequest.title,
+              url: graph.meta.pullRequest.url,
+              ...(graph.meta.pullRequest.draft !== undefined
+                ? { draft: graph.meta.pullRequest.draft }
+                : {}),
+              ...(graph.meta.pullRequest.reviewDecision
+                ? { reviewDecision: graph.meta.pullRequest.reviewDecision }
+                : {}),
+              // Already inlined as data URIs by whoever built the graph: a
+              // webview will not fetch a remote image, and a face that has to
+              // be asked for is a face that never arrives.
+              ...(graph.meta.pullRequest.reviewers
+                ? { reviewers: graph.meta.pullRequest.reviewers }
+                : {}),
+            },
+          }
+        : {}),
+      ...(graph.meta.worktree ? { worktree: true } : {}),
+    },
     canReview: options.canReview === true,
     // What a half-written review is filed under between page loads: the pull
     // request if there is one, the pair of refs if there is not.
@@ -236,20 +305,20 @@ export function renderHtml(
 
   const nonce = options.csp ? ` nonce="${options.csp.nonce}"` : "";
 
-  // Cards first: colouring them is what fills the palette, and the palette has
-  // to be in the head before anything it names is used.
-  const palette = new Palette();
-  // The same cards measured the other way round, so each card can carry both
-  // bodies with the right amount hidden behind each one's bar.
-  const alternate = options.alternate
-    ? new Map(
-        (options.alternate.withTests ?? options.alternate.layout).nodes.map((n) => [n.id, n]),
-      )
-    : undefined;
-  const cards = full.nodes
-    .map((node) => card(node, full, options.highlight, palette, alternate?.get(node.id)))
-    .join("\n");
-  const colours = palette.stylesheet();
+  /*
+   * The document, rendered twice over.
+   *
+   * The markup comes from the components running on this side, so a webview
+   * shows the change the moment the panel opens rather than a blank rectangle
+   * while a bundle parses — and a file written to disk is a readable page even
+   * where the script never runs. The same components then wake up in the
+   * browser and take the markup over.
+   *
+   * They are handed the identical object: `window.__ODIN__` is what the
+   * browser half reads, and rendering from anything else here would produce
+   * markup the script did not expect to find.
+   */
+  const rendered = renderApp(viewModel);
 
   return [
     `<!doctype html>`,
@@ -257,72 +326,21 @@ export function renderHtml(
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     ...(options.csp ? [contentSecurityPolicy(options.csp)] : []),
     `<title>${escapeHtml(title)}</title>`,
-    `<style>${stylesheet(theme, layout.metrics)}</style>`,
-    ...(colours ? [`<style>${colours}</style>`] : []),
+    // Only the vocabulary. Every rule that draws anything now lives in the
+    // component that draws it.
+    `<style>${tokens(theme, layout.metrics)}</style>`,
+    // The components' own styles, scoped by the compiler. They come after the
+    // page's, so a component that means to override one can.
+    `<style>${APP_STYLES}</style>`,
+    rendered.head,
     `</head><body>`,
-    // One fixed block, so the two rows cannot drift apart and the canvas has a
-    // single height to make room for.
-    `<div class="chrome">`,
-    prBar(graph, options.canReview === true, notes(graph, options.highlight)),
-    tabs(parts),
-    // Along the bottom edge of the chrome, where a sticky card title comes to
-    // rest: how much of what is on screen has been read, without having to
-    // look for a number.
-    `<div class="done-bar"><span></span></div>`,
-    `</div>`,
-    `<div class="viewport">`,
-    `<div class="canvas" style="width:${layout.width}px;height:${layout.height}px">`,
-    edgeLayer(full),
-    cards,
-    schemaMarks(full),
-    portLayer(full),
-    `</div></div>`,
-    // Who has said something, and where. Docked under the chrome on the side
-    // the canvas is least busy, because a comment on a change is a thing to
-    // come back to rather than a thing to find again.
-    `<div class="reviewers">` +
-    reviewerList(graph.meta.pullRequest?.reviewers ?? []) +
-    // The way out sits beside the pill rather than under it: under it is where
-    // the list of threads opens, and a cross in that space reads as belonging
-    // to the thread it happens to be nearest.
-    `<div class="faces-row">` +
-    `<div class="faces" hidden></div>` +
-    `${HUD_CLOSE("comments", "the comments")}</div>` +
-    `<div class="reviewer-panel" hidden></div></div>`,
-    // No title and no fold: the map is a picture, it says what it is, and the
-    // only thing worth offering is a way to be rid of it.
-    `<div class="minimap waiting"><div class="minimap-head">` +
-    `${HUD_CLOSE("map", "the map")}</div>` +
-    `<svg class="minimap-face"><g class="minimap-nodes"></g>` +
-    `<rect class="minimap-view"/></svg>` +
-    // The map is drawn, redrawn as the cards settle to their real heights, and
-    // redrawn again once the camera has framed the change — three pictures in
-    // the first second, none of which is the answer. The mark stands in until
-    // the shape stops moving.
-    `<div class="minimap-wait">${ODIN_MARK}</div></div>`,
-    `<div class="marks"></div>`,
-    `<div class="tooltip"></div>`,
-    `<div class="thread" hidden><div class="thread-head">` +
-      `<span class="thread-where"></span>` +
-      `<button class="thread-close" title="Close" aria-label="Close">${CLOSE_ICON}</button>` +
-      `</div><div class="thread-body"></div>` +
-      `<div class="thread-reply" hidden>` +
-      editor({ placeholder: "Reply…", rows: 3 }) +
-      `<div class="reply-actions"><button class="reply-send primary">Reply</button></div>` +
-      `</div></div>`,
-    composer(),
-    reviewPanel(),
+    `<div id="app">${rendered.body}</div>`,
     `<script${nonce}>window.__ODIN__=${jsonForScript(viewModel)};</script>`,
-    `<script${nonce}>${CLIENT_SCRIPT}</script>`,
+    `<script${nonce}>${APP_SCRIPT}</script>`,
     `</body></html>`,
   ].join("\n");
 }
 
-/**
- * Locks the page down to what it actually needs: its own inline styles, the two
- * nonced scripts, and nothing else. There is no network access to grant, since
- * the document embeds everything it uses.
- */
 function contentSecurityPolicy(csp: { nonce: string; source: string }): string {
   const policy = [
     `default-src 'none'`,
@@ -494,6 +512,7 @@ function prBar(graph: ChangeGraph, canReview = false, notes = ""): string {
     <span class="merge-line">${merging}</span>
   </span>
   <span class="spacer"></span>
+  <span class="refreshing" hidden aria-live="polite">${SPINNER}<span class="refreshing-note">Refreshing</span></span>
   <span class="checks-menu" hidden>
     <button class="checks" title="What the forge made of this branch">
       <span class="checks-label">Checks</span><span class="checks-tally"></span>
@@ -716,6 +735,21 @@ const RING =
   `<circle class="arc" cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" ` +
   `stroke-width="1.6" stroke-linecap="round" stroke-dasharray="0 39" ` +
   `transform="rotate(-90 8 8)"/></svg>`;
+
+/**
+ * The spinner beside "Refreshing".
+ *
+ * An arc rather than a ring of dots: the arc is one path, so it spins as a
+ * single transform and costs nothing while a rebuild is holding the extension
+ * host busy. Drawn from the same geometry as the progress ring beside it, so
+ * the two sit at the same optical weight in the bar.
+ */
+const SPINNER =
+  `<svg class="spinner" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">` +
+  `<circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.8" ` +
+  `opacity="0.25"/>` +
+  `<circle class="spin-arc" cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.8" stroke-linecap="round" stroke-dasharray="10 29"/></svg>`;
 
 /**
  * Where a line comment is written.
@@ -942,6 +976,47 @@ function colourRows(
   walk(node.rows);
   flush();
   return coloured;
+}
+
+/**
+ * The rows with their colours carried on them.
+ *
+ * The old renderer kept a `Map` from row to tokens because the two were joined
+ * a moment later in the same function. Crossing into a page means the join has
+ * to survive being serialised, and a map does not — so the tokens ride the row
+ * they belong to. Bands are walked into: a row folded away is still a row, and
+ * opening a band should not reveal uncoloured code.
+ */
+function withTokens(
+  rows: readonly DisplayRow[],
+  coloured: Map<DisplayRow, CodeToken[]>,
+): DisplayRow[] {
+  return rows.map((row) => {
+    if (row.kind === "gap") {
+      return row.rows ? { ...row, rows: withTokens(row.rows, coloured) } : row;
+    }
+    const tokens = coloured.get(row);
+    return tokens ? { ...row, tokens } : row;
+  });
+}
+
+/**
+ * How much of each card is shown before the bar, in each reading.
+ *
+ * Taken from whichever arrangement measured that reading rather than from the
+ * one on screen. Stated here as well as in the layout because the two have
+ * disagreed: a page rendered without the other mode's measurements capped its
+ * unified cards with numbers taken from split ones.
+ */
+function caps(
+  node: PlacedNode,
+  layout: GraphLayout,
+  other: PlacedNode | undefined,
+): { splitCap: number; unifiedCap: number } {
+  return {
+    splitCap: (layout.unified ? other?.visibleRows : node.visibleRows) ?? node.visibleRows,
+    unifiedCap: (layout.unified ? node.visibleRows : other?.visibleRows) ?? node.visibleRows,
+  };
 }
 
 /**

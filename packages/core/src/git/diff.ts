@@ -34,6 +34,20 @@ export interface DiffRequest extends GitOptions {
   stamp?: boolean;
   /** Ask `gh` for the pull request this branch belongs to. */
   pullRequest?: boolean;
+  /**
+   * Diff the working tree rather than a commit.
+   *
+   * `HEAD` names a commit, so the ordinary reading of a branch stops at the
+   * last thing committed — everything a reviewer has edited but not committed
+   * is invisible to it. This compares the base to the files as they are on
+   * disk, staged or not, which is the change the person at this keyboard
+   * actually has. Only meaningful for the branch this checkout holds; ignored
+   * when `headRef` names something else.
+   *
+   * Untracked files are left out. Git cannot diff a file it has never been
+   * told about, and a build directory is not a change to review.
+   */
+  worktree?: boolean;
 }
 
 /** Raw patch text for a base..head comparison, taken from the merge base. */
@@ -47,6 +61,10 @@ export async function readPatch(req: DiffRequest): Promise<{
   const baseRef = await resolveBaseRef(req.baseRef, req);
   const base = await mergeBase(baseRef, headRef, req);
 
+  // Naming only the base leaves git comparing it to the files on disk. Naming
+  // both compares two commits, and the working tree does not come into it.
+  const dirty = req.worktree === true && (req.headRef === undefined || req.headRef === "HEAD");
+
   const args = [
     "diff",
     "--no-color",
@@ -56,7 +74,7 @@ export async function readPatch(req: DiffRequest): Promise<{
     `--unified=${req.context ?? 3}`,
     "--patch",
     base,
-    headRef,
+    ...(dirty ? [] : [headRef]),
   ];
   if (req.pathspecs?.length) args.push("--", ...req.pathspecs);
 
@@ -78,6 +96,7 @@ export async function readPatch(req: DiffRequest): Promise<{
     mergeBase: base,
     generator: "odin-pr-review/0.1.0",
   };
+  if (dirty) meta.worktree = true;
   if (req.stamp) meta.generatedAt = new Date().toISOString();
 
   const authors = await readAuthors(base, headRef, req);

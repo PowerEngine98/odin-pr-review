@@ -36,7 +36,14 @@ export function waitingPage(options: WaitingPage): string {
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; ` +
-    `img-src ${cspSource} data:; style-src 'nonce-${nonce}'; ` +
+    `img-src ${cspSource} data:; font-src ${cspSource}; ` +
+    // The editor puts its own stylesheet into every webview it opens — the
+    // theme's variables and the defaults that make a document visible at all —
+    // and it arrives without a nonce. A policy naming only ours therefore
+    // blocks the editor's, and what is left is a page with no colours, no
+    // fonts and, on a restored frame, nothing painted. The graph's own page has
+    // always allowed both and has always rendered here; this now says the same.
+    `style-src ${cspSource} 'unsafe-inline'; ` +
     `script-src 'nonce-${nonce}';">
 <style nonce="${nonce}">
   html, body { height: 100%; margin: 0; }

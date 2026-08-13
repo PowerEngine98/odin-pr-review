@@ -12,9 +12,15 @@
     }
   },
   "scripts": {
-    "build": "tsc --build"
+    "build:app": "node build.mjs",
+    "build": "node build.mjs && tsc --build"
   },
   "dependencies": {
     "@odin/core": "0.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "esbuild-svelte": "^0.9.5",
+    "svelte": "^5"
   }
 }

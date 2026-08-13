@@ -115,3 +115,65 @@ describe("graphFromRepo", () => {
     git(dir, "worktree", "remove", "--force", tree);
   });
 });
+
+describe("a base branch this checkout has not kept up with", () => {
+  /** A bare "forge", a seed clone that pushes to it, and a working clone. */
+  function shared(): { seed: string; clone: string; dir: string } {
+    const dir = mkdtempSync(join(tmpdir(), "odin-base-fresh-"));
+    const origin = join(dir, "origin.git");
+    const seed = join(dir, "seed");
+    const clone = join(dir, "clone");
+    const git = (args: string[], cwd: string) =>
+      execFileSync("git", args, { cwd, stdio: "ignore" });
+
+    execFileSync("git", ["init", "--bare", "-b", "develop", origin], { stdio: "ignore" });
+    execFileSync("git", ["init", "-b", "develop", seed], { stdio: "ignore" });
+    git(["config", "user.email", "t@example.test"], seed);
+    git(["config", "user.name", "T"], seed);
+    writeFileSync(join(seed, "a.txt"), "one\n");
+    git(["add", "."], seed);
+    git(["commit", "-m", "first"], seed);
+    git(["remote", "add", "origin", origin], seed);
+    git(["push", "origin", "develop"], seed);
+    execFileSync("git", ["clone", origin, clone], { stdio: "ignore" });
+    git(["config", "user.email", "t@example.test"], clone);
+    git(["config", "user.name", "T"], clone);
+    return { seed, clone, dir };
+  }
+
+  it("prefers the forge's copy when the local one is behind", async () => {
+    // A long-lived `develop` gains commits daily, and a merge base computed
+    // against a week-old copy of it reports everything that landed on
+    // `develop` that week — and came onto the branch through a merge — as part
+    // of the change. Somebody else's work, under your name.
+    const { seed, clone, dir } = shared();
+    const git = (args: string[], cwd: string) =>
+      execFileSync("git", args, { cwd, stdio: "ignore" });
+
+    writeFileSync(join(seed, "b.txt"), "two\n");
+    git(["add", "."], seed);
+    git(["commit", "-m", "second"], seed);
+    git(["push", "origin", "develop"], seed);
+    // Fetched but not merged, which is what a background fetch leaves behind.
+    git(["fetch", "origin"], clone);
+
+    expect(await resolveBaseRef("develop", { cwd: clone })).toBe("origin/develop");
+    rmSync(dir, { recursive: true, force: true });
+  }, 30_000);
+
+  it("keeps the local branch when it is the one that is ahead", async () => {
+    // Commits on the base that were never pushed are still part of the base
+    // this branch was cut from; dropping to the forge's copy would report them
+    // as the change.
+    const { clone, dir } = shared();
+    const git = (args: string[], cwd: string) =>
+      execFileSync("git", args, { cwd, stdio: "ignore" });
+
+    writeFileSync(join(clone, "c.txt"), "mine\n");
+    git(["add", "."], clone);
+    git(["commit", "-m", "local only"], clone);
+
+    expect(await resolveBaseRef("develop", { cwd: clone })).toBe("develop");
+    rmSync(dir, { recursive: true, force: true });
+  }, 30_000);
+});

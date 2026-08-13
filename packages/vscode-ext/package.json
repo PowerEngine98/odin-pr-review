@@ -26,6 +26,10 @@
     "call hierarchy"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onWebviewPanel:odin.graph",
+    "onView:odin.changes"
+  ],
   "contributes": {
     "commands": [
       {
@@ -92,6 +96,18 @@
         "enablement": "false"
       },
       {
+        "command": "odin.readLocal",
+        "title": "Review a Pull Request as It Is on This Machine",
+        "category": "Odin",
+        "enablement": "false"
+      },
+      {
+        "command": "odin.readOrigin",
+        "title": "Review a Pull Request as the Forge Has It",
+        "category": "Odin",
+        "enablement": "false"
+      },
+      {
         "command": "odin.focusFile",
         "title": "Focus a File in the Graph",
         "category": "Odin",
@@ -113,6 +129,10 @@
         "command": "odin.askForPulls",
         "title": "Ask the Forge for Pull Requests",
         "category": "Odin"
+      },
+      {
+        "command": "odin.openAtLine",
+        "title": "Odin: Open File at This Line"
       }
     ],
     "configuration": {
@@ -132,6 +152,11 @@
           "type": "boolean",
           "default": false,
           "description": "Resolve references on unchanged lines too. Shows pre-existing relationships, at the cost of a much busier graph."
+        },
+        "odin.liveReload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep a graph of the working tree in step with the working tree. Only applies to a local reading, where the change includes work that has not been committed. The whole project is watched, not only the files under review: renaming a function in an untouched file changes the references leaving the files that are."
         }
       }
     },
@@ -193,6 +218,16 @@
         {
           "command": "odin.askForPulls",
           "when": "false"
+        },
+        {
+          "command": "odin.openAtLine",
+          "when": "false"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "odin.openAtLine",
+          "when": "webviewSection == 'line'"
         }
       ]
     }

@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Runs in a webview, which is a browser with no network. Nothing here is
+    // emitted by tsc — build.mjs bundles it — so this exists to typecheck the
+    // application and to tell an editor what the code can reach.
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "target": "ES2020",
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": []
+  },
+  // The sidebar's payload is described a directory up, outside the application,
+  // because the extension has to be able to build one and everything under
+  // `src/app` is compiled by the bundler rather than by tsc. Named here so this
+  // project owns the file it imports rather than reaching outside itself.
+  "include": ["src/app/**/*.ts", "src/app/**/*.svelte", "src/sidebar-model.ts"],
+  "references": [{ "path": "../core" }]
+}

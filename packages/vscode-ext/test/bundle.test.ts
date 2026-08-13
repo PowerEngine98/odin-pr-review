@@ -90,6 +90,7 @@ function createStub(): Stub {
     window: {
       registerUriHandler: () => disposable,
       registerWebviewViewProvider: () => disposable,
+      registerWebviewPanelSerializer: () => disposable,
       showErrorMessage: () => Promise.resolve(),
       showInformationMessage: () => Promise.resolve(),
       showQuickPick: () => Promise.resolve(undefined),
@@ -145,6 +146,25 @@ describe("the built extension", () => {
     expect(() => loadWithStub()).not.toThrow();
   });
 
+  /*
+   * The one activation event the editor will not work out for itself.
+   *
+   * VS Code derives activation from `contributes` these days, which covers the
+   * commands and the side bar view — and covers nothing at all for a webview
+   * being restored. Without this declared, a window reload brings the graph's
+   * tab back, the reader presses it, and the editor has no reason to start the
+   * extension: the serializer is never called, so nothing is ever written into
+   * the frame and it stays blank. It looks exactly like a loader that failed to
+   * appear, which is how it was reported three times.
+   */
+  it("asks to be woken when the editor restores the graph's tab", async () => {
+    const manifest = (
+      await import("../package.json", { with: { type: "json" } })
+    ).default as { activationEvents?: string[] };
+
+    expect(manifest.activationEvents ?? []).toContain("onWebviewPanel:odin.graph");
+  });
+
   it("registers every command the manifest declares", async () => {
     const { api, extension } = loadWithStub();
     extension.activate(context());
@@ -172,10 +192,11 @@ describe("the built extension", () => {
       await import("../package.json", { with: { type: "json" } })
     ).default as { contributes: { commands: { command: string }[] } };
 
-    // Every command, plus the content provider, the URI handler, the sidebar
-    // and the viewed store's listener. Anything registered but not collected
-    // here leaks on reload.
-    const nonCommands = 4;
+    // Every command, plus the content provider, the URI handler, the sidebar,
+    // the viewed store's listener, and the serializer that reopens the graph
+    // after a window reload. Anything registered but not collected here leaks
+    // on reload — which is exactly the moment the serializer exists for.
+    const nonCommands = 5;
     expect(subscriptions).toHaveLength(
       manifest.contributes.commands.length + nonCommands,
     );

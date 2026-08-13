@@ -33,8 +33,8 @@ Graph options:
       --light           render html/svg on a light background
   -U, --context <n>     diff context lines                    (default: 3)
   -r, --resolve         resolve call-site references into edges
-      --imports         include import statements and their arrows
-      --with-context    with --resolve, probe unchanged lines too
+      --imports         include import statements and their arrows (implies -r)
+      --with-context    probe unchanged lines too (implies -r)
       --tests           include test files (hidden by default)
       --pr              look up the pull request title with the gh CLI
       --summary         shorthand for --format summary
@@ -374,6 +374,15 @@ function parseGraph(argv: string[], view: boolean): ParseResult {
         return { kind: "error", message: `unknown option '${arg}'` };
     }
   }
+
+  // Both of these ask for something only resolution can produce: an import
+  // arrow is an edge, and probing context lines is a resolver's work. Left as
+  // rendering hints they were requests the command accepted and then ignored,
+  // and the answer to `--imports` was a graph with no arrows in it at all —
+  // indistinguishable from a change whose files genuinely reference nothing.
+  // A patch file has no repository to resolve against, so there they stay
+  // hints rather than becoming an error about a flag nobody typed.
+  if ((opts.imports || opts.withContext) && !opts.patchFile) opts.resolve = true;
 
   return opts;
 }

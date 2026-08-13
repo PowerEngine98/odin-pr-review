@@ -104,6 +104,52 @@ export async function remoteDefaultBranch(
  * `git merge-base` produces "fatal: Not a valid object name", which tells a
  * reviewer nothing about what to do next.
  */
+/**
+ * The better-informed of a base branch and the forge's copy of it.
+ *
+ * The diff starts where the branch left the base, and "the base" is a moving
+ * target: a long-lived `develop` gains commits daily. A checkout that has not
+ * pulled for a week has a `develop` a week old, and the merge base computed
+ * against it is a week old too — so everything that landed on `develop` in
+ * that week and arrived on the branch through a merge is reported as part of
+ * the change. The files are real and the diff is arithmetically correct; it is
+ * simply answering a question nobody asked, about a base that no longer exists
+ * anywhere but here. Somebody reviewing that sees a colleague's work with
+ * their own name on the pull request.
+ *
+ * So when both copies are present, the one that contains the other wins. If
+ * they have diverged — local commits on a base that were never pushed — the
+ * forge's copy is preferred, because the pull request is measured against what
+ * the forge has and a review that disagreed with the forge would be answering
+ * a question about this machine.
+ *
+ * Only ever moves between a branch and its own remote-tracking ref, so it
+ * cannot silently change which branch is being compared against.
+ */
+export async function freshest(
+  ref: string,
+  options: GitOptions,
+): Promise<string> {
+  // Already a remote-tracking ref, or something with no obvious counterpart.
+  if (ref.includes("/")) return ref;
+
+  const remote = `origin/${ref}`;
+  if (!(await refExists(remote, options))) return ref;
+
+  const counts = (
+    await git(["rev-list", "--left-right", "--count", `${ref}...${remote}`], options)
+      .catch(() => "")
+  ).trim().split(/\s+/);
+
+  const here = Number(counts[0]);
+  const there = Number(counts[1]);
+  if (!Number.isFinite(here) || !Number.isFinite(there)) return ref;
+
+  // The forge has commits this checkout does not. Whether or not this one also
+  // has commits of its own, the forge's copy is the base the change is against.
+  return there > 0 ? remote : ref;
+}
+
 export async function resolveBaseRef(
   preferred: string | undefined,
   options: GitOptions,
@@ -125,7 +171,7 @@ export async function resolveBaseRef(
   }
 
   for (const candidate of candidates) {
-    if (await refExists(candidate, options)) return candidate;
+    if (await refExists(candidate, options)) return freshest(candidate, options);
   }
 
   const available = await listRefs(options);

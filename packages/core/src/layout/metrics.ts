@@ -19,6 +19,27 @@ export interface LayoutMetrics {
   padding: number;
   /** Left gutter: the +/- marker and the base-side line number. */
   gutterWidth: number;
+  /**
+   * A column of its own, between the line numbers and the code, for the marks
+   * a reader picks lines with: the square + a hovered row offers, the grip at
+   * each end of a chosen range, and the rail joining them.
+   *
+   * Beside `gutterWidth` rather than folded into it, because only the page has
+   * a pointer and only the page draws these marks. A static SVG places its line
+   * numbers a fixed distance inside the gutter, so a wider gutter would have
+   * carried them sideways into this column for a set of controls it does not
+   * have; left alone it simply spends the room on longer lines.
+   *
+   * It is a measurement rather than a stylesheet's business because it moves
+   * where a row's first character sits. The engine sizes every card in the
+   * extension host, before the page exists, and the arrows are placed against
+   * those sizes — so a strip reserved only in CSS would push the code out of
+   * the width the card was measured at and clip the end of every long line.
+   * Reserved on every row, including the ones no remark can start on: the code
+   * has to begin at one offset down a card, and whether a line is in the patch
+   * is a fact about that line rather than about the column.
+   */
+  pickColumn: number;
   /** Where the base-side number's right edge sits within the left gutter. */
   lineNumberRight: number;
   /** Right gutter: the head-side line number, and the + beside it. */
@@ -54,6 +75,10 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   titleHeight: 34,
   padding: 12,
   gutterWidth: 58,
+  // Wide enough for a mark the size of a row — sixteen across, with a couple of
+  // pixels either side so the grip is neither against the last digit nor against
+  // the first character of the line.
+  pickColumn: 20,
   lineNumberRight: 50,
   rightGutterWidth: 52,
   minCardWidth: 240,

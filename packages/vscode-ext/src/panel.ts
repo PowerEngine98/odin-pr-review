@@ -106,7 +106,10 @@ export class GraphPanel {
     alternate?: { layout: GraphLayout; withTests?: GraphLayout },
   ): GraphPanel {
     if (GraphPanel.current) {
-      GraphPanel.current.highlight = highlight;
+      // Kept when none is offered. A hot reload does not reload the grammars —
+      // nothing about saving a file changes them — and dropping the ones the
+      // panel has would leave the code grey until the next full review.
+      if (highlight) GraphPanel.current.highlight = remember(highlight);
       GraphPanel.current.alternate = alternate;
       GraphPanel.current.update(graph, layout, repo, withTests, viewed);
       GraphPanel.current.panel.reveal(vscode.ViewColumn.One);
@@ -119,7 +122,8 @@ export class GraphPanel {
     const panel = GraphPanel.claimPending() ?? GraphPanel.frame();
 
     GraphPanel.current = new GraphPanel(
-      panel, graph, layout, repo, withTests, viewed, highlight, alternate,
+      panel, graph, layout, repo, withTests, viewed,
+      highlight ? remember(highlight) : undefined, alternate,
     );
     return GraphPanel.current;
   }
@@ -149,6 +153,56 @@ export class GraphPanel {
     return panel;
   }
 
+  /**
+   * Takes over a panel the editor restored after a reload.
+   *
+   * A reloaded window hands back the frame — same tab, same position in the
+   * tab strip, same group — with nothing in it, because the document that was
+   * inside it is gone. Adopting it means the reader's tab does not move and
+   * does not blink out of existence while the graph is rebuilt; they see the
+   * mark and then their change, in the place they left it.
+   *
+   * Answers whether the frame was taken, because it is not always ours to
+   * take. The editor restores a webview when its tab is first looked at, not
+   * when the window comes back, so a graph tab left in the background arrives
+   * here minutes later — by which time a review asked for in the meantime has
+   * a frame of its own, and there is only ever one. Refusing the second frame
+   * has to mean closing it: every page from here on goes to the frame that is
+   * already held, and one nobody writes to is a black rectangle that stays
+   * black for the whole rebuild, which is exactly what the reader is looking
+   * at while the corner says references are being resolved.
+   */
+  static adopt(panel: vscode.WebviewPanel): boolean {
+    const held = GraphPanel.current?.panel ?? GraphPanel.pending;
+    if (held) {
+      panel.dispose();
+      // The graph is still open in the frame that has it; the tab that just
+      // went away is replaced by the one the reader was actually asking for.
+      held.reveal(vscode.ViewColumn.One);
+      return false;
+    }
+    /*
+     * A restored frame comes back without the permissions it was created with.
+     *
+     * The editor serialises the tab, not the webview's settings, so a panel
+     * handed back here has whatever the defaults are — scripts off. Everything
+     * this extension puts in a frame is a document that runs one: the loader
+     * names what it is waiting for from a script, and the graph is an
+     * application. Re-stating them is what the editor's own sample does, and
+     * without it the frame is a permission boundary that quietly refuses the
+     * page written into it.
+     */
+    panel.webview.options = { enableScripts: true, localResourceRoots: [] };
+
+    GraphPanel.pending = panel;
+    GraphPanel.waiting = true;
+    panel.onDidDispose(() => {
+      GraphPanel.pending = undefined;
+      GraphPanel.waiting = false;
+    });
+    return true;
+  }
+
   /** The waiting panel, handed over once and forgotten. */
   private static claimPending(): vscode.WebviewPanel | undefined {
     const panel = GraphPanel.pending;
@@ -156,6 +210,9 @@ export class GraphPanel {
     GraphPanel.waiting = false;
     return panel;
   }
+
+  /** Frames a waiting page has already been written into. */
+  private static painted = new WeakSet<vscode.WebviewPanel>();
 
   /** Open and empty, waiting on a graph that is still being built. */
   private static pending: vscode.WebviewPanel | undefined;
@@ -182,9 +239,50 @@ export class GraphPanel {
       });
     }
     if (!GraphPanel.current) GraphPanel.pending = panel;
-    GraphPanel.waiting = true;
 
-    panel.webview.html = await waitingHtml(panel.webview, note, true);
+    /*
+     * A wait already on screen is renamed rather than replaced.
+     *
+     * Restoring a window calls this twice within a fifth of a second — once for
+     * the tab coming back and once for the review it starts. Each assignment to
+     * `html` throws the document away and loads another, so the second landed
+     * on a frame still parsing the first. The page has always been able to be
+     * told what it is waiting for; that is what `note` is, and it is how every
+     * step of the build already reports itself.
+     */
+    if (GraphPanel.waiting && GraphPanel.painted.has(panel)) {
+      void panel.webview.postMessage({ type: "note", message: note });
+      panel.reveal(vscode.ViewColumn.One, true);
+      return;
+    }
+
+    GraphPanel.waiting = true;
+    GraphPanel.painted.add(panel);
+
+    /*
+     * Put up now, and once more in a moment.
+     *
+     * A frame handed back as the window comes up is not reliably ready to be
+     * written to at the instant it arrives: the page goes in, the editor
+     * reports nothing wrong, and none of it is painted — while that same frame
+     * takes a seven-megabyte graph perfectly well eight seconds later. Rather
+     * than guess which tick it becomes willing, the wait is put up twice.
+     *
+     * Both times it is the same page, so a frame that took the first sees the
+     * same bytes again and the reader gets one steady mark either way. Skipped
+     * altogether if the graph arrived in between, which is the only case where
+     * a second write would take something away.
+     */
+    const paint = async (why: string): Promise<void> => {
+      if (!GraphPanel.waiting) return;
+      const page = await waitingHtml(panel.webview, note, true);
+      panel.webview.html = page;
+      trace(`showLoading[${why}]: ${page.length} bytes "${note}" visible=${panel.visible}`);
+    };
+
+    await paint("at once");
+    setTimeout(() => void paint("again"), 350);
+
     // Brought forward without stealing the cursor: the reviewer may well be
     // typing somewhere else while this builds.
     panel.reveal(vscode.ViewColumn.One, true);
@@ -211,6 +309,23 @@ export class GraphPanel {
     panel.webview.html = await waitingHtml(panel.webview, note, false);
   }
 
+  /**
+   * Says that the picture is being rebuilt, without disturbing it.
+   *
+   * A message rather than a redraw, and deliberately not the pulsing mark the
+   * loader uses: that replaces the document, which is exactly what a reader
+   * carrying on reading through a rebuild does not want. This is a word and a
+   * spinner in the corner of the bar, and everything underneath goes on
+   * working while it is there.
+   */
+  static setRefreshing(on: boolean, note?: string): void {
+    void GraphPanel.current?.panel.webview.postMessage({
+      type: "refreshing",
+      value: on,
+      ...(note ? { note } : {}),
+    });
+  }
+
   /** Brings the existing graph back to the front, if there is one. */
   static revealCurrent(): void {
     GraphPanel.current
@@ -221,6 +336,28 @@ export class GraphPanel {
   /** Opens a file as a diff, for the sidebar's file rows. */
   static async openPath(path: string): Promise<void> {
     await GraphPanel.current?.openDiff(path);
+  }
+
+  /**
+   * Opens a file at a line, for the editor's own context menu.
+   *
+   * The menu is the editor's, so this does not come back through the webview
+   * channel like the card's own buttons do — the command is handed the object
+   * the page put on the element that was clicked, and this turns it into an
+   * editor beside the graph.
+   */
+  static async openAt(where: {
+    odinPath?: string;
+    odinLine?: number;
+    odinSide?: string;
+  }): Promise<void> {
+    const panel = GraphPanel.current;
+    if (!panel || !where?.odinPath || !where.odinLine) return;
+    await panel.reveal(
+      where.odinPath,
+      where.odinLine,
+      where.odinSide === "base" ? "base" : "head",
+    );
   }
 
   /** Brings a file's card to the middle of the canvas, without opening it. */
@@ -509,6 +646,51 @@ export class GraphPanel {
     this.render(this.layout);
   }
 
+  /**
+   * A rebuilt graph, handed to the page that is already showing one.
+   *
+   * The difference between this and `show` is the difference between the
+   * reader keeping their place and losing it. Assigning `webview.html` replaces
+   * the document: the editor parses seven megabytes again, the application
+   * boots again, seventy-odd cards mount again — and the camera, the scroll and
+   * any open thread go with them, because the objects holding them no longer
+   * exist. That is several seconds of a page going white and coming back
+   * somewhere else, on every save.
+   *
+   * The page has always been able to take a new model over the wire; nothing
+   * was sending it one. So the document is rendered exactly as before — same
+   * builder, so there is no second description of a view model to keep in step
+   * — and then the model is lifted back out of it and sent on its own. The page
+   * assigns it and the components that read it redraw. Everything the reader
+   * was doing survives, because nothing was thrown away to apply it.
+   *
+   * Answers whether the page took it. A frame that has never been given a
+   * document has no application running in it to receive a message, so the
+   * first paint must always be a document.
+   */
+  static reload(
+    graph: ChangeGraph,
+    layout: GraphLayout,
+    repo: string,
+    withTests?: GraphLayout,
+    viewed?: ViewedStore,
+    alternate?: { layout: GraphLayout; withTests?: GraphLayout },
+    /** The cards this build actually redrew, when it knows. */
+    redrawn?: readonly string[],
+    /** Arrows the page must not draw until the next answer arrives. */
+    withdrawn?: readonly string[],
+  ): boolean {
+    const panel = GraphPanel.current;
+    if (!panel || !panel.painted) return false;
+
+    panel.graph = graph;
+    panel.repo = repo;
+    panel.withTests = withTests;
+    panel.viewed = viewed;
+    panel.alternate = alternate;
+    return panel.send(layout, redrawn, withdrawn);
+  }
+
   /** Reflects a change made in the sidebar. */
   static applyViewed(paths: string[], marked: boolean): void {
     void GraphPanel.current?.panel.webview.postMessage({
@@ -596,14 +778,85 @@ export class GraphPanel {
     this.render(this.layout);
   }
 
-  private render(layout: GraphLayout): void {
-    this.layout = layout;
-    // Whatever was being waited for has arrived.
-    GraphPanel.waiting = false;
+  /** Whether a document has ever been put in this frame. */
+  private painted = false;
+
+  /**
+   * The page's own view of the change, without a page around it.
+   *
+   * Rendered through the same function that builds the document, because the
+   * view model is a large and fiddly description of the drawing and a second
+   * copy of it here would drift from the first the day either changed. The
+   * markup that comes back is thrown away; the model inside it is the point.
+   */
+  private built(layout: GraphLayout): { html: string; model: PageModel | undefined } {
     const dark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
 
+    const html = renderHtml(this.graph, layout, {
+      theme: dark ? DARK_THEME : LIGHT_THEME,
+      csp: { nonce: nonce(), source: this.panel.webview.cspSource },
+      ...(this.withTests ? { withTests: this.withTests } : {}),
+      ...(this.alternate ? { alternate: this.alternate } : {}),
+      ...(this.highlight ? { highlight: this.highlight } : {}),
+      comments: this.comments,
+      canReview: Boolean(this.graph.meta.pullRequest),
+      ...(this.viewer ? { viewer: this.viewer } : {}),
+      ...(this.viewerFace ? { viewerFace: this.viewerFace } : {}),
+    });
+    return { html, model: modelIn(html) };
+  }
+
+  /**
+   * Sends the rebuilt change to a page that is already showing one.
+   *
+   * Two sizes of message, because they disturb different amounts of the page.
+   * When the build knows which cards it redrew — and it does whenever the
+   * shortcut was taken — only those cards' rows travel, and every other object
+   * in the page is left alone. That matters beyond the bytes: the map in the
+   * corner is drawn from the cards, and swapping the whole model replaces all
+   * of them, so a map that has nothing to say about a comment being edited
+   * redraws anyway. Patching the two or three rows that moved leaves it
+   * untouched, because nothing it reads has changed.
+   *
+   * Anything structural — a file joining the change, an arrow appearing —
+   * swaps the model whole, which is still far cheaper than a document and
+   * still keeps the reader's camera.
+   */
+  private send(
+    layout: GraphLayout,
+    redrawn?: readonly string[],
+    withdrawn?: readonly string[],
+  ): boolean {
+    const { model } = this.built(layout);
+    if (!model) return false;
+    this.layout = layout;
+
+    if (redrawn && redrawn.length > 0) {
+      const wanted = new Set(redrawn);
+      const nodes = model.nodes.filter((node) => wanted.has(node.id));
+      // Every card named has to be in the page for the patch to be complete.
+      // One missing means the drawing is not the shape this thinks it is, and
+      // a partial patch would leave the reader looking at a mixture.
+      if (nodes.length === wanted.size) {
+        void this.panel.webview.postMessage({
+          type: "rows",
+          nodes,
+          ...(withdrawn && withdrawn.length > 0 ? { withdraw: withdrawn } : {}),
+        });
+        return true;
+      }
+    }
+
+    void this.panel.webview.postMessage({ type: "model", payload: model });
+    return true;
+  }
+
+  private render(layout: GraphLayout): void {
+    this.layout = layout;
+    // Whatever was being waited for has arrived.
+    GraphPanel.waiting = false;
     // The pull request's title names the tab; the branch pair is in the
     // toolbar, and a tab strip has room for one of them, not both.
     const pull = this.graph.meta.pullRequest;
@@ -622,17 +875,8 @@ export class GraphPanel {
         });
       }, 0);
     }
-    this.panel.webview.html = renderHtml(this.graph, layout, {
-      theme: dark ? DARK_THEME : LIGHT_THEME,
-      csp: { nonce: nonce(), source: this.panel.webview.cspSource },
-      ...(this.withTests ? { withTests: this.withTests } : {}),
-      ...(this.alternate ? { alternate: this.alternate } : {}),
-      ...(this.highlight ? { highlight: this.highlight } : {}),
-      comments: this.comments,
-      canReview: Boolean(this.graph.meta.pullRequest),
-      ...(this.viewer ? { viewer: this.viewer } : {}),
-      ...(this.viewerFace ? { viewerFace: this.viewerFace } : {}),
-    });
+    this.panel.webview.html = this.built(layout).html;
+    this.painted = true;
   }
 
   /**
@@ -761,6 +1005,108 @@ export class GraphPanel {
     this.panel.dispose();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
   }
+}
+
+/**
+ * A line in a file about what a restore actually did. Diagnostic only.
+ *
+ * Reading this code has been wrong about the restore four times running, and
+ * every reading was of code that looked correct. This says what happened.
+ */
+function trace(what: string): void {
+  try {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const os = require("node:os") as typeof import("node:os");
+    const path = require("node:path") as typeof import("node:path");
+    fs.appendFileSync(
+      path.join(os.tmpdir(), "odin-restore.log"),
+      `${new Date().toISOString()} ${what}\n`,
+    );
+  } catch {
+    // Nothing worth interrupting a review for.
+  }
+}
+
+/** As much of the page's model as this side has any business knowing. */
+interface PageModel {
+  nodes: { id: string }[];
+}
+
+/** Where the model sits in a rendered document, and where it stops. */
+const OPENS = "window.__ODIN__=";
+const CLOSES = ";</script>";
+
+/**
+ * The model back out of the document it travels in.
+ *
+ * A redraw needs the model without the page around it, and the only thing that
+ * builds one is `renderHtml`, which builds it as part of building a document.
+ * Rather than keep a second description of the view model here — a hundred and
+ * fifty lines of card geometry, arrow anchors and pull request facts that would
+ * be wrong the day either copy changed — the document is rendered and the model
+ * lifted out of it.
+ *
+ * The markup thrown away is a tenth of a second; the document it saves the
+ * editor from parsing is seven megabytes. Undefined when the page turns out not
+ * to carry one, which sends the caller back to replacing the document — the
+ * answer that always works.
+ */
+function modelIn(html: string): PageModel | undefined {
+  const opens = html.indexOf(OPENS);
+  if (opens < 0) return undefined;
+  const from = opens + OPENS.length;
+  const to = html.indexOf(CLOSES, from);
+  if (to < 0) return undefined;
+
+  try {
+    const model = JSON.parse(html.slice(from, to)) as PageModel;
+    return Array.isArray(model?.nodes) ? model : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The same highlighter, answering a question it has already answered for free.
+ *
+ * Colouring is by far the most expensive part of building a page: running the
+ * grammars over every row of every card is a second of a seventy-file change,
+ * against a tenth of a second for the markup around it. And on a redraw
+ * provoked by a save, all but one of those cards holds byte-for-byte the code
+ * it held a moment ago.
+ *
+ * Keyed on the text rather than on the card, because that is what makes the
+ * answer reusable: rows move between cards when a hunk grows, and the same
+ * lines come back under a different arrangement. Bounded so that a long session
+ * of edits cannot grow it without limit — the oldest entries are dropped, which
+ * costs a re-tokenize and nothing else.
+ */
+function remember(highlight: Highlighter): Highlighter {
+  const seen = new Map<string, ReturnType<Highlighter["tokenize"]>>();
+  const LIMIT = 4000;
+
+  return {
+    supports: (language) => highlight.supports(language),
+    ensure: (language) => highlight.ensure(language),
+    get missing() {
+      return highlight.missing;
+    },
+    tokenize(language: string, code: string) {
+      const key = `${language}\u0000${code}`;
+      const had = seen.get(key);
+      if (had) return had;
+
+      const lines = highlight.tokenize(language, code);
+      if (seen.size >= LIMIT) {
+        for (const oldest of seen.keys()) {
+          seen.delete(oldest);
+          if (seen.size < LIMIT) break;
+        }
+      }
+      seen.set(key, lines);
+      return lines;
+    },
+  };
 }
 
 /** The waiting page, with the panel's own policy and the mark inlined. */

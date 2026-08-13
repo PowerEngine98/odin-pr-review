@@ -263,6 +263,36 @@ describe("layoutGraph", () => {
       );
     }
   });
+
+  it("keeps a column for the picking marks in each pane", () => {
+    // The square a hovered row offers, and the grips on a chosen range, are
+    // drawn between the line numbers and the code. The room for them is part of
+    // what a card has to be: the page is drawn to these widths and every arrow
+    // on it is placed against them, so a column taken in the stylesheet alone
+    // would push the code out past the border the card was measured at.
+    const with_ = layoutGraph(graph());
+    const without = layoutGraph(graph(), { metrics: { pickColumn: 0 } });
+
+    const grew = with_.nodes.map(
+      (node) => node.width - without.nodes.find((n) => n.id === node.id)!.width,
+    );
+
+    // Two panes read side by side, and a remark begun in one is about that side
+    // of the change, so a card sized by its code pays for a column in each.
+    expect(Math.max(...grew)).toBe(DEFAULT_METRICS.pickColumn * 2);
+    // A card sized by its filename rather than by its lines pays for less of
+    // that, having had the room already; none of them pays for none.
+    expect(Math.min(...grew)).toBeGreaterThan(0);
+  });
+
+  it("spends the column on the marks rather than on more code", () => {
+    // A card that grew by a column and then filled it with text would have
+    // reserved nothing at all.
+    const bare = { ...DEFAULT_METRICS, pickColumn: 0 };
+    expect(
+      textCapacity(1000 + DEFAULT_METRICS.pickColumn * 2, DEFAULT_METRICS),
+    ).toBe(textCapacity(1000, bare));
+  });
 });
 
 describe("truncating a tall card", () => {

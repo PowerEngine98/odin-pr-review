@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+
+import { SessionStore, type Session } from "../src/session.js";
+
+/** A workspace memento that forgets nothing and asks nobody. */
+function memento(seed: Record<string, unknown> = {}) {
+  const held: Record<string, unknown> = { ...seed };
+  return {
+    get: <T>(key: string, fallback?: T) => (key in held ? (held[key] as T) : fallback),
+    update: (key: string, value: unknown) => {
+      if (value === undefined) delete held[key];
+      else held[key] = value;
+      return Promise.resolve();
+    },
+    held,
+  };
+}
+
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+describe("coming back to the review that was on screen", () => {
+  it("remembers the question rather than the answer", () => {
+    // The graph is derived from the repository and would be stale the moment
+    // anyone committed. The refs that produced it stay true.
+    const store = new SessionStore(memento() as never);
+    store.remember({ repo: "/w", baseRef: "origin/development", number: 152 });
+
+    const back = store.last();
+    expect(back?.repo).toBe("/w");
+    expect(back?.baseRef).toBe("origin/development");
+    expect(back?.number).toBe(152);
+    expect(back).not.toHaveProperty("nodes");
+  });
+
+  it("carries whether the reading included uncommitted work", () => {
+    // A local reading and the forge's reading of one branch are two different
+    // changes, and reopening the wrong one would be worse than reopening none.
+    const store = new SessionStore(memento() as never);
+    store.remember({ repo: "/w", worktree: true });
+    expect(store.last()?.worktree).toBe(true);
+  });
+
+  it("offers nothing when nothing was ever shown", () => {
+    expect(new SessionStore(memento() as never).last()).toBeUndefined();
+  });
+
+  it("reopens a review from a moment ago", () => {
+    const seed: Session = { repo: "/w", at: ago(30_000) };
+    expect(new SessionStore(memento({ "odin.session": seed }) as never).last()?.repo).toBe("/w");
+  });
+
+  it("lets a day-old review go", () => {
+    // A reload is measured in seconds and a lunch break in hours. Beyond a day
+    // the branch has moved on, and rebuilding a graph unasked is the tool
+    // deciding what the reader came here to do.
+    const seed: Session = { repo: "/w", at: ago(25 * 60 * 60 * 1000) };
+    expect(new SessionStore(memento({ "odin.session": seed }) as never).last()).toBeUndefined();
+  });
+
+  it("ignores a record with no repository in it", () => {
+    const seed = { at: new Date().toISOString() } as Session;
+    expect(new SessionStore(memento({ "odin.session": seed }) as never).last()).toBeUndefined();
+  });
+
+  it("forgets on request", () => {
+    const store = new SessionStore(memento() as never);
+    store.remember({ repo: "/w" });
+    store.clear();
+    expect(store.last()).toBeUndefined();
+  });
+});

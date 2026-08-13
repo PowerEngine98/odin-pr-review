@@ -49,7 +49,10 @@ describe("a file that ends without a newline", () => {
       newLine: 2,
       noNewline: true,
     });
-    expect(html).toContain('class="no-newline"');
+    // Matched loosely because the components' styles are scoped: the compiler
+    // adds a hash class to every element it styles, so an exact class
+    // attribute is a test of the compiler rather than of the mark.
+    expect(html).toMatch(/class="[^"]*\bno-newline\b/);
     expect(html).toContain("No newline at end of file");
   });
 

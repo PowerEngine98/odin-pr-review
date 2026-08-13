@@ -5,5 +5,11 @@
     "outDir": "./dist"
   },
   "include": ["src/**/*.ts"],
+  // The Svelte application is compiled by build.mjs, not by this project: it
+  // targets a browser, needs the DOM library, and is bundled into a string
+  // rather than emitted as modules. Its own settings are in tsconfig.app.json.
+  // What this project does compile is src/generated/app.ts, which is that
+  // bundle as text and is imported by the page like any other constant.
+  "exclude": ["src/app/**"],
   "references": [{ "path": "../core" }]
 }
