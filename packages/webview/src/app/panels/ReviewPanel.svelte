@@ -64,9 +64,20 @@
    * two send the reader back to the box rather than failing at the forge — a
    * round trip to be told to write a sentence is a round trip nobody needed.
    */
+  /**
+   * Whether a verdict can be sent as things stand.
+   *
+   * The forge takes an approval without words and refuses the other two
+   * without them. That was already known here, and the button said nothing
+   * about it: pressing Comment with an empty box put the cursor back in the
+   * box and otherwise did nothing at all, which reads as a broken button
+   * rather than as a rule. It says so itself now.
+   */
+  const wordsFor = (event: string) => event === "APPROVE" || summary.trim().length > 0;
+
   function submit(event: string): void {
     const body = summary.trim();
-    if (event !== "APPROVE" && !body) {
+    if (!wordsFor(event)) {
       nudges++;
       return;
     }
@@ -147,8 +158,16 @@
 
     <div class="review-actions">
       <button class="review-submit approve" onclick={() => submit("APPROVE")}>Approve</button>
-      <button class="review-submit" onclick={() => submit("COMMENT")}>Comment</button>
-      <button class="review-submit changes" onclick={() => submit("REQUEST_CHANGES")}>Request changes</button>
+      <button
+        class="review-submit"
+        disabled={!wordsFor("COMMENT")}
+        title={wordsFor("COMMENT") ? undefined : "Write a summary to comment"}
+        onclick={() => submit("COMMENT")}>Comment</button>
+      <button
+        class="review-submit changes"
+        disabled={!wordsFor("REQUEST_CHANGES")}
+        title={wordsFor("REQUEST_CHANGES") ? undefined : "Write a summary to request changes"}
+        onclick={() => submit("REQUEST_CHANGES")}>Request changes</button>
     </div>
   </div>
 {/if}

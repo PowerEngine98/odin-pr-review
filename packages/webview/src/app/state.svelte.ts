@@ -1,4 +1,4 @@
-import type { CommentView, ViewModel } from "./model.js";
+import type { CommentView, ReaderSettings, ViewModel } from "./model.js";
 
 /**
  * What the page is showing, as data the components react to.
@@ -100,15 +100,54 @@ export const view = $state({
  * Every one of these survives a rebuild: they are the reader's choices, and a
  * graph arriving from disk is no reason to undo them.
  */
-export const settings = $state({
+const DEFAULTS: ReaderSettings = {
   unified: false,
   showTests: false,
   showImports: true,
   showUnchanged: false,
   hideViewed: false,
   showInfra: true,
-  hud: { reviewers: true, comments: true, map: true },
-});
+  hud: { reviewers: true, comments: true, map: true, checks: true, checksFolded: false },
+};
+
+/**
+ * The defaults, with whatever the host remembered laid over them.
+ *
+ * Field by field rather than wholesale, and the same for the panels inside
+ * `hud`. A setting introduced after the reader last changed anything has no
+ * stored answer, and taking the stored object entire would hand it `undefined`
+ * — so a new toggle would arrive switched off for everyone who had ever opened
+ * the settings panel, and on for everyone who had not.
+ */
+function remembered(): ReaderSettings {
+  const saved = embedded().settings ?? {};
+  return {
+    ...DEFAULTS,
+    ...saved,
+    hud: { ...DEFAULTS.hud, ...(saved.hud ?? {}) },
+  };
+}
+
+export const settings = $state<ReaderSettings>(remembered());
+
+/**
+ * Hands the reader's choices to the host, which is the only thing here that
+ * outlives the page.
+ *
+ * These are about the reader rather than about the change — somebody who does
+ * not want to see imports does not want to see them in the next review either —
+ * so the host keeps them against the editor rather than against the repository.
+ *
+ * Called from a single effect over the whole object rather than from each
+ * control, so a setting added later is carried without anybody remembering to
+ * wire it up.
+ */
+export function watchSettings(): void {
+  // Reading them all is what subscribes to them all.
+  const now = $state.snapshot(settings);
+  if (!host) return;
+  notify("settings", now);
+}
 
 /**
  * The parts of the page that are about the page rather than about the change.
@@ -119,6 +158,8 @@ export const settings = $state({
 export const ui = $state({
   refreshing: false,
   note: "Refreshing",
+  /** How many times the forge has answered about the checks. */
+  checksAt: 0,
   /** The part of the change on screen, or null for all of it. */
   part: null as string | null,
   /** Files the reader has marked off. */
@@ -236,9 +277,19 @@ function normalise(comments: unknown): CommentView[] {
   });
 }
 
-/** Sends something to the extension, and does nothing without one. */
+/**
+ * Sends something to the extension, and does nothing without one.
+ *
+ * Snapshotted on the way out. Anything held in `$state` is handed around as a
+ * proxy, and the channel to the extension copies what it is given rather than
+ * sharing it — a proxy has no copy, so it throws `DataCloneError` and the
+ * message is simply lost. That is a whole review's worth of drafts disappearing
+ * on the press of a button, and it is invisible from the host side, which
+ * merely never hears anything. Doing it here rather than at each caller means a
+ * payload cannot acquire the fault later by being made reactive.
+ */
 export function notify(type: string, payload?: unknown): void {
-  host?.postMessage({ type, payload });
+  host?.postMessage({ type, payload: $state.snapshot(payload) });
 }
 
 /**
@@ -282,9 +333,23 @@ export function listen(): void {
       // A rebuilt graph, applied without the document being replaced. This is
       // the whole reason for the reactive rendering: the reader keeps their
       // camera, their scroll and whatever thread they had open.
-      case "model":
-        if (message.payload) model.current = message.payload as ViewModel;
+      case "model": {
+        if (!message.payload) return;
+        const next = message.payload as ViewModel;
+        /*
+         * The forge's verdicts survive a rebuild.
+         *
+         * A rebuild is a new reading of the working tree, and it has nothing to
+         * say about what CI made of the branch — but it replaces the model
+         * whole, so anything the host had only ever sent as a message went with
+         * it. The checks panel disappeared on the first save after it appeared.
+         */
+        if (next.checks === undefined && model.current.checks !== undefined) {
+          next.checks = model.current.checks;
+        }
+        model.current = next;
         return;
+      }
 
       /*
        * A few cards' rows, and deliberately nothing else.
@@ -347,6 +412,11 @@ export function listen(): void {
 
       case "checks":
         model.current.checks = message.payload;
+        // Counted as well as stored. A refresh that comes back saying exactly
+        // what it said before is still an answer, and the control that asked
+        // has to stop spinning — which it cannot tell from the payload, since
+        // an unchanged summary is an unchanged summary.
+        ui.checksAt += 1;
         return;
 
       case "comments":

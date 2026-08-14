@@ -351,16 +351,19 @@
 <!--
   The sign saying what happened to a line.
 
-  It doubles as part of the rail when it sits in front of the number, since the
-  two together are the strip a remark begins from; at the far end of a pane it
-  is only a sign, and pressing it there would start a comment from the other
-  side of the code the reader is looking at.
+  Only a sign. It used to arm the comment rail as well, on the grounds that it
+  and the number together are the strip a remark begins from — but it is the
+  outermost column of the card, and that is where an arrow lands: the circle at
+  the end of a reference sits on the card's edge, over this. Arming a comment
+  from here made the circle unreachable, so following a reference back was
+  impossible on any line the change had touched. The number and the strip beside
+  it still begin a remark, and they are what the reader reaches for.
 -->
 {#snippet sign(mark: string, at: { side: Side; line: number } | null, name: "left" | "right")}<span
     class="marker"
-    data-rail={at ? name : null}
     data-gutter={at?.side}
-    data-line={at?.line}>{mark}</span>{/snippet}
+    data-line={at?.line}
+    data-side={name}>{mark}</span>{/snippet}
 
 <!-- One side of a split row: its marker, its line number, and its code. -->
 {#snippet pane(
@@ -561,9 +564,10 @@
     onpointerover={onRail}
     onpointerout={offRail}
   >
+    <!-- No rail here: this is the card's outermost column, and it is where an
+         arrow lands. See the `sign` snippet above. -->
     <span
       class="marker"
-      data-rail={before ? "left" : null}
       data-gutter={before?.side}
       data-line={before?.line}>{row.kind === "add" ? "+" : row.kind === "del" ? "−" : ""}</span
     >
@@ -864,10 +868,8 @@
      a gutter with no number in it, or one on a line Odin only fetched so an
      arrow had somewhere to land, does not carry it and does not light up. */
   .row .num[data-rail],
-  .row .pick-column[data-rail],
-  .row .marker[data-rail] { cursor: cell; }
-  .row .num[data-rail]:hover,
-  .row .marker[data-rail]:hover { color: var(--status-renamed); }
+  .row .pick-column[data-rail] { cursor: cell; }
+  .row .num[data-rail]:hover { color: var(--status-renamed); }
 
   /* Out of the row's flow, though not out of the card's width — the column
      below is in it. A card's height is the layout engine's count of its rows,

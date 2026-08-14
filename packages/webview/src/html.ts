@@ -66,6 +66,15 @@ export interface RenderOptions {
   /** Their picture, as a data uri, for the box they write in. */
   viewerFace?: string;
   /**
+   * How the reader last had the page set up, if the host remembers such things.
+   *
+   * Written into the document rather than sent after it, so a page never draws
+   * itself one way and then redraws itself the other while the reader watches.
+   * Opaque to the host that stores it: what a setting means, and what it falls
+   * back to when it is missing, belongs to the page.
+   */
+  settings?: Record<string, unknown>;
+  /**
    * Syntax colouring, already loaded for the languages in this change.
    *
    * Structural on purpose: the renderer needs no dependency on whatever
@@ -138,6 +147,7 @@ export function renderHtml(
     : undefined;
 
   const viewModel = {
+    ...(options.settings ? { settings: options.settings } : {}),
     width: layout.width,
     height: layout.height,
     rowGap: layout.metrics.rowGap,

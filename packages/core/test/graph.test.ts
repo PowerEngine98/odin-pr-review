@@ -41,6 +41,47 @@ describe("buildGraph", () => {
     const graph = buildGraph(parseUnifiedDiff(PATCH), { meta: META });
     expect(graph.nodes.every((n) => n.language === "typescript")).toBe(true);
   });
+
+  /**
+   * A path git mentioned twice.
+   *
+   * A combined diff over a merge lists a path once per parent it differs from.
+   * Two records for one path used to mean two vertices with one id, and the
+   * canvas draws its cards keyed by id — so the whole page died rather than one
+   * card being drawn oddly.
+   */
+  describe("a path the patch mentions twice", () => {
+    const TWICE = [
+      "diff --git a/src/Dup.ts b/src/Dup.ts",
+      "--- a/src/Dup.ts",
+      "+++ b/src/Dup.ts",
+      "@@ -1 +1 @@",
+      "-a",
+      "+b",
+      "diff --git a/src/Dup.ts b/src/Dup.ts",
+      "--- a/src/Dup.ts",
+      "+++ b/src/Dup.ts",
+      "@@ -9 +9,2 @@",
+      "-c",
+      "+d",
+      "+e",
+      "",
+    ].join("\n");
+
+    it("becomes one vertex, so no id is claimed twice", () => {
+      const graph = buildGraph(parseUnifiedDiff(TWICE), { meta: META });
+      expect(graph.nodes).toHaveLength(1);
+      expect(new Set(graph.nodes.map((n) => n.id)).size).toBe(graph.nodes.length);
+    });
+
+    it("keeps the code from both mentions", () => {
+      // Dropping the later record would lose real lines of the change, which is
+      // a quieter failure than the crash and a worse one.
+      const graph = buildGraph(parseUnifiedDiff(TWICE), { meta: META });
+      expect(graph.nodes[0]!.hunks).toHaveLength(2);
+      expect(graph.nodes[0]!.stats).toEqual({ additions: 3, deletions: 2 });
+    });
+  });
 });
 
 describe("determinism", () => {

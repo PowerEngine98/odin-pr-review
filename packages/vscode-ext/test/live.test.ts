@@ -129,3 +129,64 @@ describe("a settling delay that is never allowed to settle", () => {
     expect(rebuilds).toBeGreaterThan(0);
   }, 20_000);
 });
+
+/**
+ * A rebuild that never comes back.
+ *
+ * Nothing else bounds one. It shells out to git several times and then runs a
+ * resolver over a checkout, and git blocks on `.git/index.lock` while another
+ * command holds it — stashing, rebasing, the editor's own git extension. None
+ * of that throws; it simply never returns, and what the reader is left with is
+ * a corner saying the graph is being rebuilt, for ever, over a picture that is
+ * quietly out of date.
+ */
+describe("a rebuild that hangs", () => {
+  it("gives up and hands the corner back", async () => {
+    let settled = 0;
+    let failed: unknown;
+    const live = new LiveGraph({
+      repo,
+      settle: 20,
+      ceiling: 60,
+      patience: 150,
+      // The shape of the failure: a promise nobody ever resolves.
+      rebuild: () => new Promise(() => {}),
+      onRebuilding: () => {},
+      onSettled: () => settled++,
+      onError: (error) => (failed = error),
+      onChange: () => {},
+    });
+
+    watched.change?.({ fsPath: `${repo}/src.ts` });
+    await new Promise((done) => setTimeout(done, 600));
+    live.dispose();
+
+    expect(settled).toBeGreaterThan(0);
+    expect(String(failed)).toMatch(/gave up rebuilding/);
+  }, 20_000);
+
+  it("takes the next edit rather than folding it into the lost one", async () => {
+    // Without this, one hung rebuild means every later edit is marked "arrived
+    // while running" and waits on something that will never finish.
+    let starts = 0;
+    const live = new LiveGraph({
+      repo,
+      settle: 20,
+      ceiling: 60,
+      patience: 150,
+      rebuild: () => {
+        starts++;
+        return new Promise(() => {});
+      },
+      onChange: () => {},
+    });
+
+    watched.change?.({ fsPath: `${repo}/src.ts` });
+    await new Promise((done) => setTimeout(done, 400));
+    watched.change?.({ fsPath: `${repo}/src.ts` });
+    await new Promise((done) => setTimeout(done, 400));
+    live.dispose();
+
+    expect(starts).toBeGreaterThan(1);
+  }, 20_000);
+});

@@ -280,6 +280,7 @@
         <Viewed label="Reviewers" bind:checked={settings.hud.reviewers} />
         <Viewed label="Comments" bind:checked={settings.hud.comments} />
         <Viewed label="Map" bind:checked={settings.hud.map} />
+        <Viewed label="Checks" bind:checked={settings.hud.checks} />
 
         <span class="settings-rule"></span>
         <!--

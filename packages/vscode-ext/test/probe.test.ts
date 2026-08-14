@@ -241,6 +241,16 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
         return Promise.resolve();
       },
     },
+    // Where the reader's own preferences live, as opposed to what they have
+    // read. Same store here; what matters is that it exists, because a page is
+    // built from it.
+    globalState: {
+      get: (key: string, fallback: unknown) => (key in held ? held[key] : fallback),
+      update: (key: string, value: unknown) => {
+        held[key] = value;
+        return Promise.resolve();
+      },
+    },
   });
 
   return { serializer, commands, opened, watchers, saves, status, extension };
@@ -366,10 +376,28 @@ describe("a live reading of the working tree", () => {
   });
 
   /** Opens the local reading and hands back the frame it landed in. */
+  /**
+   * A restored panel, waited on until the graph is actually in it.
+   *
+   * The deserializer no longer awaits the build — it hands the frame back with
+   * the waiting mark in it, because the editor shows nothing at all until that
+   * method returns. So the build finishes afterwards, and a test that wants the
+   * graph has to wait for the graph rather than for the call.
+   */
   async function reading(editor: ReturnType<typeof stub>) {
     const panel = recorder();
     await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
+    await settled(panel);
     return panel;
+  }
+
+  /** Waits for a page that is the drawing rather than the wait before it. */
+  async function settled(panel: ReturnType<typeof recorder>) {
+    for (let waited = 0; waited < 40_000; waited += 50) {
+      if (panel.page().includes("card-body")) return;
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    throw new Error("the graph never arrived");
   }
 
   /** Fires the watcher at a file and waits for whatever the page is given. */
@@ -420,6 +448,50 @@ describe("a live reading of the working tree", () => {
 
     expect(panel.page()).toContain("test x5");
     expect(editor.watchers.filter((w) => !w.disposed)).toHaveLength(1);
+  }, 60_000);
+
+  /*
+   * Refresh, pressed on the list rather than on a graph.
+   *
+   * The button lives on the pull request list's own title bar, and the reason
+   * to press it is usually that the list is wrong — a forge that did not answer
+   * leaves nothing to rebuild and a list worth asking about again. Replaying a
+   * reading that was never opened would build a review of whatever happened to
+   * be checked out, which is not what was asked for and costs seconds to find
+   * out.
+   */
+  /*
+   * The one nothing could see.
+   *
+   * The editor does not present a restored webview until `deserializeWebviewPanel`
+   * settles: restoring is over when the extension says it is over. While that
+   * method awaited the build, every page written during it — the waiting mark,
+   * and three attempts at rewriting it — went into a frame the reader could not
+   * yet see, and the graph appeared the instant the method returned because it
+   * was simply the last page written. The trace said the loader was written and
+   * the trace was right; what it could not say was that nothing written there
+   * goes on screen until this returns.
+   */
+  it("hands the frame back with the mark in it, before the graph is built", async () => {
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = recorder();
+
+    await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
+
+    // Whatever is in the frame at the moment restoring is declared finished is
+    // the only thing the reader can possibly see first.
+    expect(panel.page()).toContain("Reopening");
+    expect(panel.page()).not.toContain("card-body");
+  }, 60_000);
+
+  it("asks the forge again without inventing a review to rebuild", async () => {
+    restore();
+    const editor = stub(undefined, { folder: repo, baseRef: "HEAD~1" });
+
+    await (editor.commands.get("odin.refresh") as () => Promise<void>)();
+
+    expect(editor.opened).toHaveLength(0);
   }, 60_000);
 
   /*
@@ -611,6 +683,13 @@ describe("an edit that must not take the shortcut", () => {
     );
     const panel = recorder();
     await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
+    // The deserializer hands the frame back with the waiting mark in it and
+    // builds behind that, so the graph is something to wait for rather than
+    // something the call has already delivered.
+    for (let waited = 0; waited < 40_000; waited += 50) {
+      if (panel.page().includes("window.__ODIN__=")) break;
+      await wait(50);
+    }
 
     // The call, not the import: the import line is untouched by this edit and
     // its arrow is expected to survive, so counting every arrow to `one.ts`

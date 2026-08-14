@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { layoutGraph, type ChangeGraph } from "@odin/core";
 
@@ -159,5 +160,66 @@ describe("reaching a card's controls on a card wider than the window", () => {
     // screen looks exactly as it always did.
     expect(body()).not.toContain("card-controls slid");
     expect(body()).not.toContain("title-name slid");
+  });
+});
+
+/**
+ * What the composer is allowed to hand its editor.
+ *
+ * The preview walks the picked code and joins it, and an uncaught throw inside
+ * a Svelte effect takes the component down with it — a composer that has lost
+ * its own render cannot be typed in, submitted or cancelled, and the only way
+ * out is reloading the window. That is what a line *range* being written into
+ * the field that means the picked *code* did, under a cast that stopped the
+ * compiler from mentioning it.
+ */
+describe("the code a suggestion starts from", () => {
+  it("is only ever handed over as a list of lines", () => {
+    const source = readFileSync(
+      new URL("../src/app/panels/Composer.svelte", import.meta.url),
+      "utf8",
+    );
+    // The guard, not the raw prop: `before: lines` was the crash.
+    expect(source).toMatch(/before:\s*picked/);
+    expect(source).toMatch(/Array\.isArray\(lines\)/);
+  });
+
+  it("is no longer given a range by the thing that opens it", () => {
+    const source = readFileSync(
+      new URL("../src/app/canvas/picking.svelte.ts", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/lines:\s*\{\s*start,\s*end\s*\}/);
+  });
+});
+
+/**
+ * A suggestion knows what it is replacing.
+ *
+ * The forge draws a suggestion as a change — the lines it replaces above the
+ * lines it proposes — so the composer has to be handed the picked code. It was
+ * handed a line range instead, under a cast, which cost two things: the preview
+ * threw on it and took the whole composer down, and no suggestion ever showed a
+ * "before" because there was never any code in the field that carries it.
+ */
+describe("the code a suggestion replaces", () => {
+  const read = (path: string) =>
+    readFileSync(new URL(path, import.meta.url), "utf8");
+
+  it("is gathered from the card that holds the rows", () => {
+    const card = read("../src/app/canvas/Card.svelte");
+    // The card is the only thing that knows both the rows and the pick.
+    expect(card).toMatch(/function picked\(/);
+    expect(card).toMatch(/open\(\s*\{[^}]*\},\s*picked\(pick\)/s);
+  });
+
+  it("is carried to the composer rather than a range", () => {
+    const picking = read("../src/app/canvas/picking.svelte.ts");
+    expect(picking).toMatch(/export function open\([^)]*lines: string\[\]/s);
+    expect(picking).not.toMatch(/lines:\s*\{\s*start,\s*end\s*\}/);
+  });
+
+  it("walks into folds, so an opened gap is part of the passage", () => {
+    expect(read("../src/app/canvas/Card.svelte")).toMatch(/row\.kind === "gap"[\s\S]{0,120}walk\(row\.rows\)/);
   });
 });

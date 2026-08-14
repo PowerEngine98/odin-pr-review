@@ -16,9 +16,46 @@ export interface BuildOptions {
   edges?: Edge[];
 }
 
+/**
+ * One record per path, however many the patch had.
+ *
+ * A vertex is named after its path, so two records for one path are two
+ * vertices with one name — and every consumer that keys by id then has a
+ * duplicate to choke on. The canvas is the loudest: it draws its cards keyed by
+ * file id, and a repeated key takes the whole page down rather than drawing one
+ * card badly.
+ *
+ * Git does hand out the same path twice. A combined diff over a merge lists a
+ * path once per parent it differs from, and a patch stitched together from more
+ * than one range can repeat one too. Neither is a broken repository, so neither
+ * may be a blank screen: the records are folded into a single file, which is
+ * what they always described.
+ */
+function byPath(files: ParsedFile[]): ParsedFile[] {
+  const seen = new Map<string, ParsedFile>();
+
+  for (const file of files) {
+    const first = seen.get(file.path);
+    if (!first) {
+      seen.set(file.path, file);
+      continue;
+    }
+    // The first record keeps the say on what happened to the file — a status
+    // is not additive, and the earlier record is the one nearer the base.
+    seen.set(file.path, {
+      ...first,
+      hunks: [...first.hunks, ...file.hunks],
+      additions: first.additions + file.additions,
+      deletions: first.deletions + file.deletions,
+    });
+  }
+
+  return [...seen.values()];
+}
+
 /** Turns parsed patch records into graph vertices. */
 export function filesToNodes(files: ParsedFile[]): FileNode[] {
-  return files.map((f): FileNode => {
+  return byPath(files).map((f): FileNode => {
     const node: FileNode = {
       id: nodeId(f.path),
       path: f.path,

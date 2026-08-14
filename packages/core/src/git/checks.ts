@@ -153,3 +153,48 @@ function summarise(checks: Check[]): CheckSummary {
     total: checks.length,
   };
 }
+
+/**
+ * The run behind a check, taken from the page the forge pointed at.
+ *
+ * A check's url is where a person would go to look at it, and for an Actions
+ * job that page names the run it belongs to: `…/runs/1234` for the run itself,
+ * or `…/runs/1234/job/5678` for one job inside it. The number in front of any
+ * `/job/` is the run, which is the only thing `gh` will start again.
+ *
+ * Returns nothing for a check that came from somewhere else. Plenty of things
+ * report a verdict — a coverage service, a deploy preview, a bot — and none of
+ * them are ours to restart.
+ */
+export function runIdFrom(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const found = /\/actions\/runs\/(\d+)/.exec(url);
+  return found?.[1];
+}
+
+/**
+ * Asks the forge to run a check again.
+ *
+ * Failures only, by `gh`'s own reckoning: `--failed` restarts the jobs that
+ * did not pass and leaves the ones that did alone, which is what somebody
+ * pressing this after a flake wants. Re-running a whole workflow to get one job
+ * back costs everybody else's queue time.
+ *
+ * Best-effort like everything else here, but it answers whether it worked —
+ * this one is a thing the reader asked for, and a button that quietly does
+ * nothing is worse than one that says it could not.
+ */
+export async function rerunCheck(
+  url: string | undefined,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<boolean> {
+  const id = runIdFrom(url);
+  if (!id) return false;
+  // Longer than a read: this asks the forge to do something rather than to
+  // answer, and the default budget is set for answers.
+  const out = await run(["run", "rerun", id, "--failed"], {
+    ...options,
+    timeoutMs: options.timeoutMs ?? 10_000,
+  });
+  return out !== undefined;
+}

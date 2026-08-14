@@ -88,5 +88,21 @@ export function waitingPage(options: WaitingPage): string {
   window.addEventListener("message", function (event) {
     if (event.data && event.data.type === "note") note.textContent = event.data.message;
   });
+  /*
+   * Says that it is here.
+   *
+   * A frame restored with the window is handed this document before its own
+   * bootstrap has finished standing up, and what the host sees either way is a
+   * successful assignment to \`html\` — the editor reports nothing, the trace
+   * says the page was written, and the reader watches an empty rectangle for
+   * however long the build takes. The one fact nobody had was whether this ever
+   * ran. Now it says so, and a host that does not hear it knows the difference
+   * between a page that was refused and a page that is simply pale.
+   */
+  try {
+    acquireVsCodeApi().postMessage({ type: "waiting" });
+  } catch (e) {
+    /* opened as a file, where there is no host to tell */
+  }
 </script></body></html>`;
 }

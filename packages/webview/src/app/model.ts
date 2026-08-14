@@ -237,6 +237,33 @@ export interface ViewModel {
   viewer: string;
   viewerFace: string;
   comments: CommentView[];
+  /**
+   * How the last reader had the page set up, if the host remembered.
+   *
+   * A partial on purpose: what the host has stored is whatever it was told, and
+   * a setting added later has nothing on disk under its name. Each one falls
+   * back to its own default rather than the whole set being taken or dropped
+   * together.
+   */
+  settings?: Partial<ReaderSettings>;
+}
+
+/** The reader's own choices about how to read, not about what is being read. */
+export interface ReaderSettings {
+  unified: boolean;
+  showTests: boolean;
+  showImports: boolean;
+  showUnchanged: boolean;
+  hideViewed: boolean;
+  showInfra: boolean;
+  hud: {
+    reviewers: boolean;
+    comments: boolean;
+    map: boolean;
+    checks: boolean;
+    /** The checks panel folded to its head, as opposed to hidden altogether. */
+    checksFolded: boolean;
+  };
 }
 
 declare global {

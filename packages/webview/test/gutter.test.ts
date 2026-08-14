@@ -11,7 +11,7 @@ import { renderHtml } from "../src/html.js";
  * sees before any script has run, which is the one place these invariants can
  * be checked without a browser.
  */
-function page(withEdge: boolean): string {
+function page(withEdge: boolean, canReview = false): string {
   const graph: ChangeGraph = {
     schemaVersion: "0.1.0",
     meta: { baseRef: "main", headRef: "feat", generator: "test" },
@@ -76,7 +76,7 @@ function page(withEdge: boolean): string {
       : [],
   };
 
-  return renderHtml(graph, layoutGraph(graph));
+  return renderHtml(graph, layoutGraph(graph), canReview ? { canReview: true } : {});
 }
 
 /**
@@ -126,6 +126,30 @@ describe("the affordance for leaving a comment", () => {
     // A page written from a working tree has nowhere to post a remark, and an
     // offer to write one there is an invitation to a dead end.
     expect(drawn(page(true))).not.toMatch(/data-gutter=/);
+  });
+
+  /**
+   * The outermost column belongs to the arrows.
+   *
+   * A reference lands as a circle on the edge of the card, which is drawn over
+   * the sign column. While that column also armed the comment rail it took
+   * every press meant for the circle, so following a reference back was
+   * impossible on any line the change had touched — and every line worth an
+   * arrow is one the change touched.
+   */
+  it("does not begin a remark from the column an arrow lands on", () => {
+    const row = firstRow(drawn(page(true, true)));
+    const marker = row.slice(row.search(/class="[^"]*\bmarker\b/));
+    const sign = marker.slice(0, marker.indexOf(">"));
+    expect(sign).not.toMatch(/data-rail=/);
+  });
+
+  it("still begins one from the number and the strip beside it", () => {
+    // Removing the sign from the rail must not remove the offer itself: the
+    // reader reaches for the number, and the strip is the column kept clear for
+    // exactly this.
+    const row = firstRow(drawn(page(true, true)));
+    expect(row).toMatch(/class="[^"]*\bnum\b[^>]*"[^>]*data-rail=/);
   });
 });
 

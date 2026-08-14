@@ -129,6 +129,11 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --z-name: 10;
   --z-canvas: 1;
   --z-marks: 22;
+  /* A comment being written belongs to the passage under it, so it sits with
+     the marks rather than with the panels: the map and the chrome are how you
+     leave this place, and a box that covered them would take that away while
+     you were mid-sentence. */
+  --z-compose: 23;
   --z-hud: 25;
   --z-chrome: 30;
   --z-panel: 40;

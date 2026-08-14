@@ -26,6 +26,17 @@ export interface ReviewComment {
   wholeFile?: boolean;
   /** Emoji left on this comment, most-used first. */
   reactions?: Reaction[];
+  /**
+   * The conversation this belongs to, as the forge names it.
+   *
+   * Only the forge's GraphQL knows threads: the REST list this is read from
+   * returns comments and a reply pointer, and a thread is a thing you infer
+   * from those. Resolving one needs its real name, so it is fetched separately
+   * and matched back on.
+   */
+  threadId?: string;
+  /** Whether somebody has marked that conversation settled. */
+  resolved?: boolean;
 }
 
 /** One kind of emoji on a comment, and how many people left it. */
@@ -733,4 +744,119 @@ export async function deleteComment(
     undefined,
     options,
   );
+}
+
+/**
+ * Which conversations the forge considers settled.
+ *
+ * Resolution lives only in GraphQL. The REST list of comments has no idea a
+ * thread exists — it returns remarks and a pointer to the one being replied to
+ * — so this is a second question, asked separately and matched back on by
+ * comment id.
+ *
+ * Best-effort like everything else that talks to the forge, and deliberately
+ * shallow: one page of threads and one page of comments inside each. A pull
+ * request with more conversations than that is one where the marks are guesses
+ * anyway, and a review that will not open because a query timed out is worse
+ * than a tick that is missing.
+ */
+export async function listReviewThreads(
+  number: number,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<Map<number, { threadId: string; resolved: boolean }>> {
+  const query = `query($owner:String!,$repo:String!,$number:Int!){
+    repository(owner:$owner,name:$repo){
+      pullRequest(number:$number){
+        reviewThreads(first:100){
+          nodes{ id isResolved comments(first:100){ nodes{ databaseId } } }
+        }
+      }
+    }
+  }`;
+
+  const json = await read(
+    [
+      "api", "graphql",
+      "-F", "owner={owner}", "-F", "repo={repo}",
+      "-F", `number=${number}`,
+      "-f", `query=${query}`,
+    ],
+    options,
+  );
+
+  return json ? parseThreads(json) : new Map();
+}
+
+/**
+ * The forge's answer, read into a lookup by comment.
+ *
+ * Exported for its own sake: the shape is nested four deep and every level of
+ * it is nullable, which is exactly the kind of thing worth exercising without
+ * a network.
+ */
+export function parseThreads(
+  json: string,
+): Map<number, { threadId: string; resolved: boolean }> {
+  const found = new Map<number, { threadId: string; resolved: boolean }>();
+  try {
+    const parsed = JSON.parse(json) as {
+      data?: {
+        repository?: {
+          pullRequest?: {
+            reviewThreads?: {
+              nodes?: ({
+                id?: string;
+                isResolved?: boolean;
+                comments?: { nodes?: ({ databaseId?: number } | null)[] };
+              } | null)[];
+            };
+          };
+        };
+      };
+    };
+    const threads =
+      parsed.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
+    for (const thread of threads) {
+      if (!thread?.id) continue;
+      const resolved = thread.isResolved === true;
+      // Every comment in the thread, not only its first: the page marks a
+      // conversation by its root, but a reply is what a reader clicked on as
+      // often as not, and both have to answer the same question.
+      for (const comment of thread.comments?.nodes ?? []) {
+        if (typeof comment?.databaseId === "number") {
+          found.set(comment.databaseId, { threadId: thread.id, resolved });
+        }
+      }
+    }
+  } catch {
+    return found;
+  }
+  return found;
+}
+
+/**
+ * Marks a conversation settled, or opens it again.
+ *
+ * Answers whether the forge took it. This is a thing the reader pressed, and a
+ * button that quietly does nothing is worse than one that says it could not.
+ */
+export async function resolveThread(
+  threadId: string,
+  resolved: boolean,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<boolean> {
+  const field = resolved ? "resolveReviewThread" : "unresolveReviewThread";
+  const query = `mutation($id:ID!){
+    ${field}(input:{threadId:$id}){ thread{ id isResolved } }
+  }`;
+  const json = await read(
+    ["api", "graphql", "-f", `id=${threadId}`, "-f", `query=${query}`],
+    options,
+  );
+  if (!json) return false;
+  try {
+    return !(JSON.parse(json) as { errors?: unknown[] }).errors?.length;
+  } catch {
+    return false;
+  }
 }

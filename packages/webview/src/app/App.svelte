@@ -22,9 +22,11 @@
   import { untrack } from "svelte";
 
   import * as camera from "./canvas/camera.svelte.js";
+  import { drop, gesture } from "./canvas/picking.svelte.js";
   import Canvas from "./canvas/Canvas.svelte";
   import Card from "./canvas/Card.svelte";
   import Chrome from "./chrome/Chrome.svelte";
+  import Checks from "./hud/Checks.svelte";
   import Minimap from "./hud/Minimap.svelte";
   import Rebuilding from "./hud/Rebuilding.svelte";
   import Marks from "./marks/Marks.svelte";
@@ -33,7 +35,14 @@
   import ReviewPanel from "./panels/ReviewPanel.svelte";
   import Reviewers from "./panels/Reviewers.svelte";
   import Thread from "./panels/Thread.svelte";
-  import { model as page, review, travel, ui, view } from "./state.svelte.js";
+  import {
+    model as page,
+    review,
+    travel,
+    ui,
+    view,
+    watchSettings,
+  } from "./state.svelte.js";
   import type { Drawn } from "./svg/card.js";
   import Drawing from "./svg/Drawing.svelte";
 
@@ -201,6 +210,38 @@
    * that a page taken down leaves no handler behind pointing at a drawing that
    * has gone.
    */
+  /*
+   * The way out, whatever has gone wrong.
+   *
+   * A passage stays picked until something drops it, and its two handles sit
+   * over the code the whole time — so any path that closes the composer without
+   * dropping the pick leaves the reader one press away from opening it again,
+   * and they have found several. Rather than keep patching the paths, Escape
+   * always ends it: the box goes, the passage is let go, and any open thread
+   * closes with them. It costs one listener and it means no future way of
+   * getting into that state can be a way of staying in it.
+   */
+  $effect(() => {
+    const out = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (!ui.composer && !ui.thread && !gesture.pick) return;
+      ui.composer = null;
+      ui.thread = null;
+      drop();
+    };
+    window.addEventListener("keydown", out);
+    return () => window.removeEventListener("keydown", out);
+  });
+
+  /*
+   * The reader's choices, handed to the only thing that outlives the page.
+   *
+   * One effect over the whole object rather than a call from each control: a
+   * checkbox added later is carried without anybody remembering to wire it up,
+   * and there is nowhere for a control to forget.
+   */
+  $effect(watchSettings);
+
   $effect(() => {
     travel.toFile = (path) => {
       const id = camera.showFile(path);
@@ -278,12 +319,28 @@
   />
 
   <Composer
+    {chromeBottom}
     where={ui.composer}
     anchor={ui.composer?.anchor ?? null}
     lines={ui.composer?.lines ?? []}
     bind:drafts={review.drafts}
-    oncancel={() => (ui.composer = null)}
-    onadded={() => (ui.composer = null)}
+    oncancel={() => {
+      ui.composer = null;
+      // The picked passage goes with the box that was about it.
+      //
+      // Closing the composer alone left the range chosen and its two handles
+      // sitting over the code, so the next press anywhere near it took hold of
+      // one, and letting go opened the composer again. Cancelling put the
+      // reader in a loop they could only leave by reloading the page.
+      drop();
+    }}
+    onadded={() => {
+      ui.composer = null;
+      // Said, and therefore over. Leaving the range picked after a remark has
+      // been written invites the same handle to be grabbed for a passage the
+      // reader has already finished talking about.
+      drop();
+    }}
   />
 
   <Reviewers
@@ -292,11 +349,21 @@
     onshow={(thread) => (ui.thread = { id: thread.root.id, anchor: null })}
   />
 
+  <!-- The top of the same corner the map has the bottom of: one is anchored
+       above and the other below, so they never meet. -->
+  <Checks chromeHeight={chromeBottom} />
+
   <Minimap window={onScreen} {visible} here={centred} />
 
   <!-- The other corner: where the reader is, saying whether what is under them
        is still current. -->
   <Rebuilding />
 
-  <ReviewPanel />
+  <!-- Bound, not merely rendered.
+       Both of these are `$bindable`, and neither was tied to anything: the
+       panel kept its own `open` at false while the bar's button set
+       `review.open` beside it, so pressing Submit review did nothing at all —
+       and the drafts it would have listed were a different empty array from the
+       one the composer appends to. -->
+  <ReviewPanel bind:open={review.open} bind:drafts={review.drafts} />
 {/if}

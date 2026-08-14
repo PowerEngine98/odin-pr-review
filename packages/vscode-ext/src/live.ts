@@ -116,6 +116,21 @@ export interface LiveOptions {
    * that is not firing.
    */
   ceiling?: number;
+  /**
+   * The longest a single rebuild may run before it is given up on.
+   *
+   * Nothing else bounds it. A rebuild shells out to git several times and then
+   * runs a resolver over a checkout, and any one of those can sit there: git
+   * blocks on `.git/index.lock` while another command holds it — stashing,
+   * rebasing, an editor's own git extension — and a resolver can be handed a
+   * tree that changed underneath it. None of that throws; it simply never comes
+   * back.
+   *
+   * What the reader sees then is the corner saying the graph is being rebuilt,
+   * for ever, over a picture that is quietly out of date. A wait that has
+   * plainly failed should say so and let go.
+   */
+  patience?: number;
 }
 
 /**
@@ -144,6 +159,17 @@ export class LiveGraph implements vscode.Disposable {
   private readonly watchers: vscode.Disposable[] = [];
   private readonly settle: number;
   private readonly ceiling: number;
+  private readonly patience: number;
+  /**
+   * Which rebuild is the current one.
+   *
+   * Given up on is not cancelled: the work carries on somewhere, holding a
+   * checkout and a resolver, and it may still finish long afterwards. Its
+   * answer is about a working tree two edits ago, so it is counted out rather
+   * than drawn — otherwise abandoning a slow rebuild means the reader gets its
+   * stale picture on top of the fresh one whenever it eventually lands.
+   */
+  private run = 0;
   /** When the burst now waiting to be judged began. */
   private since = 0;
   /** Paths seen since the last rebuild, waiting to be judged worth one. */
@@ -166,6 +192,7 @@ export class LiveGraph implements vscode.Disposable {
     // redraw, which is a moment's worth of waiting rather than a budget.
     this.settle = options.settle ?? 250;
     this.ceiling = options.ceiling ?? 1500;
+    this.patience = options.patience ?? 90_000;
 
     for (const root of new Set([options.repo, ...(options.roots ?? [])])) {
       const watcher = vscode.workspace.createFileSystemWatcher(
@@ -253,10 +280,14 @@ export class LiveGraph implements vscode.Disposable {
     if (!(await this.worthRebuilding(arrived))) return;
 
     this.running = true;
+    const mine = ++this.run;
+    /** Whether this rebuild is still the one the reader is waiting for. */
+    const current = () => !this.disposed && this.run === mine;
+
     this.options.onRebuilding?.(arrived.length);
     try {
-      const staged = await this.options.rebuild();
-      if (this.disposed || !staged) return;
+      const staged = await this.bounded(this.options.rebuild());
+      if (!current() || !staged) return;
 
       await this.report(staged.graph);
       if (!staged.rest) return;
@@ -266,14 +297,19 @@ export class LiveGraph implements vscode.Disposable {
       // than starting a second one on top of this — two resolvers over one
       // checkout is how a machine that was merely busy becomes one that has
       // stopped answering.
-      const settled = await staged.rest();
-      if (this.disposed || !settled) return;
+      const settled = await this.bounded(staged.rest());
+      if (!current() || !settled) return;
       await this.report(settled);
     } catch (error) {
       this.options.onError?.(error);
     } finally {
-      this.running = false;
-      this.options.onSettled?.();
+      // Only the run that is still current hands the corner back. A rebuild
+      // given up on has already had that done for it, and one that finishes
+      // afterwards must not clear a wait that belongs to its successor.
+      if (this.run === mine) {
+        this.running = false;
+        this.options.onSettled?.();
+      }
       // Edits that landed while that was running have not been looked at.
       if (this.again && !this.disposed) {
         this.again = false;
@@ -295,6 +331,38 @@ export class LiveGraph implements vscode.Disposable {
     this.previous = graph;
     if (unchanged(delta)) return;
     await this.options.onChange(graph, delta);
+  }
+
+  /**
+   * A rebuild, or nothing if it took too long to be worth waiting for.
+   *
+   * Nothing is cancelled — there is no way to take back a git process or a
+   * resolver mid-pass — so the work goes on and its answer is discarded when it
+   * arrives. What is bought is the reader getting their page back, and the next
+   * edit getting a rebuild rather than folding into one that will never end.
+   */
+  private async bounded<T>(work: Promise<T>): Promise<T | undefined> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const patience = new Promise<undefined>((give) => {
+      timer = setTimeout(() => give(undefined), this.patience);
+    });
+    try {
+      const answer = await Promise.race([work, patience]);
+      if (answer === undefined) {
+        // Counted out, so a late answer from this run is ignored, and reported,
+        // because a graph that stopped updating with nothing said is the
+        // failure this whole watcher is most often accused of.
+        this.run += 1;
+        this.running = false;
+        this.options.onSettled?.();
+        this.options.onError?.(
+          new Error(`gave up rebuilding after ${Math.round(this.patience / 1000)}s`),
+        );
+      }
+      return answer as T | undefined;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** Whether anything git would admit to caring about has been touched. */

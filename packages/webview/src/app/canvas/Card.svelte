@@ -820,6 +820,43 @@
     return row && row.offsetParent !== null ? row : null;
   }
 
+  /**
+   * The text of the lines a pick covers, in the order they are read.
+   *
+   * A suggestion is drawn by the forge as a change — what it replaces above
+   * what it proposes — so the box has to be told what is being replaced. The
+   * card is the only thing that knows: it holds the rows, and the pick names a
+   * side and a span of line numbers on that side.
+   *
+   * Gaps are walked into, because a range can run across a fold the reader has
+   * opened, and the lines inside one are as much a part of the passage as the
+   * lines either side of it.
+   */
+  function picked(pick: { side: "base" | "head"; from: number; to: number }): string[] {
+    if (!Array.isArray(rows)) return [];
+    const { start, end } = spanOf(pick);
+    const found: { line: number; text: string }[] = [];
+
+    const walk = (list: readonly RowView[]): void => {
+      for (const row of list) {
+        if (row.kind === "gap") {
+          if (row.rows) walk(row.rows);
+          continue;
+        }
+        const line = pick.side === "base" ? row.oldLine : row.newLine;
+        if (line !== undefined && line >= start && line <= end) {
+          found.push({ line, text: row.text });
+        }
+      }
+    };
+    walk(rows);
+
+    // By line rather than by where they happened to sit: a split card holds
+    // both sides interleaved, and a suggestion has to read down the file.
+    found.sort((a, b) => a.line - b.line);
+    return found.map((one) => one.text);
+  }
+
   function release(event: PointerEvent): void {
     if (!gesture.dragging) return;
     try {
@@ -830,17 +867,40 @@
     const pick = gesture.pick;
     if (pick?.nodeId !== node.id) return;
 
-    // Under the last line of the passage, not under wherever the gesture
-    // happened to stop. Dragging the top handle finishes at the first line, and
-    // hanging the box there put it over the very range it was about — including
-    // the two handles, so the range could be widened once and never narrowed
-    // again.
-    const row = rowFor(pick.side, spanOf(pick).end) ?? (anchorRow?.offsetParent ? anchorRow : null);
-    if (!row) {
+    /*
+     * However this ends, the gesture ends.
+     *
+     * The rail is hidden while a drag is in progress — `hint` is null whenever
+     * `gesture.dragging` is — so a press that begins a pick and then fails to
+     * turn it into a box leaves the drag switched on forever, and the `+` never
+     * appears again on any line of any file. One press that went wrong, and
+     * commenting is over until the page is reloaded.
+     *
+     * So the gesture is closed here whatever happens, and anything that went
+     * wrong is left to reach the console rather than being swallowed with it.
+     */
+
+    try {
+      // Under the last line of the passage, not under wherever the gesture
+      // happened to stop. Dragging the top handle finishes at the first line,
+      // and hanging the box there put it over the very range it was about —
+      // including the two handles, so the range could be widened once and
+      // never narrowed again.
+      const row =
+        rowFor(pick.side, spanOf(pick).end) ??
+        (anchorRow?.offsetParent ? anchorRow : null);
+      if (!row) {
+        drop();
+        return;
+      }
+      open(
+        { row: row.getBoundingClientRect(), card: element.getBoundingClientRect() },
+        picked(pick),
+      );
+    } catch (error) {
       drop();
-      return;
+      throw error;
     }
-    open({ row: row.getBoundingClientRect(), card: element.getBoundingClientRect() });
   }
 
   /**

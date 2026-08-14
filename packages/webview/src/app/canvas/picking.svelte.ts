@@ -71,13 +71,13 @@ export interface Box {
  * band has no position, and hanging the box off one would put it wherever nought
  * happens to be.
  */
-export function open(at: { row: Box; card: Box }): void {
+export function open(at: { row: Box; card: Box }, lines: string[] = []): void {
   const pick = gesture.pick;
   gesture.dragging = false;
   if (!pick) return;
 
   const { start, end } = spanOf(pick);
-  ui.composer = composing(pick, start, end, at);
+  ui.composer = composing(pick, start, end, at, lines);
 }
 
 /**
@@ -102,6 +102,7 @@ function composing(
   start: number,
   end: number,
   at: { row: Box; card: Box },
+  lines: string[],
 ): NonNullable<typeof ui.composer> {
   const anchor = Object.assign(
     new DOMRect(at.row.left, at.row.top, at.row.width, at.row.height),
@@ -111,9 +112,16 @@ function composing(
   return {
     path: pick.path,
     side: forgeSide(pick.side),
-    lines: { start, end },
-    // The forge hangs a remark off the last line it is about and carries the
-    // first one separately, so the composer is told both under those names.
+    // The code the reader picked, which is what a suggestion starts from: the
+    // forge shows a suggestion as a change, and a change needs the lines it
+    // replaces as well as the ones it proposes.
+    //
+    // A line *range* used to go in here, under a cast that stopped the
+    // compiler saying so. Two things came of that: the preview called `join`
+    // on it and threw inside an effect, taking the whole composer down, and
+    // no suggestion ever knew what it was replacing.
+    lines,
+    // The range is carried separately, under the names the forge uses.
     line: end,
     startLine: start,
     anchor,

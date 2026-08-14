@@ -13,6 +13,7 @@
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
+  import { wheelGesture } from "./gestures.js";
   import { listen as listenForKeys } from "./keyboard.svelte.js";
   import { lineAt } from "./measured.svelte.js";
   import PortLayer from "./PortLayer.svelte";
@@ -97,12 +98,32 @@
    * the gesture. A passive listener cannot call preventDefault, and without it
    * a pinch zooms the whole webview and a two-finger scroll walks the document
    * out from under the drawing.
+   *
+   * Bound to the window rather than to the drawing, and answered by where the
+   * gesture *began*. A wheel goes to whatever the cursor happens to be over at
+   * that instant, so a pan that carries the cursor across the comment box — or
+   * the map, or a thread — arrives somewhere else halfway through and the
+   * drawing stops dead under a hand that is still moving. Nothing about the
+   * gesture ended; it was simply delivered elsewhere.
+   *
+   * A gesture is one stream of events close together in time. The first of them
+   * decides whose it is, and the rest belong to whoever the first did, wherever
+   * the cursor has wandered to since. So a scroll begun over the box still
+   * scrolls the box even if the cursor leaves it, which is the same promise
+   * read from the other side.
    */
   $effect(() => {
     const element = viewport;
-    const onWheel = (event: WheelEvent) => camera.wheel(event, element);
-    element.addEventListener("wheel", onWheel, { passive: false });
-    return () => element.removeEventListener("wheel", onWheel);
+    const gesture = wheelGesture((target) =>
+      target instanceof Node && element.contains(target),
+    );
+
+    const onWheel = (event: WheelEvent) => {
+      if (gesture.claims(event)) camera.wheel(event, element);
+    };
+
+    window.addEventListener("wheel", onWheel, { passive: false });
+    return () => window.removeEventListener("wheel", onWheel);
   });
 
   /**

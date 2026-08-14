@@ -563,29 +563,48 @@
 
 <style>
   /* One frame around the tabs, the tools and the field, so they read as a
-     single control rather than three stacked ones. */
+     single control rather than three stacked ones.
+
+     Every mix below adds to a hundred, and has to. A `color-mix` whose
+     percentages fall short comes back with the remainder as transparency —
+     `var(--bg) 80%, var(--text) 4%` is 84% opaque, not a shade of the
+     background — so the same declared surface paints one colour over the tab
+     bar and another over the page. That was the seam under the chosen tab:
+     not a stray border but a translucent fill picking up what was behind it. */
   .editor {
     border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
     border-radius: 7px;
     overflow: hidden;
-    background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+    background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
   }
 
-  /* Wraps rather than clips. The box narrows to fit the space beside a file,
-     and a toolbar that keeps its width in a narrower box loses its last buttons
-     off the edge — silently, which is the worst way to lose a control. */
+  /* One line, always. It used to wrap, so that a toolbar too wide for the box
+     did not lose its last buttons off the edge — but in a reply beside a file
+     the box is narrow every time, and what wrapping actually did was put the
+     tools on a row of their own underneath the tabs, which reads as two
+     controls rather than one and costs a line of the reply. The tools scroll
+     instead: nothing is lost and nothing is silently unreachable. */
   .editor-tabs {
     display: flex;
     align-items: stretch;
-    flex-wrap: wrap;
-    gap: 2px;
+    flex-wrap: nowrap;
+    /* No gap. Each tab already draws the divider as its own right edge, and a
+       gap on top of that leaves a strip of the bar showing beside the line —
+       so the chosen tab's fill starts two pixels late and the seam reads as a
+       misplaced tab rather than as a divider. */
     border-bottom: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
-    background: color-mix(in srgb, var(--bg) 60%, var(--text) 5%);
+    background: color-mix(in srgb, var(--bg) 95%, var(--text) 5%);
   }
 
+  /* Every tab carries the bottom edge and the overhang, chosen or not. Giving
+     them only to the chosen one made it a pixel taller than its neighbour and
+     sat it a pixel lower, so pressing a tab nudged the pair — the transparent
+     edge keeps the box identical and lets the bar's own line show through. */
   .tab {
     border: 0;
     border-right: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    border-bottom: 1px solid transparent;
+    margin-bottom: -1px;
     border-radius: 0;
     padding: 7px 11px;
     background: transparent;
@@ -596,19 +615,34 @@
 
   .tab.is-on {
     color: var(--text);
-    background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
-    border-bottom: 1px solid color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
-    margin-bottom: -1px;
+    background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
+    border-bottom-color: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
   }
 
   .md-tools {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
     gap: 0;
     margin-left: auto;
     padding: 0 4px;
+    /* Takes what is left and no more, and scrolls inside it. `min-width` is the
+       half that is easy to forget: a flex item will not shrink below its
+       content without it, so the row would still be too wide and the tabs would
+       be pushed out instead. */
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .md-tools::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* The buttons keep their size while the strip they sit in narrows. */
+  .md-tools > :global(*) {
+    flex: 0 0 auto;
   }
 
   .md {
@@ -652,7 +686,7 @@
     font: inherit;
     font-family: var(--mono);
     color: var(--text);
-    background: color-mix(in srgb, var(--bg) 80%, var(--text) 4%);
+    background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
     border: 0;
     border-radius: 0;
     padding: 9px 10px;
@@ -678,7 +712,11 @@
   }
 
   .editor-preview,
+  /* Bounded here rather than around the whole box, so the tabs and the tools
+     above it stay put while a long preview scrolls under them. */
   .rendered {
+    max-height: var(--preview-room, 46vh);
+    overflow-y: auto;
     line-height: 1.5;
     overflow-wrap: anywhere;
   }
@@ -793,6 +831,8 @@
      from where they sit in the file, and the replacement carrying the same
      numbers, because that is where it will land. */
   .suggestion {
+    /* The lines keep their own width; the box is what moves. */
+    overflow-x: auto;
     margin: 0 0 8px;
     border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
     border-radius: 6px;
@@ -807,7 +847,8 @@
   }
 
   .suggestion table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     margin: 0;
     border-collapse: collapse;
     font-family: var(--mono);
@@ -816,7 +857,12 @@
   .suggestion td {
     border: 0;
     padding: 1px 6px;
-    white-space: pre-wrap;
+    /* Read the way the file reads. A suggestion is a change to source, and
+       source does not reflow — wrapping it puts one line on three rows, throws
+       the numbers out beside it, and makes a four-line change unreadable. Long
+       lines run off to the right and the box scrolls to them, exactly as the
+       card behind it does. */
+    white-space: pre;
   }
 
   .suggestion .n,
@@ -825,6 +871,10 @@
     color: var(--muted);
     text-align: right;
     user-select: none;
+    /* The code wraps; a line number is not prose and must not. The rule above
+       sets `pre-wrap` on every cell, which squeezed the number column to its
+       one per cent and then broke three digits across two rows. */
+    white-space: nowrap;
   }
 
   .suggestion .del {

@@ -17,9 +17,6 @@ import {
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
 import { execFile } from "node:child_process";
-import { appendFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join as joinPath } from "node:path";
 
 import * as vscode from "vscode";
 
@@ -31,6 +28,7 @@ import { ChangeSidebar } from "./sidebar.js";
 import { activeTheme } from "./theme.js";
 import { SeenStore } from "./seen.js";
 import { SessionStore } from "./session.js";
+import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
@@ -42,25 +40,6 @@ function isDark(): boolean {
   );
 }
 
-/**
- * A line in a file about what the restore actually did.
- *
- * Reopening a window is the one path that cannot be watched from here: it
- * happens before anybody is looking, in an extension host that has just been
- * created, and every reading of the code has said it works. This says what it
- * did instead of what it should do. Best-effort and silent — a diagnostic that
- * can break the thing it is diagnosing is worse than none.
- */
-function trace(what: string): void {
-  try {
-    appendFileSync(
-      joinPath(tmpdir(), "odin-restore.log"),
-      `${new Date().toISOString()} ${what}\n`,
-    );
-  } catch {
-    // Nothing to be done, and nothing worth interrupting a review for.
-  }
-}
 
 /** Which files the reviewer has marked off, shared by both views. */
 let viewed: ViewedStore;
@@ -90,7 +69,6 @@ let last:
   | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
-  trace("activate");
   // The graph's tab wears the extension's own mark, which is a file on disk:
   // the tab belongs to the editor rather than to the page inside it.
   GraphPanel.assets = context.extensionUri;
@@ -98,6 +76,9 @@ export function activate(context: vscode.ExtensionContext): void {
   viewed = new ViewedStore(context.workspaceState);
   seen = new SeenStore(context.workspaceState);
   session = new SessionStore(context.workspaceState);
+  // Global rather than per-workspace: which files somebody has read is about
+  // this change, but whether they want to see import arrows is about them.
+  GraphPanel.settings = new SettingsStore(context.globalState);
   sidebar = new ChangeSidebar(viewed, seen);
 
   // Populated in the background so activation is not held up by the network.
@@ -137,9 +118,19 @@ export function activate(context: vscode.ExtensionContext): void {
         return refreshPullRequests();
       },
     ),
-    vscode.commands.registerCommand("odin.refresh", () =>
-      review(last?.baseRef, last?.headRef, last?.worktree === true),
-    ),
+    // Both halves of what the bar is showing, because the button sits on the
+    // list's own title bar and the list is what a reader is looking at when
+    // they press it. A forge that did not answer leaves nothing to rebuild and
+    // a list that is wrong; asking again is the whole point of the press.
+    //
+    // The list first and awaited, so a graph that takes seconds does not hold
+    // back the answer the reader can already see coming. A reading that was
+    // never opened has nothing to replay, and saying so beats rebuilding a
+    // review of whatever happens to be checked out.
+    vscode.commands.registerCommand("odin.refresh", async () => {
+      await refreshPullRequests();
+      if (last) await review(last.baseRef, last.headRef, last.worktree === true);
+    }),
     vscode.commands.registerCommand("odin.openFile", (path: string) =>
       GraphPanel.openPath(path),
     ),
@@ -195,9 +186,7 @@ export function activate(context: vscode.ExtensionContext): void {
      */
     vscode.window.registerWebviewPanelSerializer("odin.graph", {
       async deserializeWebviewPanel(panel: vscode.WebviewPanel) {
-        trace("deserialize: called");
         const previous = session.last();
-        trace(`deserialize: session=${JSON.stringify(previous)}`);
         if (!previous) {
           // Nothing worth reopening, and an empty frame says less than no
           // frame at all.
@@ -208,14 +197,32 @@ export function activate(context: vscode.ExtensionContext): void {
         // screen, and rebuilding the same review into it would redraw the graph
         // the reader is reading. It has been closed; there is nothing to reopen.
         const took = GraphPanel.adopt(panel);
-        trace(`deserialize: adopted=${took}`);
         if (!took) return;
         await GraphPanel.showLoading(
           previous.number ? `Reopening #${previous.number}` : "Reopening the change",
         );
-        trace("deserialize: loader written, building");
-        await review(previous.baseRef, previous.headRef, previous.worktree === true);
-        trace("deserialize: build done");
+
+        /*
+         * Not awaited, and that is the whole of the missing loader.
+         *
+         * The editor does not present a restored webview until this method's
+         * promise settles — restoring is finished when the extension says it is
+         * finished. Awaiting the build meant nine seconds of holding the frame
+         * back, and every page written during them was written into something
+         * the reader could not yet see. The loader was assigned, and reassigned
+         * three times over, and never once painted; the graph appeared the
+         * instant this returned, because it was simply the last page written.
+         *
+         * Every reading of the code said the loader was written, and every one
+         * of them was right. What none of them could say was that nothing
+         * written here goes on screen until this returns.
+         *
+         * So the frame is handed back now, with the mark already in it, and the
+         * build carries on behind it. Its failures are the same failures they
+         * were — `review` reports them itself — and there is nobody here left
+         * to report them to.
+         */
+        void review(previous.baseRef, previous.headRef, previous.worktree === true);
       },
     }),
   );

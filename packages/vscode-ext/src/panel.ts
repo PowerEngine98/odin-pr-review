@@ -3,11 +3,14 @@ import {
   inlineAvatar,
   inlineAvatars,
   readChecks,
+  rerunCheck,
   LIGHT_THEME,
   currentUser,
   deleteComment,
   editComment,
   listReviewComments,
+  listReviewThreads,
+  resolveThread,
   replyToComment,
   setDraft,
   toggleReaction,
@@ -21,6 +24,7 @@ import {
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
 import * as vscode from "vscode";
+import { SettingsStore } from "./settings.js";
 
 import { baseUri } from "./baseContent.js";
 import { waitingPage } from "./loading.js";
@@ -72,6 +76,35 @@ interface RemarkMessage {
   payload: { id: number; content?: string; body?: string };
 }
 
+/**
+ * How the reader likes to read, on its way to being remembered.
+ *
+ * Opaque on purpose: the page owns what each setting means and what it falls
+ * back to. A host that knew the names would have to be taught every new one.
+ */
+interface SettingsMessage {
+  type: "settings";
+  payload: Record<string, unknown>;
+}
+
+/** Asking the forge how the branch stands, now rather than on a timer. */
+interface ChecksMessage {
+  type: "refreshChecks";
+  payload?: unknown;
+}
+
+/** Settling a conversation, or opening it again. */
+interface ResolveMessage {
+  type: "resolveThread";
+  payload: { id: number; resolved: boolean };
+}
+
+/** Asking the forge to run one check again. */
+interface RerunMessage {
+  type: "rerunCheck";
+  payload: { url?: string; name?: string };
+}
+
 /** Which part of the change the reader has opened, or all of it. */
 interface PartMessage {
   type: "part";
@@ -79,6 +112,10 @@ interface PartMessage {
 }
 
 type Message =
+  | ResolveMessage
+  | ChecksMessage
+  | RerunMessage
+  | SettingsMessage
   | PartMessage
   | NavigateMessage
   | OpenMessage
@@ -188,11 +225,21 @@ export class GraphPanel {
      * handed back here has whatever the defaults are — scripts off. Everything
      * this extension puts in a frame is a document that runs one: the loader
      * names what it is waiting for from a script, and the graph is an
-     * application. Re-stating them is what the editor's own sample does, and
-     * without it the frame is a permission boundary that quietly refuses the
-     * page written into it.
+     * application.
+     *
+     * Re-stated only when it is actually wrong. Assigning `options` is not a
+     * property write — the editor rebuilds the underlying view to apply it — so
+     * doing it unconditionally tears down the very frame the next statement
+     * writes a page into, and that page lands on something that no longer
+     * exists. That is the whole of the missing loader: the trace said the
+     * document was written, the editor reported nothing, and the page never
+     * ran. The graph, written eight seconds later into a frame that had settled
+     * by then, always rendered.
      */
-    panel.webview.options = { enableScripts: true, localResourceRoots: [] };
+    const scripts = panel.webview.options?.enableScripts;
+    if (!scripts) {
+      panel.webview.options = { enableScripts: true, localResourceRoots: [] };
+    }
 
     GraphPanel.pending = panel;
     GraphPanel.waiting = true;
@@ -260,33 +307,104 @@ export class GraphPanel {
     GraphPanel.painted.add(panel);
 
     /*
-     * Put up now, and once more in a moment.
+     * Written once, and once only.
      *
-     * A frame handed back as the window comes up is not reliably ready to be
-     * written to at the instant it arrives: the page goes in, the editor
-     * reports nothing wrong, and none of it is painted — while that same frame
-     * takes a seven-megabyte graph perfectly well eight seconds later. Rather
-     * than guess which tick it becomes willing, the wait is put up twice.
+     * Two assignments to `html` in quick succession do not produce two pages:
+     * the editor tears the frame's document down to install the first and the
+     * second arrives before it is standing, and its own bootstrap throws
+     * `Found unexpected null` swapping them. What the reader gets after that is
+     * an empty frame — for the eight seconds the build takes, and with nothing
+     * anywhere saying why.
      *
-     * Both times it is the same page, so a frame that took the first sees the
-     * same bytes again and the reader gets one steady mark either way. Skipped
-     * altogether if the graph arrived in between, which is the only case where
-     * a second write would take something away.
+     * Restoring a window called this twice within a fifth of a second, once for
+     * the tab coming back and once for the review it starts, which is exactly
+     * the interval that breaks. The second caller now renames the wait through
+     * the channel instead, which is what `note` has always been for.
      */
-    const paint = async (why: string): Promise<void> => {
-      if (!GraphPanel.waiting) return;
-      const page = await waitingHtml(panel.webview, note, true);
-      panel.webview.html = page;
-      trace(`showLoading[${why}]: ${page.length} bytes "${note}" visible=${panel.visible}`);
-    };
+    const page = await waitingHtml(panel.webview, note, true);
+    const frame = panel;
 
-    await paint("at once");
-    setTimeout(() => void paint("again"), 350);
+    /*
+     * Listened for before it is written, because it answers immediately.
+     *
+     * The page says `waiting` once it is running. Nothing else can tell these
+     * two apart from out here: a frame that took the document and a frame that
+     * quietly dropped it both look like a successful assignment.
+     */
+    let arrived = false;
+    const heard = frame.webview.onDidReceiveMessage((message: { type?: string }) => {
+      // Every message, not only the one hoped for. A frame that talks at all is
+      // a frame running a document, and that is the fact worth having: it tells
+      // a page that was refused from a page that ran and said the wrong thing.
+      if (message?.type !== "waiting") return;
+      arrived = true;
+      heard.dispose();
+    });
+    GraphPanel.listening?.dispose();
+    GraphPanel.listening = heard;
+
+    frame.webview.html = page;
 
     // Brought forward without stealing the cursor: the reviewer may well be
     // typing somewhere else while this builds.
-    panel.reveal(vscode.ViewColumn.One, true);
+    frame.reveal(vscode.ViewColumn.One, true);
+
+    /*
+     * Written a second time only when the first was demonstrably lost.
+     *
+     * Two writes in quick succession are what breaks a frame — the editor tears
+     * the document down for the first and the second lands before it is
+     * standing. But a frame that never ran the first has no document to tear
+     * down, so there is nothing for a second to collide with, and an empty
+     * rectangle for the length of a build is the worse of the two failures.
+     *
+     * The difference between the two is exactly what `waiting` reports, which
+     * is why this waits to hear rather than writing again on a timer and hoping.
+     */
+    /*
+     * Written again while it goes unheard.
+     *
+     * Two writes in quick succession are what breaks a frame — the editor tears
+     * the document down for the first and the second lands before it is
+     * standing. But a frame that never ran the first has no document to tear
+     * down, so there is nothing for a second to collide with, and an empty
+     * rectangle for the length of a build is the worse of the two failures. The
+     * page's own report is exactly what tells those apart, which is why this
+     * waits to hear rather than writing again on a timer and hoping.
+     *
+     * A handful of attempts rather than one, because what is being waited on is
+     * a frame the editor is still assembling and nobody out here is told when
+     * that is finished. They stop the moment the page speaks, and they stop
+     * altogether once the graph has arrived to replace it.
+     */
+    const TRIES = [400, 900, 1800];
+    for (const at of TRIES) {
+      setTimeout(() => {
+        if (arrived || !GraphPanel.waiting) return;
+        if (GraphPanel.current?.panel !== frame && GraphPanel.pending !== frame) return;
+        void (async () => {
+          /*
+           * A fresh page each time, because the same one is not a write.
+           *
+           * Assigning `html` a string identical to the one already there is a
+           * no-op in the editor — nothing is torn down and nothing is loaded,
+           * which is right for a property and useless for a retry. Every page
+           * carries its own nonce, so asking for another gives a document that
+           * differs and therefore lands.
+           */
+          const again = await waitingHtml(frame.webview, note, true);
+          try {
+            frame.webview.html = again;
+          } catch {
+            /* the frame went away while we waited, which answers the question */
+          }
+        })();
+      }, at);
+    }
   }
+
+  /** The one loader page listening for its own arrival, if any is. */
+  private static listening: vscode.Disposable | undefined;
 
   /** A line of progress, without restarting the animation. */
   static note(message: string): void {
@@ -398,6 +516,15 @@ export class GraphPanel {
   static onPart: ((paths: string[] | undefined) => void) | undefined;
 
   /**
+   * Where the reader's own choices are kept between pages.
+   *
+   * Static because they belong to the reader rather than to any one review: a
+   * panel opened tomorrow on a different repository is the same person, with
+   * the same opinion about import arrows.
+   */
+  static settings: SettingsStore | undefined;
+
+  /**
    * Where the extension's own files live.
    *
    * Needed for the tab icon, which is a file on disk rather than anything the
@@ -425,17 +552,71 @@ export class GraphPanel {
    * with the panel, and each round is best-effort — a failed ask leaves the
    * last good answer on screen rather than blanking it.
    */
-  watchChecks(branch: string, repo: string): void {
-    const ask = () => {
-      void readChecks(branch, { cwd: repo, timeoutMs: 8000 }).then((summary) => {
-        if (!summary) return;
-        void this.panel.webview.postMessage({ type: "checks", payload: summary });
-      });
-    };
+  /**
+   * The branch these checks belong to, so they can be asked for again.
+   *
+   * Held rather than polled. A timer asking the forge every five seconds for
+   * the whole life of a panel is a request every five seconds whether or not
+   * anybody is looking — for hours, on a review left open over lunch, against a
+   * rate limit shared with everything else `gh` does here. What it buys is a
+   * tally that moves on its own, which is worth less than it costs: a reader
+   * who wants to know whether CI has finished asks.
+   */
+  private checksOf: { branch: string; repo: string } | undefined;
 
-    ask();
-    const timer = setInterval(ask, 5000);
-    this.disposables.push({ dispose: () => clearInterval(timer) });
+  /**
+   * The last answer, kept rather than only sent.
+   *
+   * A summary used to live nowhere but in the message that carried it, which
+   * meant every redraw of the page lost it — a hot reload, a theme change,
+   * comments arriving. Nothing noticed while the forge was being asked every
+   * five seconds, because the next poll put it back within moments; the moment
+   * that poll went, the panel simply vanished on the first rebuild.
+   */
+  private checks: unknown;
+
+  /** Asks the forge how the branch stands, and tells the page. */
+  async readChecks(): Promise<void> {
+    const of = this.checksOf;
+    if (!of) return;
+    const summary = await readChecks(of.branch, { cwd: of.repo, timeoutMs: 8000 });
+    if (!summary) return;
+    this.checks = summary;
+    void this.panel.webview.postMessage({ type: "checks", payload: summary });
+  }
+
+  /** The first answer, and everything needed to ask for another. */
+  watchChecks(branch: string, repo: string): void {
+    this.checksOf = { branch, repo };
+    void this.readChecks();
+  }
+
+  /**
+   * Asks the forge to run one check again, and says what came of it.
+   *
+   * Answered out loud because this is a thing the reader asked for rather than
+   * something happening in the background: a button that quietly does nothing
+   * is worse than one that says it could not. The forge takes a few seconds to
+   * admit a rerun has begun, so the list is asked again after a pause rather
+   * than immediately — reading it now would show the same failure and look like
+   * the press had been ignored.
+   */
+  private async rerun(what: { url?: string; name?: string }): Promise<void> {
+    const started = await rerunCheck(what.url, {
+      cwd: this.repo,
+      timeoutMs: 10_000,
+    });
+    if (!started) {
+      void vscode.window.showWarningMessage(
+        `Could not ask the forge to run ${what.name ?? "that check"} again.`,
+      );
+      return;
+    }
+    void vscode.window.setStatusBarMessage(
+      `Odin: asked the forge to run ${what.name ?? "the check"} again`,
+      4000,
+    );
+    setTimeout(() => void this.readChecks(), 4000);
   }
 
   /** Comments already on the pull request, shown against their lines. */
@@ -804,6 +985,15 @@ export class GraphPanel {
       canReview: Boolean(this.graph.meta.pullRequest),
       ...(this.viewer ? { viewer: this.viewer } : {}),
       ...(this.viewerFace ? { viewerFace: this.viewerFace } : {}),
+      // Written into the document rather than sent after it, so the page never
+      // draws itself once the reader's way and then again the other way.
+      ...(GraphPanel.settings?.read()
+        ? { settings: GraphPanel.settings.read() }
+        : {}),
+      // Written into the document, so a redraw does not lose what the forge
+      // said. The message channel is for news; this is for what is already
+      // known when the page is built.
+      ...(this.checks ? { checks: this.checks } : {}),
     });
     return { html, model: modelIn(html) };
   }
@@ -902,6 +1092,22 @@ export class GraphPanel {
       }
       if (message.type === "open") {
         await this.openDiff(message.payload.path);
+        return;
+      }
+      if (message.type === "resolveThread") {
+        await this.resolve(message.payload);
+        return;
+      }
+      if (message.type === "refreshChecks") {
+        await this.readChecks();
+        return;
+      }
+      if (message.type === "rerunCheck") {
+        await this.rerun(message.payload);
+        return;
+      }
+      if (message.type === "settings") {
+        await GraphPanel.settings?.write(message.payload);
         return;
       }
       if (message.type === "viewed") {
@@ -1007,25 +1213,6 @@ export class GraphPanel {
   }
 }
 
-/**
- * A line in a file about what a restore actually did. Diagnostic only.
- *
- * Reading this code has been wrong about the restore four times running, and
- * every reading was of code that looked correct. This says what happened.
- */
-function trace(what: string): void {
-  try {
-    const fs = require("node:fs") as typeof import("node:fs");
-    const os = require("node:os") as typeof import("node:os");
-    const path = require("node:path") as typeof import("node:path");
-    fs.appendFileSync(
-      path.join(os.tmpdir(), "odin-restore.log"),
-      `${new Date().toISOString()} ${what}\n`,
-    );
-  } catch {
-    // Nothing worth interrupting a review for.
-  }
-}
 
 /** As much of the page's model as this side has any business knowing. */
 interface PageModel {

@@ -14,7 +14,6 @@
 -->
 <script lang="ts">
   import Refreshing from "../Refreshing.svelte";
-  import Checks from "./Checks.svelte";
   import Settings from "./Settings.svelte";
   import { model, notify, ui } from "../state.svelte.js";
   import { CARET, COPY_ICON, PR_ICON, RING } from "./icons.js";
@@ -235,7 +234,6 @@
   <span class="spacer"></span>
 
   <Refreshing on={ui.refreshing} note={ui.note} />
-  <Checks />
 
   <span class="viewed-count" title="Files you have marked as reviewed">
     {@html RING(read.total ? read.done / read.total : 0)}
