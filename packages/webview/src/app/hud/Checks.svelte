@@ -11,6 +11,8 @@
   two never meet: one is anchored to the top and the other to the bottom.
 -->
 <script lang="ts">
+  import { untrack } from "svelte";
+  import Viewed from "../shared/Viewed.svelte";
   import { model, notify, settings, ui } from "../state.svelte.js";
 
   /**
@@ -40,6 +42,107 @@
   let { chromeHeight = 0 }: { chromeHeight?: number } = $props();
 
   const summary = $derived(model.current.checks as CheckSummary | undefined);
+
+  /** What the forge would say if asked to merge this now. */
+  interface Merging {
+    mergeable: string;
+    state: string;
+    canBypass: boolean;
+    methods?: ("squash" | "merge" | "rebase")[];
+  }
+
+  const merging = $derived(model.current.merging as Merging | undefined);
+  const pull = $derived(model.current.meta.pullRequest);
+  /** Over already: nothing here can be done to a change that has landed. */
+  const settled = $derived(pull?.state === "MERGED" || pull?.state === "CLOSED");
+
+  /** The base has moved on, which is its own thing to fix and its own button. */
+  const behind = $derived(merging?.state === "BEHIND");
+  /** Requirements not met — approvals, or checks that have to pass. */
+  const blocked = $derived(merging?.state === "BLOCKED");
+  /** Conflicts, which no button here can settle. */
+  const conflicted = $derived(merging?.mergeable === "CONFLICTING");
+
+  /** Whether the plain merge is worth offering at all. */
+  const mergeable = $derived(
+    !!pull && !settled && !conflicted && merging !== undefined && !blocked,
+  );
+
+  /**
+   * Going past rules that have not been met.
+   *
+   * Offered only to an account the forge would actually allow it for, and only
+   * when something is in fact blocking — otherwise it is a frightening button
+   * that does nothing different from the one beside it.
+   */
+  const bypassable = $derived(
+    !!pull && !settled && !conflicted && blocked && merging?.canBypass === true,
+  );
+
+  /**
+   * How this repository allows a change to be landed.
+   *
+   * Read from the repository rather than assumed: plenty allow only a squash,
+   * and offering a rebase there is a button that fails after it has been
+   * pressed. Squash when nothing could be read, which is the forge's own
+   * default and the commonest setting by a distance.
+   */
+  const methods = $derived(
+    merging?.methods?.length ? merging.methods : (["squash"] as const),
+  );
+
+  const NAMED = {
+    squash: "Squash and merge",
+    merge: "Create a merge commit",
+    rebase: "Rebase and merge",
+  } as const;
+
+  /** The one the button does; the rest live in the menu beside it. */
+  let chosen = $state<"squash" | "merge" | "rebase" | null>(null);
+  const method = $derived(
+    chosen && methods.includes(chosen) ? chosen : methods[0]!,
+  );
+
+  /**
+   * Whether the reader has said they mean to go past the rules.
+   *
+   * A checkbox and then a button, rather than one red button. Merging a change
+   * whose requirements are not met is the most consequential thing this tool
+   * can be asked to do, and a single control — however alarming its colour —
+   * is one stray click. Two deliberate acts is the shape the forge itself uses
+   * here, and for the same reason.
+   *
+   * Cleared whenever the forge says something new: a tick left standing across
+   * a refresh is consent to something the reader has not looked at since.
+   */
+  let bypassing = $state(false);
+  $effect(() => {
+    void ui.checksAt;
+    untrack(() => (bypassing = false));
+  });
+
+  /** Whether the update or the method menu is open. */
+  let updating = $state(false);
+  let updateMenu: HTMLElement | undefined = $state();
+  let picking = $state(false);
+  let methodMenu: HTMLElement | undefined = $state();
+
+  function elsewhere(event: MouseEvent) {
+    const at = event.target as Node;
+    if (updating && !updateMenu?.contains(at)) updating = false;
+    if (picking && !methodMenu?.contains(at)) picking = false;
+  }
+
+  /** The host confirms both of these; nothing here happens on one press. */
+  function update(rebase: boolean) {
+    updating = false;
+    notify("updateBranch", { rebase });
+  }
+
+  function merge(admin: boolean) {
+    picking = false;
+    notify("mergePullRequest", { method, ...(admin ? { admin: true } : {}) });
+  }
 
   /** Folded to its head, keeping the tally and giving the canvas the rest. */
   const folded = $derived(settings.hud.checksFolded);
@@ -205,6 +308,8 @@
   };
 </script>
 
+<svelte:window onclick={elsewhere} />
+
 <!-- Nothing ran, or no forge answered: no panel rather than a panel of
      nothing. -->
 {#if settings.hud.checks && summary && summary.total > 0}
@@ -310,6 +415,95 @@
         {/if}
       </div>
     {/each}
+
+    <!-- What can be done about the change, under what the forge made of it.
+         The same two questions the forge's own page asks in this order: is it
+         up to date with what it is merging into, and may it go in. -->
+    {#if pull && !settled && merging}
+      <div class="merge-actions">
+        {#if conflicted}
+          <span class="merge-why">Conflicts with {model.current.meta.baseRef}.</span>
+        {:else if behind}
+          <span class="merge-menu" bind:this={updateMenu}>
+            <button class="merge-do" onclick={() => update(false)}>Update branch</button>
+            <button
+              class="merge-more"
+              title="Choose how to bring the base in"
+              aria-label="Choose how to update"
+              onclick={() => (updating = !updating)}
+            >
+              <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+                <path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
+            {#if updating}
+              <span class="merge-list">
+                <button class="merge-item" onclick={() => update(false)}>
+                  Update with merge commit
+                  <span class="why">The merge commit will be yours.</span>
+                </button>
+                <button class="merge-item" onclick={() => update(true)}>
+                  Update with rebase
+                  <span class="why">Replayed on the latest base, then force-pushed.</span>
+                </button>
+              </span>
+            {/if}
+          </span>
+        {/if}
+
+        {#if mergeable}
+          <span class="merge-menu go" bind:this={methodMenu}>
+            <button class="merge-do go" onclick={() => merge(false)}>{NAMED[method]}</button>
+            <!-- Only when there is a choice to make. A repository that allows
+                 one way of landing a change has no menu; a caret over a list of
+                 one is a control that teaches nothing. -->
+            {#if methods.length > 1}
+              <button
+                class="merge-more go"
+                title="Choose how to land this change"
+                aria-label="Choose how to merge"
+                onclick={() => (picking = !picking)}
+              >
+                <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+                  <path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+              {#if picking}
+                <span class="merge-list right">
+                  {#each methods as how (how)}
+                    <button
+                      class="merge-item"
+                      onclick={() => { chosen = how; picking = false; }}
+                    >{NAMED[how]}</button>
+                  {/each}
+                </span>
+              {/if}
+            {/if}
+          </span>
+        {:else if bypassable}
+          <!-- A tick, and then a button. Merging a change whose requirements
+               are not met is the most consequential thing this tool can be
+               asked to do, and one red button — however alarming — is one
+               stray click away from doing it. -->
+          <!-- The warning lives here, in words, rather than in the colour of
+               the button below. -->
+          <label class="bypass-say">
+            <Viewed bind:checked={bypassing} label="" />
+            <span>Merge without waiting for requirements</span>
+          </label>
+          <button
+            class="merge-do bypass"
+            disabled={!bypassing}
+            title={bypassing
+              ? "Merge past the requirements that have not been met"
+              : "Tick the box first"}
+            onclick={() => merge(true)}
+          >{NAMED[method]}</button>
+        {:else if blocked}
+          <span class="merge-why">Waiting on requirements.</span>
+        {/if}
+      </div>
+    {/if}
     {/if}
   </div>
 {/if}
@@ -492,6 +686,164 @@
     margin-left: auto;
     flex: 0 0 auto;
     color: var(--muted);
+  }
+
+  /* Under the rows and set apart from them, because these do something to the
+     change rather than describe it. */
+  .merge-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 7px;
+    border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  }
+
+  .merge-why {
+    color: var(--muted);
+    font-size: 10px;
+  }
+
+  .merge-menu {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .merge-menu.go {
+    margin-left: auto;
+  }
+
+  .merge-menu.go .merge-do {
+    margin-left: 0;
+  }
+
+  .merge-more.go {
+    background: var(--action);
+    border-color: transparent;
+    color: #fff;
+  }
+
+  .merge-do {
+    padding: 4px 9px;
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .merge-do:hover {
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+  }
+
+  /* The one that lands the change, in the colour everything else that commits
+     to something uses. */
+  .merge-do.go {
+    margin-left: auto;
+    background: var(--action);
+    border-color: transparent;
+    color: #fff;
+  }
+
+  /* And the one that goes past the rules, which is not that colour on purpose:
+     it is the forge's warning red, so it can never be pressed by habit. */
+  /* Under the tick it belongs to, at the same edge. Pushed to the right it read
+     as the panel's main action rather than as the second half of one decision,
+     which is the opposite of what a gated control should say.
+
+     The same green as every other button that commits to something, and not
+     red: the tick above it is what says this is the dangerous one, and the
+     button only exists in a pressable state once that has been said. A red
+     control that is disabled most of the time teaches a reader to read past the
+     colour, which is the one thing it is there to do. */
+  .merge-do.bypass {
+    margin-right: auto;
+    background: var(--action);
+    border-color: transparent;
+    color: #fff;
+  }
+
+  /* Plainly not pressable until the box is ticked. Dimmed rather than hidden,
+     because what is on offer — and what it will cost — is the thing the reader
+     is deciding about. */
+  .merge-do:disabled {
+    background: color-mix(in srgb, var(--text) 12%, transparent);
+    color: var(--muted);
+    opacity: 1;
+    cursor: default;
+  }
+
+  /* The whole line is the label, so the words are as much a target as the box. */
+  .bypass-say {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 100%;
+    color: var(--removed, #f85149);
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  .merge-more {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 5px;
+    margin-left: -1px;
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    border-radius: 0 4px 4px 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .merge-do:first-child {
+    border-radius: 4px 0 0 4px;
+  }
+
+  .merge-list.right {
+    left: auto;
+    right: 0;
+  }
+
+  .merge-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    width: 230px;
+    padding: 4px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg) 96%, var(--text) 4%);
+    border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  }
+
+  .merge-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 7px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .merge-item:hover {
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+  }
+
+  .merge-item .why {
+    color: var(--muted);
+    font-size: 10px;
   }
 
   .failed .verdict { color: var(--removed, #f85149); }

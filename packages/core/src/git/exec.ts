@@ -126,33 +126,89 @@ export async function remoteDefaultBranch(
  * Only ever moves between a branch and its own remote-tracking ref, so it
  * cannot silently change which branch is being compared against.
  */
-export async function freshest(
+/**
+ * Which side of a base branch a reading should be measured against.
+ *
+ * `forge` for a change as the forge has it — a pull request, a commit range.
+ * The forge merges into its own copy of the base, so that is what the change is
+ * a change to, whatever this checkout happens to have fetched or not fetched.
+ * A stale local `development` makes a pull request look like it contains work
+ * somebody else landed weeks ago.
+ *
+ * `local` for a reading of the files on disk. Comparing uncommitted work
+ * against a branch this machine has not got is measuring against something the
+ * reader cannot see; their own copy is the one they have been working from, and
+ * differences from the forge belong to a different question.
+ */
+export type BaseSide = "forge" | "local";
+
+/**
+ * Whether this names a branch, as opposed to picking out a commit.
+ *
+ * `HEAD~4`, `abc1234` and `main@{yesterday}` are all things git will resolve,
+ * and none of them is a branch: there is no remote-tracking copy of them to
+ * prefer, and pasting `origin/` in front produces either nothing or — worse —
+ * something that resolves to a different commit entirely. `origin/HEAD~4` is a
+ * real revision in most repositories, four commits back from the default
+ * branch, and it silently drifts every time anybody merges anything.
+ */
+function looksLikeBranch(ref: string): boolean {
+  return !/[~^:@]|^[0-9a-f]{7,40}$/.test(ref);
+}
+
+/**
+ * The copy of this base the reading should use.
+ *
+ * Named rather than guessed. This used to pick whichever copy was ahead, which
+ * is a reasonable-sounding rule that gives different answers on different
+ * machines: two reviewers looking at the same pull request saw different files
+ * depending on when each of them last fetched.
+ */
+export async function sided(
   ref: string,
   options: GitOptions,
+  prefer: BaseSide,
 ): Promise<string> {
-  // Already a remote-tracking ref, or something with no obvious counterpart.
-  if (ref.includes("/")) return ref;
+  // Already says which side it means, or is not a branch at all.
+  if (ref.includes("/") || !looksLikeBranch(ref)) return ref;
 
   const remote = `origin/${ref}`;
-  if (!(await refExists(remote, options))) return ref;
+  const [hasRemote, hasLocal] = await Promise.all([
+    refExists(remote, options),
+    refExists(ref, options),
+  ]);
 
+  if (prefer === "forge") return hasRemote ? remote : ref;
+
+  // A local reading still needs something that exists: a worktree, or a fresh
+  // clone, often carries only the remote-tracking copy.
+  if (!hasLocal) return remote;
+  if (!hasRemote) return ref;
+
+  /*
+   * The reader's own copy, unless they have not fetched it in a while.
+   *
+   * A base branch this checkout is behind on is a base from before other
+   * people's work landed, and measuring against it puts all of that work inside
+   * the reader's change — which is the complaint this whole distinction exists
+   * to answer. Their copy is preferred because it is what they have been
+   * working from; it stops being preferable the moment it stops being current.
+   */
   const counts = (
     await git(["rev-list", "--left-right", "--count", `${ref}...${remote}`], options)
       .catch(() => "")
   ).trim().split(/\s+/);
-
-  const here = Number(counts[0]);
   const there = Number(counts[1]);
-  if (!Number.isFinite(here) || !Number.isFinite(there)) return ref;
-
-  // The forge has commits this checkout does not. Whether or not this one also
-  // has commits of its own, the forge's copy is the base the change is against.
-  return there > 0 ? remote : ref;
+  return Number.isFinite(there) && there > 0 ? remote : ref;
 }
 
 export async function resolveBaseRef(
   preferred: string | undefined,
   options: GitOptions,
+  // Local by default, which is what a caller with no view on the matter means:
+  // this checkout's own copy while it is current, the forge's once it is not.
+  // Asking for the forge's is a deliberate statement about whose change it is.
+  prefer: BaseSide = "local",
 ): Promise<string> {
   const candidates: string[] = [];
   const add = (ref?: string) => {
@@ -161,8 +217,12 @@ export async function resolveBaseRef(
 
   if (preferred) {
     add(preferred);
-    // A worktree may only carry the remote-tracking copy of the branch.
-    if (!preferred.includes("/")) add(`origin/${preferred}`);
+    // A worktree may only carry the remote-tracking copy of the branch. Only
+    // for something that is a branch: `origin/HEAD~4` resolves in most
+    // repositories and means something else entirely.
+    if (!preferred.includes("/") && looksLikeBranch(preferred)) {
+      add(`origin/${preferred}`);
+    }
   }
   add(await remoteDefaultBranch(options));
   for (const name of COMMON_BASES) {
@@ -171,7 +231,7 @@ export async function resolveBaseRef(
   }
 
   for (const candidate of candidates) {
-    if (await refExists(candidate, options)) return freshest(candidate, options);
+    if (await refExists(candidate, options)) return sided(candidate, options, prefer);
   }
 
   const available = await listRefs(options);

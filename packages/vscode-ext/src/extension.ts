@@ -27,6 +27,7 @@ import { GraphPanel } from "./panel.js";
 import { ChangeSidebar } from "./sidebar.js";
 import { activeTheme } from "./theme.js";
 import { SeenStore } from "./seen.js";
+import { BaseStore } from "./base.js";
 import { SessionStore } from "./session.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
@@ -53,6 +54,9 @@ let seen: SeenStore;
 /** What was on screen when the window last went away. */
 let session: SessionStore;
 
+/** A base this reader picked for this repository, kept off the repository. */
+let chosenBase: BaseStore;
+
 /**
  * The whole question the last review answered, so it can be asked again.
  *
@@ -76,6 +80,7 @@ export function activate(context: vscode.ExtensionContext): void {
   viewed = new ViewedStore(context.workspaceState);
   seen = new SeenStore(context.workspaceState);
   session = new SessionStore(context.workspaceState);
+  chosenBase = new BaseStore(context.workspaceState);
   // Global rather than per-workspace: which files somebody has read is about
   // this change, but whether they want to see import arrows is about them.
   GraphPanel.settings = new SettingsStore(context.globalState);
@@ -161,6 +166,28 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerUriHandler({
       handleUri: (uri) => void handleUri(uri),
     }),
+    /*
+     * Coming back to the window, which is when what is on screen is oldest.
+     *
+     * Everything here is the forge's answer to a question asked once, and the
+     * forge goes on without this window: a change approved last night is merged
+     * by somebody else this morning, checks that were running have finished, a
+     * pull request has been closed. A reader who returns to a review is looking
+     * at yesterday's answers with no way to tell.
+     *
+     * Focus is the signal, because it is the moment before they read it. Not
+     * the only one — a tab brought forward asks too — but the one that catches
+     * the case that matters, which is a window left open overnight.
+     */
+    // Guarded, like the save listener: every registration here is inside one
+    // `push`, so a host that does not offer this event would take the whole of
+    // activation down with it — and the failure would look like the extension
+    // being broken rather than like a missing API.
+    typeof vscode.window.onDidChangeWindowState === "function"
+      ? vscode.window.onDidChangeWindowState((window) => {
+          if (window.focused) void refreshStale();
+        })
+      : new vscode.Disposable(() => {}),
     vscode.commands.registerCommand("odin.reviewAgainst", () => reviewAgainst()),
     vscode.commands.registerCommand("odin.exportGraph", () => exportGraph()),
     vscode.commands.registerCommand("odin.checkout", (number: number) =>
@@ -715,7 +742,13 @@ async function review(
   if (!repo) return;
 
   const settings = vscode.workspace.getConfiguration("odin");
-  const base = baseRef ?? settings.get<string>("baseRef") ?? undefined;
+  // Asked for, as opposed to merely configured. Only the first overrules what
+  // the forge says this change is a change to.
+  const base = baseRef ?? undefined;
+  // This reader's own answer first, then the workspace's stored preference.
+  // Neither overrules the pull request; both beat guessing.
+  const fallback =
+    chosenBase.read() ?? settings.get<string>("baseRef") ?? undefined;
 
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: "Odin" },
@@ -725,35 +758,69 @@ async function review(
       // is watching, not only in a notification in the corner.
       await GraphPanel.showLoading("Reading the change");
       try {
-        const built = await buildGraphForRepo({
+        /*
+         * Which surface the progress belongs on.
+         *
+         * Before there is anything to look at, it is the waiting page's own
+         * line — that is what the mark is for. Once the cards are up the loader
+         * is gone and `note` speaks to nobody, so the same words go to the
+         * badge in the corner instead, which is where the reader is already
+         * being told the picture is still being worked out.
+         */
+        let drawn = false;
+        const request = {
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
+          ...(fallback ? { fallbackBaseRef: fallback } : {}),
           ...(headRef ? { headRef } : {}),
           ...(worktree ? { worktree: true } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
-          report: (message) => {
+          report: (message: string) => {
             progress.report({ message });
-            GraphPanel.note(message);
+            if (drawn) GraphPanel.setRefreshing(true, message);
+            else GraphPanel.note(message);
           },
-        });
-        const graph = built.graph;
+        };
 
-        if (graph.nodes.length === 0) {
-          vscode.window.showInformationMessage(
-            `Odin: nothing differs between ${graph.meta.baseRef} and the current branch.`,
-          );
-          await GraphPanel.stopLoading(
-            `Nothing differs between ${graph.meta.baseRef} and this branch.`,
-          );
-          return;
-        }
+        /*
+         * The diff first, the references after.
+         *
+         * Reading the patch is a tenth of a second; following every reference
+         * in it is several, and it is the whole of the wait on a change of any
+         * size. Opening a review used to show nothing for all of it — and what
+         * the reader came to see, the code, was ready almost immediately.
+         *
+         * So the cards go up as soon as the diff is read and the arrows arrive
+         * when they are known. The corner keeps saying it is working, now with
+         * how far through it is, because a picture that looks finished and is
+         * not is worse than one that says so.
+         */
+        const staged = await stageGraphForRepo(request);
+        const built = staged.first;
+        const graph = built.graph;
 
         progress.report({ message: "colouring" });
         await present(built, repo, base, headRef);
+        drawn = true;
+
+        // The expensive half, over the picture the reader already has. The
+        // badge says the arrows are still being worked out; without it a change
+        // would look unconnected rather than unfinished.
+        let final = built;
+        if (staged.rest) {
+          GraphPanel.setRefreshing(true, "Resolving references…");
+          try {
+            final = await staged.rest();
+            await present(final, repo, base, headRef);
+          } finally {
+            GraphPanel.setRefreshing(false);
+          }
+        }
+
         // A reading of the working tree goes stale the moment the reader
         // touches a file, which they are about to. Nothing else does.
-        armLive(repo, base, headRef, built);
+        armLive(repo, base, headRef, final);
       } catch (error) {
         await GraphPanel.stopLoading(
           error instanceof Error ? error.message : String(error),
@@ -873,6 +940,37 @@ async function present(
     ...(graph.meta.worktree ? { worktree: true } : {}),
     ...(pull ? { number: pull.number } : {}),
   });
+}
+
+/**
+ * When the forge was last asked anything, so it is not asked constantly.
+ *
+ * Focus arrives on every alt-tab, and somebody moving between an editor and a
+ * terminal generates dozens a minute. What is being guarded is not the cost to
+ * this machine but a shared rate limit: `gh` is the same allowance the sidebar,
+ * the checks and the comments all draw on.
+ */
+let lastAsked = 0;
+
+/** How long an answer from the forge is worth keeping without asking again. */
+const STALE_AFTER = 120_000;
+
+/**
+ * Asks the forge for everything that could have moved while nobody was looking.
+ *
+ * The list of pull requests, this review's own standing, and its checks. None
+ * of it touches the diff: the change on screen is still the change, and
+ * rebuilding it would take the reader's place on the page away for news that
+ * belongs in the bar.
+ */
+async function refreshStale(): Promise<void> {
+  const now = Date.now();
+  if (now - lastAsked < STALE_AFTER) return;
+  lastAsked = now;
+  await Promise.all([
+    refreshPullRequests(),
+    GraphPanel.refreshStale(),
+  ]).catch(() => undefined);
 }
 
 /** Watching the working tree, when the graph on screen is of the working tree. */
@@ -1015,10 +1113,17 @@ async function reportFailure(repo: string, error: unknown): Promise<void> {
   });
   if (!picked) return;
 
-  // Remember it, so the next review does not ask again.
-  await vscode.workspace
-    .getConfiguration("odin")
-    .update("baseRef", picked, vscode.ConfigurationTarget.Workspace);
+  /*
+   * Remembered here, not in the workspace's settings.
+   *
+   * That is where this used to go, and `.vscode/settings.json` is a file most
+   * repositories commit — so one person answering this question once wrote a
+   * permanent instruction for everybody who cloned it. Months later it is still
+   * choosing the base for changes it has nothing to do with, and what that
+   * looks like is other people's merged work inside your branch rather than a
+   * setting anybody would think to look at.
+   */
+  await chosenBase.write(picked);
   await review(picked);
 }
 
@@ -1042,8 +1147,10 @@ async function exportGraph(): Promise<void> {
   const settings = vscode.workspace.getConfiguration("odin");
   const { graph } = await buildGraphForRepo({
     cwd: repo,
+    // The stored preference, not a request: the pull request's own base beats
+    // it, the same way it does everywhere else.
     ...(settings.get<string>("baseRef")
-      ? { baseRef: settings.get<string>("baseRef")! }
+      ? { fallbackBaseRef: settings.get<string>("baseRef")! }
       : {}),
     includeImports: settings.get<boolean>("includeImports", true),
     includeContext: settings.get<boolean>("includeContext", false),

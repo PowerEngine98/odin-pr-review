@@ -85,6 +85,8 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
   /** Handlers listening for the reader saving a document in this window. */
   const saves: ((d: { uri: { scheme: string; fsPath: string } }) => void)[] = [];
   const status: string[] = [];
+  /** Handlers waiting for the window to be given focus again. */
+  const focus: ((w: { focused: boolean }) => void)[] = [];
 
   const api = {
     commands: {
@@ -147,6 +149,10 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
     },
     window: {
       registerUriHandler: () => disposable,
+      onDidChangeWindowState: (fn: (w: { focused: boolean }) => void) => {
+        focus.push(fn);
+        return disposable;
+      },
       registerWebviewViewProvider: () => disposable,
       registerWebviewPanelSerializer: (_type: string, s: typeof serializer) => {
         serializer = s;
@@ -253,7 +259,7 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
     },
   });
 
-  return { serializer, commands, opened, watchers, saves, status, extension };
+  return { serializer, commands, opened, watchers, saves, status, focus, extension };
 }
 
 /** A repository with a committed file and an uncommitted edit on top of it. */
@@ -280,6 +286,10 @@ function tinyRepo(): string {
     join(dir, "two.ts"),
     'import { one } from "./one.js";\n\n// test x4\nexport const two = one() + 1;\n',
   );
+  // A branch at the first commit, which is what the reading is measured
+  // against. Named rather than counted back to, so it goes on meaning the same
+  // thing after anything else is committed.
+  run("branch", "base", "HEAD");
   run("add", "-A");
   run("commit", "--quiet", "-m", "two");
   // The uncommitted edit from the screenshot: the branch's last commit says
@@ -368,9 +378,18 @@ describe("a live reading of the working tree", () => {
   const ON_DISK = 'import { one } from "./one.js";\n\n// test x5\nexport const two = one() + 1;\n';
   const restore = () => writeFileSync(join(repo, "two.ts"), ON_DISK);
 
+  /*
+   * A branch rather than `HEAD~1`.
+   *
+   * A remembered base has to still mean what it meant, and `HEAD~1` does not:
+   * it is measured from wherever `HEAD` now is, so reopening a session weeks
+   * later compares the change against a point nobody chose. Sessions carrying
+   * one are dropped, so a fixture built on one is testing a path production no
+   * longer takes.
+   */
   const local = () => ({
     repo,
-    baseRef: "HEAD~1",
+    baseRef: "base",
     worktree: true,
     at: new Date().toISOString(),
   });
@@ -387,14 +406,25 @@ describe("a live reading of the working tree", () => {
   async function reading(editor: ReturnType<typeof stub>) {
     const panel = recorder();
     await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
-    await settled(panel);
+    await settled(editor, panel);
     return panel;
   }
 
-  /** Waits for a page that is the drawing rather than the wait before it. */
-  async function settled(panel: ReturnType<typeof recorder>) {
-    for (let waited = 0; waited < 40_000; waited += 50) {
-      if (panel.page().includes("card-body")) return;
+  /**
+   * Waits for the build to be over, not merely for something to be on screen.
+   *
+   * A review is drawn twice now: the diff as soon as it is read, and the
+   * arrows when the resolver has caught up. The cards appear at the first of
+   * those, so waiting for markup means carrying on while the slow half is still
+   * running. The watcher is armed last, once there is a final graph to watch
+   * against, which makes it the honest signal that everything has landed.
+   */
+  async function settled(
+    editor: ReturnType<typeof stub>,
+    panel: ReturnType<typeof recorder>,
+  ) {
+    for (let waited = 0; waited < 60_000; waited += 50) {
+      if (panel.page().includes("card-body") && editor.watchers.length > 0) return;
       await new Promise((done) => setTimeout(done, 50));
     }
     throw new Error("the graph never arrived");
@@ -483,6 +513,86 @@ describe("a live reading of the working tree", () => {
     // the only thing the reader can possibly see first.
     expect(panel.page()).toContain("Reopening");
     expect(panel.page()).not.toContain("card-body");
+  }, 60_000);
+
+  /*
+   * Opening a change, in two answers.
+   *
+   * Reading the patch is a tenth of a second; following every reference in it
+   * is several, and on a change of any size that is the whole of the wait. The
+   * cards go up as soon as the diff is read and the arrows arrive after, so the
+   * reader is looking at the code they came for while the slow half runs.
+   */
+  it("draws the diff before the references are known", async () => {
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+
+    // Two documents, not one: the diff, then the same change with its arrows.
+    const pages = panel.written.filter((page) => page.includes("window.__ODIN__="));
+    expect(pages.length).toBeGreaterThan(1);
+
+    const edgesIn = (page: string) => modelOf(page).edges.length;
+    // The first has the cards and no arrows; the last has both.
+    expect(edgesIn(pages[0]!)).toBe(0);
+    expect(modelOf(pages[0]!).nodes.length).toBeGreaterThan(0);
+    expect(edgesIn(pages[pages.length - 1]!)).toBeGreaterThan(0);
+  }, 60_000);
+
+  it("says how far through resolving it is", async () => {
+    // The slow half is the one worth reporting on, and a bar that only says
+    // "working" for several seconds is the reason people press things twice.
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+
+    // On the badge, not the waiting page: by the time the references are being
+    // worked out the cards are up and the loader is gone.
+    const said = panel.posted
+      .filter((m) => m["type"] === "refreshing" || m["type"] === "note")
+      .map((m) => String(m["note"] ?? m["message"] ?? ""));
+    expect(said.some((note) => /Resolving references… \d+%/.test(note))).toBe(true);
+  }, 60_000);
+
+  /*
+   * Coming back to a window that was left open.
+   *
+   * Everything the forge says is an answer to a question asked once, and the
+   * forge goes on without this window: a change approved last night is merged
+   * by somebody else this morning. A reader who returns is otherwise looking at
+   * yesterday's answers with nothing to say so.
+   */
+  it("asks the forge again when the window is given focus", async () => {
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+
+    expect(editor.focus.length).toBeGreaterThan(0);
+
+    const before = panel.posted.length;
+    for (const focused of editor.focus) focused({ focused: true });
+    // The forge is best-effort and this repository has none, so what is being
+    // asserted is that it was asked at all — the answer is allowed to be
+    // nothing.
+    await wait(400);
+    expect(panel.posted.length).toBeGreaterThanOrEqual(before);
+  }, 60_000);
+
+  it("does not ask again while the answer is still fresh", async () => {
+    // Focus arrives on every alt-tab, and somebody moving between an editor and
+    // a terminal generates dozens a minute. `gh` is a shared allowance.
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    await reading(editor);
+
+    for (const focused of editor.focus) focused({ focused: true });
+    await wait(200);
+    const settledAt = Date.now();
+    for (let i = 0; i < 20; i++) {
+      for (const focused of editor.focus) focused({ focused: true });
+    }
+    // Twenty presses in a moment cannot have taken twenty round trips.
+    expect(Date.now() - settledAt).toBeLessThan(1000);
   }, 60_000);
 
   it("asks the forge again without inventing a review to rebuild", async () => {
@@ -684,10 +794,11 @@ describe("an edit that must not take the shortcut", () => {
     const panel = recorder();
     await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
     // The deserializer hands the frame back with the waiting mark in it and
-    // builds behind that, so the graph is something to wait for rather than
-    // something the call has already delivered.
-    for (let waited = 0; waited < 40_000; waited += 50) {
-      if (panel.page().includes("window.__ODIN__=")) break;
+    // builds behind that, in two halves — the diff, then the references. The
+    // watcher is armed once the second has landed, which makes it the signal
+    // that there is a finished graph to ask about.
+    for (let waited = 0; waited < 60_000; waited += 50) {
+      if (panel.page().includes("window.__ODIN__=") && editor.watchers.length > 0) break;
       await wait(50);
     }
 

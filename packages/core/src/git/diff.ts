@@ -1,7 +1,7 @@
 import { parseUnifiedDiff, type ParsedFile } from "../diff/parse.js";
 import { buildGraph } from "../graph/build.js";
 import { annotateTests } from "../graph/tests.js";
-import type { ChangeGraph, GraphMeta } from "../model/types.js";
+import type { ChangeGraph, GraphMeta, PullRequest } from "../model/types.js";
 import type { Author } from "../model/types.js";
 import { readPullRequest } from "./pullRequest.js";
 import {
@@ -15,6 +15,17 @@ import {
 } from "./exec.js";
 
 export interface DiffRequest extends GitOptions {
+  /**
+   * A base to fall back on when nothing better is known.
+   *
+   * Separate from `baseRef` because they mean different things. `baseRef` is
+   * somebody asking for a comparison against something particular, and nothing
+   * should overrule that. This is a workspace's stored preference, which the
+   * pull request's own base beats — a setting left over from an afternoon's
+   * debugging otherwise measures every change in that repository against the
+   * wrong point for ever.
+   */
+  fallbackBaseRef?: string;
   /**
    * Branch the PR targets. Treated as a preference: if it does not exist here,
    * the remote's default branch and the usual names are tried before giving up.
@@ -56,14 +67,62 @@ export async function readPatch(req: DiffRequest): Promise<{
   meta: GraphMeta;
 }> {
   const headRef = req.headRef ?? "HEAD";
-  // The configured name may not exist here: worktrees and fresh clones often
-  // carry only `origin/main`, and plenty of repositories still use `master`.
-  const baseRef = await resolveBaseRef(req.baseRef, req);
-  const base = await mergeBase(baseRef, headRef, req);
 
+  /*
+   * What the change is a change *to*.
+   *
+   * The forge is asked first when it is going to be asked at all, because it is
+   * the only authority on this: a configured base is a preference and a
+   * detected one is a guess, and when either disagrees with the pull request
+   * the reader almost always meant the pull request. A workspace that still
+   * carries `odin.baseRef` from some afternoon's debugging otherwise measures
+   * every change against the wrong point for ever — and what that looks like is
+   * not an error but other people's merged work appearing inside somebody's
+   * branch, which is very hard to read as a misconfiguration.
+   *
+   * An explicit base still wins. Asking for a comparison against something
+   * particular is a thing reviewers do, and the forge's answer is not more
+   * correct than the question that was actually asked.
+   */
   // Naming only the base leaves git comparing it to the files on disk. Naming
   // both compares two commits, and the working tree does not come into it.
   const dirty = req.worktree === true && (req.headRef === undefined || req.headRef === "HEAD");
+
+  let pull: PullRequest | undefined;
+  if (req.pullRequest) {
+    const branch = (await currentBranch(req)) ?? headRef;
+    pull = await readPullRequest(branch, req);
+  }
+  const wanted =
+    req.baseRef ??
+    (pull?.baseRefName ? pull.baseRefName : undefined) ??
+    req.fallbackBaseRef;
+
+  /*
+   * And which copy of it.
+   *
+   * A pull request is the forge's, so it is measured against the forge's copy
+   * of the base — that is what it will actually be merged into, whatever this
+   * machine has or has not fetched. Two reviewers on the same change should see
+   * the same files, and under the old rule they saw different ones depending on
+   * when each of them last pulled.
+   *
+   * Everything else is the reader's own. A working tree compared against a
+   * branch they have not got is measured against something they cannot see, and
+   * commits sitting unpushed on their base are part of what their branch was
+   * cut from rather than part of the change. Their copy is preferred there —
+   * but only while it is current, because a base from before other people's
+   * work landed puts all of that work inside their change, which is the
+   * complaint this whole distinction exists to answer.
+   */
+  // The configured name may not exist here: worktrees and fresh clones often
+  // carry only `origin/main`, and plenty of repositories still use `master`.
+  const baseRef = await resolveBaseRef(
+    wanted,
+    req,
+    !dirty && pull ? "forge" : "local",
+  );
+  const base = await mergeBase(baseRef, headRef, req);
 
   const args = [
     "diff",
@@ -102,11 +161,7 @@ export async function readPatch(req: DiffRequest): Promise<{
   const authors = await readAuthors(base, headRef, req);
   if (authors.length > 0) meta.authors = authors;
 
-  if (req.pullRequest) {
-    const branch = (await currentBranch(req)) ?? headRef;
-    const pull = await readPullRequest(branch, req);
-    if (pull) meta.pullRequest = pull;
-  }
+  if (pull) meta.pullRequest = pull;
 
   return { patch, meta };
 }

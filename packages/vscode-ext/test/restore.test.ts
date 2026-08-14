@@ -88,6 +88,7 @@ function stub(session: unknown, workspace?: { folder: string; baseRef: string })
     },
     window: {
       registerUriHandler: () => disposable,
+      onDidChangeWindowState: () => disposable,
       registerWebviewViewProvider: () => disposable,
       registerWebviewPanelSerializer: (_type: string, s: typeof serializer) => {
         serializer = s;

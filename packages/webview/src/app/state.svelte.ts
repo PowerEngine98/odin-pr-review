@@ -347,6 +347,9 @@ export function listen(): void {
         if (next.checks === undefined && model.current.checks !== undefined) {
           next.checks = model.current.checks;
         }
+        if (next.merging === undefined && model.current.merging !== undefined) {
+          next.merging = model.current.merging;
+        }
         model.current = next;
         return;
       }
@@ -409,6 +412,27 @@ export function listen(): void {
         }
         return;
       }
+
+      /*
+       * What has become of the pull request, without rebuilding anything.
+       *
+       * A review outlives the window it was opened in: come back the next day
+       * and somebody else may have merged it. Nothing about the diff has moved
+       * — what has changed is whether reviewing it still means anything, and
+       * that is a line in the bar rather than a reason to redraw the change.
+       */
+      case "pullRequest":
+        if (message.payload) {
+          model.current.meta = {
+            ...model.current.meta,
+            pullRequest: message.payload as never,
+          };
+        }
+        return;
+
+      case "merging":
+        model.current.merging = message.payload;
+        return;
 
       case "checks":
         model.current.checks = message.payload;

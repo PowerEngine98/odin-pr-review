@@ -232,6 +232,23 @@ export interface PullRequest {
   title: string;
   url: string;
   draft?: boolean;
+  /**
+   * What has become of it: `OPEN`, `MERGED` or `CLOSED`.
+   *
+   * Worth carrying because a review outlives the window it was opened in. Come
+   * back the next morning and the change may well have been merged by somebody
+   * else — and a bar that says "Open" over a change that landed hours ago is
+   * not merely stale, it invites a second review of work that is finished.
+   */
+  state?: string;
+  /**
+   * The branch it will actually be merged into, as the forge has it.
+   *
+   * The one authority on what this change is a change *to*. A configured base
+   * is a preference and a detected one is a guess; this is the answer, and when
+   * they disagree the reader almost always means this one.
+   */
+  baseRefName?: string;
   /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
   reviewDecision?: string;
   /** Who has been asked to look, and what they have said so far. */
@@ -266,6 +283,14 @@ export interface PullRequestSummary extends PullRequest {
   avatarUrl?: string;
   /** Logins and team slugs the forge is waiting on for a review. */
   requestedFrom?: string[];
+  /**
+   * The branch it will actually be merged into, as the forge has it.
+   *
+   * The one authority on what this change is a change *to*. A configured base
+   * is a preference and a detected one is a guess; this is the answer, and when
+   * they disagree the reader almost always means this one.
+   */
+  baseRefName?: string;
   /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
   reviewDecision?: string;
   /** Where it ended up. Open unless the forge says otherwise. */

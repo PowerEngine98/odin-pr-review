@@ -75,6 +75,15 @@ export interface ReferenceResolver {
    * reference nothing, or nothing might have been able to tell.
    */
   readonly languages: readonly string[];
-  resolve(probes: LineProbe[]): Promise<ProbeResult[]>;
+  /**
+   * Answers what every one of these lines points at.
+   *
+   * `onProbe` is called once per line looked at, whether or not anything was
+   * found. Resolving is the slow half of a build — seconds, on a change of any
+   * size — and this is the only place that knows how far through it is. A
+   * resolver that does not report simply says nothing, and the caller falls
+   * back to saying that work is happening without saying how much is left.
+   */
+  resolve(probes: LineProbe[], onProbe?: () => void): Promise<ProbeResult[]>;
   dispose?(): void | Promise<void>;
 }

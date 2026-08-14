@@ -162,6 +162,8 @@ export interface MetaView {
     title: string;
     url: string;
     draft?: boolean;
+    /** `OPEN`, `MERGED` or `CLOSED`, as the forge last said. */
+    state?: string;
     reviewDecision?: string;
     /**
      * Who has been asked to look, and what they have said so far.
@@ -231,6 +233,8 @@ export interface ViewModel {
   arrangements: Arrangements;
   unified: boolean;
   checks?: unknown;
+  /** How the change stands against being merged, as the forge sees it. */
+  merging?: unknown;
   canReview: boolean;
   /** What a half-written review is filed under between page loads. */
   review: string;

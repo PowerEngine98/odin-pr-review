@@ -89,6 +89,7 @@ function createStub(): Stub {
     },
     window: {
       registerUriHandler: () => disposable,
+      onDidChangeWindowState: () => disposable,
       registerWebviewViewProvider: () => disposable,
       registerWebviewPanelSerializer: () => disposable,
       showErrorMessage: () => Promise.resolve(),
@@ -193,10 +194,11 @@ describe("the built extension", () => {
     ).default as { contributes: { commands: { command: string }[] } };
 
     // Every command, plus the content provider, the URI handler, the sidebar,
-    // the viewed store's listener, and the serializer that reopens the graph
-    // after a window reload. Anything registered but not collected here leaks
-    // on reload — which is exactly the moment the serializer exists for.
-    const nonCommands = 5;
+    // the viewed store's listener, the serializer that reopens the graph after
+    // a window reload, and the focus listener that re-asks the forge about a
+    // review left open. Anything registered but not collected here leaks on
+    // reload — which is exactly the moment the serializer exists for.
+    const nonCommands = 6;
     expect(subscriptions).toHaveLength(
       manifest.contributes.commands.length + nonCommands,
     );

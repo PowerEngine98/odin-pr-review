@@ -35,6 +35,17 @@ export interface BuildRequest {
   /** Repository root. */
   cwd: string;
   baseRef?: string;
+  /**
+   * The workspace's stored preference, which the pull request's own base beats.
+   *
+   * Kept apart from `baseRef` because they are different claims. One is a
+   * reviewer asking for a particular comparison; the other is a setting that
+   * may have been written months ago by somebody debugging. A stale one
+   * otherwise measures every change in that repository against the wrong point
+   * for ever, and what that looks like is not an error — it is other people's
+   * merged work appearing inside a branch that never touched it.
+   */
+  fallbackBaseRef?: string;
   headRef?: string;
   /**
    * Read the change from the files on disk rather than from the last commit,
@@ -81,6 +92,17 @@ export interface BuiltGraph {
    * keeps them; the page is told which ones it may not believe yet.
    */
   withdrawn?: string[];
+  /**
+   * Nothing has looked for references in this yet.
+   *
+   * Set on the first half of a two-phase build, and it is a warning rather than
+   * a description: such a graph has no arrows because none have been worked out,
+   * not because there are none. Anything that treats it as a finished picture —
+   * the shortcut most of all, which reuses the previous build's arrows when an
+   * edit cannot have moved one — would conclude there was nothing to reuse and
+   * leave the change permanently unconnected.
+   */
+  unresolved?: boolean;
 }
 
 /**
@@ -108,6 +130,7 @@ export async function buildGraphForRepo(
   let graph = await graphFromRepo({
     cwd: request.cwd,
     ...(request.baseRef ? { baseRef: request.baseRef } : {}),
+    ...(request.fallbackBaseRef ? { fallbackBaseRef: request.fallbackBaseRef } : {}),
     headRef,
     ...(request.worktree ? { worktree: true } : {}),
     // The forge is asked once. A rebuild provoked by a keystroke cannot have
@@ -124,8 +147,15 @@ export async function buildGraphForRepo(
 
   // The whole point of holding the last build: an edit that cannot have moved
   // an arrow does not need the arrows worked out again.
-  const rows = previous ? rowsOnly(previous.graph, graph) : undefined;
-  if (previous && rows) return again(previous, graph, rows);
+  //
+  // Never against a graph nothing has resolved yet. The first half of a
+  // two-phase build has no arrows because none have been looked for, and the
+  // shortcut cannot tell that from a change that genuinely has none — it would
+  // find nothing to reuse, decide that was the answer, and leave the change
+  // unconnected for as long as the reader kept it open.
+  const reusable = previous && !previous.unresolved;
+  const rows = reusable ? rowsOnly(previous.graph, graph) : undefined;
+  if (reusable && rows) return again(previous, graph, rows);
 
   const build = (roots: { head: string; base?: string }) => [
     new TsResolver({
@@ -185,9 +215,26 @@ export async function buildGraphForRepo(
         languageLookup(graph),
       );
       try {
-        graph = attachEdges(graph, await resolver.resolve(probes), {
-          resolver: "ts",
-        });
+        /*
+         * How far through the slow half we are.
+         *
+         * Reported in whole percent and only when that number changes: a change
+         * of any size is tens of thousands of lines, and a message per line is
+         * a channel full of arithmetic nobody can read. What the reader gets is
+         * at most a hundred updates, which is exactly as many as a percentage
+         * can distinguish.
+         */
+        let last = -1;
+        graph = attachEdges(
+          graph,
+          await resolver.resolve(probes, (done, total) => {
+            const percent = Math.floor((done / total) * 100);
+            if (percent === last) return;
+            last = percent;
+            report(`Resolving references… ${percent}%`);
+          }),
+          { resolver: "ts" },
+        );
         // Schema objects become a vertex of their own, so a migration points at
         // the table it touches rather than at whichever file declared it.
         graph = withDatabase(graph, { root: headRoot });
@@ -210,7 +257,10 @@ export async function buildGraphForRepo(
     const reviewers = graph.meta.pullRequest?.reviewers ?? [];
     await Promise.all(
       reviewers.map(async (who) => {
-        if (!who.avatarUrl) return;
+        // Already carried across from the first half of the build. Fetching a
+        // `data:` URI fails, and the failure path here deletes the face — so
+        // re-inlining an inlined one is how a reviewer loses their picture.
+        if (!who.avatarUrl || who.avatarUrl.startsWith("data:")) return;
         const data = await inlineAvatar(who.avatarUrl).catch(() => undefined);
         if (data) who.avatarUrl = data;
         else delete who.avatarUrl;
@@ -221,6 +271,52 @@ export async function buildGraphForRepo(
   } finally {
     for (const checkout of checkouts) checkout.dispose();
   }
+}
+
+/**
+ * The change as the patch describes it, with nothing looked up.
+ *
+ * Everything here is cheap: read the diff, fetch the blobs behind the gaps, lay
+ * it out. What is skipped is the whole of the expensive half — no checkout is
+ * materialised, no compiler program is built, no reference is followed — so
+ * there are no arrows and no vertices for files the diff never mentioned.
+ *
+ * The forge is asked, because the bar across the top is part of what a reader
+ * is waiting for and asking twice would be a second round trip for an answer
+ * that cannot have changed in the meantime.
+ */
+async function diffOnly(request: BuildRequest): Promise<BuiltGraph> {
+  const report = request.report ?? (() => {});
+  const headRef = request.worktree
+    ? "HEAD"
+    : request.headRef ?? (await currentBranch({ cwd: request.cwd })) ?? "HEAD";
+
+  report("Reading the diff…");
+  const graph = await graphFromRepo({
+    cwd: request.cwd,
+    ...(request.baseRef ? { baseRef: request.baseRef } : {}),
+    ...(request.fallbackBaseRef ? { fallbackBaseRef: request.fallbackBaseRef } : {}),
+    headRef,
+    ...(request.worktree ? { worktree: true } : {}),
+    pullRequest: true,
+  });
+
+  report("Laying out…");
+  const snippets = await freshSnippets(graph, undefined, request.cwd);
+
+  // The faces, for the same reason they are inlined in the full build: a
+  // webview refuses a remote image, and this document is the one the reader
+  // looks at first.
+  await Promise.all(
+    (graph.meta.pullRequest?.reviewers ?? []).map(async (who) => {
+      if (!who.avatarUrl || who.avatarUrl.startsWith("data:")) return;
+      const data = await inlineAvatar(who.avatarUrl).catch(() => undefined);
+      if (data) who.avatarUrl = data;
+      else delete who.avatarUrl;
+    }),
+  );
+
+  return { ...arrange(graph, snippets), unresolved: true };
 }
 
 /**
@@ -266,7 +362,26 @@ export async function stageGraphForRepo(
   request: BuildRequest,
   previous?: BuiltGraph,
 ): Promise<StagedBuild> {
-  if (!previous) return { first: await buildGraphForRepo(request) };
+  /*
+   * Opening a change, which is the longest wait there is.
+   *
+   * Reading the diff is a tenth of a second and resolving every reference in it
+   * is several — so a reader opening a review watched a blank page for the
+   * whole of it, when the thing they came to read was ready almost at once.
+   * The cards go out first and the arrows follow.
+   *
+   * The same shape the hot reload already had; it simply never applied to the
+   * first build, because there was nothing to show the rows *against*. There
+   * does not need to be: a change with no arrows on it yet is still the change.
+   */
+  if (!previous) {
+    const first = await diffOnly(request);
+    return { first, rest: () => buildGraphForRepo(request, first) };
+  }
+
+  // A first half is not something to take the shortcut against: it has no
+  // arrows because none have been looked for.
+  if (previous.unresolved) return { first: await buildGraphForRepo(request, previous) };
 
   const headRef = request.worktree
     ? "HEAD"
@@ -275,6 +390,7 @@ export async function stageGraphForRepo(
   let fresh = await graphFromRepo({
     cwd: request.cwd,
     ...(request.baseRef ? { baseRef: request.baseRef } : {}),
+    ...(request.fallbackBaseRef ? { fallbackBaseRef: request.fallbackBaseRef } : {}),
     headRef,
     ...(request.worktree ? { worktree: true } : {}),
   });

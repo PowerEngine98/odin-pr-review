@@ -69,3 +69,29 @@ describe("coming back to the review that was on screen", () => {
     expect(store.last()).toBeUndefined();
   });
 });
+
+/**
+ * A base that stopped meaning what it meant.
+ *
+ * `HEAD~4` was a good answer at the moment it was written down and means
+ * something else by the next commit — it is measured from wherever `HEAD` now
+ * is. Replaying one compares the change against a point nobody chose, and it
+ * shows up as other people's work inside the reader's branch rather than as a
+ * stale session.
+ */
+describe("reopening against a base that has moved", () => {
+  it("forgets a base that names a commit rather than a branch", () => {
+    const held = memento();
+    const store = new SessionStore(held);
+    store.remember({ repo: "/w", baseRef: "HEAD~4" });
+    expect(store.last()?.baseRef).toBeUndefined();
+    // The rest of the session is still worth reopening.
+    expect(store.last()?.repo).toBe("/w");
+  });
+
+  it("keeps one that names a branch", () => {
+    const store = new SessionStore(memento());
+    store.remember({ repo: "/w", baseRef: "origin/development" });
+    expect(store.last()?.baseRef).toBe("origin/development");
+  });
+});

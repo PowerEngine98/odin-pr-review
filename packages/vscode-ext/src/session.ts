@@ -59,6 +59,24 @@ export class SessionStore {
 
     const age = Date.now() - Date.parse(session.at);
     if (!Number.isFinite(age) || age > STALE_AFTER) return undefined;
+
+    /*
+     * A base worth reopening against.
+     *
+     * `HEAD~4` was a perfectly good answer at the moment it was written down
+     * and means something else by the next commit: it is measured from wherever
+     * `HEAD` now is. Replaying one silently compares the change against a point
+     * nobody chose, and what that looks like is other people's work appearing
+     * inside the reader's branch — which is unreadable as a stale session.
+     *
+     * A branch name keeps its meaning. Anything else is dropped, and the base
+     * is worked out afresh from the pull request, which is the answer that was
+     * wanted anyway.
+     */
+    if (session.baseRef && !/^[\w.\-/]+$/.test(session.baseRef)) {
+      const { baseRef: _dropped, ...rest } = session;
+      return rest;
+    }
     return session;
   }
 

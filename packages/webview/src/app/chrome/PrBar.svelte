@@ -32,6 +32,7 @@
       title: string;
       url: string;
       draft?: boolean;
+      state?: string;
       reviewDecision?: string;
     };
   }
@@ -73,6 +74,42 @@
     }
     return { done, total };
   });
+
+  /**
+   * What the forge last said had become of it, and what to call that.
+   *
+   * A pull request outlives the window it was opened in: come back the next
+   * morning and somebody else may well have merged it. The bar used to be
+   * hardcoded to "Open" unless it was a draft, so a change that landed hours
+   * ago still invited a review of finished work.
+   */
+  const settled = $derived(
+    pull?.state === "MERGED" || pull?.state === "CLOSED",
+  );
+  const kind = $derived(
+    pull?.state === "MERGED" ? "merged"
+      : pull?.state === "CLOSED" ? "closed"
+      : pull?.draft ? "draft"
+      : "open",
+  );
+  /**
+   * What the sentence says happened, or is meant to.
+   *
+   * A merged change did not "want" anything — it landed — and a closed one
+   * never will. Only an open pull request is still asking.
+   */
+  const wording = $derived(
+    kind === "merged" ? "merged"
+      : kind === "closed" ? "did not merge"
+      : "wants to merge",
+  );
+
+  const label = $derived(
+    kind === "merged" ? "Merged"
+      : kind === "closed" ? "Closed"
+      : kind === "draft" ? "Draft"
+      : "Open",
+  );
 
   /** Whether the state menu is open, and the span to measure clicks against. */
   let stateOpen = $state(false);
@@ -147,16 +184,24 @@
   <!-- The state is a button where it can be changed and a label where it
        cannot. A control that looks pressable and is not is worse than a plain
        word. -->
-  {#if pull && model.current.canReview}
+  <!-- Settled by somebody else while this was open, which is the ordinary case
+       for a review left overnight. Nothing here is pressable then: the state
+       menu offers to close or to convert to draft, and neither means anything
+       once the change has landed. -->
+  {#if pull && settled}
+    <span class="state {kind}" title="This pull request is {label.toLowerCase()}">
+      {@html PR_ICON}{label}
+    </span>
+  {:else if pull && model.current.canReview}
     <span class="state-menu" bind:this={stateMenu}>
       <button
-        class="state pressable {pull.draft ? 'draft' : 'open'}"
+        class="state pressable {kind}"
         title={pull.draft
           ? "Mark this pull request ready for review"
           : "Change the state of this pull request"}
         onclick={() => (stateOpen = !stateOpen)}
       >
-        {@html PR_ICON}{pull.draft ? "Draft" : "Open"}{@html CARET}
+        {@html PR_ICON}{label}{@html CARET}
       </button>
       {#if stateOpen}
         <span class="state-list">
@@ -205,19 +250,22 @@
       {/if}
     </span>
     <!-- "wants to merge" is the forge's phrasing, and it is worth borrowing: it
-         names the direction, which two ref names side by side never quite do. -->
+         names the direction, which two ref names side by side never quite do.
+         Past tense once the change has landed: a merged pull request does not
+         want anything, and a bar still saying so reads as one nobody has acted
+         on. -->
     <!-- The whole sentence lives in the tooltip as well, so the words the bar
          drops when it narrows are still somewhere a reader can get at them. -->
     <span
       class="merge-line"
-      title="{authors[0] ? `${authors[0].name} wants to merge` : 'merging'}{commits
+      title="{authors[0] ? `${authors[0].name} ${wording}` : wording}{commits
         ? ` ${commits === 1 ? '1 commit' : `${commits} commits`}`
         : ''} into {meta?.baseRef ?? ''} from {meta?.headRef ?? ''}"
     >
       {#if authors[0]}
-        <span class="who">{authors[0].name}</span><span class="prose">wants to merge</span>
+        <span class="who">{authors[0].name}</span><span class="prose">{wording}</span>
       {:else}
-        <span class="prose">merging</span>
+        <span class="prose">{wording}</span>
       {/if}
       {#if commits}<span class="commits">{commits === 1 ? "1 commit" : `${commits} commits`}</span>{/if}
       <span class="prose">into</span> <span class="ref base">{meta?.baseRef ?? ""}</span>
@@ -378,6 +426,10 @@
      own green is the weakest pairing in the page. */
   .state.open { background: var(--action); color: #fff; }
   .state.draft { background: color-mix(in srgb, var(--muted) 80%, var(--text)); }
+  /* The forge's own two colours for a change that is over: purple for merged,
+     red for closed. Neither is pressable, so neither carries the caret. */
+  .state.merged { background: #8957e5; color: #fff; }
+  .state.closed { background: var(--removed, #f85149); color: #fff; }
   .state.local { background: color-mix(in srgb, var(--muted) 70%, transparent); }
 
   /* The state is where a draft stops being a draft, so it is a button — with a

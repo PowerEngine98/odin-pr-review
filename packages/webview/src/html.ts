@@ -59,6 +59,8 @@ export interface RenderOptions {
   comments?: ReviewComment[];
   /** What the forge made of the branch, if it was asked. */
   checks?: CheckSummary;
+  /** How the change stands against being merged, as the forge sees it. */
+  merging?: unknown;
   /** Whether the host can post a review; without it the composer is pointless. */
   canReview?: boolean;
   /** Who the reader is signed in as, for deciding what they may edit. */
@@ -208,6 +210,7 @@ export function renderHtml(
     })),
     unified: layout.unified,
     ...(options.checks ? { checks: options.checks } : {}),
+    ...(options.merging ? { merging: options.merging } : {}),
     arrangements: {
       withTests: place(full),
       withoutTests: place(layout),
@@ -272,6 +275,11 @@ export function renderHtml(
               url: graph.meta.pullRequest.url,
               ...(graph.meta.pullRequest.draft !== undefined
                 ? { draft: graph.meta.pullRequest.draft }
+                : {}),
+              // What has become of it, so a change merged overnight does not
+              // go on inviting a review of finished work.
+              ...(graph.meta.pullRequest.state
+                ? { state: graph.meta.pullRequest.state }
                 : {}),
               ...(graph.meta.pullRequest.reviewDecision
                 ? { reviewDecision: graph.meta.pullRequest.reviewDecision }

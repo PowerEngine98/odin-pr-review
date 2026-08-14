@@ -61,10 +61,13 @@ export class KotlinResolver implements ReferenceResolver {
     this.options = options;
   }
 
-  async resolve(probes: LineProbe[]): Promise<ProbeResult[]> {
+  async resolve(probes: LineProbe[], onProbe?: () => void): Promise<ProbeResult[]> {
     const results: ProbeResult[] = [];
 
     for (const probe of probes) {
+      // Counted before anything can skip the rest of the loop, so the tally is
+      // of lines looked at rather than of lines that happened to answer.
+      onProbe?.();
       const context = this.contextFor(probe.side);
       if (!context) continue;
 

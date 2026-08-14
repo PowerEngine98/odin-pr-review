@@ -20,7 +20,8 @@ export async function readPullRequest(
   const json = await run(
     [
       "pr", "view", branch,
-      "--json", "number,title,url,isDraft,reviewDecision,reviewRequests,latestReviews",
+      "--json",
+      "number,title,url,isDraft,state,baseRefName,reviewDecision,reviewRequests,latestReviews",
     ],
     options,
   );
@@ -29,6 +30,8 @@ export async function readPullRequest(
   try {
     const parsed = JSON.parse(json) as Partial<PullRequest> & {
       isDraft?: boolean;
+      state?: string;
+      baseRefName?: string;
       reviewDecision?: string | null;
       reviewRequests?: { login?: string; name?: string; slug?: string }[];
       latestReviews?: {
@@ -50,6 +53,8 @@ export async function readPullRequest(
       url: parsed.url,
     };
     if (parsed.isDraft === true) pull.draft = true;
+    if (parsed.state) pull.state = parsed.state;
+    if (parsed.baseRefName) pull.baseRefName = parsed.baseRefName;
     if (parsed.reviewDecision) pull.reviewDecision = parsed.reviewDecision;
 
     const reviewers = readReviewers(parsed.reviewRequests, parsed.latestReviews);
@@ -314,4 +319,147 @@ export function byActivity(
 /** An ISO timestamp cut back to the hour, which is all the order uses. */
 function hourOf(stamp: string): string {
   return stamp.slice(0, 13);
+}
+
+/** How a pull request stands against being merged. */
+export interface MergeStatus {
+  /** `MERGEABLE`, `CONFLICTING`, or `UNKNOWN` while the forge works it out. */
+  mergeable: string;
+  /**
+   * Why it cannot be merged, in the forge's own words: `CLEAN`, `BLOCKED`
+   * (waiting on approvals or checks), `BEHIND` (the base has moved on),
+   * `DIRTY` (conflicts), `UNSTABLE` (checks failing but not required).
+   */
+  state: string;
+  /**
+   * Whether this account could merge it anyway.
+   *
+   * Administrators and maintainers can override a blocked merge. Offering that
+   * to somebody who cannot is a button that fails with a permissions error
+   * after they have already decided to press it.
+   */
+  canBypass: boolean;
+  /**
+   * The ways this repository allows a change to be put onto the base.
+   *
+   * Repositories turn these off: plenty allow only a squash, and offering a
+   * rebase there is a button that fails after it has been pressed. Empty means
+   * nothing could be read, and the caller falls back to the one the forge
+   * itself defaults to.
+   */
+  methods: MergeMethod[];
+}
+
+/**
+ * What the forge would say if asked to merge this now.
+ *
+ * Two questions rather than one: the pull request's own standing, and what this
+ * account is allowed to do about it. They come from different places — the
+ * second is a property of the repository — and neither is worth failing the
+ * other for, so a missing answer leaves the conservative value.
+ */
+export async function readMergeStatus(
+  branch: string,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<MergeStatus | undefined> {
+  const [json, rights] = await Promise.all([
+    run(["pr", "view", branch, "--json", "mergeable,mergeStateStatus"], options),
+    run(
+      [
+        "api", "repos/{owner}/{repo}",
+        "--jq",
+        "{permissions, allow_squash_merge, allow_merge_commit, allow_rebase_merge}",
+      ],
+      options,
+    ),
+  ]);
+  if (!json) return undefined;
+
+  try {
+    const parsed = JSON.parse(json) as {
+      mergeable?: string;
+      mergeStateStatus?: string;
+    };
+    let canBypass = false;
+    const methods: MergeMethod[] = [];
+    if (rights) {
+      try {
+        const about = JSON.parse(rights) as {
+          permissions?: Record<string, boolean>;
+          allow_squash_merge?: boolean;
+          allow_merge_commit?: boolean;
+          allow_rebase_merge?: boolean;
+        };
+        const permissions = about.permissions ?? {};
+        canBypass = permissions["admin"] === true || permissions["maintain"] === true;
+        // Squash first, because it is what most repositories that restrict
+        // anything restrict everything else down to.
+        if (about.allow_squash_merge) methods.push("squash");
+        if (about.allow_merge_commit) methods.push("merge");
+        if (about.allow_rebase_merge) methods.push("rebase");
+      } catch {
+        // Not being sure means not offering it.
+      }
+    }
+    return {
+      mergeable: parsed.mergeable ?? "UNKNOWN",
+      state: parsed.mergeStateStatus ?? "UNKNOWN",
+      canBypass,
+      methods,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Brings the base branch's commits into this one.
+ *
+ * `gh` refuses when there is nothing to bring, which is not a failure worth
+ * reporting as one — so the caller is told what happened rather than handed an
+ * error to interpret.
+ */
+export async function updateBranch(
+  number: number,
+  options: GitOptions & { timeoutMs?: number; rebase?: boolean },
+): Promise<boolean> {
+  const out = await run(
+    [
+      "pr", "update-branch", String(number),
+      ...(options.rebase ? ["--rebase"] : []),
+    ],
+    { ...options, timeoutMs: options.timeoutMs ?? 30_000 },
+  );
+  return out !== undefined;
+}
+
+/** How the commits of a change are put onto the base branch. */
+export type MergeMethod = "squash" | "merge" | "rebase";
+
+/**
+ * Merges the change.
+ *
+ * The one thing here that cannot be undone from this window, so it is the one
+ * thing every caller confirms first. `admin` is the forge's own word for
+ * merging past rules that have not been met; it fails for an account that may
+ * not, which is why nothing offers it without asking whether this one can.
+ */
+export async function mergePullRequest(
+  number: number,
+  options: GitOptions & {
+    timeoutMs?: number;
+    method?: MergeMethod;
+    admin?: boolean;
+  },
+): Promise<boolean> {
+  const method = options.method ?? "squash";
+  const out = await run(
+    [
+      "pr", "merge", String(number),
+      `--${method}`,
+      ...(options.admin ? ["--admin"] : []),
+    ],
+    { ...options, timeoutMs: options.timeoutMs ?? 60_000 },
+  );
+  return out !== undefined;
 }

@@ -9,6 +9,11 @@ import {
   deleteComment,
   editComment,
   listReviewComments,
+  readPullRequest,
+  readMergeStatus,
+  updateBranch,
+  mergePullRequest,
+  type MergeMethod,
   listReviewThreads,
   resolveThread,
   replyToComment,
@@ -99,6 +104,18 @@ interface ResolveMessage {
   payload: { id: number; resolved: boolean };
 }
 
+/** Bringing the base branch's commits into this one. */
+interface UpdateBranchMessage {
+  type: "updateBranch";
+  payload: { rebase?: boolean };
+}
+
+/** Merging the change, which is the one thing here that cannot be undone. */
+interface MergeMessage {
+  type: "mergePullRequest";
+  payload: { method?: MergeMethod; admin?: boolean };
+}
+
 /** Asking the forge to run one check again. */
 interface RerunMessage {
   type: "rerunCheck";
@@ -112,6 +129,8 @@ interface PartMessage {
 }
 
 type Message =
+  | UpdateBranchMessage
+  | MergeMessage
   | ResolveMessage
   | ChecksMessage
   | RerunMessage
@@ -406,6 +425,150 @@ export class GraphPanel {
   /** The one loader page listening for its own arrival, if any is. */
   private static listening: vscode.Disposable | undefined;
 
+  /**
+   * Asks the forge what has become of this pull request, and says so.
+   *
+   * Cheap and narrow on purpose: the state, the draft flag and the review
+   * decision, none of which need the graph rebuilt. A change merged overnight
+   * has not moved a single line as far as this window is concerned — what has
+   * changed is whether reviewing it still means anything.
+   */
+  async refreshPullRequest(): Promise<void> {
+    const known = this.graph.meta.pullRequest;
+    const branch = this.graph.meta.headRef;
+    if (!known || !branch) return;
+
+    const fresh = await readPullRequest(branch, {
+      cwd: this.repo,
+      timeoutMs: 8000,
+    }).catch(() => undefined);
+    if (!fresh) return;
+
+    // The faces are already inlined on the copy in hand, and re-inlining them
+    // is a round trip each. Kept unless the forge has news about who is asked.
+    const reviewers = fresh.reviewers?.length ? fresh.reviewers : known.reviewers;
+    if (reviewers && reviewers !== known.reviewers) {
+      // A webview refuses a remote image, so each face travels inside the
+      // document. Best-effort: one that will not load leaves a name, which is
+      // the part that matters.
+      await Promise.all(
+        reviewers.map(async (who) => {
+          if (!who.avatarUrl || who.avatarUrl.startsWith("data:")) return;
+          const data = await inlineAvatar(who.avatarUrl).catch(() => undefined);
+          if (data) who.avatarUrl = data;
+          else delete who.avatarUrl;
+        }),
+      );
+    }
+
+    const pullRequest = { ...known, ...fresh, ...(reviewers ? { reviewers } : {}) };
+    this.graph = {
+      ...this.graph,
+      meta: { ...this.graph.meta, pullRequest },
+    };
+    void this.panel.webview.postMessage({ type: "pullRequest", payload: pullRequest });
+  }
+
+  /** Everything about this review that the forge could have changed. */
+  static async refreshStale(): Promise<void> {
+    const panel = GraphPanel.current;
+    if (!panel) return;
+    await Promise.all([
+      panel.refreshPullRequest(),
+      panel.readChecks(),
+      panel.readMerge(),
+    ]);
+  }
+
+  /**
+   * How the change stands against being merged, and what may be done about it.
+   *
+   * Sent alongside the checks because it is the same question asked of the same
+   * page: whether this is ready, and if not, what is in the way.
+   */
+  async readMerge(): Promise<void> {
+    const branch = this.graph.meta.headRef;
+    if (!branch || !this.graph.meta.pullRequest) return;
+    const status = await readMergeStatus(branch, {
+      cwd: this.repo,
+      timeoutMs: 8000,
+    }).catch(() => undefined);
+    if (!status) return;
+    this.merging = status;
+    void this.panel.webview.postMessage({ type: "merging", payload: status });
+  }
+
+  /** The last answer, kept so a redraw does not lose it. */
+  private merging: unknown;
+
+  /**
+   * Brings the base branch in, once the reader has said so twice.
+   *
+   * Not destructive, but it is a commit on their branch under their name and it
+   * goes to the forge — so it is named rather than assumed, and the two ways of
+   * doing it are told apart, because a rebase force-pushes and a merge does not.
+   */
+  private async update(rebase: boolean): Promise<void> {
+    const pull = this.graph.meta.pullRequest;
+    if (!pull) return;
+
+    const how = rebase
+      ? "Rebase this branch on the latest base? It will be force-pushed."
+      : "Merge the latest base into this branch? The merge commit will be yours.";
+    const confirmed = await vscode.window.showWarningMessage(
+      how,
+      { modal: true },
+      "Update branch",
+    );
+    if (confirmed !== "Update branch") return;
+
+    const done = await updateBranch(pull.number, { cwd: this.repo, rebase });
+    vscode.window.setStatusBarMessage(
+      done
+        ? `Odin: #${pull.number} updated from ${this.graph.meta.baseRef}`
+        : `Odin: could not update #${pull.number} — it may already be up to date`,
+      5000,
+    );
+    if (done) await Promise.all([this.refreshPullRequest(), this.readMerge()]);
+  }
+
+  /**
+   * Merges the change, once the reader has said so twice.
+   *
+   * The confirmation names the change, the method and — when rules are being
+   * gone past — says so in as many words. This is the only action in the whole
+   * tool that cannot be taken back from here.
+   */
+  private async merge(how: { method?: MergeMethod; admin?: boolean }): Promise<void> {
+    const pull = this.graph.meta.pullRequest;
+    if (!pull) return;
+
+    const method = how.method ?? "squash";
+    const named = method === "squash" ? "Squash and merge" : method === "rebase" ? "Rebase and merge" : "Merge";
+    const confirmed = await vscode.window.showWarningMessage(
+      how.admin
+        ? `${named} #${pull.number} without waiting for its requirements to be met? This cannot be undone.`
+        : `${named} #${pull.number}? This cannot be undone.`,
+      { modal: true },
+      named,
+    );
+    if (confirmed !== named) return;
+
+    const done = await mergePullRequest(pull.number, {
+      cwd: this.repo,
+      method,
+      ...(how.admin ? { admin: true } : {}),
+    });
+    if (!done) {
+      vscode.window.showErrorMessage(
+        `Odin: the forge refused to merge #${pull.number}. Its requirements may not be met.`,
+      );
+      return;
+    }
+    vscode.window.showInformationMessage(`Odin: #${pull.number} merged.`);
+    await Promise.all([this.refreshPullRequest(), this.readMerge()]);
+  }
+
   /** A line of progress, without restarting the animation. */
   static note(message: string): void {
     if (!GraphPanel.waiting) return;
@@ -589,6 +752,7 @@ export class GraphPanel {
   watchChecks(branch: string, repo: string): void {
     this.checksOf = { branch, repo };
     void this.readChecks();
+    void this.readMerge();
   }
 
   /**
@@ -696,6 +860,17 @@ export class GraphPanel {
       type: "reviewSubmitted",
       comments: this.comments,
     });
+
+    /*
+     * And what the forge now thinks of the change.
+     *
+     * A review is the one thing here that changes a pull request's standing,
+     * and it used to be the one thing that left the bar saying what it said
+     * before. The reviewer who just approved is often not on the list at all —
+     * they were never formally asked — so their verdict has nowhere to appear
+     * until the forge is asked again, and it looks as though nothing was sent.
+     */
+    await this.refreshPullRequest();
   }
 
   /**
@@ -994,6 +1169,7 @@ export class GraphPanel {
       // said. The message channel is for news; this is for what is already
       // known when the page is built.
       ...(this.checks ? { checks: this.checks } : {}),
+      ...(this.merging ? { merging: this.merging } : {}),
     });
     return { html, model: modelIn(html) };
   }
@@ -1092,6 +1268,14 @@ export class GraphPanel {
       }
       if (message.type === "open") {
         await this.openDiff(message.payload.path);
+        return;
+      }
+      if (message.type === "updateBranch") {
+        await this.update(message.payload.rebase === true);
+        return;
+      }
+      if (message.type === "mergePullRequest") {
+        await this.merge(message.payload);
         return;
       }
       if (message.type === "resolveThread") {

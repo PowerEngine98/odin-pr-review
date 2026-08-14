@@ -223,3 +223,38 @@ describe("the code a suggestion replaces", () => {
     expect(read("../src/app/canvas/Card.svelte")).toMatch(/row\.kind === "gap"[\s\S]{0,120}walk\(row\.rows\)/);
   });
 });
+
+/**
+ * What has become of the pull request, in the bar.
+ *
+ * A review outlives the window it was opened in: leave one open overnight and
+ * somebody else merges it by morning. The bar used to be hardcoded to "Open"
+ * unless the change was a draft, so a change that landed hours ago went on
+ * inviting a review of finished work — and the view model never carried the
+ * field that would have said otherwise, so no amount of asking the forge would
+ * have helped.
+ */
+describe("a pull request that is over", () => {
+  const bar = (state?: string) => {
+    const graph: ChangeGraph = {
+      schemaVersion: "0.1.0",
+      meta: {
+        baseRef: "main", headRef: "feat", generator: "test",
+        pullRequest: {
+          number: 157, title: "t", url: "https://x/157",
+          ...(state ? { state } : {}),
+        },
+      },
+      nodes: [], edges: [],
+    };
+    return renderHtml(graph, layoutGraph(graph), { canReview: true });
+  };
+
+  it("carries the forge's verdict into the page", () => {
+    expect(bar("MERGED")).toContain('"state":"MERGED"');
+  });
+
+  it("says nothing about one the forge had no verdict on", () => {
+    expect(bar()).not.toContain('"state"');
+  });
+});

@@ -34,7 +34,18 @@ export class CompositeResolver implements ReferenceResolver {
     this.languages = [...this.byLanguage.keys()].sort();
   }
 
-  async resolve(probes: LineProbe[]): Promise<ProbeResult[]> {
+  /**
+   * Every probe, through whichever resolver knows its language.
+   *
+   * `onProgress` is told how many lines have been looked at out of how many
+   * there are. Counted across the whole set rather than per resolver: a change
+   * is usually one language with a handful of stragglers, so per-resolver
+   * progress would sit at nothing and then jump to done.
+   */
+  async resolve(
+    probes: LineProbe[],
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<ProbeResult[]> {
     const grouped = new Map<ReferenceResolver, LineProbe[]>();
 
     for (const probe of probes) {
@@ -46,9 +57,18 @@ export class CompositeResolver implements ReferenceResolver {
       else grouped.set(resolver, [probe]);
     }
 
+    // What can actually be answered, which is what the reader should be told
+    // about: a change full of files nothing can read would otherwise show a
+    // percentage that stops short of the end for ever.
+    let total = 0;
+    for (const group of grouped.values()) total += group.length;
+
+    let done = 0;
     const results: ProbeResult[] = [];
     for (const [resolver, group] of grouped) {
-      results.push(...(await resolver.resolve(group)));
+      results.push(
+        ...(await resolver.resolve(group, () => onProgress?.(++done, total))),
+      );
     }
     return results;
   }
