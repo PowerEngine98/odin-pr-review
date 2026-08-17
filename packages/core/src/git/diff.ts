@@ -14,6 +14,52 @@ import {
   type GitOptions,
 } from "./exec.js";
 
+/**
+ * The files git has never been told about, as a patch.
+ *
+ * `git diff` cannot see them. It compares the index and the tree to a commit,
+ * and a file that has never been added is in none of those — so a reading of
+ * the working tree showed every edit to an existing file and nothing at all of
+ * the new ones. A change is very often mostly new files, and to the reader they
+ * are the most changed thing in it: they had just written them.
+ *
+ * Produced with `--no-index` against nothing, which is exactly the "new file"
+ * patch git would emit once they were added, without adding them. Nothing here
+ * writes to the repository being read — an `--intent-to-add` would be the
+ * shorter way and it puts entries in somebody's index for the privilege of
+ * drawing a picture.
+ *
+ * `--exclude-standard` keeps whatever the repository ignores out of it, so
+ * build output and dependencies do not arrive as somebody's change.
+ */
+async function untracked(req: DiffRequest): Promise<string> {
+  const listed = await git(
+    ["ls-files", "--others", "--exclude-standard", "-z"],
+    req,
+  ).catch(() => "");
+  const paths = listed.split("\0").filter(Boolean);
+  if (paths.length === 0) return "";
+
+  const patches = await Promise.all(
+    paths.map((path) =>
+      git(
+        [
+          "diff", "--no-color", "--no-ext-diff", "--no-textconv",
+          `--unified=${req.context ?? 3}`,
+          "--no-index", "--", "/dev/null", path,
+        ],
+        req,
+      ).catch((error: { stdout?: string }) =>
+        // `--no-index` reports a difference by exiting 1, which is every time:
+        // that is the answer, not a failure, and the patch is on stdout.
+        typeof error?.stdout === "string" ? error.stdout : "",
+      ),
+    ),
+  );
+
+  return patches.join("");
+}
+
 export interface DiffRequest extends GitOptions {
   /**
    * A base to fall back on when nothing better is known.
@@ -137,7 +183,7 @@ export async function readPatch(req: DiffRequest): Promise<{
   ];
   if (req.pathspecs?.length) args.push("--", ...req.pathspecs);
 
-  const patch = await git(args, req);
+  const patch = (await git(args, req)) + (dirty ? await untracked(req) : "");
 
   // `HEAD` names a commit, not a change. Everything downstream reads headRef as
   // the answer to "which review is this" — the window title, the file a

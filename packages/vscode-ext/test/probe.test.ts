@@ -88,7 +88,11 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
   /** Handlers waiting for the window to be given focus again. */
   const focus: ((w: { focused: boolean }) => void)[] = [];
 
-  const api = {
+  const api: Record<string, never> & {
+    information: (message: string, ...rest: unknown[]) => Promise<unknown>;
+    [key: string]: unknown;
+  } = {
+    information: () => Promise.resolve(undefined),
     commands: {
       registerCommand: (id: string, run: (...args: unknown[]) => unknown) => {
         commands.set(id, run);
@@ -159,7 +163,8 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
         return disposable;
       },
       showErrorMessage: () => Promise.resolve(),
-      showInformationMessage: () => Promise.resolve(),
+      showInformationMessage: (message: string, ...rest: unknown[]) =>
+        api.information(message, ...rest),
       showWarningMessage: () => Promise.resolve(),
       showQuickPick: () => Promise.resolve(undefined),
       showTextDocument: () => Promise.resolve({}),
@@ -259,7 +264,13 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
     },
   });
 
-  return { serializer, commands, opened, watchers, saves, status, focus, extension };
+  return {
+    serializer, commands, opened, watchers, saves, status, focus, extension,
+    /** Swapped by a test that wants to see what the reader was offered. */
+    set information(fn: (message: string, ...rest: unknown[]) => Promise<unknown>) {
+      api.information = fn;
+    },
+  };
 }
 
 /** A repository with a committed file and an uncommitted edit on top of it. */
@@ -822,4 +833,71 @@ describe("an edit that must not take the shortcut", () => {
 
     expect(calls()).toHaveLength(0);
   }, 120_000);
+});
+
+/*
+ * A reading of commits, over files that have moved on.
+ *
+ * A committed reading does not change when the reader edits — that is what
+ * makes it a reading of commits — so nothing about it can say the files
+ * underneath have changed. Somebody restores a stash and goes on reading a
+ * picture of the branch as the forge has it, which is a picture of something
+ * else, with nothing anywhere saying so.
+ */
+describe("work appearing under a committed reading", () => {
+  let repo: string;
+  beforeAll(() => {
+    repo = tinyRepo();
+  });
+  afterAll(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("offers the live reading once, and does not ask again", async () => {
+    // A clean tree to start from: the fixture leaves an edit in place for the
+    // live-reading tests, and a reading opened over work already in progress
+    // is one the reader asked for as it is.
+    execFileSync("git", ["checkout", "--", "."], { cwd: repo, stdio: "ignore" });
+
+    const offered: string[] = [];
+    const editor = stub(
+      { repo, baseRef: "base", at: new Date().toISOString() },
+      { folder: repo, baseRef: "base" },
+    );
+    // Declined, so the offer must not come back while the work is still there.
+    editor.information = (message: string) => {
+      offered.push(message);
+      return Promise.resolve(undefined);
+    };
+
+    const panel = recorder();
+    await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
+    for (let waited = 0; waited < 40_000; waited += 50) {
+      if (panel.page().includes("window.__ODIN__=")) break;
+      await wait(50);
+    }
+
+    // The watch arms once it has read how the tree stands, which is a `git
+    // status` away. A reader edits seconds later; a test has to wait for it.
+    for (let waited = 0; waited < 10_000; waited += 25) {
+      if (editor.saves.length > 0) break;
+      await wait(25);
+    }
+
+    // The stash coming back: a tracked file changed on disk, uncommitted.
+    writeFileSync(join(repo, "two.ts"), 'import { one } from "./one.js";\n\n// restored\nexport const two = one() + 2;\n');
+    for (const save of editor.saves) {
+      save({ uri: { scheme: "file", fsPath: join(repo, "two.ts") } });
+    }
+    await wait(1500);
+
+    expect(offered.some((m) => /changed on disk/.test(m))).toBe(true);
+
+    // Asked once. Editing again while the answer stands is not a new question.
+    const asked = offered.length;
+    writeFileSync(join(repo, "two.ts"), 'import { one } from "./one.js";\n\n// restored twice\nexport const two = one() + 3;\n');
+    for (const save of editor.saves) {
+      save({ uri: { scheme: "file", fsPath: join(repo, "two.ts") } });
+    }
+    await wait(1500);
+    expect(offered.length).toBe(asked);
+  }, 60_000);
 });

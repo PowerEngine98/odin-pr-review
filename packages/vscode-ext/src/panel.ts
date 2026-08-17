@@ -104,6 +104,17 @@ interface ResolveMessage {
   payload: { id: number; resolved: boolean };
 }
 
+/**
+ * A file the drawing could not fly to.
+ *
+ * `known` says whether the change contains it at all: hidden behind a filter is
+ * a different problem from absent, and only one of them is fixed by rebuilding.
+ */
+interface MissedMessage {
+  type: "focusMissed";
+  payload: { path: string; known: boolean };
+}
+
 /** Bringing the base branch's commits into this one. */
 interface UpdateBranchMessage {
   type: "updateBranch";
@@ -129,6 +140,7 @@ interface PartMessage {
 }
 
 type Message =
+  | MissedMessage
   | UpdateBranchMessage
   | MergeMessage
   | ResolveMessage
@@ -479,6 +491,45 @@ export class GraphPanel {
       panel.readMerge(),
     ]);
   }
+
+  /**
+   * A row in the list that had nowhere to go.
+   *
+   * Never nothing. A row that answers a press with silence is the same, to a
+   * reader, as one that is broken — and the two reasons it can happen have
+   * different answers. A file the change does not contain is one the reading is
+   * too old to know about, so the file itself is opened and the reading it
+   * would appear in is offered. A file the drawing is merely hiding needs
+   * saying so, because the fix is a filter the reader can see.
+   */
+  private async missed(what: { path: string; known: boolean }): Promise<void> {
+    if (what.known) {
+      vscode.window.setStatusBarMessage(
+        `Odin: ${what.path} is hidden by the filters on this drawing`,
+        4000,
+      );
+      return;
+    }
+
+    // Not in this reading at all. Open it, so the press did what a press on a
+    // file name most nearly means.
+    await this.openDiff(what.path).catch(() => undefined);
+    if (this.graph.meta.worktree === true) return;
+
+    const answer = await vscode.window.showInformationMessage(
+      `Odin: ${what.path} is not in this reading — it has changed since.`,
+      "Show local changes",
+    );
+    if (answer === "Show local changes") GraphPanel.onLocal?.();
+  }
+
+  /**
+   * Asked for the live reading of what is on screen.
+   *
+   * The panel has no idea how a review is built; the extension wires the two
+   * together, the way it does for the file list.
+   */
+  static onLocal: (() => void) | undefined;
 
   /**
    * How the change stands against being merged, and what may be done about it.
@@ -1268,6 +1319,10 @@ export class GraphPanel {
       }
       if (message.type === "open") {
         await this.openDiff(message.payload.path);
+        return;
+      }
+      if (message.type === "focusMissed") {
+        await this.missed(message.payload);
         return;
       }
       if (message.type === "updateBranch") {

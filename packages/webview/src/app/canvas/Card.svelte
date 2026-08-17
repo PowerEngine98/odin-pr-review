@@ -444,9 +444,22 @@
     if (!titleWidth || !controlsWidth || !nameWidth) return none;
 
     const x = left ?? node.x;
-    // How far each end of the card lies outside what the reader can see.
+    /*
+     * How far each end of the card lies outside what the reader can see.
+     *
+     * Measured from the header rather than from `node.width`. That number is
+     * the engine's width for one arrangement, and a card is a different width
+     * in each: read unified, a card laid out for split is reported wider than
+     * it is drawn. The right edge then appears to be off the screen while the
+     * whole card is plainly on it, and the buttons set off to meet a reader who
+     * can already reach them — which is them sitting in the middle of a card
+     * with room to spare on either side.
+     *
+     * The header is the element they actually live in and it is measured, so it
+     * cannot disagree with what is on screen.
+     */
     const offLeft = viewLeft ? Math.max(0, viewLeft - x) : 0;
-    const offRight = viewRight ? Math.max(0, x + node.width - viewRight) : 0;
+    const offRight = viewRight ? Math.max(0, x + titleWidth - viewRight) : 0;
     if (offLeft <= 0 && offRight <= 0) return none;
 
     // The free middle of the bar: everything not already spoken for by the

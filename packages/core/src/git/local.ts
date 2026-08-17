@@ -147,3 +147,22 @@ export async function localBranches(
 
   return found;
 }
+
+/**
+ * How many tracked files have uncommitted changes in this checkout.
+ *
+ * Tracked only, which is the same reckoning the branch list uses: a file git
+ * has never been told about is not a change to anything, and counting the
+ * build output somebody happens to have in their tree would make every
+ * repository look permanently dirty.
+ *
+ * Best-effort. Nothing here is worth failing a review over, and a repository
+ * that will not answer is reported as clean rather than as broken.
+ */
+export async function uncommittedCount(options: GitOptions): Promise<number> {
+  const dirty = (
+    await git(["status", "--porcelain", "--untracked-files=no"], options)
+      .catch(() => "")
+  ).trim();
+  return dirty ? dirty.split("\n").length : 0;
+}

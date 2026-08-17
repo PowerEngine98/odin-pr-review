@@ -12,6 +12,7 @@ import {
   localBranches,
   worktreeFor,
   serializeGraph,
+  uncommittedCount,
   describeDelta,
   type LocalBranch,
 } from "@odin/core";
@@ -84,6 +85,11 @@ export function activate(context: vscode.ExtensionContext): void {
   // Global rather than per-workspace: which files somebody has read is about
   // this change, but whether they want to see import arrows is about them.
   GraphPanel.settings = new SettingsStore(context.globalState);
+  // The live reading of whatever is on screen, for the places that can only ask
+  // for it: a file the current reading is too old to contain.
+  GraphPanel.onLocal = () => {
+    if (last) void review(last.baseRef, last.headRef, true);
+  };
   sidebar = new ChangeSidebar(viewed, seen);
 
   // Populated in the background so activation is not held up by the network.
@@ -719,10 +725,12 @@ function gh(args: string[], cwd: string): Promise<string> {
 }
 
 export function deactivate(): void {
-  // Temporary checkouts are removed as they are used. The watcher is the one
-  // thing here that outlives a command, so it is the one thing to put away.
+  // Temporary checkouts are removed as they are used. The watchers are the one
+  // thing here that outlives a command, so they are what there is to put away.
   live?.dispose();
   live = undefined;
+  localWatch?.dispose();
+  localWatch = undefined;
   forgetBase();
 }
 
@@ -821,6 +829,9 @@ async function review(
         // A reading of the working tree goes stale the moment the reader
         // touches a file, which they are about to. Nothing else does.
         armLive(repo, base, headRef, final);
+        // And, for a reading of commits, whether the files underneath it have
+        // moved on since. The two never both apply.
+        watchForLocalWork(repo, base, headRef, final);
       } catch (error) {
         await GraphPanel.stopLoading(
           error instanceof Error ? error.message : String(error),
@@ -983,6 +994,86 @@ let live: LiveGraph | undefined;
  * would leave two watchers rebuilding two graphs into one panel, and the
  * slower of them would win.
  */
+/**
+ * Watching a committed reading for work that has not been committed.
+ *
+ * A reading of commits does not change when the reader edits a file — that is
+ * what makes it a reading of commits — so nothing about it can say that the
+ * files underneath it have moved on. Somebody restores a stash and goes on
+ * reading a picture of the branch as the forge has it, which is now a picture
+ * of something else, with nothing anywhere saying so.
+ *
+ * The live reading exists for exactly that and has to be asked for. So this
+ * says when it would be worth asking for, once, and then stays quiet.
+ */
+let localWatch: LiveGraph | undefined;
+
+function watchForLocalWork(
+  repo: string,
+  base: string | undefined,
+  headRef: string | undefined,
+  built: Awaited<ReturnType<typeof buildGraphForRepo>> | undefined,
+): void {
+  localWatch?.dispose();
+  localWatch = undefined;
+
+  const shown = built?.graph;
+  // A live reading already shows this work; there is nothing to offer.
+  if (!shown || shown.meta.worktree === true) return;
+
+  const settings = vscode.workspace.getConfiguration("odin");
+  if (!settings.get<boolean>("liveReload", true)) return;
+
+  /*
+   * What the tree looked like when this reading went up.
+   *
+   * Read before the watcher is armed, not from inside it. Taking the first
+   * event as the baseline sounds harmless and swallows precisely the change
+   * worth reporting: somebody restores a stash, the first file lands, and it is
+   * recorded as "how things were" rather than as news. Nothing is offered until
+   * a second change arrives, and for a stash of one file nothing ever is.
+   *
+   * Compared against rather than tested for emptiness, because a reader who
+   * opened a committed reading with work already in progress said, by opening
+   * it, that this is the picture they want.
+   */
+  void uncommittedCount({ cwd: repo }).then((atFirst) => {
+    if (localWatch) return;
+    let before = atFirst;
+    /** Asked and declined; not asked again until the tree is clean once more. */
+    let refused = false;
+
+    localWatch = new LiveGraph({
+      repo,
+      rebuild: async () => {
+        const now = await uncommittedCount({ cwd: repo });
+        if (now === 0) {
+          // Committed, stashed again or reverted. Whatever was offered and
+          // turned down is no longer the same offer.
+          before = 0;
+          refused = false;
+          return undefined;
+        }
+        if (now <= before || refused) return undefined;
+
+        before = now;
+        const files = now === 1 ? "1 file" : `${now} files`;
+        const answer = await vscode.window.showInformationMessage(
+          `Odin: ${files} changed on disk that this reading does not show.`,
+          "Show local changes",
+        );
+        if (answer !== "Show local changes") {
+          refused = true;
+          return undefined;
+        }
+        await review(base, headRef, true);
+        return undefined;
+      },
+      onChange: () => {},
+    });
+  });
+}
+
 function armLive(
   repo: string,
   base: string | undefined,

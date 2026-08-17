@@ -69,6 +69,71 @@
   );
 
   /**
+   * What is standing between this change and the base branch.
+   *
+   * Assembled from what the page already knows rather than asked for: the
+   * forge's verdict on the reviews, the checks it has reported, and its own
+   * word for the merge state. Branch protection would say this exactly, and
+   * reading it needs a permission most accounts on a repository do not have —
+   * so the answer is put together from the three things everybody can see,
+   * which between them cover what actually blocks a merge.
+   *
+   * Named rather than counted. "Waiting on requirements" is true and useless;
+   * what a reader wants is which requirement, and whether it is theirs to fix.
+   */
+  const missing = $derived.by(() => {
+    const why: string[] = [];
+    if (!merging) return why;
+
+    if (merging.mergeable === "CONFLICTING") {
+      why.push(`Conflicts with ${model.current.meta.baseRef} that have to be resolved first.`);
+    }
+    if (merging.state === "BEHIND") {
+      why.push(`Out of date with ${model.current.meta.baseRef}, which this repository requires.`);
+    }
+
+    const decision = pull?.reviewDecision;
+    if (decision === "REVIEW_REQUIRED") {
+      why.push("Waiting on approvals from the reviewers this repository requires.");
+    } else if (decision === "CHANGES_REQUESTED") {
+      const who = (pull?.reviewers ?? [])
+        .filter((r) => r.state === "CHANGES_REQUESTED")
+        .map((r) => r.login);
+      why.push(
+        who.length
+          ? `Changes requested by ${who.join(", ")}.`
+          : "Changes requested, and not yet resolved.",
+      );
+    }
+
+    // The checks by name, because "a check is failing" sends a reader to the
+    // forge to find out which one.
+    const failing = ordered.filter((c) => c.state === "failed").map((c) => c.name);
+    if (failing.length) {
+      why.push(`Failing: ${[...new Set(failing)].join(", ")}.`);
+    }
+    const running = ordered.filter((c) => c.state === "running").map((c) => c.name);
+    if (running.length) {
+      why.push(`Still running: ${[...new Set(running)].join(", ")}.`);
+    }
+
+    if (why.length === 0 && blocked) {
+      // The forge says blocked and none of the usual reasons applies — a rule
+      // this page cannot see, which is worth saying plainly rather than
+      // guessing at.
+      why.push("The forge is holding this back for a rule Odin cannot see.");
+    }
+    return why;
+  });
+
+  /** The same, as one string a tooltip can carry. */
+  const whyBlocked = $derived(
+    missing.length
+      ? `Cannot merge yet:\n• ${missing.join("\n• ")}`
+      : "",
+  );
+
+  /**
    * Going past rules that have not been met.
    *
    * Offered only to an account the forge would actually allow it for, and only
@@ -487,7 +552,7 @@
                stray click away from doing it. -->
           <!-- The warning lives here, in words, rather than in the colour of
                the button below. -->
-          <label class="bypass-say">
+          <label class="bypass-say" title={whyBlocked}>
             <Viewed bind:checked={bypassing} label="" />
             <span>Merge without waiting for requirements</span>
           </label>
@@ -495,12 +560,12 @@
             class="merge-do bypass"
             disabled={!bypassing}
             title={bypassing
-              ? "Merge past the requirements that have not been met"
-              : "Tick the box first"}
+              ? `Merge past these:\n• ${missing.join("\n• ")}`
+              : `${whyBlocked}\n\nTick the box to merge anyway.`}
             onclick={() => merge(true)}
           >{NAMED[method]}</button>
         {:else if blocked}
-          <span class="merge-why">Waiting on requirements.</span>
+          <span class="merge-why" title={whyBlocked}>Waiting on requirements.</span>
         {/if}
       </div>
     {/if}

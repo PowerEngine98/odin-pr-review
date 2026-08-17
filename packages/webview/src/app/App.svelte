@@ -37,6 +37,7 @@
   import Thread from "./panels/Thread.svelte";
   import {
     model as page,
+    notify,
     review,
     travel,
     ui,
@@ -247,7 +248,27 @@
       const id = camera.showFile(path);
       // The mark the map falls back on, so that arriving from the list says the
       // same thing about where the reader is as arriving from a key or an arrow.
-      if (id) ui.activeNode = id;
+      if (id) {
+        ui.activeNode = id;
+        return;
+      }
+
+      /*
+       * Nowhere to fly to, which is two different situations.
+       *
+       * The drawing may be hiding the card — a part is open, tests are off, the
+       * file has been ticked away — or the change may not contain the file at
+       * all, which is what happens when a committed reading is on screen and
+       * the reader has since edited something. Both used to be a click that did
+       * nothing, and a row that does nothing is indistinguishable from a broken
+       * one.
+       *
+       * The host is told which, because only it can do anything about either.
+       */
+      notify("focusMissed", {
+        path,
+        known: page.current.nodes.some((node) => node.path === path),
+      });
     };
     travel.toLine = (path, line, side) => {
       const at = camera.showLine(path, line, side);
