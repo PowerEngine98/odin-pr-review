@@ -83,7 +83,19 @@ export async function enrichSnippets(
 
   for (const [nodeId, perSide] of wanted) {
     const node = byId.get(nodeId)!;
-    const collected: Snippet[] = [];
+    /*
+     * Added to what is already here, not put in its place.
+     *
+     * The pass above fetches the material behind a file's gaps so a reader can
+     * open them; this one fetches the few lines around where an arrow lands.
+     * Starting a fresh list threw the first away — so a file with an arrow into
+     * it lost every one of its gaps, and the twenty lines that had been
+     * openable became a band standing in front of nothing.
+     *
+     * Which put the arrow's own target inside that band. The file was readable
+     * until something pointed at it, and pointing at it is what a graph is for.
+     */
+    const collected: Snippet[] = [...(snippets.get(nodeId) ?? [])];
 
     for (const [side, ranges] of perSide) {
       const lines = await readBlob(node, side, graph, options, fileCache);

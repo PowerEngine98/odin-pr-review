@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildIndex, indexFile, type KotlinIndex } from "../src/index-build.js";
+import { findCandidates } from "../src/resolver.js";
 import { findCandidates, KotlinResolver } from "../src/resolver.js";
 import type { LineProbe } from "@odin/core";
 
@@ -223,5 +224,77 @@ describe("KotlinResolver", () => {
 
   it("declares the language it covers", () => {
     expect(new KotlinResolver({ roots: { head: "/" } }).languages).toEqual(["kotlin"]);
+  });
+});
+
+/**
+ * A Kotlin class takes its collaborators in its constructor.
+ *
+ *     class NotificationsProjection(
+ *       notificationStatisticsProjection: NotificationStatisticsProjection,
+ *     ) : ModelProjection<NotificationsModel> by project(
+ *
+ * Every name there is a dependency and not one of them is followed by a
+ * bracket. Under call-position-only they produced nothing, so two files sat
+ * next to each other in the drawing with nothing between them — which is
+ * exactly the arrow somebody opens the graph to see.
+ */
+describe("names written as types", () => {
+  const names = (line: string) =>
+    findCandidates(line)
+      .filter((c) => c.kind === "type")
+      .map((c) => c.name);
+
+  it("finds a constructor parameter's type", () => {
+    expect(names("    notificationStatisticsProjection: NotificationStatisticsProjection,"))
+      .toEqual(["NotificationStatisticsProjection"]);
+  });
+
+  it("finds a supertype and its type argument", () => {
+    expect(names(") : ModelProjection<NotificationsModel> by project("))
+      .toEqual(["ModelProjection", "NotificationsModel"]);
+  });
+
+  it("points at the name rather than at the line", () => {
+    // The arrow lands on the word. A column of nought would put it on the
+    // indentation, which is where nothing is written.
+    const line = "  val x: SomeThing = y";
+    const found = findCandidates(line).find((c) => c.kind === "type");
+    expect(line.slice(found!.column, found!.column + 9)).toBe("SomeThing");
+  });
+
+  it("leaves bare identifiers alone", () => {
+    // The thing the old rule was protecting against, and still is: an arrow
+    // per mention would multiply them by an order of magnitude.
+    expect(names("        val laborers = laborerMatchingService")).toEqual([]);
+    expect(names("    notificationsRelation,")).toEqual([]);
+  });
+
+  it("is not fooled by a member reference", () => {
+    // `::` is a reference to a member, not a type annotation.
+    expect(names("    val f = Something::create")).toEqual([]);
+  });
+
+  it("is not fooled by the elvis operator", () => {
+    expect(names("    val n = maybe ?: Fallback")).toEqual([]);
+  });
+
+  it("stops at the end of the type rather than running to the end of the line", () => {
+    // Everything after the `=` is a value, and a value is not a type.
+    expect(names("    private val one: Thing = Other(Another)")).toEqual(["Thing"]);
+  });
+
+  it("still finds the calls it always found", () => {
+    const found = findCandidates("    val x = service.doThing(SomeService(b))");
+    expect(found.map((c) => c.kind)).toContain("call");
+    expect(found.map((c) => c.kind)).toContain("instantiation");
+    // And has not started calling either of them a type.
+    expect(found.map((c) => c.kind)).not.toContain("type");
+  });
+
+  it("does not reach past a lambda into its body", () => {
+    // `{` ends the type expression. Everything after it is code, and code is
+    // read by the rules above rather than by this one.
+    expect(names("    fun go(f: Handler) { Other(x) }")).toEqual(["Handler"]);
   });
 });

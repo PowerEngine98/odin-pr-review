@@ -129,9 +129,26 @@ const TITLE_CONTROLS = 168;
  * characters alone would put it in the space it does not have and ellipsize it
  * away — which loses the one thing on that row the code does not show.
  */
+/**
+ * How wide a row is, counting what it is standing in front of.
+ *
+ * A band is a few characters — "⋯ 3 imports" — and the lines behind it are
+ * whatever the file happens to say. Measuring only the band sized a card to its
+ * own label: the reader opened it and the code inside came out clipped to
+ * thirteen characters, because the card had never been told those lines
+ * existed. A card that shrank to fit its folds is a card that cannot show what
+ * unfolding reveals.
+ *
+ * So a band answers for the widest thing it hides. It costs width on cards that
+ * are never expanded, and width is the cheaper mistake by a distance: nothing
+ * is lost to a card being wider than it needed, and a line is lost to a card
+ * being narrower.
+ */
 function roomFor(row: DisplayRow | undefined): number {
   if (!row) return 0;
-  return row.text.length + (row.kind !== "gap" && row.noNewline ? 2 : 0);
+  const own = row.text.length + (row.kind !== "gap" && row.noNewline ? 2 : 0);
+  if (row.kind !== "gap" || !row.rows) return own;
+  return row.rows.reduce((widest, hidden) => Math.max(widest, roomFor(hidden)), own);
 }
 
 // ---------------------------------------------------------------- measurement
@@ -166,11 +183,22 @@ function measureNodes(
     // thing that ever cuts. Sizing by the changed lines alone made a card that
     // an arrow lands on as narrow as the single line it lands on, and clipped
     // the context around it that was fetched to give the arrow somewhere to go.
+    /*
+     * Every row the card holds, bands included.
+     *
+     * Read off `rows` as well as off the pairs, because a band is not in a
+     * pair's `left` or `right` — it sits in `band`, which the pane sums never
+     * looked at. So a card whose long lines were all behind folds was sized to
+     * the short ones in front of them: measured at twenty characters, holding
+     * ninety-seven, and clipping every one of them the moment a reader opened
+     * the fold.
+     */
+    const held = rows.reduce((max, row) => Math.max(max, roomFor(row)), 0);
     const widest = unified
-      ? rows.reduce((max, row) => Math.max(max, roomFor(row)), 0)
+      ? held
       : pairs.reduce(
           (max, pair) => Math.max(max, roomFor(pair.left), roomFor(pair.right)),
-          0,
+          held,
         );
     // A band runs across both panes, so it needs the whole width rather than
     // half of it — it is the one row that is not split.

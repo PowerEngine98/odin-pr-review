@@ -325,21 +325,57 @@ function assemble(node: FileNode, snippets: Snippet[], side: Side): DisplayRow[]
 
   const fill = snippets.filter((s) => s.hidden && s.side === side);
 
+  /*
+   * Where the diff itself already speaks, kept clear of anything fetched.
+   *
+   * A hunk cannot be trimmed — its rows and its line numbers do not correspond
+   * one to one — so when a fetched snippet overlapped one, the merge below had
+   * only one move left: drop the hunk whole. Which it did, taking every line in
+   * it, including the line an arrow was pointing at.
+   *
+   * That is why it only ever happened to files something pointed at: the
+   * overlapping snippet is the one fetched for the arrow. The file was readable
+   * until the graph found a reason to draw an arrow into it.
+   *
+   * So the snippets are cut to fit around the hunks before anything is merged.
+   * Nothing is lost: what a hunk covers, the hunk already shows.
+   */
+  const spans = segments.map((s): [number, number] => [s.start, s.end]);
+  const outside = (line: number) =>
+    !spans.some(([from, to]) => line >= from && line <= to);
+
   for (const snippet of snippets) {
     if (snippet.hidden) continue;
     if (snippet.side !== side || snippet.lines.length === 0) continue;
-    const start = snippet.startLine;
-    const end = start + snippet.lines.length - 1;
-    // A snippet the diff already covers adds nothing but duplication.
-    if (segments.some((s) => start >= s.start && end <= s.end)) continue;
+
+    // Whole runs of it, so a snippet straddling a hunk keeps both ends.
+    let run: { start: number; lines: string[] } | undefined;
+    const runs: { start: number; lines: string[] }[] = [];
+    snippet.lines.forEach((text, i) => {
+      const line = snippet.startLine + i;
+      if (!outside(line)) {
+        run = undefined;
+        return;
+      }
+      if (!run) {
+        run = { start: line, lines: [] };
+        runs.push(run);
+      }
+      run.lines.push(text);
+    });
+
+    for (const piece of runs) pushSnippet(piece.start, piece.lines);
+  }
+
+  function pushSnippet(start: number, lines: string[]): void {
+    const end = start + lines.length - 1;
     segments.push({
       start,
       end,
       // One row per line, which is what lets the tail of an overlapping
-      // snippet be kept below. A hunk cannot be trimmed the same way: its
-      // rows and its line numbers do not correspond one to one.
+      // snippet be kept below.
       trimmable: true,
-      rows: snippet.lines.map((text, i) => ({
+      rows: lines.map((text, i) => ({
         kind: "ctx" as const,
         text,
         ...(side === "base" ? { oldLine: start + i } : { newLine: start + i }),

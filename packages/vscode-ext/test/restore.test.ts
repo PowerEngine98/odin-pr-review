@@ -20,12 +20,18 @@ const BUNDLE = join(HERE, "..", "dist", "extension.js");
  */
 function recorder() {
   const written: string[] = [];
+  const notes: string[] = [];
   const closed: (() => void)[] = [];
-  const seen = { written, disposed: false, revealed: 0 };
+  const seen = { written, notes, disposed: false, revealed: 0 };
   const webview = {
     cspSource: "vscode-webview:",
     onDidReceiveMessage: () => ({ dispose() {} }),
-    postMessage: () => Promise.resolve(true),
+    postMessage: (message: { type?: string; message?: string }) => {
+      // Captured, because a frame already carrying the mark is told what it is
+      // waiting for through the channel rather than by being written again.
+      if (message?.type === "note" && message.message) notes.push(message.message);
+      return Promise.resolve(true);
+    },
     get html() {
       return written[written.length - 1] ?? "";
     },
@@ -35,6 +41,8 @@ function recorder() {
   };
   const panel = {
     webview,
+    onDidChangeViewState: () => ({ dispose() {} }),
+    active: false,
     onDidDispose: (fn: () => void) => {
       closed.push(fn);
       return { dispose() {} };
@@ -263,4 +271,154 @@ describe("a second frame for a review that is already open", () => {
     expect(graph.revealed).toBeGreaterThan(0);
     expect(opened).toHaveLength(1);
   }, 60_000);
+});
+
+/**
+ * More than one tab coming back.
+ *
+ * A reload throws away every webview in the window, and the editor hands them
+ * back one empty frame at a time saying nothing about which is which. Holding
+ * one and closing the rest is what a reviewer with two changes open
+ * experienced as one of them silently not returning — no error, no tab, no
+ * sign it had ever been there.
+ *
+ * The frame itself is what answers the question: the page writes down its own
+ * reading while it is alive, and that comes back attached to the frame.
+ */
+describe("coming back to more than one reading", () => {
+  const held = (headRef: string, extra: Record<string, unknown> = {}) => ({
+    repo: "/w",
+    baseRef: "main",
+    headRef,
+    ...extra,
+  });
+
+  it("keeps every frame that names a reading of its own", async () => {
+    const { serializer } = stub(fresh());
+    const one = recorder();
+    const two = recorder();
+
+    await serializer!.deserializeWebviewPanel(one.panel, held("one"));
+    await serializer!.deserializeWebviewPanel(two.panel, held("two", { number: 2 }));
+
+    for (const frame of [one, two]) {
+      expect(frame.disposed).toBe(false);
+      expect(frame.written[0]).toContain("breathe");
+    }
+  });
+
+  it("marks a frame as waiting before its turn in the queue comes", async () => {
+    // The graphs are rebuilt one at a time — each is a diff read and every
+    // reference in it followed, against one working copy. A frame whose turn
+    // has not come is still a tab the reader can click on, and an empty one is
+    // a black rectangle with nothing saying why.
+    const { serializer } = stub(fresh());
+    const one = recorder();
+    const two = recorder();
+
+    await serializer!.deserializeWebviewPanel(one.panel, held("one"));
+    await serializer!.deserializeWebviewPanel(two.panel, held("two"));
+
+    expect(two.written[0]).toContain("Reopening");
+  });
+
+  it("refuses a second frame onto the same reading", async () => {
+    // Two tabs showing one picture is not a thing to have, and the second
+    // arrives when the editor restores a duplicate rather than when a reader
+    // asks for one.
+    const { serializer } = stub(fresh());
+    const one = recorder();
+    const again = recorder();
+
+    await serializer!.deserializeWebviewPanel(one.panel, held("one"));
+    await serializer!.deserializeWebviewPanel(again.panel, held("one"));
+
+    expect(again.disposed).toBe(true);
+    expect(again.written).toEqual([]);
+  });
+
+  it("tells the live reading of a branch from the committed one", async () => {
+    // Same repository, same base, same branch: different pictures, and the
+    // reader asked for both.
+    const { serializer } = stub(fresh());
+    const committed = recorder();
+    const live = recorder();
+
+    await serializer!.deserializeWebviewPanel(committed.panel, held("one"));
+    await serializer!.deserializeWebviewPanel(live.panel, held("one", { worktree: true }));
+
+    expect(live.disposed).toBe(false);
+    expect(live.written[0]).toContain("breathe");
+  });
+
+  it("falls back to the one remembered reading for a frame with nothing to say", async () => {
+    // Written by a build that predates any of this, so there is no state on
+    // the frame to pair it with.
+    const { serializer } = stub(fresh());
+    const old = recorder();
+    await serializer!.deserializeWebviewPanel(old.panel, { nothing: true });
+
+    expect(old.disposed).toBe(false);
+    expect(old.written[0]).toContain("Reopening #152");
+  });
+});
+
+/**
+ * One slot, two tenants.
+ *
+ * A webview keeps exactly one piece of state across a reload, and two things
+ * want it: the camera, so a reader comes back to the cards they were reading,
+ * and the reading itself, so the host can tell one restored frame from another.
+ * Written whole by both, each quietly replaced the other — the camera lost its
+ * place on every rebuild, and the frame lost the note saying which change it
+ * held. Neither failure said anything.
+ */
+describe("state a frame carries across a reload", () => {
+  it("finds the reading under its own name", async () => {
+    const { serializer } = stub(fresh());
+    const seen = recorder();
+    await serializer!.deserializeWebviewPanel(seen.panel, {
+      camera: { key: "pr:114", x: 10, y: 20, scale: 1 },
+      reading: { repo: "/w", baseRef: "main", headRef: "one", number: 7 },
+    });
+
+    expect(seen.disposed).toBe(false);
+    // The frame is marked as waiting straight away; which change it is waiting
+    // for arrives when the queue reaches it.
+    expect(seen.written[0]).toContain("breathe");
+    expect([...seen.written, ...seen.notes].join(" ")).toContain("#7");
+  });
+
+  it("still reads a frame written before the slot was shared", async () => {
+    // A page one version behind wrote the reading flat, with nothing around it.
+    const { serializer } = stub(fresh());
+    const old = recorder();
+    await serializer!.deserializeWebviewPanel(old.panel, {
+      repo: "/w",
+      baseRef: "main",
+      headRef: "two",
+      number: 9,
+    });
+
+    expect(old.disposed).toBe(false);
+    expect([...old.written, ...old.notes].join(" ")).toContain("#9");
+  });
+
+  it("is not fooled by a frame carrying only a camera", async () => {
+    /*
+     * All this frame ever wrote was where the reader was looking. There is no
+     * reading in it, so it falls back to the one remembered session rather than
+     * inventing one out of camera numbers.
+     */
+    const { serializer } = stub(fresh());
+    const seen = recorder();
+    await serializer!.deserializeWebviewPanel(seen.panel, {
+      camera: { key: "pr:114", x: 10, y: 20, scale: 1 },
+    });
+
+    expect(seen.disposed).toBe(false);
+    // Nothing in the frame said which reading it was, so the one remembered
+    // session answers — rather than a reading invented out of camera numbers.
+    expect(seen.written[0]).toContain("Reopening #152");
+  });
 });

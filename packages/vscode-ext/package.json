@@ -39,7 +39,7 @@
       },
       {
         "command": "odin.reviewAgainst",
-        "title": "Review Against a Different Base\u2026",
+        "title": "Review Against a Different Base…",
         "category": "Odin"
       },
       {
@@ -106,6 +106,10 @@
         "title": "Review a Pull Request as the Forge Has It",
         "category": "Odin",
         "enablement": "false"
+      },
+      {
+        "command": "odin.checkoutLocal",
+        "title": "Odin: Check Out This Change"
       },
       {
         "command": "odin.focusFile",
@@ -182,7 +186,7 @@
     "viewsWelcome": [
       {
         "view": "odin.changes",
-        "contents": "Review this branch as a graph: every changed file becomes a card, every call-site reference becomes an arrow.\n\n[Review Pull Request](command:odin.review)\n[Choose a base branch\u2026](command:odin.reviewAgainst)\n\nThe diff is taken from the merge base, not the branch tip.",
+        "contents": "Review this branch as a graph: every changed file becomes a card, every call-site reference becomes an arrow.\n\n[Review Pull Request](command:odin.review)\n[Choose a base branch…](command:odin.reviewAgainst)\n\nThe diff is taken from the merge base, not the branch tip.",
         "when": "workspaceFolderCount != 0"
       }
     ],
@@ -222,6 +226,10 @@
         {
           "command": "odin.openAtLine",
           "when": "false"
+        },
+        {
+          "command": "odin.checkoutLocal",
+          "when": "false"
         }
       ],
       "webview/context": [
@@ -243,7 +251,8 @@
     "@odin/resolver-kotlin": "0.1.0",
     "@odin/resolver-lang": "0.1.0",
     "@odin/resolver-ts": "0.1.0",
-    "@odin/webview": "0.1.0"
+    "@odin/webview": "0.1.0",
+    "mermaid": "^11"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",

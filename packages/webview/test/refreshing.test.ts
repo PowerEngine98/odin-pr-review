@@ -60,9 +60,12 @@ describe("saying that the picture is being rebuilt", () => {
 
   it("carries the styles it will need when it appears", () => {
     // It arrives on a message rather than on a redraw, so the rules for it
-    // have to already be in a document that has never shown one.
+    // have to already be in a document that has never shown one. Named for the
+    // badge in the corner, which is the only one now: the bar carried a second
+    // copy of the same state, and two things saying "rebuilding" in one window
+    // is one more than the reader needs.
     const html = page();
-    expect(html).toContain("spin-arc");
+    expect(html).toContain("turn");
     expect(html).toContain("@keyframes");
   });
 

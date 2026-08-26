@@ -5,6 +5,7 @@ import type { FileNode } from "@odin/core";
 import type { ChangeGraph } from "@odin/core";
 
 import { ago, buildTree, partOf, progressOf, rowSearchText } from "../src/tree-model.js";
+import { changeView } from "../src/sidebar.js";
 
 function file(path: string): FileNode {
   return {
@@ -238,5 +239,43 @@ describe("narrowing the list to one part of the change", () => {
 
   it("gives back the whole change when no part is open", () => {
     expect(partOf(graph, undefined)).toBe(graph);
+  });
+});
+
+/**
+ * Which reading the list is describing.
+ *
+ * A change can be read as the forge has it, which touches nothing on this
+ * machine, or as the files on disk have it, which follows the reader's own
+ * edits. Only one of those is worth offering to change, and a reader looking at
+ * a picture that will not follow their typing should be told which they have.
+ */
+describe("saying which reading the list belongs to", () => {
+  const graph = (over: Partial<ChangeGraph["meta"]>): ChangeGraph => ({
+    schemaVersion: "0.1.0",
+    meta: { baseRef: "development", headRef: "feat/x", generator: "test", ...over },
+    nodes: [],
+    edges: [],
+  }) as ChangeGraph;
+
+  it("calls a working-tree reading local", () => {
+    const view = changeView(graph({ worktree: true }), () => false);
+    expect(view.reading.local).toBe(true);
+  });
+
+  it("calls a reading of commits something else", () => {
+    // The forge's copy does not change while it is being read, so nothing about
+    // it can follow an edit — which is the whole difference the offer rests on.
+    const view = changeView(graph({}), () => false);
+    expect(view.reading.local).toBe(false);
+  });
+
+  it("carries the pull request, so the offer can name it", () => {
+    const view = changeView(
+      graph({ pullRequest: { number: 171, title: "t", url: "u" } }),
+      () => false,
+    );
+    expect(view.reading.number).toBe(171);
+    expect(view.reading.branch).toBe("feat/x");
   });
 });

@@ -25,11 +25,12 @@ import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo, forgetBase, stageGraphForRepo } from "./graph.js";
 import { LiveGraph } from "./live.js";
 import { GraphPanel } from "./panel.js";
+import { PairingSession } from "./pairing.js";
 import { ChangeSidebar } from "./sidebar.js";
 import { activeTheme } from "./theme.js";
 import { SeenStore } from "./seen.js";
 import { BaseStore } from "./base.js";
-import { SessionStore } from "./session.js";
+import { keyOf, SessionStore, type Session } from "./session.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
 
@@ -85,10 +86,49 @@ export function activate(context: vscode.ExtensionContext): void {
   // Global rather than per-workspace: which files somebody has read is about
   // this change, but whether they want to see import arrows is about them.
   GraphPanel.settings = new SettingsStore(context.globalState);
+  // Per workspace, unlike the settings above: a conversation with an agent is
+  // about this repository's code and belongs nowhere else.
+  GraphPanel.store = context.workspaceState;
+  // Where the stub Claude spawns lives. A path rather than anything imported:
+  // it runs as a child of a tool we do not control, in that tool's environment.
+  // Guarded, like every other call here that reaches for an editor API during
+  // activation: everything in this function is one `push`, and a host missing
+  // one method would take the whole extension down over a path. Without it,
+  // pairing simply has nowhere for an agent to ask, which it already handles.
+  try {
+    PairingSession.stub = vscode.Uri.joinPath(
+      context.extensionUri,
+      "media",
+      "approve.mjs",
+    ).fsPath;
+  } catch {
+    PairingSession.stub = "";
+  }
   // The live reading of whatever is on screen, for the places that can only ask
   // for it: a file the current reading is too old to contain.
   GraphPanel.onLocal = () => {
-    if (last) void review(last.baseRef, last.headRef, true);
+    const here = GraphPanel.current() ?? last;
+    if (here) void review(here.baseRef, here.headRef, true);
+  };
+
+  // The list belongs to whichever reading is in front. Its marks are stored per
+  // review, so pointing the store at the new one is what makes the ticks in the
+  // list the ticks of the change being looked at rather than of the last one
+  // opened.
+  GraphPanel.onActive = (graph, repo) => {
+    viewed.open(repo, graph.meta.baseRef, graph.meta.headRef);
+    sidebar.setGraph(graph);
+  };
+
+  // A reading nobody is looking at should not go on being rebuilt.
+  GraphPanel.onClosed = (key) => {
+    live.get(key)?.dispose();
+    live.delete(key);
+    localWatch.get(key)?.dispose();
+    localWatch.delete(key);
+    // Closed on purpose is not the same as lost to a reload, and the next one
+    // should not bring it back.
+    session.forget(key);
   };
   sidebar = new ChangeSidebar(viewed, seen);
 
@@ -140,7 +180,10 @@ export function activate(context: vscode.ExtensionContext): void {
     // review of whatever happens to be checked out.
     vscode.commands.registerCommand("odin.refresh", async () => {
       await refreshPullRequests();
-      if (last) await review(last.baseRef, last.headRef, last.worktree === true);
+      // The reading in front of the reader, asked of the panel showing it.
+      // "The last review" is the wrong tab the moment there is more than one.
+      const here = GraphPanel.current() ?? last;
+      if (here) await review(here.baseRef, here.headRef, here.worktree === true);
     }),
     vscode.commands.registerCommand("odin.openFile", (path: string) =>
       GraphPanel.openPath(path),
@@ -208,6 +251,19 @@ export function activate(context: vscode.ExtensionContext): void {
       readOrigin(number),
     ),
     /*
+     * From reading a change to working on it.
+     *
+     * Opening one no longer moves the working tree — that is what lets a
+     * reviewer read a change while another is in progress. This is the step
+     * that does move it, asked for once and on purpose, and it ends in the
+     * reading that follows the files on disk: having gone to the trouble of
+     * fetching the branch, what the reader wants next is their own edits
+     * showing up in the picture.
+     */
+    vscode.commands.registerCommand("odin.checkoutLocal", (number: number) =>
+      checkoutLocal(number),
+    ),
+    /*
      * Reopening what was on screen when the window went away.
      *
      * The editor keeps the tab across a reload and hands the empty frame back
@@ -218,8 +274,20 @@ export function activate(context: vscode.ExtensionContext): void {
      * question that produced it, which is still true.
      */
     vscode.window.registerWebviewPanelSerializer("odin.graph", {
-      async deserializeWebviewPanel(panel: vscode.WebviewPanel) {
-        const previous = session.last();
+      async deserializeWebviewPanel(panel: vscode.WebviewPanel, state: unknown) {
+        /*
+         * What this particular frame held, asked of the frame itself.
+         *
+         * The editor hands back one empty panel per tab and says nothing about
+         * which is which. The page wrote down its own reading while it was
+         * alive, and that comes back attached to the frame — so a reader with
+         * three changes open gets those three changes, in those three tabs,
+         * rather than the most recent one and two closed tabs.
+         *
+         * Falling back to the last reading covers the frame written by a build
+         * that predates this, which has no state of its own to offer.
+         */
+        const previous = readingIn(state) ?? session.last();
         if (!previous) {
           // Nothing worth reopening, and an empty frame says less than no
           // frame at all.
@@ -229,8 +297,19 @@ export function activate(context: vscode.ExtensionContext): void {
         // A frame the panel would not take is a duplicate of one already on
         // screen, and rebuilding the same review into it would redraw the graph
         // the reader is reading. It has been closed; there is nothing to reopen.
-        const took = GraphPanel.adopt(panel);
+        const key = readingIn(state) ? keyOf(previous) : undefined;
+        const took = await GraphPanel.adopt(panel, key);
         if (!took) return;
+
+        if (key) {
+          // Queued rather than started. Each of these is a diff read and every
+          // reference in it followed, against one working copy — three at once
+          // is three times the work and none of it finishing sooner. The frame
+          // already carries the mark; the queue reaches it in a moment.
+          reopen(previous, key);
+          return;
+        }
+
         await GraphPanel.showLoading(
           previous.number ? `Reopening #${previous.number}` : "Reopening the change",
         );
@@ -259,6 +338,87 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     }),
   );
+}
+
+/**
+ * The reading a restored frame remembered, if it remembered one.
+ *
+ * Whatever the editor kept for a webview is whatever that webview last wrote,
+ * so this is untrusted in the same way any stored value is: an older build
+ * wrote something else here, and a corrupted one writes nothing at all. It is
+ * checked rather than cast, and a frame that fails the check falls back to the
+ * single remembered session — which is what every frame did before.
+ */
+function readingIn(state: unknown): Session | undefined {
+  if (!state || typeof state !== "object") return undefined;
+  /*
+   * Under its own name in a slot it shares with the camera.
+   *
+   * The flat shape is what a page one version behind writes — the two used to
+   * take turns overwriting each other in the same slot — and a frame that
+   * carries it is still a frame that knows which reading it held.
+   */
+  const outer = state as Record<string, unknown>;
+  const held =
+    outer.reading && typeof outer.reading === "object"
+      ? (outer.reading as Record<string, unknown>)
+      : outer;
+  if (typeof held.repo !== "string" || held.repo.length === 0) return undefined;
+
+  const named = (value: unknown): string | undefined =>
+    typeof value === "string" && value.length > 0 ? value : undefined;
+
+  return {
+    repo: held.repo,
+    ...(named(held.baseRef) ? { baseRef: named(held.baseRef)! } : {}),
+    ...(named(held.headRef) ? { headRef: named(held.headRef)! } : {}),
+    ...(held.worktree === true ? { worktree: true } : {}),
+    ...(typeof held.number === "number" ? { number: held.number } : {}),
+    at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Readings waiting to be rebuilt into the frames the editor handed back.
+ *
+ * One at a time and in the order the tabs arrived. Building them together
+ * would mean several `git` reads of one repository racing each other for no
+ * gain — the machine is the bottleneck, not the waiting — and the reader is
+ * looking at exactly one of these tabs while the rest fill in behind it.
+ */
+const queued: { reading: Session; key: string }[] = [];
+let reopening = false;
+
+function reopen(reading: Session, key: string): void {
+  queued.push({ reading, key });
+  if (reopening) return;
+  reopening = true;
+  void (async () => {
+    try {
+      while (queued.length > 0) {
+        const next = queued.shift()!;
+        // The tab may have been closed in the seconds since the window came
+        // back, which is an answer: there is nothing left to rebuild into.
+        if (!GraphPanel.beginRestore(next.key)) continue;
+        await GraphPanel.showLoading(
+          next.reading.number
+            ? `Reopening #${next.reading.number}`
+            : "Reopening the change",
+        );
+        try {
+          await review(
+            next.reading.baseRef,
+            next.reading.headRef,
+            next.reading.worktree === true,
+          );
+        } finally {
+          GraphPanel.endRestore(next.key);
+        }
+      }
+    } finally {
+      reopening = false;
+    }
+  })();
 }
 
 /**
@@ -563,6 +723,31 @@ async function checkout(number: number): Promise<void> {
  * whatever happened to the branch, so it is fetched and read where it lies,
  * against the point it forked from. The working tree is never touched.
  */
+/**
+ * Brings a change onto this machine and then follows it.
+ *
+ * `checkout` does the moving and everything that has to be said about it: a
+ * dirty tree, a branch some other checkout holds, a local copy that has
+ * wandered from the forge's. What it does not do is decide what to read
+ * afterwards, and after a deliberate checkout the answer is the files on disk.
+ */
+async function checkoutLocal(number: number): Promise<void> {
+  const repo = await repositoryRoot();
+  if (!repo) return;
+
+  const before = await currentBranch({ cwd: repo }).catch(() => undefined);
+  await checkout(number);
+
+  // Only if it actually moved. `checkout` reports its own failures, and reading
+  // the working tree of a branch the reader was refused is reading the wrong
+  // change with no sign that anything went wrong.
+  const now = await currentBranch({ cwd: repo }).catch(() => undefined);
+  const wanted = known.get(number)?.branch;
+  if (!now || (wanted && now !== wanted) || (!wanted && now === before)) return;
+
+  await review(undefined, undefined, true);
+}
+
 async function readFinished(pull: PullRequestSummary): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
@@ -727,10 +912,10 @@ function gh(args: string[], cwd: string): Promise<string> {
 export function deactivate(): void {
   // Temporary checkouts are removed as they are used. The watchers are the one
   // thing here that outlives a command, so they are what there is to put away.
-  live?.dispose();
-  live = undefined;
-  localWatch?.dispose();
-  localWatch = undefined;
+  for (const watcher of live.values()) watcher.dispose();
+  live.clear();
+  for (const watcher of localWatch.values()) watcher.dispose();
+  localWatch.clear();
   forgetBase();
 }
 
@@ -761,10 +946,25 @@ async function review(
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: "Odin" },
     async (progress) => {
-      // Reading a diff, resolving its references and laying them out is several
-      // seconds on a large change. The mark says so in the panel the reviewer
-      // is watching, not only in a notification in the corner.
-      await GraphPanel.showLoading("Reading the change");
+      /*
+       * Reading a diff, resolving its references and laying them out is several
+       * seconds on a large change. The mark says so in the panel the reviewer
+       * is watching, not only in a notification in the corner.
+       *
+       * Named, so it says it in the panel this reading is in. Unnamed it went
+       * to whichever was in front, which put a loader over a review that had
+       * finished loading — and left it there, because the graph that would have
+       * replaced it belonged to a different tab.
+       */
+      await GraphPanel.showLoading(
+        "Reading the change",
+        keyOf({
+          repo,
+          ...(base ? { baseRef: base } : {}),
+          ...(headRef ? { headRef } : {}),
+          ...(worktree ? { worktree: true } : {}),
+        }),
+      );
       try {
         /*
          * Which surface the progress belongs on.
@@ -809,7 +1009,7 @@ async function review(
         const graph = built.graph;
 
         progress.report({ message: "colouring" });
-        await present(built, repo, base, headRef);
+        const reading = await present(built, repo, base, headRef);
         drawn = true;
 
         // The expensive half, over the picture the reader already has. The
@@ -828,10 +1028,12 @@ async function review(
 
         // A reading of the working tree goes stale the moment the reader
         // touches a file, which they are about to. Nothing else does.
-        armLive(repo, base, headRef, final);
+        // Named by the reading it belongs to, so standing another one up
+        // beside it leaves this one watching.
+        armLive(repo, base, headRef, final, reading);
         // And, for a reading of commits, whether the files underneath it have
         // moved on since. The two never both apply.
-        watchForLocalWork(repo, base, headRef, final);
+        watchForLocalWork(repo, base, headRef, final, reading);
       } catch (error) {
         await GraphPanel.stopLoading(
           error instanceof Error ? error.message : String(error),
@@ -865,6 +1067,15 @@ async function present(
    * the highlighter it already has.
    */
   quick = false,
+  /**
+   * Which reading this is, as the caller knows it.
+   *
+   * A watcher belongs to a reading and so does its rebuild. The name is passed
+   * rather than worked out again here because the two ways of naming a reading
+   * — the refs as asked for, the refs as resolved — do not always agree, and
+   * the panel is registered under whichever the reader's own page wrote down.
+   */
+  where?: string,
 ): Promise<void> {
   const { graph, shown, layout, layoutWithTests, unifiedLayout, unifiedWithTests } = built;
 
@@ -911,6 +1122,7 @@ async function present(
       { layout: unifiedLayout, withTests: unifiedWithTests },
       built.redrawn,
       built.withdrawn,
+      where,
     );
     if (took) {
       sidebar.setGraph(graph);
@@ -951,6 +1163,8 @@ async function present(
     ...(graph.meta.worktree ? { worktree: true } : {}),
     ...(pull ? { number: pull.number } : {}),
   });
+
+  return panel.reading;
 }
 
 /**
@@ -984,8 +1198,21 @@ async function refreshStale(): Promise<void> {
   ]).catch(() => undefined);
 }
 
-/** Watching the working tree, when the graph on screen is of the working tree. */
-let live: LiveGraph | undefined;
+/**
+ * Watchers, by the reading each belongs to.
+ *
+ * One per window used to be enough, because one reading was. With several open
+ * at once a single slot is worse than a missing feature: opening a second
+ * change would tear down the first one's watching on its way past, and what the
+ * reader sees is a graph that has quietly stopped following their edits with
+ * nothing having gone wrong.
+ *
+ * Only a reading of the working tree is ever watched — the forge's copy of a
+ * change does not move while it is being looked at — so this rarely holds more
+ * than one. It is a map because *which* reading owns the watcher matters, not
+ * because there are many.
+ */
+const live = new Map<string, LiveGraph>();
 
 /**
  * Points the watcher at whatever is now on screen, or puts it away.
@@ -1006,16 +1233,20 @@ let live: LiveGraph | undefined;
  * The live reading exists for exactly that and has to be asked for. So this
  * says when it would be worth asking for, once, and then stays quiet.
  */
-let localWatch: LiveGraph | undefined;
+const localWatch = new Map<string, LiveGraph>();
 
 function watchForLocalWork(
   repo: string,
   base: string | undefined,
   headRef: string | undefined,
   built: Awaited<ReturnType<typeof buildGraphForRepo>> | undefined,
+  key: string,
 ): void {
-  localWatch?.dispose();
-  localWatch = undefined;
+  // This reading's own, like the live watcher: two committed readings both want
+  // to know when the files underneath them move, and neither should silence the
+  // other by being opened second.
+  localWatch.get(key)?.dispose();
+  localWatch.delete(key);
 
   const shown = built?.graph;
   // A live reading already shows this work; there is nothing to offer.
@@ -1038,12 +1269,12 @@ function watchForLocalWork(
    * it, that this is the picture they want.
    */
   void uncommittedCount({ cwd: repo }).then((atFirst) => {
-    if (localWatch) return;
+    if (localWatch.has(key)) return;
     let before = atFirst;
     /** Asked and declined; not asked again until the tree is clean once more. */
     let refused = false;
 
-    localWatch = new LiveGraph({
+    const watching = new LiveGraph({
       repo,
       rebuild: async () => {
         const now = await uncommittedCount({ cwd: repo });
@@ -1066,11 +1297,14 @@ function watchForLocalWork(
           refused = true;
           return undefined;
         }
+        // The same change read the other way, not a second tab of it.
+        GraphPanel.promoting = key;
         await review(base, headRef, true);
         return undefined;
       },
       onChange: () => {},
     });
+    localWatch.set(key, watching);
   });
 }
 
@@ -1079,9 +1313,13 @@ function armLive(
   base: string | undefined,
   headRef: string | undefined,
   built: Awaited<ReturnType<typeof buildGraphForRepo>> | undefined,
+  key: string,
 ): void {
-  live?.dispose();
-  live = undefined;
+  // This reading's own watcher, and only this one. Standing the graph up again
+  // replaces it; standing a different one up leaves it alone.
+  live.get(key)?.dispose();
+  live.delete(key);
+
   const shown = built?.graph;
   if (!shown || shown.meta.worktree !== true) return;
 
@@ -1102,7 +1340,7 @@ function armLive(
   /** Held from the rebuild to the report: what goes on screen is the build. */
   let fresh: Awaited<ReturnType<typeof buildGraphForRepo>> | undefined;
 
-  live = new LiveGraph({
+  const watcher = new LiveGraph({
     repo,
     // The repository root is very often not what the editor has open — a
     // reader working on the front end of a monorepo opens that folder, and the
@@ -1141,18 +1379,23 @@ function armLive(
         },
       };
     },
+    // Said in the frame this watcher belongs to. The reader may be reading
+    // something else by now, and a rebuild of what they left is not news about
+    // what they are looking at.
     onRebuilding: (files) =>
-      GraphPanel.setRefreshing(
+      GraphPanel.setRefreshingIn(
+        shown,
+        repo,
         true,
         `Rebuilding — ${files} file${files === 1 ? "" : "s"} changed`,
       ),
     // Cleared whatever came of it, including a rebuild that found nothing
     // worth redrawing. A spinner left running says the tool is still working
     // when it has finished and decided there was nothing to do.
-    onSettled: () => GraphPanel.setRefreshing(false),
+    onSettled: () => GraphPanel.setRefreshingIn(shown, repo, false),
     onChange: async (_graph, delta) => {
       if (!fresh) return;
-      await present(fresh, repo, base, headRef, true);
+      await present(fresh, repo, base, headRef, true, key);
       // In the status bar rather than a notification: this happens every time
       // the reader saves, and a toast per save is a reason to turn the whole
       // thing off. It says what moved, then goes away on its own.
@@ -1170,7 +1413,8 @@ function armLive(
   // What the next rebuild is judged against. Without it the first rebuild has
   // nothing to compare to, reports no change, and the watcher looks broken
   // exactly once — on the first edit, which is the one being watched for.
-  live.seed(shown);
+  watcher.seed(shown);
+  live.set(key, watcher);
 }
 
 /**

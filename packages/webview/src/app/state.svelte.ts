@@ -25,6 +25,42 @@ export const host =
   typeof acquireVsCodeApi === "function" ? acquireVsCodeApi() : null;
 
 /**
+ * The one piece of state a webview keeps across a reload, shared.
+ *
+ * There is exactly one slot, and two things want it: the camera, so a reader
+ * comes back to the two cards they were reading rather than to the whole
+ * picture at ten per cent, and the reading itself, so the host can tell one
+ * restored frame from another.
+ *
+ * Both used to call `setState` directly, which meant each quietly replaced the
+ * other. The camera lost its place on every rebuild — the agent changes a file,
+ * the graph is rebuilt, and the reader is thrown across the drawing — and the
+ * reading was lost whenever the camera moved. Neither failure said anything.
+ *
+ * So it is one object with a name per tenant, merged rather than overwritten.
+ */
+export function keep(part: Record<string, unknown>): void {
+  if (!host) return;
+  try {
+    const held = (host.getState() ?? {}) as Record<string, unknown>;
+    host.setState({ ...held, ...part });
+  } catch {
+    /* a host that will not hold state is not worth failing a paint over */
+  }
+}
+
+/** Whatever that tenant last kept, if anything. */
+export function held<T>(name: string): T | undefined {
+  if (!host) return undefined;
+  try {
+    const all = (host.getState() ?? {}) as Record<string, unknown>;
+    return all[name] as T | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * What the host embedded, if there is a host.
  *
  * Read through a guard because this module is evaluated by Node as well as by
@@ -79,6 +115,21 @@ const EMPTY: ViewModel = {
 export const model = $state<{ current: ViewModel }>({ current: embedded() });
 
 /**
+ * Told before the drawing changes under the reader, so their place can be kept.
+ *
+ * A hook rather than a call, because what has to happen is the camera's own
+ * business and this module is imported by the camera — naming it here directly
+ * would be a cycle between the two. It is registered when a canvas mounts and
+ * is nothing at all in a page that has none, which is every rendering done by
+ * Node.
+ *
+ * Deliberately before rather than after: where the reader is has to be read
+ * against the arrangement they were looking at, and by the time the new model
+ * is assigned that arrangement is gone.
+ */
+export const rebuilding = { before: null as (() => void) | null };
+
+/**
  * Where the reader has the drawing, in canvas units.
  *
  * `placed` says whether they have moved it themselves. A resize of a view
@@ -107,7 +158,26 @@ const DEFAULTS: ReaderSettings = {
   showUnchanged: false,
   hideViewed: false,
   showInfra: true,
-  hud: { reviewers: true, comments: true, map: true, checks: true, checksFolded: false },
+  hud: {
+    reviewers: true,
+    comments: true,
+    map: true,
+    checks: true,
+    checksFolded: false,
+    // On by default, and still invisible over a reading of the forge's copy:
+    // there is nothing for an agent to change in a picture of somebody else's
+    // commits, and a panel offering it would be offering a thing that cannot
+    // work.
+    agents: true,
+    agentsFolded: false,
+  },
+  pairing: [],
+  terminals: [],
+  terminalsFolded: [],
+  agency: {},
+  terminalWidth: 360,
+  terminalHeight: 320,
+  diagrams: {},
 };
 
 /**
@@ -160,6 +230,44 @@ export const ui = $state({
   note: "Refreshing",
   /** How many times the forge has answered about the checks. */
   checksAt: 0,
+  /** Agents mid-turn, for the badge on what they were asked. */
+  busyAgents: new Set<string>(),
+  /** What each agent has printed this session, by agent id. */
+  transcripts: {} as Record<string, string>,
+  /**
+   * Which agent has claimed which conversation, by the thread's root comment.
+   *
+   * Decided by the host, because the same rule decides who the next message in
+   * that thread goes to — and two spellings of it would drift into the thread
+   * naming one agent while the work went to another.
+   */
+  owners: {} as Record<string, string>,
+  /**
+   * Agents that have a conversation about this reading to carry on from.
+   *
+   * An agent that remembers the last hour of this change behaves differently
+   * from one meeting it for the first time, and nothing else on screen tells
+   * those two apart.
+   */
+  carrying: new Set<string>(),
+  /** What the reader calls each agent's conversation, where they named one. */
+  labels: {} as Record<string, string>,
+  /**
+   * Which rungs of the ladder each tool actually offers.
+   *
+   * Not every tool has a word for every level, and a control offering one the
+   * tool has never heard of is a control that silently does nothing.
+   */
+  rungs: {} as Record<string, string[]>,
+  /** The conversation id each agent is carrying, for copying out. */
+  sessions: {} as Record<string, string>,
+  /**
+   * What an agent has asked to do and nobody has answered yet.
+   *
+   * Shown in two places — the thread, which is the record, and the terminal,
+   * which is where somebody staring at a stalled log will be looking.
+   */
+  pending: [] as { id: string; what: string }[],
   /** The part of the change on screen, or null for all of it. */
   part: null as string | null,
   /** Files the reader has marked off. */
@@ -176,7 +284,13 @@ export const ui = $state({
    * arriving does not have to be found and re-opened — the thread derives
    * itself from the comments and simply contains the new one.
    */
-  thread: null as { id: string; anchor: DOMRect | null } | null,
+  /*
+   * `at` says which end of it the reader asked for. Opening from the badge on
+   * an agent's mark means "show me what it said", and what it said is at the
+   * bottom of a conversation that may be long — the top of the box would be
+   * the reader's own question, which they already know.
+   */
+  thread: null as { id: string; anchor: DOMRect | null; at?: "agent" } | null,
   /**
    * Where a new remark is being written.
    *
@@ -330,6 +444,34 @@ export function listen(): void {
         if (message.note) ui.note = message.note;
         return;
 
+      /*
+       * What this frame is a reading of, kept where a reload can find it.
+       *
+       * The host has no way to tell one restored frame from another — the
+       * editor hands back empty panels and nothing else — so the frame carries
+       * the answer itself. This is the only thing on this side that outlives
+       * the window, and it is not drawn anywhere: the page is told, writes it
+       * down, and the host reads it back after a reload to know which change
+       * to rebuild into which tab.
+       */
+      case "reading":
+        keep({ reading: message.payload });
+        return;
+
+      /*
+       * Which agents this machine can run.
+       *
+       * Assigned onto the model rather than kept beside it, so a rebuild does
+       * not lose it — the same reason the forge's verdicts are carried across
+       * one. An empty array is an answer: it says the host looked and found
+       * none, which the panel draws differently from not having asked.
+       */
+      case "agents":
+        model.current.agents = Array.isArray(message.payload)
+          ? message.payload
+          : [];
+        return;
+
       // A rebuilt graph, applied without the document being replaced. This is
       // the whole reason for the reactive rendering: the reader keeps their
       // camera, their scroll and whatever thread they had open.
@@ -350,6 +492,24 @@ export function listen(): void {
         if (next.merging === undefined && model.current.merging !== undefined) {
           next.merging = model.current.merging;
         }
+        // What is installed on this machine does not change because a file was
+        // saved, and looking again on every keystroke would be a `which` per
+        // known tool per rebuild.
+        if (next.agents === undefined && model.current.agents !== undefined) {
+          next.agents = model.current.agents;
+        }
+        /*
+         * Where the reader is, before the drawing they are reading is replaced.
+         *
+         * The camera survives this — the document is not — but the coordinates
+         * it holds only mean anything against one arrangement. A rebuild that
+         * adds a file, or that makes one card taller, moves every card below
+         * and to the right of it, so the same numbers now frame a different
+         * part of the picture. Which is what an agent finishing its work looked
+         * like: the view left where it was and the change moved out from under
+         * it.
+         */
+        rebuilding.before?.();
         model.current = next;
         return;
       }
@@ -396,6 +556,16 @@ export function listen(): void {
           const gone = new Set(withdraw);
           model.current.edges = model.current.edges.filter((e) => !gone.has(e.id));
         }
+
+        /*
+         * The same hold as a whole new model, for the same reason.
+         *
+         * This message is the small one — a card's rows, and nothing else — but
+         * rows are what a card's height is made of, and a card that grows by
+         * twelve lines pushes every card under it down by twelve lines' worth.
+         * The reader's numbers do not move and the drawing does.
+         */
+        if (patches.length > 0) rebuilding.before?.();
 
         for (const patch of patches) {
           const node = model.current.nodes.find((n) => n.id === patch["id"]);
@@ -445,7 +615,61 @@ export function listen(): void {
 
       case "comments":
         model.current.comments = normalise(message.comments);
+        // Which agents are mid-turn, sent alongside because it changes at the
+        // same moments and for the same reasons: a turn starting and a turn
+        // finishing are both a comment appearing.
+        if (Array.isArray(message.busy)) {
+          ui.busyAgents = new Set(message.busy as string[]);
+        }
+        if (message.owners && typeof message.owners === "object") {
+          ui.owners = message.owners as Record<string, string>;
+        }
+        if (Array.isArray(message.carrying)) {
+          ui.carrying = new Set(message.carrying as string[]);
+        }
+        if (message.labels && typeof message.labels === "object") {
+          ui.labels = message.labels as Record<string, string>;
+        }
+        if (message.rungs && typeof message.rungs === "object") {
+          ui.rungs = message.rungs as Record<string, string[]>;
+        }
+        if (message.sessions && typeof message.sessions === "object") {
+          ui.sessions = message.sessions as Record<string, string>;
+        }
+        if (Array.isArray(message.pending)) {
+          ui.pending = message.pending as { id: string; what: string }[];
+        }
         return;
+
+      /*
+       * A line an agent printed.
+       *
+       * Its own channel rather than part of the model, because these arrive
+       * continuously for minutes and the model is what the whole page is drawn
+       * from — folding them in would be a redraw of every card per line of
+       * output. Kept here so the terminal has a session to show when it is
+       * opened rather than only what has been printed since.
+       */
+      /*
+       * Everything one agent has printed, in answer to being asked.
+       *
+       * Replaces rather than appends: this is the session, and a terminal that
+       * appended it to whatever had already streamed in would show the first
+       * half of the turn twice.
+       */
+      case "agentTranscript": {
+        const who = message.payload?.agent;
+        if (typeof who !== "string") return;
+        ui.transcripts[who] = String(message.payload.text ?? "");
+        return;
+      }
+
+      case "agentOutput": {
+        const who = message.payload?.agent;
+        if (typeof who !== "string") return;
+        ui.transcripts[who] = (ui.transcripts[who] ?? "") + String(message.payload.chunk ?? "");
+        return;
+      }
 
       // The verdict landed. The forge's own copy of the review comes back with
       // it, so the page stops showing what was pending and starts showing what

@@ -10,6 +10,7 @@
   import { model, view, settings } from "../state.svelte.js";
   import type { NodeView } from "../model.js";
   import { ODIN_MARK } from "../chrome/icons.js";
+  import { pinnedHere } from "../canvas/pins.js";
   import {
     MAP_SIZE,
     bounds,
@@ -62,8 +63,19 @@
   /** What is really on screen, which is the window less the bar over its top. */
   let seen = $derived(uncovered(onScreen, covered / view.scale));
 
+  /**
+   * Drawings the reader pinned to the change, which are part of its shape.
+   *
+   * The map answers "what is here and where"; a picture somebody deliberately
+   * put beside a card is as much an answer to that as the card. Drawn plainly
+   * and in one neutral colour: the file rectangles carry the statuses, and a
+   * fifth colour among them would read as a fifth thing that can happen to a
+   * file.
+   */
+  const pinned = $derived(pinnedHere());
+
   let all = $derived(
-    bounds(visible, {
+    bounds([...visible, ...pinned], {
       x: 0,
       y: 0,
       width: model.current.width,
@@ -200,6 +212,12 @@
             >
           {/if}
         {/each}
+        {#each pinned as one (one.id)}
+          {@const at = placeNode(one, fit)}
+          <rect class="map-pin" x={at.x} y={at.y} width={at.width} height={at.height} rx="1"
+            ><title>diagram</title></rect
+          >
+        {/each}
       </g>
       <rect
         class="window"
@@ -332,6 +350,19 @@
   .on.renamed {
     fill: var(--status-renamed);
   }
+  /* A pinned drawing: present, and not a file. Outlined in the text colour at
+     the same weight the file rectangles are filled at, so it reads as furniture
+     among them rather than as another status.
+
+     Named apart from the drawing's own pins, which are a different element in a
+     different layer: one class across both made `.pin` mean two things, and the
+     first thing that asked the page how many there were got the wrong answer. */
+  .map-pin {
+    fill: color-mix(in srgb, var(--text) 14%, transparent);
+    stroke: color-mix(in srgb, var(--text) 45%, transparent);
+    stroke-width: 0.6;
+  }
+
   /* Outlined rather than filled: it is in the picture because an arrow reaches
      it, not because the change did anything to it. */
   .on.phantom {

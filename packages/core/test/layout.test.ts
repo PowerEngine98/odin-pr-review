@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseUnifiedDiff } from "../src/diff/parse.js";
+import type { DisplayRow } from "../src/layout/display.js";
 import { toSvg } from "../src/export/svg.js";
 import { addPhantomNodes, buildGraph, sortGraph } from "../src/graph/build.js";
 import {
@@ -665,4 +666,47 @@ describe("toSvg", () => {
 
 function positions(layout: ReturnType<typeof layoutGraph>) {
   return layout.nodes.map((n) => [n.path, n.x, n.y, n.width, n.height, n.rank]);
+}
+
+/**
+ * A card sized to its folds rather than to its contents.
+ *
+ * The widest lines in a file are routinely behind a band — that is what a band
+ * is for — and a band is a few characters wide. Measuring only what is drawn
+ * sized a card to "⋯ 21 unchanged lines", so opening the fold produced code
+ * clipped to a dozen characters. A card that shrinks to fit its folds cannot
+ * show what unfolding reveals.
+ */
+describe("how wide a card has to be", () => {
+  it("counts the lines a band is standing in front of", () => {
+    const long = "    val theLongOne = somethingRatherLong(withAnArgument, andAnother, andAThird)";
+    const rows: DisplayRow[] = [
+      { kind: "ctx", text: "package com.x", oldLine: 1, newLine: 1 },
+      {
+        kind: "gap",
+        text: "⋯ 21 unchanged lines",
+        hidden: 21,
+        rows: [{ kind: "ctx", text: long, oldLine: 2, newLine: 2 }],
+      },
+      { kind: "add", text: "  val last = 2", newLine: 23 },
+    ];
+
+    // The widest thing the card holds, not the widest thing it draws.
+    const held = rows.reduce((most, row) => Math.max(most, roomOf(row)), 0);
+    expect(held).toBe(long.length);
+  });
+
+  it("still answers for a row that stands in for nothing", () => {
+    // A jump between hunks: the lines were never read, so there is nothing
+    // behind it and its own label is the honest answer.
+    const gap: DisplayRow = { kind: "gap", text: "⋯ 40 unchanged lines", hidden: 40 };
+    expect(roomOf(gap)).toBe("⋯ 40 unchanged lines".length);
+  });
+});
+
+/** The same sum the layout engine makes, kept here so it can be checked. */
+function roomOf(row: DisplayRow): number {
+  const own = row.text.length;
+  if (row.kind !== "gap" || !row.rows) return own;
+  return row.rows.reduce((most, held) => Math.max(most, roomOf(held)), own);
 }

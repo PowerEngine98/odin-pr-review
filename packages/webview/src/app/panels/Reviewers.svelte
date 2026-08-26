@@ -71,7 +71,13 @@
 
   const here = $derived(
     threads.filter(
-      (thread) => visiblePaths === null || visiblePaths.has(thread.root.path),
+      (thread) =>
+        // A question about the change belongs to every view of it: there is no
+        // file to be showing or not showing, and hiding it inside a part would
+        // be hiding it everywhere except a place it does not live.
+        !thread.root.path ||
+        visiblePaths === null ||
+        visiblePaths.has(thread.root.path),
     ),
   );
 

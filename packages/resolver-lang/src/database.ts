@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { edgeId } from "@odin/core";
 import type { ChangeGraph, Edge, FileNode, Hunk } from "@odin/core";
 
 import { buildIndex } from "./index-build.js";
@@ -254,12 +255,23 @@ function link(
   label?: string,
   resolver: Edge["resolver"] = "sql",
 ): Edge {
-  const id = createHash("sha1")
-    .update(`${from.nodeId}:${from.line}|${to.nodeId}:${to.line}|${kind}`)
-    .digest("hex")
-    .slice(0, 12);
+  /*
+   * Named the way every other arrow is named.
+   *
+   * This used to hash its own summary of the two ends — node and line and
+   * nothing else — which loses the one thing that tells two arrows apart here:
+   * which side of the diff each end is on. A line that was changed carries the
+   * same reference twice, once removed from the base and once added to the
+   * head, and both came out with the same name. Two arrows with one name is a
+   * duplicate key, and a duplicate key does not draw a wrong arrow — it throws
+   * while the page is being built and leaves the reader a blank screen.
+   *
+   * `edgeId` already hashes the endpoints properly, side and column included.
+   * A second implementation of an identity is a second chance to disagree with
+   * the first.
+   */
   return {
-    id: `e:${id}`,
+    id: edgeId(from, to, kind),
     from,
     to,
     change,

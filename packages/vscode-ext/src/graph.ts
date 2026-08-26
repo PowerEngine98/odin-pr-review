@@ -483,20 +483,46 @@ function provisional(previous: BuiltGraph, fresh: ChangeGraph): BuiltGraph {
  * a reader who commits, rebases or switches base gets a new one and the old one
  * is thrown away rather than quietly reused.
  */
-let base: { sha: string; checkout: Checkout } | undefined;
+/*
+ * Held by sha, and several at once.
+ *
+ * One slot was enough while one change could be open. With two readings off
+ * different bases it is worse than a small cache: each rebuild finds the other
+ * one's tree in the slot, throws it away, and extracts its own — so two tabs
+ * being edited turn a cache into a guarantee of a full `archive | tar` on every
+ * keystroke, which is the several seconds this exists to avoid.
+ *
+ * Bounded, because a tree is a copy of the whole repository. The one least
+ * recently asked for goes when the limit is reached: a reader with four changes
+ * open is working in one of them.
+ */
+const HELD = 4;
+
+const bases = new Map<string, Checkout>();
 
 async function baseCheckout(sha: string, cwd: string): Promise<string> {
-  if (base?.sha === sha) return base.checkout.dir;
+  const held = bases.get(sha);
+  if (held) {
+    // Freshened, so "least recently asked for" means what it says.
+    bases.delete(sha);
+    bases.set(sha, held);
+    return held.dir;
+  }
 
-  base?.checkout.dispose();
-  base = { sha, checkout: await materializeTree(sha, { cwd }) };
-  return base.checkout.dir;
+  const checkout = await materializeTree(sha, { cwd });
+  bases.set(sha, checkout);
+  while (bases.size > HELD) {
+    const oldest = bases.keys().next().value as string;
+    bases.get(oldest)?.dispose();
+    bases.delete(oldest);
+  }
+  return checkout.dir;
 }
 
-/** Lets go of the extracted base, for a window that has stopped watching. */
+/** Lets go of the extracted bases, for a window that has stopped watching. */
 export function forgetBase(): void {
-  base?.checkout.dispose();
-  base = undefined;
+  for (const checkout of bases.values()) checkout.dispose();
+  bases.clear();
 }
 
 /**

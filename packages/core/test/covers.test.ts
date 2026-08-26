@@ -307,3 +307,98 @@ describe("the two sides of a row", () => {
     expect(head[head.length - 1]?.kind).toBe("add");
   });
 });
+
+/**
+ * A hunk dropped whole because something fetched overlapped it.
+ *
+ * A hunk cannot be trimmed — its rows and its line numbers do not correspond
+ * one to one — so when a fetched snippet overlapped one, the merge had a single
+ * move left: drop the hunk. Every line in it went, including the line an arrow
+ * was pointing at, and what the reader got instead was a band standing where
+ * the change had been.
+ *
+ * It only ever happened to files something pointed at, because the overlapping
+ * snippet is the one fetched for the arrow: the file was readable right up
+ * until the graph found a reason to draw an arrow into it.
+ */
+describe("fetched material that lands on a hunk", () => {
+  /** Two hunks, and the second one is what an arrow points into. */
+  function overlapping(): FileNode {
+    return {
+      id: "n:src/Dao.kt",
+      path: "src/Dao.kt",
+      status: "modified",
+      language: "kotlin",
+      binary: false,
+      stats: { additions: 1, deletions: 0 },
+      symbols: [],
+      hunks: [
+        {
+          oldStart: 1,
+          oldLines: 1,
+          newStart: 1,
+          newLines: 2,
+          header: "",
+          lines: [
+            { kind: "context", text: "package a", oldLine: 1, newLine: 1 },
+            { kind: "add", text: "import b", newLine: 2 },
+          ],
+        },
+        {
+          oldStart: 10,
+          oldLines: 3,
+          newStart: 11,
+          newLines: 4,
+          header: "interface Dao",
+          lines: [
+            { kind: "context", text: "interface Dao {", oldLine: 10, newLine: 11 },
+            { kind: "context", text: "  fun record(", oldLine: 11, newLine: 12 },
+            { kind: "add", text: "    type: Type,", newLine: 13 },
+            { kind: "context", text: "  )", oldLine: 12, newLine: 14 },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("keeps the hunk the arrow points into", () => {
+    // The snippet fetched around line 12 starts inside the hunk above it,
+    // which is routine: it is a couple of lines of context either side.
+    const rows = displayRows(overlapping(), [
+      {
+        side: "head",
+        startLine: 10,
+        lines: ["// just above", "interface Dao {", "  fun record(", "x", "  )", "// just below"],
+      },
+    ]);
+
+    const target = rows.find((row) => row.kind !== "gap" && row.newLine === 12);
+    expect(target?.text).toBe("  fun record(");
+  });
+
+  it("keeps the parts of the snippet the hunk does not cover", () => {
+    // Cut around the hunk rather than dropped: the lines either side of it are
+    // the only reason it was fetched.
+    const rows = displayRows(overlapping(), [
+      {
+        side: "head",
+        startLine: 10,
+        lines: ["// just above", "interface Dao {", "  fun record(", "x", "  )", "// just below"],
+      },
+    ]);
+
+    const above = rows.find((row) => row.kind !== "gap" && row.newLine === 10);
+    const below = rows.find((row) => row.kind !== "gap" && row.newLine === 15);
+    expect(above?.text).toBe("// just above");
+    expect(below?.text).toBe("// just below");
+  });
+
+  it("does not repeat a line the hunk already shows", () => {
+    const rows = displayRows(overlapping(), [
+      { side: "head", startLine: 11, lines: ["interface Dao {", "  fun record("] },
+    ]);
+
+    const eleven = rows.filter((row) => row.kind !== "gap" && row.newLine === 11);
+    expect(eleven).toHaveLength(1);
+  });
+});

@@ -281,6 +281,16 @@
         <Viewed label="Comments" bind:checked={settings.hud.comments} />
         <Viewed label="Map" bind:checked={settings.hud.map} />
         <Viewed label="Checks" bind:checked={settings.hud.checks} />
+        <!-- Only worth offering over a reading that has one. Over the forge's
+             copy the switch would turn on a panel that does not appear, which
+             reads as the switch being broken. -->
+        {#if model.current.meta.worktree}
+          <Viewed
+            label="AI pairing"
+            title="Agents on this machine that can take work from your comments"
+            bind:checked={settings.hud.agents}
+          />
+        {/if}
 
         <span class="settings-rule"></span>
         <!--

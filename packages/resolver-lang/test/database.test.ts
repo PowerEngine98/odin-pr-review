@@ -131,3 +131,54 @@ describe("drawing the schema as a vertex of its own", () => {
     expect(graph.nodes.some((n) => n.kind === "database")).toBe(false);
   });
 });
+
+/**
+ * Two arrows that are not the same arrow.
+ *
+ * A line that was changed carries its references twice: once removed from the
+ * base and once added to the head, at the same line, naming the same thing.
+ * The only thing telling those two apart is which side of the diff each end is
+ * on — and the schema pass hashed its own summary of the ends, node and line
+ * and nothing else, so both came out with one name.
+ *
+ * A duplicate key does not draw a wrong arrow. It throws while the page is
+ * being built, and what the reader gets is a blank screen for a change that
+ * resolved perfectly well.
+ */
+describe("naming an arrow the schema pass drew", () => {
+  const sided = (side: "base" | "head", change: Edge["change"]): Edge => ({
+    id: `e:seed-${side}`,
+    from: { nodeId: "n:three", side, line: 1, symbolName: "invoices" },
+    to: { nodeId: "n:two", side: "head", line: 1, symbolName: "invoices" },
+    change,
+    kind: "type",
+    confidence: "heuristic",
+    resolver: "postgres",
+  });
+
+  it("tells the removed reference from the added one", () => {
+    const root = workspace(FILES);
+    const graph: ChangeGraph = {
+      ...graphOf(),
+      edges: [sided("base", "removed"), sided("head", "added")],
+    };
+
+    const drawn = withDatabase(graph, { root });
+    const ids = drawn.edges.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("leaves nothing out while doing it", () => {
+    // The other way to have no duplicates is to have dropped one, which would
+    // silently lose an arrow the reader is entitled to see.
+    const root = workspace(FILES);
+    const graph: ChangeGraph = {
+      ...graphOf(),
+      edges: [sided("base", "removed"), sided("head", "added")],
+    };
+
+    const drawn = withDatabase(graph, { root });
+    expect(drawn.edges.filter((e) => e.change === "removed").length).toBeGreaterThan(0);
+    expect(drawn.edges.filter((e) => e.change === "added").length).toBeGreaterThan(0);
+  });
+});

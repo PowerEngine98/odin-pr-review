@@ -1,7 +1,18 @@
 import { besideFile } from "../panels/thread.js";
-import { host, model, settings, ui, view } from "../state.svelte.js";
+import {
+  held,
+  host,
+  keep,
+  model,
+  notify,
+  rebuilding,
+  settings,
+  ui,
+  view,
+} from "../state.svelte.js";
 import { aimFor, type Spot } from "./keys.js";
 import { heightOf, lineAt } from "./measured.svelte.js";
+import { pinHere, pinnedHere } from "./pins.js";
 import { place, type Layout, type Placed } from "./placement.js";
 import { arrangementFor, arrows, pathOf, type Box, type Reading } from "./wire.js";
 
@@ -97,6 +108,10 @@ const HANDLES = ".card, .card-slot, path.hit, .mark, .port";
 export function beginPan(event: PointerEvent, viewport: HTMLElement): void {
   const target = event.target as Element | null;
   if (target?.closest(HANDLES)) return;
+  // The reader is moving the drawing themselves, so wherever they were is no
+  // longer where they want to be. A rebuild landing mid-gesture must not take
+  // the view back off them.
+  letGo();
   origin = { x: event.clientX - view.x, y: event.clientY - view.y };
   motion.panning = true;
   viewport.setPointerCapture(event.pointerId);
@@ -123,6 +138,7 @@ export function endPan(event: PointerEvent, viewport: HTMLElement): void {
 
 export function wheel(event: WheelEvent, viewport: HTMLElement): void {
   event.preventDefault();
+  letGo();
 
   // Trackpad two-finger scroll pans; pinch and ctrl+wheel zoom. Matching the
   // platform convention matters more here than any cleverness, because this
@@ -290,6 +306,194 @@ export function reframe(viewport: HTMLElement): void {
   view.framed = { width: rect.width, height: rect.height };
 }
 
+/* ------------------------------------------------------- pinning a drawing */
+
+/**
+ * A drawing dropped on the canvas, put where it was dropped.
+ *
+ * The point arrives in window coordinates, because that is what a pointer
+ * knows, and everything pinned to the drawing is stored in the drawing's own —
+ * so it stays beside the cards it was put next to however the camera moves
+ * afterwards. This is the one place that conversion belongs: the camera is what
+ * knows the transform.
+ *
+ * A size in canvas units rather than pixels, worked out from the zoom, so a
+ * drawing dropped while zoomed out is not a postage stamp among the cards.
+ */
+export function pin(code: string, clientX: number, clientY: number): void {
+  const x = Math.round((clientX - view.x) / view.scale);
+  const y = Math.round((clientY - view.y) / view.scale);
+  const width = Math.round(360 / view.scale);
+  const height = Math.round(260 / view.scale);
+
+  pinHere([
+    ...pinnedHere(),
+    {
+      // Ours, and unique without a clock: two identical drawings pinned in the
+      // same millisecond are still two drawings.
+      id: `d${pinnedHere().length + 1}-${Math.round(x)}-${Math.round(y)}`,
+      code,
+      // Dropped by its middle rather than by its corner, which is where the
+      // reader was actually pointing.
+      x: x - Math.round(width / 2),
+      y: y - Math.round(height / 4),
+      width,
+      height,
+    },
+  ]);
+}
+
+/* --------------------------------------------------------- holding a place */
+
+/**
+ * Where the reader is, said as a card rather than as coordinates.
+ *
+ * Coordinates only mean anything against one arrangement of the drawing. An
+ * agent that adds a file, or an edit that makes a card taller, moves every card
+ * below and to the right of it — so the same numbers now point at a different
+ * part of the picture, and the further down the change the reader was, the
+ * further out they end up. Which card they were looking at, and where on it,
+ * survives all of that.
+ *
+ * The offset is in canvas units from the card's top-left, so a card that has
+ * grown keeps the line the reader was on where it was: lines above an edit do
+ * not move, and this holds to the top of the card rather than to a fraction of
+ * its height.
+ */
+interface Held {
+  id: string;
+  dx: number;
+  dy: number;
+}
+
+/** The cards nearest the middle of the view, and where the middle falls on each. */
+function middle(): Held[] | null {
+  if (!framedIn) return null;
+  const rect = framedIn.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const x = (rect.width / 2 - view.x) / view.scale;
+  const y = (rect.height / 2 - view.y) / view.scale;
+
+  /*
+   * Several cards, nearest first, rather than the one under the middle.
+   *
+   * The one card can be gone by the time it is asked for, and an agent is
+   * exactly what makes that happen: a file it renames is a new card with a new
+   * id, and one it deletes is no card at all. That left the drawing with
+   * nothing to hold on to precisely in the case this exists for.
+   *
+   * A neighbour is a worse answer than the card itself and a far better one
+   * than the whole change at ten per cent, so a few of them are kept and the
+   * first that still exists is used.
+   */
+  const by = shown()
+    .map((card) => ({
+      card,
+      away:
+        x >= card.x && x <= card.x + card.width && y >= card.y && y <= card.y + card.height
+          ? -1
+          : Math.hypot(x - (card.x + card.width / 2), y - (card.y + card.height / 2)),
+    }))
+    .sort((a, b) => a.away - b.away)
+    .slice(0, 4)
+    .map(({ card }) => ({ id: card.node.id, dx: x - card.x, dy: y - card.y }));
+
+  return by.length ? by : null;
+}
+
+/**
+ * Puts the middle of the view back on the first of these cards that is still
+ * there.
+ *
+ * The offsets are canvas units from a card's top-left, so a card that has grown
+ * keeps the line the reader was on where it was — lines above an edit do not
+ * move.
+ */
+function putBack(anchors: readonly Held[]): boolean {
+  if (!framedIn) return false;
+  const rect = framedIn.getBoundingClientRect();
+  if (!rect.width || !rect.height) return false;
+
+  const cards = shown();
+  for (const held of anchors) {
+    const card = cards.find((one) => one.node.id === held.id);
+    if (!card) continue;
+    view.x = rect.width / 2 - (card.x + held.dx) * view.scale;
+    view.y = rect.height / 2 - (card.y + held.dy) * view.scale;
+    apply();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * The place to come back to once the drawing has been rebuilt under the reader.
+ *
+ * Taken before the new model is applied, because it has to be read against the
+ * arrangement the reader was actually looking at.
+ *
+ * Only for a view they chose. A drawing still sitting where it was fitted is
+ * not somewhere anybody has been put, and re-fitting it is right.
+ */
+let holding: Held[] | null = null;
+let holdingUntil = 0;
+let following: number[] = [];
+
+/**
+ * When to look again after a rebuild.
+ *
+ * A rebuild lands in passes: the rows arrive, the browser draws the cards, and
+ * only then can anything measure how tall they really are — and the cards move
+ * on each of those. So the view is put back a few times over the couple of
+ * seconds it takes to settle, and the last one is what the reader keeps.
+ *
+ * On a timer rather than by watching the placements. Watching them is a cycle:
+ * which cards a page draws depends on where the camera is, their measured
+ * heights depend on which were drawn, and the placements depend on those
+ * heights — so anything that reads the placements and moves the camera feeds
+ * itself. That took the page down entirely, effects exhausted, before a single
+ * wheel event had been handled.
+ */
+const AGAIN = [0, 120, 320, 700, 1200, 2000, 3200];
+
+export function holdPlace(): void {
+  if (!view.placed) return;
+  holding = middle();
+  if (!holding) return;
+  /*
+   * A deadline, because the settling ends and the reader carries on. Five
+   * seconds rather than two: a change of seventy files measures for longer
+   * than a change of three, and a hold that expires halfway through leaves
+   * them wherever the last unmeasured pass put them.
+   */
+  holdingUntil = Date.now() + 5000;
+
+  for (const timer of following) window.clearTimeout(timer);
+  following = AGAIN.map((wait) => window.setTimeout(keepPlace, wait));
+}
+
+/** Applies the hold, if there is one and the reader has not moved since. */
+export function keepPlace(): void {
+  if (!holding) return;
+  if (Date.now() > holdingUntil) {
+    letGo();
+    return;
+  }
+  putBack(holding);
+}
+
+/**
+ * The reader moving the view themselves, which ends any hold.
+ *
+ * Otherwise a rebuild landing mid-gesture would take the drawing back off them
+ * — the one thing worse than losing your place is being moved while you look.
+ */
+export function letGo(): void {
+  holding = null;
+  for (const timer of following) window.clearTimeout(timer);
+  following = [];
+}
+
 /* ------------------------------------------------------------ persistence */
 
 /**
@@ -316,56 +520,78 @@ interface SavedCamera {
   scale: number;
   width: number;
   height: number;
+  /**
+   * The cards the middle of the view was on, nearest first, for when the
+   * numbers no longer fit. More than one because the nearest can be gone: an
+   * agent that renames a file leaves a card with a new id, and one it deletes
+   * leaves no card at all.
+   */
+  on?: Held[];
 }
 
 export function rememberCamera(): void {
   if (!host || !view.placed) return;
-  try {
-    host.setState({
+  // Under its own name in the shared slot. Written whole, it replaced whatever
+  // else was in there — including the note that says which reading this frame
+  // is — and was replaced by it in turn.
+  const on = middle();
+  keep({
+    camera: {
       key: key(),
       x: view.x,
       y: view.y,
       scale: view.scale,
       width: model.current.width,
       height: model.current.height,
-    } satisfies SavedCamera);
-  } catch {
-    /* a host that will not hold state is not worth failing a paint over */
-  }
+      ...(on ? { on } : {}),
+    } satisfies SavedCamera,
+  });
 }
 
 /**
  * Puts the camera back, if the last page left one for this review.
  *
- * Refused when the drawing has changed size: the numbers were framed against a
- * canvas of a particular shape, and a change that has grown by four files is a
- * different shape. Fitting is the honest answer there — the alternative is a
- * reader dropped somewhere in the middle of a picture they have not seen, with
- * no way of knowing where they are.
+ * A drawing that has changed size is the ordinary case here, not the exception:
+ * an agent editing files is what provokes most rebuilds, and adding a file or
+ * making a card taller moves everything below and to the right of it. The saved
+ * coordinates then point at a different part of the picture — the further into
+ * the change the reader was, the further out they land — which is what "the
+ * camera jumped somewhere else" was.
+ *
+ * So the numbers are used when the shape is the same, and the card the reader
+ * was on is used when it is not. Only fitting when there is no card to go back
+ * to: dropping somebody into the middle of a picture they have not seen is the
+ * thing fitting is there to prevent.
  *
  * Returns whether anything was restored.
  */
 export function restoreCamera(viewport: HTMLElement): boolean {
   if (!host) return false;
-  let saved: Partial<SavedCamera> | null = null;
-  try {
-    saved = host.getState() as Partial<SavedCamera> | null;
-  } catch {
-    return false;
-  }
+  const saved = held<Partial<SavedCamera>>("camera") ?? null;
   if (!saved || saved.key !== key()) return false;
-  if (
-    saved.width !== model.current.width ||
-    saved.height !== model.current.height
-  ) {
-    return false;
-  }
   if (typeof saved.scale !== "number" || !(saved.scale > 0)) return false;
 
-  view.x = saved.x ?? 0;
-  view.y = saved.y ?? 0;
+  const moved =
+    saved.width !== model.current.width || saved.height !== model.current.height;
+
+  // The scale is the reader's own and survives a change of shape.
   view.scale = saved.scale;
-  apply();
+
+  /*
+   * A shape that has changed is put back by card; one that has not, by number.
+   *
+   * And when neither the card nor its neighbours are there any more — a part
+   * closed, a file renamed out from under all four — the reader keeps their own
+   * coordinates rather than being refitted. They may be a few hundred pixels
+   * out; a refit puts them at four per cent looking at a change they have
+   * already read half of, which is not a smaller error but a different order of
+   * one.
+   */
+  if (!(moved && saved.on && putBack(saved.on))) {
+    view.x = saved.x ?? 0;
+    view.y = saved.y ?? 0;
+    apply();
+  }
   // Framed against this viewport, so a later resize moves the picture rather
   // than refitting it — the same reading fit leaves behind.
   const rect = viewport.getBoundingClientRect();
@@ -401,6 +627,25 @@ let framedIn = $state<HTMLElement | null>(null);
 
 export function start(viewport: HTMLElement): void {
   framedIn = viewport;
+  // The page is about to be rebuilt under the reader, over and over, for as
+  // long as they leave this open: every save and every file an agent writes.
+  rebuilding.before = holdPlace;
+
+  /*
+   * A canvas that mounts again is not a page that opened again.
+   *
+   * This runs whenever the element is remade, which a rebuilt model does — and
+   * the camera is a module, so the reader's own numbers are still sitting right
+   * here in memory. Reading them back off the frame's stored copy replaced a
+   * live answer with a written-down one, and any distance between the two is a
+   * jump the reader did not ask for. Where they are is where they are; all this
+   * has to do is follow the cards, which have just moved.
+   */
+  if (view.placed) {
+    keepPlace();
+    return;
+  }
+
   if (!restoreCamera(viewport)) fit(viewport);
 }
 
@@ -427,6 +672,9 @@ function chromeHeight(): number {
  */
 function fly(x: number, y: number, scale: number): void {
   if (!framedIn) return;
+  // Being sent somewhere is a move as much as dragging is: the place the reader
+  // was is not the place they asked for.
+  letGo();
   const rect = framedIn.getBoundingClientRect();
   land(rect.width / 2 - x * scale, middleOf(rect, y, scale), scale);
 }
@@ -769,10 +1017,33 @@ export function showRemark(
   again = true,
 ): string | null {
   if (!framedIn) return null;
-  const card = shown().find((placed) => placed.node.path === path);
-  // A file the drawing is not showing: filtered away, in another part, or ticked
-  // off and hidden. There is no card, so there is no mark and nothing to open —
-  // and no honest place to fly to either.
+  let card = shown().find((placed) => placed.node.path === path);
+
+  /*
+   * A conversation the current tab is not showing.
+   *
+   * The parts are a way of looking at the change — this cluster now, that one
+   * next — and not a filing system its remarks belong to. Somebody pressing a
+   * question in a log, or a row in the list of threads, is asking for that
+   * conversation; answering "not from this tab" is answering a question they
+   * did not ask, and it fails silently, which is worse: the press does nothing
+   * at all and there is nothing on screen to say why.
+   *
+   * So the tab gives way to the conversation. Only when the file is in the
+   * change at all, and only as far as the whole of it: this opens the drawing
+   * up rather than choosing some other part on the reader's behalf.
+   */
+  if (!card && ui.part && model.current.nodes.some((node) => node.path === path)) {
+    ui.part = null;
+    // The list beside the canvas follows the canvas. Left unsaid, it would go
+    // on showing the five files of a part the drawing has just left.
+    notify("part", { paths: null });
+    card = shown().find((placed) => placed.node.path === path);
+  }
+
+  // Still nothing: filtered away by a switch the reader set — tests hidden, a
+  // file ticked off — or not in this change at all. There is no card, so there
+  // is no mark and nothing to open, and no honest place to fly to either.
   if (!card) return null;
 
   const scale = clamp(REMARK_SCALE, MIN_SCALE, MAX_SCALE);

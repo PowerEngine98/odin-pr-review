@@ -13,6 +13,7 @@
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
+  import Pinned from "./Pinned.svelte";
   import { wheelGesture } from "./gestures.js";
   import { listen as listenForKeys } from "./keyboard.svelte.js";
   import { lineAt } from "./measured.svelte.js";
@@ -146,7 +147,18 @@
    */
   $effect(() => {
     const element = viewport;
-    camera.start(element);
+    /*
+     * Framed once, against the element and nothing else.
+     *
+     * Framing reads half the drawing — where the cards are, how tall they
+     * measured, which arrangement is in force — and reading those here would
+     * make them this effect's dependencies. It would then re-frame whenever any
+     * of them moved, which is a cycle with a moving camera: the cards a page
+     * draws depend on where the camera is, and their measured heights depend on
+     * which cards were drawn. Svelte gave up after a hundred passes and the
+     * page stopped responding to anything at all.
+     */
+    untrack(() => camera.start(element));
     const watch = new ResizeObserver(() => camera.reframe(element));
     watch.observe(element);
     return () => watch.disconnect();
@@ -177,12 +189,42 @@
       camera.fit(viewport);
     });
   });
+
+  /*
+   * Putting the reader back where they were is the camera's own business, and
+   * it is done on a timer rather than from here.
+   *
+   * This watched the placements to begin with, which is the obvious way to
+   * follow a rebuild and is a cycle: the cards a page draws depend on where the
+   * camera is, their measured heights depend on which cards were drawn, and the
+   * placements depend on those heights — so an effect that reads the placements
+   * and moves the camera feeds itself. Svelte stopped it after a hundred passes
+   * and took the whole page down with it: no wheel, no messages, nothing.
+   */
 </script>
 
 <div
   class="viewport"
   class:panning={camera.motion.panning}
   bind:this={viewport}
+  ondragover={(event) => {
+    /*
+     * A drawing on its way out of a log.
+     *
+     * Refusing the default is what makes this a place something can be dropped
+     * — without it the browser answers "no" for us and the drop never happens.
+     */
+    if (event.dataTransfer?.types.includes("application/odin-diagram")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    }
+  }}
+  ondrop={(event) => {
+    const code = event.dataTransfer?.getData("application/odin-diagram");
+    if (!code) return;
+    event.preventDefault();
+    camera.pin(code, event.clientX, event.clientY);
+  }}
   onpointerdown={(event) => camera.beginPan(event, viewport)}
   onpointermove={camera.dragPan}
   onpointerup={(event) => camera.endPan(event, viewport)}
@@ -205,6 +247,13 @@
       it they would stand still while the drawing moved under them.
     -->
     <EdgeLayer {size} {boxes} {lineAt} {onfollow} />
+
+    <!--
+      Drawings the reader pinned here, in the same coordinates as the cards.
+      Above the arrows and below nothing: a picture put beside a card is meant
+      to be read next to it, not under it.
+    -->
+    <Pinned />
 
     <!--
       Keyed by file id, so a rebuild that reorders the list moves cards rather

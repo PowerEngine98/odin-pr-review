@@ -27,6 +27,8 @@
   import Card from "./canvas/Card.svelte";
   import Chrome from "./chrome/Chrome.svelte";
   import Checks from "./hud/Checks.svelte";
+  import Pairing from "./hud/Pairing.svelte";
+  import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
   import Rebuilding from "./hud/Rebuilding.svelte";
   import Marks from "./marks/Marks.svelte";
@@ -336,6 +338,7 @@
   <Thread
     openId={ui.thread?.id ?? null}
     anchor={ui.thread?.anchor ?? null}
+    at={ui.thread?.at ?? null}
     onclose={() => (ui.thread = null)}
   />
 
@@ -370,11 +373,25 @@
     onshow={(thread) => (ui.thread = { id: thread.root.id, anchor: null })}
   />
 
-  <!-- The top of the same corner the map has the bottom of: one is anchored
-       above and the other below, so they never meet. -->
-  <Checks chromeHeight={chromeBottom} />
+  <!--
+    The top of the same corner the map has the bottom of: one is anchored above
+    and the other below, so they never meet.
+
+    A column rather than two panels each placing itself. They share an edge, and
+    two fixed elements both measuring from the top of the chrome sit on top of
+    one another the moment either has a height that is not a guess — so the
+    stack is a stack, and each panel is drawn where the one above it ended.
+  -->
+  <div class="left-dock" style="top:{chromeBottom + 14}px">
+    <Checks />
+    <Pairing />
+  </div>
 
   <Minimap window={onScreen} {visible} here={centred} />
+
+  <!-- The far corner from the file list: a log is read while looking at the
+       code it is about, so it takes the side the change is not on. -->
+  <Terminals />
 
   <!-- The other corner: where the reader is, saying whether what is under them
        is still current. -->
@@ -388,3 +405,37 @@
        one the composer appends to. -->
   <ReviewPanel bind:open={review.open} bind:drafts={review.drafts} />
 {/if}
+
+<style>
+  /*
+   * The left column: the checks and the agents, in that order.
+   *
+   * One fixed element carrying both, rather than each measuring from the top of
+   * the chrome for itself. Two of those cannot know how tall the other is, so
+   * the second sits on top of the first — and the failure is invisible until a
+   * change has enough checks to reach it.
+   *
+   * `pointer-events` off on the column and back on for the panels, because the
+   * column is as wide as the widest panel and as tall as the room it has: a
+   * transparent strip down the left of the canvas that swallowed pans would be
+   * a drawing that will not move where nothing is drawn.
+   */
+  .left-dock {
+    position: fixed;
+    /* One edge, said explicitly. A fixed element given both a left and a right
+       is stretched between them rather than positioned twice. */
+    left: 12px;
+    right: auto;
+    bottom: 96px;
+    z-index: var(--z-hud, 25);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    pointer-events: none;
+  }
+
+  .left-dock > :global(*) {
+    pointer-events: auto;
+  }
+</style>

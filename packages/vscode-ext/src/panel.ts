@@ -4,6 +4,8 @@ import {
   inlineAvatars,
   readChecks,
   rerunCheck,
+  discoverAgents,
+  forgeEnv,
   LIGHT_THEME,
   currentUser,
   deleteComment,
@@ -13,6 +15,7 @@ import {
   readMergeStatus,
   updateBranch,
   mergePullRequest,
+  type Agency,
   type MergeMethod,
   listReviewThreads,
   resolveThread,
@@ -35,6 +38,8 @@ import { baseUri } from "./baseContent.js";
 import { waitingPage } from "./loading.js";
 import { failedToPost } from "./posting.js";
 import { activeTheme } from "./theme.js";
+import { keyOf } from "./session.js";
+import { PairingSession, PLACEHOLDER } from "./pairing.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
 
@@ -127,6 +132,65 @@ interface MergeMessage {
   payload: { method?: MergeMethod; admin?: boolean };
 }
 
+/**
+ * A message from the reader to whichever agent is free.
+ *
+ * Carries where it was written as well as what was written: an agent is being
+ * asked about a passage, and a prompt with no file and no lines in it is a
+ * question about the repository in general.
+ */
+interface AskMessage {
+  type: "askAgents";
+  payload: {
+    /** Absent for a question about the change rather than about a line. */
+    path?: string;
+    line?: number;
+    startLine?: number;
+    side?: "LEFT" | "RIGHT";
+    body: string;
+    inReplyTo?: number;
+    /** The agent whose terminal it was written in, if it was written in one. */
+    to?: string;
+  };
+}
+
+/**
+ * Asking for everything an agent has printed, not merely what comes next.
+ *
+ * A terminal opened halfway through a turn, or after a window reload, would
+ * otherwise start at whatever happens to be printed after it opened — the
+ * session it exists to show having already scrolled past.
+ */
+interface TranscriptMessage {
+  type: "agentTranscript";
+  payload: { agent: string };
+}
+
+/**
+ * Something the page wants on the clipboard.
+ *
+ * Through the editor rather than the page's own clipboard, which webviews
+ * refuse often enough — and silently enough — that a button doing nothing would
+ * be the common case rather than the odd one.
+ */
+interface CopyMessage {
+  type: "copyText";
+  payload: { text: string; said?: string };
+}
+
+/** Ending one agent's turn, because the reader asked for it to end. */
+interface StopMessage {
+  type: "stopAgent";
+  payload: { agent: string };
+}
+
+/** Asking which coding agents this machine can actually run. */
+interface DiscoverMessage {
+  type: "discoverAgents";
+  /** `again` when the reader pressed refresh, rather than a page asking anew. */
+  payload?: { again?: boolean };
+}
+
 /** Asking the forge to run one check again. */
 interface RerunMessage {
   type: "rerunCheck";
@@ -140,6 +204,15 @@ interface PartMessage {
 }
 
 type Message =
+  | ApprovalMessage
+  | LocalRemarkMessage
+  | ConversationMessage
+  | ForgetMessage
+  | TranscriptMessage
+  | StopMessage
+  | CopyMessage
+  | AskMessage
+  | DiscoverMessage
   | MissedMessage
   | UpdateBranchMessage
   | MergeMessage
@@ -156,8 +229,49 @@ type Message =
   | RemarkMessage
   | HighlightMessage;
 
+/**
+ * What makes two readings the same reading.
+ *
+ * The repository, what the change is measured against, what it is a change to,
+ * and whether it is being read from the files on disk. The last is not
+ * pedantry: the same branch read live and read as committed are different
+ * pictures — one follows the reader's typing and the other does not — and a
+ * reviewer who asks for both means to have both.
+ */
+function readingKey(graph: ChangeGraph, repo: string): string {
+  return keyOf({
+    repo,
+    ...(graph.meta.baseRef ? { baseRef: graph.meta.baseRef } : {}),
+    ...(graph.meta.headRef ? { headRef: graph.meta.headRef } : {}),
+    ...(graph.meta.worktree === true ? { worktree: true } : {}),
+  });
+}
+
 export class GraphPanel {
-  private static current: GraphPanel | undefined;
+  /**
+   * Every reading on screen, by what it is a reading of.
+   *
+   * There used to be one panel and one only. That was not a simplification so
+   * much as a consequence of opening a change meaning checking it out: two
+   * readings needed two working trees, and a working tree cannot be in two
+   * states at once. Reading no longer moves anything, so the limit has nothing
+   * left holding it up — and a reviewer comparing two changes, or reading one
+   * while their own is building, wants both.
+   */
+  private static readonly open = new Map<string, GraphPanel>();
+
+  /**
+   * The one the reader is looking at.
+   *
+   * Everything that acts on "the graph" — opening a file from the list, flying
+   * to a reference, saying a rebuild has started — means this one. Followed
+   * from the editor rather than remembered on our side, because which tab has
+   * focus is the editor's fact and it changes without asking us.
+   */
+  private static active: GraphPanel | undefined;
+
+  /** What this panel is a reading of, and what makes it that one. */
+  private key = "";
 
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
@@ -173,15 +287,19 @@ export class GraphPanel {
     highlight?: Highlighter,
     alternate?: { layout: GraphLayout; withTests?: GraphLayout },
   ): GraphPanel {
-    if (GraphPanel.current) {
+    const key = readingKey(graph, repo);
+    const already = GraphPanel.open.get(key);
+    if (already) {
       // Kept when none is offered. A hot reload does not reload the grammars —
       // nothing about saving a file changes them — and dropping the ones the
       // panel has would leave the code grey until the next full review.
-      if (highlight) GraphPanel.current.highlight = remember(highlight);
-      GraphPanel.current.alternate = alternate;
-      GraphPanel.current.update(graph, layout, repo, withTests, viewed);
-      GraphPanel.current.panel.reveal(vscode.ViewColumn.One);
-      return GraphPanel.current;
+      if (highlight) already.highlight = remember(highlight);
+      already.alternate = alternate;
+      already.update(graph, layout, repo, withTests, viewed);
+      already.panel.reveal(vscode.ViewColumn.One);
+      GraphPanel.active = already;
+      GraphPanel.closePromoted(key);
+      return already;
     }
 
     // The panel a loader is already running in, if the reviewer has been
@@ -189,11 +307,34 @@ export class GraphPanel {
     // not in a second one beside it.
     const panel = GraphPanel.claimPending() ?? GraphPanel.frame();
 
-    GraphPanel.current = new GraphPanel(
+    const made = new GraphPanel(
       panel, graph, layout, repo, withTests, viewed,
       highlight ? remember(highlight) : undefined, alternate,
     );
-    return GraphPanel.current;
+    made.key = key;
+    GraphPanel.open.set(key, made);
+    GraphPanel.active = made;
+    GraphPanel.closePromoted(key);
+    return made;
+  }
+
+  /**
+   * The tab a promotion replaced, closed now its replacement is drawn.
+   *
+   * After rather than before: closing the old one first would leave the reader
+   * looking at nothing for the seconds a build takes, and at nothing at all if
+   * it failed.
+   */
+  private static closePromoted(arrived: string): void {
+    const going = GraphPanel.promoting;
+    GraphPanel.promoting = undefined;
+    if (!going || going === arrived) return;
+    GraphPanel.open.get(going)?.dispose();
+  }
+
+  /** Every reading on screen, oldest first. */
+  static readings(): GraphPanel[] {
+    return [...GraphPanel.open.values()];
   }
 
   /** A webview panel of our own, titled and iconed, with nothing in it yet. */
@@ -207,7 +348,16 @@ export class GraphPanel {
         // Losing pan, zoom and selection every time the reviewer looks at a
         // file would defeat the point of the graph.
         retainContextWhenHidden: true,
-        localResourceRoots: [],
+        /*
+         * The extension's own folder, and nothing else.
+         *
+         * Empty until there was something to fetch — the page inlines
+         * everything it draws with. The diagram renderer is the exception: it
+         * is three and a half megabytes that most readings never use, so it
+         * ships as a file beside the extension and is fetched the first time an
+         * agent actually draws something.
+         */
+        localResourceRoots: GraphPanel.assets ? [GraphPanel.assets] : [],
       },
     );
 
@@ -240,14 +390,41 @@ export class GraphPanel {
    * black for the whole rebuild, which is exactly what the reader is looking
    * at while the corner says references are being resolved.
    */
-  static adopt(panel: vscode.WebviewPanel): boolean {
-    const held = GraphPanel.current?.panel ?? GraphPanel.pending;
-    if (held) {
-      panel.dispose();
-      // The graph is still open in the frame that has it; the tab that just
-      // went away is replaced by the one the reader was actually asking for.
-      held.reveal(vscode.ViewColumn.One);
-      return false;
+  static async adopt(panel: vscode.WebviewPanel, key?: string): Promise<boolean> {
+    /*
+     * With a key, a frame can be told apart from every other frame.
+     *
+     * That is the whole difference between bringing one reading back and
+     * bringing all of them back. Without one there is no way to know whether
+     * the frame being handed over is the change already on screen or a second
+     * change beside it, so the only safe answer was to hold one and close the
+     * rest — which is what a reader with two tabs open experienced as one of
+     * them silently not coming back.
+     */
+    if (key) {
+      const already = GraphPanel.open.get(key);
+      if (already) {
+        // That reading survived — the reader is looking at it. This frame is a
+        // second tab onto the same picture, which is not a thing to have.
+        panel.dispose();
+        already.panel.reveal(vscode.ViewColumn.One);
+        return false;
+      }
+      // Queued, or being rebuilt right now. Either way a frame for it is
+      // already held, and this one is a second tab onto the same picture.
+      if (GraphPanel.restored.has(key) || GraphPanel.restoring === key) {
+        panel.dispose();
+        return false;
+      }
+    } else {
+      const held = GraphPanel.pending ?? GraphPanel.active?.panel;
+      if (held) {
+        panel.dispose();
+        // The graph is still open in the frame that has it; the tab that just
+        // went away is replaced by the one the reader was actually asking for.
+        held.reveal(vscode.ViewColumn.One);
+        return false;
+      }
     }
     /*
      * A restored frame comes back without the permissions it was created with.
@@ -269,17 +446,78 @@ export class GraphPanel {
      */
     const scripts = panel.webview.options?.enableScripts;
     if (!scripts) {
-      panel.webview.options = { enableScripts: true, localResourceRoots: [] };
+      panel.webview.options = {
+        enableScripts: true,
+        localResourceRoots: GraphPanel.assets ? [GraphPanel.assets] : [],
+      };
     }
 
-    GraphPanel.pending = panel;
-    GraphPanel.waiting = true;
+    if (!key) {
+      GraphPanel.pending = panel;
+      GraphPanel.waiting = true;
+      panel.onDidDispose(() => {
+        GraphPanel.pending = undefined;
+        GraphPanel.waiting = false;
+      });
+      return true;
+    }
+
+    /*
+     * Queued, and marked as waiting straight away.
+     *
+     * The editor hands every restored tab back at once, and the graphs behind
+     * them cannot be built at once: each is a diff read and a repository walked,
+     * against one working copy. So they are built in turn — but a frame whose
+     * turn has not come is still a tab the reader can click on, and an empty
+     * one is a black rectangle with nothing saying why. Each gets the mark now
+     * and the graph when the queue reaches it.
+     */
+    GraphPanel.restored.set(key, panel);
     panel.onDidDispose(() => {
-      GraphPanel.pending = undefined;
-      GraphPanel.waiting = false;
+      if (GraphPanel.restored.get(key) === panel) GraphPanel.restored.delete(key);
+      if (GraphPanel.pending === panel) {
+        GraphPanel.pending = undefined;
+        GraphPanel.waiting = false;
+      }
     });
+    GraphPanel.painted.add(panel);
+    await GraphPanel.paint(panel, "Reopening");
     return true;
   }
+
+  /**
+   * The reading whose turn it is, moved from the queue into the one slot
+   * everything about a build in progress already aims at.
+   *
+   * Answers whether there was a frame to move, because the reader may have
+   * closed that tab in the seconds since the window came back.
+   */
+  static beginRestore(key: string): boolean {
+    const panel = GraphPanel.restored.get(key);
+    if (!panel) return false;
+    GraphPanel.restored.delete(key);
+    GraphPanel.restoring = key;
+    GraphPanel.pending = panel;
+    GraphPanel.waiting = true;
+    return true;
+  }
+
+  /**
+   * That reading's turn is over, however it went.
+   *
+   * Held for the length of the rebuild so a duplicate frame arriving mid-build
+   * can be told from a reading nobody has yet, and released afterwards so a
+   * build that failed does not lock the reader out of asking again.
+   */
+  static endRestore(key: string): void {
+    if (GraphPanel.restoring === key) GraphPanel.restoring = undefined;
+  }
+
+  /** The reading whose graph is being rebuilt into a restored frame. */
+  private static restoring: string | undefined;
+
+  /** Frames handed back by a reload, each waiting on the reading it held. */
+  private static readonly restored = new Map<string, vscode.WebviewPanel>();
 
   /** The waiting panel, handed over once and forgotten. */
   private static claimPending(): vscode.WebviewPanel | undefined {
@@ -292,10 +530,34 @@ export class GraphPanel {
   /** Frames a waiting page has already been written into. */
   private static painted = new WeakSet<vscode.WebviewPanel>();
 
+  /**
+   * Frames that now hold something other than a loader.
+   *
+   * A waiting page is written again while it goes unheard, and the only thing
+   * that should stop it is the frame no longer waiting on anything. That used
+   * to be read off "is this the one panel being built" — true of exactly one
+   * frame, which was fine when there was exactly one.
+   */
+  private static readonly settled = new WeakSet<vscode.WebviewPanel>();
+
   /** Open and empty, waiting on a graph that is still being built. */
   private static pending: vscode.WebviewPanel | undefined;
   /** Whether a loader is currently on screen, in whichever panel. */
   private static waiting = false;
+
+  /**
+   * The frame everything about the build in progress is aimed at.
+   *
+   * The waiting frame first, and only then whatever the reader is looking at.
+   * The other way round was right while a window held one reading — a panel
+   * pending and a panel showing were never both true. Restoring several makes
+   * them both true constantly: the first graph is up and on screen while the
+   * second is still being built, and progress about the second belongs in the
+   * frame that is waiting for it, not on top of the one already finished.
+   */
+  private static target(): vscode.WebviewPanel | undefined {
+    return GraphPanel.pending ?? GraphPanel.active?.panel;
+  }
 
   /**
    * The mark, pulsing, while there is nothing yet to show.
@@ -305,8 +567,54 @@ export class GraphPanel {
    * editor that looks like it did nothing. The notification says a number; this
    * says it in the place the reviewer is already looking.
    */
-  static async showLoading(note: string): Promise<void> {
-    let panel = GraphPanel.current?.panel ?? GraphPanel.pending;
+  static async showLoading(note: string, where?: string): Promise<void> {
+    /*
+     * The frame this reading is already in, if it has one.
+     *
+     * Without this the loader goes to whichever panel is in front, which is not
+     * where the change being built lives. The reader turns from one review to
+     * another, something starts a build of the first, and the second's document
+     * is replaced by a pulsing mark: a change that had loaded minutes ago
+     * sitting on "Laying out…" for a layout that finished long since — and
+     * nothing ever comes to take it away, because the graph it is waiting for
+     * belongs to another tab.
+     */
+    const own = where ? GraphPanel.open.get(where) : undefined;
+    if (own) {
+      /*
+       * Already showing its graph, so it is told rather than replaced. Writing
+       * a waiting document over a drawn one throws the drawing away — the
+       * reader's cards, their camera, their open conversation — to say
+       * something a line in the corner of the bar says without taking anything.
+       */
+      if (own.painted) {
+        void own.panel.webview.postMessage({ type: "note", message: note });
+        return;
+      }
+      GraphPanel.pending = own.panel;
+    }
+
+    /*
+     * A reading with no frame of its own takes a fresh one, never the one in
+     * front.
+     *
+     * This is the other half of the same fault, and the one a reader meets by
+     * following the tool's own offer: reading the forge's copy of a change,
+     * pressing "show local changes", and turning back afterwards to find the
+     * first tab pulsing forever. The live reading had no frame, so the loader
+     * took the frame that was there — the committed reading's, drawing and all
+     * — and when the live graph arrived it went into a frame of its own. What
+     * was left behind was a tab waiting for a graph that had already been
+     * delivered somewhere else.
+     */
+    const front = GraphPanel.target();
+    const taken =
+      where !== undefined &&
+      !own &&
+      front !== undefined &&
+      GraphPanel.readings().some((held) => held.panel === front && held.painted);
+
+    let panel = own?.panel ?? (taken ? undefined : front);
     if (!panel) {
       panel = GraphPanel.frame();
       // Closed while it waits, and the wait is over: holding on to a disposed
@@ -316,7 +624,18 @@ export class GraphPanel {
         GraphPanel.waiting = false;
       });
     }
-    if (!GraphPanel.current) GraphPanel.pending = panel;
+    /*
+     * The frame the graph will move into, said out loud.
+     *
+     * `pending` is how the loader hands its frame to the build that replaces
+     * it. Setting it only when nothing was on screen was right while a loader
+     * could only ever be the first thing in a window — and wrong the moment one
+     * is opened for a second reading beside a first: the frame made here went
+     * unclaimed, the graph opened a frame of its own, and what the reader got
+     * was their change plus an abandoned tab called "Odin: Change Graph" still
+     * saying "Reading the change".
+     */
+    if (taken || !own || !GraphPanel.active) GraphPanel.pending = panel;
 
     /*
      * A wait already on screen is renamed rather than replaced.
@@ -352,8 +671,23 @@ export class GraphPanel {
      * the interval that breaks. The second caller now renames the wait through
      * the channel instead, which is what `note` has always been for.
      */
-    const page = await waitingHtml(panel.webview, note, true);
-    const frame = panel;
+    await GraphPanel.paint(panel, note);
+  }
+
+  /**
+   * Puts a waiting page into a frame and keeps at it until the frame runs it.
+   *
+   * Lifted out of `showLoading` because a queued frame needs exactly this and
+   * none of the rest: it is not the build in progress, has no progress to be
+   * told about, and must not become the one slot that everything else aims at.
+   * What it does need is the part that was hard to get right — a document that
+   * actually lands.
+   */
+  private static async paint(
+    frame: vscode.WebviewPanel,
+    note: string,
+  ): Promise<void> {
+    const page = await waitingHtml(frame.webview, note, true);
 
     /*
      * Listened for before it is written, because it answers immediately.
@@ -371,8 +705,12 @@ export class GraphPanel {
       arrived = true;
       heard.dispose();
     });
-    GraphPanel.listening?.dispose();
-    GraphPanel.listening = heard;
+    // Per frame, not one for the window. Several frames are painted in a row
+    // while a reload comes back, and a single slot meant each one disposed the
+    // listener belonging to the one before it — so those frames never heard
+    // their own page arrive and rewrote it three times over a document that
+    // was already running.
+    frame.onDidDispose(() => heard.dispose());
 
     frame.webview.html = page;
 
@@ -411,8 +749,10 @@ export class GraphPanel {
     const TRIES = [400, 900, 1800];
     for (const at of TRIES) {
       setTimeout(() => {
-        if (arrived || !GraphPanel.waiting) return;
-        if (GraphPanel.current?.panel !== frame && GraphPanel.pending !== frame) return;
+        // Per frame, not "is this the panel being built". Several frames wait
+        // at once now, and the one thing that should stop a retry is that
+        // particular frame having got something better than a loader.
+        if (arrived || GraphPanel.settled.has(frame)) return;
         void (async () => {
           /*
            * A fresh page each time, because the same one is not a write.
@@ -432,10 +772,9 @@ export class GraphPanel {
         })();
       }, at);
     }
+    // Nothing left to hear once the last attempt has been and gone.
+    setTimeout(() => heard.dispose(), TRIES[TRIES.length - 1]! + 2000);
   }
-
-  /** The one loader page listening for its own arrival, if any is. */
-  private static listening: vscode.Disposable | undefined;
 
   /**
    * Asks the forge what has become of this pull request, and says so.
@@ -481,15 +820,24 @@ export class GraphPanel {
     void this.panel.webview.postMessage({ type: "pullRequest", payload: pullRequest });
   }
 
-  /** Everything about this review that the forge could have changed. */
+  /**
+   * Everything the forge could have changed, for every reading on screen.
+   *
+   * All of them rather than the one in front: a reader who comes back to a
+   * window with three changes open is coming back to three stale pictures, and
+   * the two behind the front one are the ones they are least likely to think to
+   * refresh by hand.
+   */
   static async refreshStale(): Promise<void> {
-    const panel = GraphPanel.current;
-    if (!panel) return;
-    await Promise.all([
-      panel.refreshPullRequest(),
-      panel.readChecks(),
-      panel.readMerge(),
-    ]);
+    await Promise.all(
+      GraphPanel.readings().map((panel) =>
+        Promise.all([
+          panel.refreshPullRequest(),
+          panel.readChecks(),
+          panel.readMerge(),
+        ]),
+      ),
+    );
   }
 
   /**
@@ -520,8 +868,28 @@ export class GraphPanel {
       `Odin: ${what.path} is not in this reading — it has changed since.`,
       "Show local changes",
     );
-    if (answer === "Show local changes") GraphPanel.onLocal?.();
+    if (answer === "Show local changes") {
+      // Promoted rather than opened beside: see `promoting`.
+      GraphPanel.promoting = this.key;
+      GraphPanel.onLocal?.();
+    }
   }
+
+  /**
+   * The reading being replaced by its live counterpart, while that is happening.
+   *
+   * Asking for the local version of a change already on screen is not asking
+   * for a second tab. It is the same change read the other way, and what the
+   * reader wants at the end of it is the live one — so the tab it was promoted
+   * from is closed once its replacement is up. Left open, a reader promoting
+   * twice ends the afternoon with four tabs of one change and no way to tell
+   * which of them follows their typing.
+   *
+   * Only for a promotion. Opening both deliberately is a thing people do — that
+   * is why both exist — so nothing here closes a tab the reader did not just
+   * ask to be replaced.
+   */
+  static promoting: string | undefined;
 
   /**
    * Asked for the live reading of what is on screen.
@@ -559,7 +927,16 @@ export class GraphPanel {
    * goes to the forge — so it is named rather than assumed, and the two ways of
    * doing it are told apart, because a rebase force-pushes and a merge does not.
    */
-  private async update(rebase: boolean): Promise<void> {
+  /*
+   * Named apart from the redraw that shares this class.
+   *
+   * Both were called `update`, and a class body cannot hold two: the later
+   * definition simply replaced this one, so pressing "Update branch" called
+   * the redraw with `graph = true` and the branch was never updated. Nothing
+   * reported it — the redraw took the argument, made nothing of it, and
+   * returned.
+   */
+  private async updateBranch(rebase: boolean): Promise<void> {
     const pull = this.graph.meta.pullRequest;
     if (!pull) return;
 
@@ -620,10 +997,141 @@ export class GraphPanel {
     await Promise.all([this.refreshPullRequest(), this.readMerge()]);
   }
 
+  /**
+   * Which coding agents this machine can run, sent to the page that asked.
+   *
+   * Answered even when the answer is none: an empty list is what tells the
+   * panel it has been looked for, which is a different thing to draw from
+   * not having asked yet. Failure is the same as none — the reader is being
+   * offered a convenience, and a stack trace is not one.
+   */
+  private async findAgents(again = false): Promise<void> {
+    let agents: { id: string; name: string; version: string }[] = [];
+    try {
+      const found = await this.pairing().look(again);
+      agents = found.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        version: agent.version_,
+      }));
+    } catch {
+      /* none, which is what the panel will say */
+    }
+    // Whatever the reader had switched on last time, now that there is a list
+    // to match it against. Without this a message written before the panel is
+    // opened waits for an order nobody has set.
+    const held = GraphPanel.settings?.read();
+    this.pairing().setOrder(readOrder(held));
+    this.pairing().setAgency(readAgency(held));
+    void this.panel.webview.postMessage({ type: "agents", payload: agents });
+    /*
+     * And everything that hangs off knowing which agents exist.
+     *
+     * The rungs each tool offers, what the reader calls its conversation, which
+     * agents are carrying one — none of it can be worked out before this, and
+     * none of it was being sent afterwards. A restored terminal showed a single
+     * "Ask" button because the page had never been told what else the tool
+     * could do.
+     */
+    this.sendComments();
+  }
+
+  /**
+   * The conversation with the agents, for this reading.
+   *
+   * Made on first use rather than in the constructor: most readings never ask
+   * for one, and building it reads the editor's storage.
+   */
+  private pairing(): PairingSession {
+    if (!this.paired) {
+      this.paired = new PairingSession(
+        GraphPanel.store!,
+        this.key || readingKey(this.graph, this.repo),
+        this.repo,
+        () => this.sendComments(),
+      );
+      this.paired.printed = (agent, chunk) => {
+        void this.panel.webview.postMessage({
+          type: "agentOutput",
+          payload: { agent, chunk },
+        });
+      };
+    }
+    return this.paired;
+  }
+
+  private paired: PairingSession | undefined;
+
+  /**
+   * Where the reader's own workspace notes are kept.
+   *
+   * Set once at activation, like the settings store. A session cannot make one
+   * for itself — a `Memento` comes from the extension context and there is no
+   * way to ask for one from here.
+   */
+  static store: vscode.Memento | undefined;
+
+  /**
+   * Both kinds of comment, as one list.
+   *
+   * The forge's and this machine's, in the order they were written. The page
+   * draws them the same way on purpose: a conversation about a passage is one
+   * conversation, whether or not anybody has decided to publish it yet. What
+   * marks the local ones is the badge and the absence of a link, not a
+   * separate list they live in.
+   */
+  private everything(): ReviewComment[] {
+    /*
+     * Asked for rather than read if it happens to exist.
+     *
+     * This runs while the document is being built, which after a window reload
+     * is before anything else has touched the pairing session — so a reading
+     * with a conversation stored against it was rendered with the forge's
+     * comments and none of its own. The remarks were on disk, loaded into
+     * memory a moment later by the panel asking what agents were installed,
+     * and never sent anywhere. What the reader saw was every local
+     * conversation gone.
+     */
+    const local = this.pairing().local();
+    if (local.length === 0) return this.comments;
+    return [...this.comments, ...local].sort((a, b) =>
+      String(a.createdAt).localeCompare(String(b.createdAt)),
+    );
+  }
+
+  /** The page's copy of the conversation, brought level with ours. */
+  private sendComments(): void {
+    void this.panel.webview.postMessage({
+      type: "comments",
+      comments: this.everything(),
+      busy: this.paired?.busy() ?? [],
+      // Who has claimed which conversation. Worked out on this side because
+      // the rule is the same one the queue decides by, and two spellings of it
+      // would eventually disagree — with the thread saying one agent owns it
+      // while the messages go to another.
+      owners: this.paired?.owners() ?? {},
+      // Which agents have a conversation about this reading to carry on from.
+      // Worth saying: an agent that remembers the last hour of this change
+      // behaves differently from one meeting it for the first time, and there
+      // is otherwise nothing on screen that distinguishes them.
+      carrying: this.paired?.carrying() ?? [],
+      // What the reader has been asked and not yet answered.
+      pending: this.paired?.pending() ?? [],
+      // What the reader calls each conversation, and which rungs each tool
+      // actually offers — a level a tool has no word for would be a control
+      // that silently does nothing.
+      labels: this.paired?.labelled() ?? {},
+      rungs: this.paired?.rungs() ?? {},
+      sessions: Object.fromEntries(
+        (this.paired?.carrying() ?? []).map((id) => [id, this.paired!.session(id) ?? ""]),
+      ),
+    });
+  }
+
   /** A line of progress, without restarting the animation. */
   static note(message: string): void {
     if (!GraphPanel.waiting) return;
-    const panel = GraphPanel.current?.panel ?? GraphPanel.pending;
+    const panel = GraphPanel.target();
     void panel?.webview.postMessage({ type: "note", message });
   }
 
@@ -635,9 +1143,11 @@ export class GraphPanel {
    */
   static async stopLoading(note: string): Promise<void> {
     if (!GraphPanel.waiting) return;
-    const panel = GraphPanel.current?.panel ?? GraphPanel.pending;
+    const panel = GraphPanel.target();
     GraphPanel.waiting = false;
     if (!panel) return;
+    // Words are not a loader, so the retries have nothing left to replace.
+    GraphPanel.settled.add(panel);
     panel.webview.html = await waitingHtml(panel.webview, note, false);
   }
 
@@ -651,7 +1161,90 @@ export class GraphPanel {
    * working while it is there.
    */
   static setRefreshing(on: boolean, note?: string): void {
-    void GraphPanel.current?.panel.webview.postMessage({
+    void GraphPanel.active?.panel.webview.postMessage({
+      type: "refreshing",
+      value: on,
+      ...(note ? { note } : {}),
+    });
+  }
+
+  /**
+   * The tab's own mark while its change is being worked out.
+   *
+   * A rebuild takes seconds on a large change, and until now the only sign of
+   * one was inside the page: a reader who has turned to their editor has no way
+   * to tell a graph that is up to date from one that is three saves behind. The
+   * tab is where they are looking, so the tab says it.
+   *
+   * A pulse rather than a colour, because a colour is a state and this is a
+   * process — and because the editor gives no other way to animate a tab: an
+   * icon is a file, so two files alternating is what a pulse is made of here.
+   * Slow on purpose. This runs for the length of every rebuild and sits at the
+   * edge of the reader's eye while they work.
+   */
+  private static readonly PULSE = 620;
+
+  private beat: ReturnType<typeof setInterval> | undefined;
+
+  private mark(working: boolean): void {
+    if (!GraphPanel.assets) return;
+    const at = (name: string) =>
+      vscode.Uri.joinPath(GraphPanel.assets!, "media", name);
+
+    if (!working) {
+      if (this.beat) clearInterval(this.beat);
+      this.beat = undefined;
+      /*
+       * Green for a reading of the files on disk.
+       *
+       * The tab strip is where a reader picks between the two readings of one
+       * change, and a tab's title is plain text — the icon is the only thing
+       * there that can carry a colour. The word stays in the title beside it:
+       * a colour nobody can name says nothing to somebody who does not already
+       * know the convention.
+       */
+      const live = this.graph.meta.worktree === true;
+      this.panel.iconPath = live
+        ? { light: at("odin-live-light.svg"), dark: at("odin-live.svg") }
+        : { light: at("odin-light.svg"), dark: at("odin-dark.svg") };
+      return;
+    }
+
+    if (this.beat) return;
+    let lit = true;
+    const show = () => {
+      lit = !lit;
+      this.panel.iconPath = lit
+        ? { light: at("odin-working-light.svg"), dark: at("odin-working.svg") }
+        : {
+            light: at("odin-working-light-dim.svg"),
+            dark: at("odin-working-dim.svg"),
+          };
+    };
+    show();
+    this.beat = setInterval(show, GraphPanel.PULSE);
+  }
+
+  /**
+   * The same, said to the reading it is about rather than to the one in front.
+   *
+   * A watcher belongs to a reading, and so does everything it has to say. Told
+   * to whichever panel was active, a rebuild of a change the reader had left
+   * put "Rebuilding — 1 file changed" over the change they had turned to — and
+   * took it away again in whichever panel happened to be active a second later,
+   * so a frame could be left spinning over a rebuild that had already finished
+   * somewhere else.
+   */
+  static setRefreshingIn(
+    graph: ChangeGraph,
+    repo: string,
+    on: boolean,
+    note?: string,
+  ): void {
+    const panel = GraphPanel.open.get(readingKey(graph, repo));
+    if (!panel) return;
+    panel.mark(on);
+    void panel.panel.webview.postMessage({
       type: "refreshing",
       value: on,
       ...(note ? { note } : {}),
@@ -660,14 +1253,14 @@ export class GraphPanel {
 
   /** Brings the existing graph back to the front, if there is one. */
   static revealCurrent(): void {
-    GraphPanel.current
-      ? GraphPanel.current.panel.reveal(vscode.ViewColumn.One)
+    GraphPanel.active
+      ? GraphPanel.active.panel.reveal(vscode.ViewColumn.One)
       : vscode.commands.executeCommand("odin.review");
   }
 
   /** Opens a file as a diff, for the sidebar's file rows. */
   static async openPath(path: string): Promise<void> {
-    await GraphPanel.current?.openDiff(path);
+    await GraphPanel.active?.openDiff(path);
   }
 
   /**
@@ -683,7 +1276,7 @@ export class GraphPanel {
     odinLine?: number;
     odinSide?: string;
   }): Promise<void> {
-    const panel = GraphPanel.current;
+    const panel = GraphPanel.active;
     if (!panel || !where?.odinPath || !where.odinLine) return;
     await panel.reveal(
       where.odinPath,
@@ -694,7 +1287,7 @@ export class GraphPanel {
 
   /** Brings a file's card to the middle of the canvas, without opening it. */
   static focusPath(path: string): void {
-    void GraphPanel.current?.panel.webview.postMessage({ type: "focus", path });
+    void GraphPanel.active?.panel.webview.postMessage({ type: "focus", path });
   }
 
   /**
@@ -710,7 +1303,7 @@ export class GraphPanel {
     toSide: "base" | "head";
   }): void {
     if (!target.toPath) return;
-    const panel = GraphPanel.current;
+    const panel = GraphPanel.active;
     if (!panel) return;
     panel.panel.reveal(vscode.ViewColumn.One, true);
     void panel.panel.webview.postMessage({
@@ -834,24 +1427,60 @@ export class GraphPanel {
     setTimeout(() => void this.readChecks(), 4000);
   }
 
+  /**
+   * Who is reading, and their face, asked of the forge once.
+   *
+   * It used to be asked only while the pull request's comments were being
+   * fetched — which never happens on a change with no comments on it yet, and
+   * that is exactly the change somebody is most likely to be writing the first
+   * one on. Anything wanting to know who was speaking got an empty string, and
+   * the reader's own remarks went into the thread signed "you" beside
+   * everybody else's real name and picture.
+   *
+   * Memoised on the promise rather than on the answer, so two things asking at
+   * once ask the forge once between them.
+   */
+  private identity: Promise<{ login: string; face: string }> | undefined;
+
+  private whoAmI(): Promise<{ login: string; face: string }> {
+    this.identity ??= (async () => {
+      const login = await currentUser({ cwd: this.repo }).catch(() => undefined);
+      if (!login) {
+        // Not remembered as an answer: `gh` may be signed out now and signed in
+        // a minute from now, and caching "nobody" would outlast that.
+        this.identity = undefined;
+        return { login: "", face: "" };
+      }
+      // Their own face, inlined like every other face here: a webview will not
+      // fetch one, and a composer with everybody's picture but the writer's
+      // own looks like it belongs to somebody else.
+      const face =
+        (await inlineAvatar(`https://github.com/${login}.png?size=64`).catch(
+          () => undefined,
+        )) ?? "";
+      return { login, face };
+    })();
+    return this.identity;
+  }
+
+  /** Learns who is reading, and signs anything already written as nobody. */
+  private async learnViewer(): Promise<{ login: string; face: string }> {
+    const me = await this.whoAmI();
+    if (!me.login || me.login === this.viewer) return me;
+
+    this.viewer = me.login;
+    this.viewerFace = me.face;
+    // Remarks written before the forge answered are still this reader's. They
+    // are signed properly rather than left as the placeholder for ever.
+    if (this.paired?.identify(me.login, me.face)) this.sendComments();
+    this.render(this.layout);
+    return me;
+  }
+
   /** Comments already on the pull request, shown against their lines. */
   setComments(comments: ReviewComment[]): void {
     this.comments = comments;
-    // Asked for once, alongside the comments that need it.
-    void currentUser({ cwd: this.repo })
-      .then(async (login) => {
-        if (!login || login === this.viewer) return;
-        this.viewer = login;
-        // Their own face, inlined like every other face here: a webview will
-        // not fetch one, and a composer with everybody's picture but the
-        // writer's own looks like it belongs to somebody else.
-        this.viewerFace =
-          (await inlineAvatar(`https://github.com/${login}.png?size=64`).catch(
-            () => undefined,
-          )) ?? "";
-        this.render(this.layout);
-      })
-      .catch(() => undefined);
+    void this.learnViewer().catch(() => undefined);
     this.render(this.layout);
   }
 
@@ -964,9 +1593,29 @@ export class GraphPanel {
    * in the meantime.
    */
   private async remark(message: RemarkMessage): Promise<void> {
+    const { id, content, body } = message.payload;
+
+    /*
+     * A remark the forge never issued an id for.
+     *
+     * Local ids are negative and the forge's are not, so this is not a guess.
+     * Without it a reply in a local conversation went to `gh` carrying an id
+     * of ours, and came back "Parent comment not found (HTTP 404)" — after the
+     * reader had written the reply and pressed the button.
+     *
+     * The page routes these to their own messages now. This stays because the
+     * page is a document that can be a version behind: a graph left open
+     * across an upgrade still sends the old message, and it should do nothing
+     * rather than something wrong.
+     */
+    if (id < 0) {
+      if (message.type === "editComment" && body) this.paired?.edit(id, body);
+      else if (message.type === "deleteComment") this.paired?.remove(id);
+      return;
+    }
+
     const pull = this.graph.meta.pullRequest;
     if (!pull) return;
-    const { id, content, body } = message.payload;
 
     // The one that cannot be taken back. The others can be edited or reacted
     // to again; a deleted remark is gone from the conversation for everyone.
@@ -1086,8 +1735,42 @@ export class GraphPanel {
     redrawn?: readonly string[],
     /** Arrows the page must not draw until the next answer arrives. */
     withdrawn?: readonly string[],
+    /** The reading this rebuild belongs to, as its watcher knows it. */
+    where?: string,
   ): boolean {
-    const panel = GraphPanel.current;
+    /*
+     * The panel holding *this* reading, rather than whichever is in front.
+     *
+     * Every reading of a working tree has a watcher of its own, and a rebuild
+     * belongs to the reading that provoked it. Delivered to the active panel it
+     * went wherever the reader happened to be looking: open a live change, turn
+     * to another tab, and the first change's next rebuild arrived in the second
+     * one's frame — the reader watching a change they had left come back over
+     * the one they were reading, or the page sitting on a model that is not a
+     * model of what it is showing.
+     *
+     * The registry is keyed by what a reading *is*, which is exactly the
+     * question being asked here.
+     */
+    /*
+     * Two names for one reading, and both have to be tried.
+     *
+     * A panel restored from a reload is registered under the reading the page
+     * wrote down, which holds the base as the reader asked for it — `HEAD~1`.
+     * A rebuild arrives carrying a graph whose base has since been resolved to
+     * what it actually is — `main`. Same reading, two spellings, and a lookup
+     * by either alone misses half the time: measured, the first rebuild after a
+     * restore wanted `main…main…live` while the registry held
+     * `HEAD~1…main…live`.
+     *
+     * So the caller's own name for it is tried first — the watcher was armed
+     * under it — and the graph's after. What is deliberately not tried is
+     * "whichever panel is in front", which is what this used to do and what
+     * delivered one reading's rebuild into another reading's frame.
+     */
+    const panel =
+      (where ? GraphPanel.open.get(where) : undefined) ??
+      GraphPanel.open.get(readingKey(graph, repo));
     if (!panel || !panel.painted) return false;
 
     panel.graph = graph;
@@ -1100,7 +1783,7 @@ export class GraphPanel {
 
   /** Reflects a change made in the sidebar. */
   static applyViewed(paths: string[], marked: boolean): void {
-    void GraphPanel.current?.panel.webview.postMessage({
+    void GraphPanel.active?.panel.webview.postMessage({
       type: "setViewed",
       paths,
       viewed: marked,
@@ -1146,6 +1829,32 @@ export class GraphPanel {
       undefined,
       this.disposables,
     );
+
+    /*
+     * Which reading the reader is looking at.
+     *
+     * Followed rather than remembered when we hand a panel over: a reader
+     * switching tabs tells the editor, not us, and everything that acts on
+     * "the graph" — opening a file from the list, flying to a reference — has
+     * to mean the one in front of them.
+     */
+    // Guarded, like every other event this constructor subscribes to. All of it
+    // runs before the panel is usable, so a host that does not offer one of
+    // them takes the whole review down — and the failure reads as a broken
+    // build rather than as a missing API.
+    if (typeof this.panel.onDidChangeViewState === "function") {
+      this.panel.onDidChangeViewState(
+      () => {
+        if (!this.panel.active || GraphPanel.active === this) return;
+        GraphPanel.active = this;
+        // The file list, the viewed marks and the refresh button all mean "the
+        // change in front of me", and which one that is has just changed.
+        GraphPanel.onActive?.(this.graph, this.repo);
+      },
+      undefined,
+      this.disposables,
+      );
+    }
 
     this.panel.onDidDispose(() => this.dispose(), undefined, this.disposables);
   }
@@ -1204,10 +1913,18 @@ export class GraphPanel {
     const html = renderHtml(this.graph, layout, {
       theme: dark ? DARK_THEME : LIGHT_THEME,
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
+      /*
+       * The diagram renderer, named but not loaded.
+       *
+       * The page fetches it the first time an agent draws something and never
+       * otherwise, so what travels in the document is a URI rather than three
+       * and a half megabytes of renderer.
+       */
+      ...(this.diagramRenderer() ? { mermaid: this.diagramRenderer()! } : {}),
       ...(this.withTests ? { withTests: this.withTests } : {}),
       ...(this.alternate ? { alternate: this.alternate } : {}),
       ...(this.highlight ? { highlight: this.highlight } : {}),
-      comments: this.comments,
+      comments: this.everything(),
       canReview: Boolean(this.graph.meta.pullRequest),
       ...(this.viewer ? { viewer: this.viewer } : {}),
       ...(this.viewerFace ? { viewerFace: this.viewerFace } : {}),
@@ -1270,16 +1987,55 @@ export class GraphPanel {
     return true;
   }
 
+  /**
+   * Where the page can fetch the diagram renderer, if this host can say.
+   *
+   * Guarded, and the guard is the point. This is one optional extra on a page
+   * whose job is to draw a change: an editor that cannot form a webview URI —
+   * an older API, a frame without the method, a test double — must lose the
+   * diagrams and nothing else. Left unguarded it threw while the document was
+   * being built, which took the whole graph with it: sixteen tests sat on a
+   * loading page until they timed out, and the failure said "unexpected token
+   * '<'" rather than anything about a URI.
+   */
+  private diagramRenderer(): string | undefined {
+    if (!GraphPanel.assets) return undefined;
+    try {
+      return this.panel.webview
+        .asWebviewUri(
+          vscode.Uri.joinPath(GraphPanel.assets, "dist", "media", "mermaid.min.js"),
+        )
+        .toString();
+    } catch {
+      return undefined;
+    }
+  }
+
   private render(layout: GraphLayout): void {
     this.layout = layout;
     // Whatever was being waited for has arrived.
     GraphPanel.waiting = false;
-    // The pull request's title names the tab; the branch pair is in the
-    // toolbar, and a tab strip has room for one of them, not both.
+    // In this frame, specifically. Another may still be waiting on its own
+    // graph, and the retries that keep a loader alive are per frame.
+    GraphPanel.settled.add(this.panel);
+    /*
+     * The pull request's title names the tab; the branch pair is in the
+     * toolbar, and a tab strip has room for one of them, not both.
+     *
+     * A reading of the files on disk says so, because the two are the same
+     * change under two names and the tab strip is where a reader picks between
+     * them. Which is which mattered the moment both could be open at once, and
+     * a title that does not say it leaves them to tell two identical tabs apart
+     * by clicking one.
+     */
     const pull = this.graph.meta.pullRequest;
-    this.panel.title = pull
+    const named = pull
       ? `#${pull.number} ${pull.title}`
       : `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
+    this.panel.title = this.graph.meta.worktree === true ? `LIVE ${named}` : named;
+    // The mark that goes with it, now there is a graph to ask which reading
+    // this is. The frame was given the plain one before anything was known.
+    this.mark(false);
 
     // Marks made in an earlier session are restored once the page is up.
     const marked = this.viewed?.all() ?? [];
@@ -1294,6 +2050,44 @@ export class GraphPanel {
     }
     this.panel.webview.html = this.built(layout).html;
     this.painted = true;
+
+    /*
+     * The frame is told what it is a reading of, and remembers it for us.
+     *
+     * A webview can hold a little state of its own that survives the window
+     * going away, and it is the only thing about a restored frame that comes
+     * back with it. Without this the editor hands over N identical empty
+     * panels after a reload and there is nothing to say which change each one
+     * held — which is why only ever one of them could be brought back.
+     *
+     * Sent after the page rather than embedded in it: this is not something
+     * the page draws, and the file `odin view` writes has no host to remember
+     * anything for it.
+     */
+    setTimeout(() => {
+      void this.panel.webview.postMessage({
+        type: "reading",
+        payload: this.describe(),
+      });
+    }, 0);
+  }
+
+  /** The question this reading answers, in the form a reload can replay. */
+  private describe(): {
+    repo: string;
+    baseRef?: string;
+    headRef?: string;
+    worktree?: boolean;
+    number?: number;
+  } {
+    const meta = this.graph.meta;
+    return {
+      repo: this.repo,
+      ...(meta.baseRef ? { baseRef: meta.baseRef } : {}),
+      ...(meta.headRef ? { headRef: meta.headRef } : {}),
+      ...(meta.worktree === true ? { worktree: true } : {}),
+      ...(meta.pullRequest ? { number: meta.pullRequest.number } : {}),
+    };
   }
 
   /**
@@ -1326,7 +2120,7 @@ export class GraphPanel {
         return;
       }
       if (message.type === "updateBranch") {
-        await this.update(message.payload.rebase === true);
+        await this.updateBranch(message.payload.rebase === true);
         return;
       }
       if (message.type === "mergePullRequest") {
@@ -1335,6 +2129,90 @@ export class GraphPanel {
       }
       if (message.type === "resolveThread") {
         await this.resolve(message.payload);
+        return;
+      }
+      if (message.type === "discoverAgents") {
+        // The refresh button says the answer has changed; a rebuilt page
+        // asking again does not, and re-probing for it was the whole cost.
+        await this.findAgents(message.payload?.again === true);
+        return;
+      }
+      if (message.type === "renameSession") {
+        this.paired?.rename(message.payload.agent, message.payload.name ?? "");
+        return;
+      }
+      if (message.type === "copySession") {
+        const id = this.paired?.session(message.payload.agent);
+        if (!id) return;
+        // Through the editor rather than the page: a webview's clipboard is
+        // refused often enough — and silently enough — that a button doing
+        // nothing would be the common case rather than the odd one.
+        await vscode.env.clipboard.writeText(id);
+        void vscode.window.setStatusBarMessage(`Odin: copied ${id}`, 3000);
+        return;
+      }
+      if (message.type === "editLocal") {
+        if (this.paired?.edit(message.payload.id, message.payload.body ?? "")) return;
+        return;
+      }
+      if (message.type === "deleteLocal") {
+        const gone = await vscode.window.showWarningMessage(
+          "Delete this remark?",
+          {
+            modal: true,
+            detail:
+              "It is on this machine only, so nobody else loses anything — but nothing here keeps a copy.",
+          },
+          "Delete",
+        );
+        if (gone === "Delete") this.paired?.remove(message.payload.id);
+        return;
+      }
+      if (message.type === "answerApproval") {
+        this.paired?.answer(message.payload.id, message.payload.allow === true);
+        return;
+      }
+      if (message.type === "forgetSessions") {
+        this.paired?.forgetSessions();
+        this.sendComments();
+        return;
+      }
+      if (message.type === "copyText") {
+        const text = message.payload?.text;
+        if (typeof text !== "string" || !text) return;
+        await vscode.env.clipboard.writeText(text);
+        void vscode.window.setStatusBarMessage(
+          `Odin: ${message.payload.said ?? "copied"}`,
+          3000,
+        );
+        return;
+      }
+      if (message.type === "stopAgent") {
+        this.paired?.stop(message.payload.agent);
+        return;
+      }
+      if (message.type === "agentTranscript") {
+        void this.panel.webview.postMessage({
+          type: "agentTranscript",
+          payload: {
+            agent: message.payload.agent,
+            text: this.paired?.transcript(message.payload.agent) ?? "",
+          },
+        });
+        return;
+      }
+      if (message.type === "askAgents") {
+        // Started before the forge is asked who this is, so the remark appears
+        // the moment it is written. The name arrives a beat later and is
+        // written onto it — a message that waits on the network to show up at
+        // all reads as a message that was not sent.
+        const paired = this.pairing();
+        paired.ask({
+          ...message.payload,
+          author: this.viewer || PLACEHOLDER,
+          ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
+        });
+        void this.learnViewer().catch(() => undefined);
         return;
       }
       if (message.type === "refreshChecks") {
@@ -1347,6 +2225,11 @@ export class GraphPanel {
       }
       if (message.type === "settings") {
         await GraphPanel.settings?.write(message.payload);
+        // The order is the priority rule, so a reorder is not merely a
+        // preference to file: a message waiting on a busy agent may now have
+        // somebody above it who is free.
+        this.paired?.setOrder(readOrder(message.payload));
+        this.paired?.setAgency(readAgency(message.payload));
         return;
       }
       if (message.type === "viewed") {
@@ -1446,12 +2329,103 @@ export class GraphPanel {
   }
 
   dispose(): void {
-    GraphPanel.current = undefined;
+    GraphPanel.open.delete(this.key);
+    if (GraphPanel.active === this) {
+      // Whatever is left, so the next press has somewhere to land. The editor
+      // will correct this the moment the reader looks at a tab.
+      GraphPanel.active = GraphPanel.open.values().next().value;
+    }
+    // The pulse is a timer, and a timer outliving its tab is a timer writing an
+    // icon onto a panel that has been thrown away.
+    if (this.beat) clearInterval(this.beat);
+    this.beat = undefined;
+    // Turns in flight belong to this reading, and there is nowhere left for
+    // them to write. What they have already said is on disk.
+    this.paired?.dispose();
+    GraphPanel.onClosed?.(this.key);
     this.panel.dispose();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
   }
+
+  /**
+   * A reading has gone.
+   *
+   * The panel has no idea what a watcher is; the extension wires the two
+   * together, and a reading nobody is looking at should not go on being
+   * rebuilt.
+   */
+  static onClosed: ((key: string) => void) | undefined;
+
+  /**
+   * The reader has turned to another reading.
+   *
+   * Everything outside this panel that says "the change" — the file list, the
+   * marks against it — has to follow, and none of it is the panel's to move.
+   */
+  static onActive: ((graph: ChangeGraph, repo: string) => void) | undefined;
+
+  /** What this panel is a reading of, for whoever is keeping track. */
+  get reading(): string {
+    return this.key;
+  }
+
+  /**
+   * The question that produced the reading in front of the reader.
+   *
+   * Asked of the panel rather than remembered beside it. There is one of these
+   * per tab now, and a module-level "the last review" answers for whichever was
+   * opened most recently — which is the wrong tab as soon as the reader looks
+   * at another one.
+   */
+  static current():
+    | { repo: string; baseRef?: string; headRef?: string; worktree?: boolean }
+    | undefined {
+    const panel = GraphPanel.active;
+    if (!panel) return undefined;
+    const meta = panel.graph.meta;
+    return {
+      repo: panel.repo,
+      ...(meta.baseRef ? { baseRef: meta.baseRef } : {}),
+      ...(meta.headRef ? { headRef: meta.headRef } : {}),
+      ...(meta.worktree === true ? { worktree: true } : {}),
+    };
+  }
 }
 
+
+/**
+ * The agents the reader switched on, in their order, out of stored settings.
+ *
+ * Read defensively because settings are whatever the page last sent: a build
+ * one version behind wrote no such field, and there is no schema between the
+ * two sides — the page owns what a setting means, which is what makes adding
+ * one cost nothing here.
+ */
+function readOrder(settings: unknown): string[] {
+  if (!settings || typeof settings !== "object") return [];
+  const held = (settings as Record<string, unknown>).pairing;
+  if (!Array.isArray(held)) return [];
+  return held.filter((id): id is string => typeof id === "string");
+}
+
+/**
+ * How much rope each agent has been given, out of stored settings.
+ *
+ * Read defensively, like the order beside it: settings are whatever the page
+ * last sent, and a build one version behind wrote no such field.
+ */
+function readAgency(settings: unknown): Record<string, Agency> {
+  if (!settings || typeof settings !== "object") return {};
+  const held = (settings as Record<string, unknown>).agency;
+  if (!held || typeof held !== "object") return {};
+  const out: Record<string, Agency> = {};
+  for (const [id, level] of Object.entries(held as Record<string, unknown>)) {
+    if (level === "read" || level === "ask" || level === "edits" || level === "full") {
+      out[id] = level;
+    }
+  }
+  return out;
+}
 
 /** As much of the page's model as this side has any business knowing. */
 interface PageModel {

@@ -38,6 +38,8 @@ function recorder() {
   };
   const panel = {
     webview,
+    onDidChangeViewState: () => ({ dispose() {} }),
+    active: false,
     onDidDispose: (fn: () => void) => {
       closed.push(fn);
       return { dispose() {} };
@@ -185,7 +187,18 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
     },
     Uri: {
       file: (p: string) => ({ scheme: "file", path: p, fsPath: p, toString: () => p }),
-      joinPath: () => ({}),
+      /*
+       * Joins, as the editor's own does.
+       *
+       * It used to answer `{}` for everything, which is fine until something
+       * being tested is *which* file was named — the tab's icon, the diagram
+       * renderer's address — and then every answer looks like every other and
+       * the test can only prove that something happened.
+       */
+      joinPath: (base: { path?: string }, ...rest: string[]) => {
+        const path = [base?.path ?? "", ...rest].filter(Boolean).join("/");
+        return { scheme: "file", path, fsPath: path, toString: () => path };
+      },
     },
     Disposable: class {
       constructor(readonly fn?: () => void) {}
@@ -767,6 +780,319 @@ describe("a live reading of the working tree", () => {
     expect(frame(staged).count).toEqual(before.count);
   }, 120_000);
 
+  it("draws the change on a host that cannot address its own files", async () => {
+    /*
+     * The page is told where to fetch the diagram renderer, which is one
+     * optional extra on a document whose job is to draw a change. Working that
+     * out unguarded threw for any frame without `asWebviewUri` — and it threw
+     * while the document was being built, so the graph never rendered at all:
+     * sixteen tests sat on a loading page until they timed out, reporting
+     * "unexpected token '<'" rather than anything about a URI.
+     *
+     * This editor is exactly that host: its webview double has no such method.
+     * So the change is drawn and the diagrams are what is lost.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+
+    const page = panel.page();
+    expect(page).toContain("window.__ODIN__=");
+    expect(modelOf(page).nodes.length).toBeGreaterThan(0);
+    // The model, not the document: the page carries the renderer's *name* in
+    // its own script whatever happens, because the code that would fetch it is
+    // part of the application.
+    expect((modelOf(page) as unknown as { mermaid?: string }).mermaid).toBeUndefined();
+  }, 120_000);
+
+  it("sends a rebuild to its own reading, not to whichever tab is in front", async () => {
+    /*
+     * The one the reader reported. A rebuild was delivered to the active panel
+     * rather than to the panel holding the reading it belongs to — so turning
+     * from a live change to another tab and carrying on working meant the first
+     * change's next rebuild arrived in the second change's frame. What that
+     * looks like from the outside is the reading you left coming back over the
+     * one you are in, or a page sitting on a model of something else.
+     *
+     * Two readings of the same branch: one of the files on disk, which is
+     * watched, and one of the last commit, which is not. Opening the second
+     * puts it in front; the first is the one that rebuilds.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const live = await reading(editor);
+
+    const committed = recorder();
+    await editor.serializer!.deserializeWebviewPanel(committed.panel, {
+      repo,
+      baseRef: "base",
+    });
+    for (let i = 0; i < 200 && !committed.page().includes('id="app"'); i++) {
+      await wait(50);
+    }
+    expect(committed.page()).toContain('id="app"');
+
+    /*
+     * Waited out rather than counted from.
+     *
+     * A change is drawn twice — the diff as soon as it is read, the arrows when
+     * the resolver catches up — so a count taken the moment the page appears is
+     * taken in the middle of that frame's own build, and the second half of it
+     * would read as somebody else's rebuild landing.
+     */
+    let quiet = redraws(committed);
+    for (let still = 0; still < 8; still++) {
+      await wait(150);
+      if (redraws(committed) !== quiet) {
+        quiet = redraws(committed);
+        still = 0;
+      }
+    }
+
+    const before = { live: redraws(live), other: redraws(committed) };
+    writeFileSync(join(repo, "two.ts"), ON_DISK.replace("x5", "x9"));
+    for (const save of editor.saves) {
+      save({ uri: { scheme: "file", fsPath: join(repo, "two.ts") } });
+    }
+    for (let i = 0; i < 200 && redraws(live) === before.live; i++) await wait(50);
+
+    // The reading that changed got the rebuild...
+    expect(JSON.stringify(showing(live))).toContain("test x9");
+    // ...and the one the reader had turned to was left alone.
+    expect(redraws(committed)).toBe(before.other);
+  }, 120_000);
+
+  it("gives every restored frame its own graph, not one of them all of them", async () => {
+    /*
+     * What the reader saw: two reviews open, a window reload, one of them draws
+     * and the other sits on "Laying out…" forever — a layout that had in fact
+     * finished, for a graph that had been delivered to the wrong frame.
+     *
+     * The build reports its progress into the waiting page and hands the
+     * finished graph to a panel. Both used to mean "whichever panel is in
+     * front", so with two frames coming back at once the second build's graph
+     * landed on the first frame and the second was left holding the loader.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+
+    const one = recorder();
+    const two = recorder();
+    await editor.serializer!.deserializeWebviewPanel(one.panel, {
+      repo,
+      baseRef: "base",
+      worktree: true,
+    });
+    await editor.serializer!.deserializeWebviewPanel(two.panel, {
+      repo,
+      baseRef: "base",
+    });
+
+    const drew = (frame: ReturnType<typeof recorder>) =>
+      frame.page().includes('id="app"') && frame.page().includes("window.__ODIN__=");
+    for (let i = 0; i < 300 && !(drew(one) && drew(two)); i++) await wait(50);
+
+    // Both frames hold a change of their own, and neither is left waiting.
+    expect(drew(one)).toBe(true);
+    expect(drew(two)).toBe(true);
+    for (const frame of [one, two]) {
+      expect(frame.page()).not.toContain("Laying out");
+      expect(frame.page()).not.toContain("Reopening");
+    }
+    // And they are two different readings: one of the files on disk, one of the
+    // last commit, which differ by the edit this repository carries uncommitted.
+    expect(modelOf(one.page()).meta.worktree).toBe(true);
+    expect(modelOf(two.page()).meta.worktree).toBeUndefined();
+  }, 180_000);
+
+  it("does not throw a loader over a graph it is about to redraw", async () => {
+    /*
+     * A waiting page replaces the document, and the document is the reader's
+     * cards, camera and open conversation. Asking for a reading that is already
+     * on screen — a refresh, a rebuild, anything — used to write one anyway,
+     * because the loader went to whichever panel was in front rather than to
+     * the reading it was for and had no way to know that reading was already
+     * drawn.
+     *
+     * Told which reading it is for, it finds the panel already showing it and
+     * says the words instead of taking the picture away.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+    expect(panel.page()).toContain('id="app"');
+
+    await (editor.commands.get("odin.refresh") as () => Promise<void>)();
+    for (let i = 0; i < 200 && !panel.page().includes('id="app"'); i++) await wait(50);
+
+    /*
+     * Every page written after the first graph is a graph.
+     *
+     * Counted from the graph rather than from the start: a restored frame is
+     * given a waiting page before its first build, which is right — there is
+     * nothing to take away yet. What must never happen is one landing on a
+     * drawing that already exists.
+     */
+    const first = panel.written.findIndex((page) => page.includes("window.__ODIN__="));
+    expect(first).toBeGreaterThanOrEqual(0);
+    const since = panel.written.slice(first + 1);
+    expect(since.filter((page) => page.includes("breathe"))).toHaveLength(0);
+    expect(panel.page()).toContain('id="app"');
+  }, 120_000);
+
+  it("takes a frame of its own rather than the one in front", async () => {
+    /*
+     * The reader's own sequence: reading the forge's copy of a change, press
+     * the offer to see the local one, then turn back — and find the first tab
+     * pulsing forever.
+     *
+     * A reading with no frame yet had the loader written into whichever panel
+     * was in front. When its graph arrived it went into a frame of its own, and
+     * what was left behind was a tab waiting for a graph that had already been
+     * delivered somewhere else.
+     *
+     * Driven the other way round — live first, then the committed reading —
+     * because that is the pair this harness can open without a forge.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const first = await reading(editor);
+    expect(first.page()).toContain('id="app"');
+    const pages = first.written.length;
+
+    const second = recorder();
+    await editor.serializer!.deserializeWebviewPanel(second.panel, {
+      repo,
+      baseRef: "base",
+    });
+    for (let i = 0; i < 200 && !second.page().includes('id="app"'); i++) {
+      await wait(50);
+    }
+
+    // The tab they came from kept its change: no waiting page was written over
+    // it, and what it holds is still a graph.
+    expect(second.page()).toContain('id="app"');
+    expect(first.page()).toContain('id="app"');
+    expect(first.written.slice(pages).filter((page) => page.includes("breathe"))).toHaveLength(0);
+  }, 120_000);
+
+  it("opens one tab for a second reading, not a tab and an abandoned loader", async () => {
+    /*
+     * The other side of taking a fresh frame: the frame has to be handed to the
+     * build that will fill it. It was made and then not offered, so the graph
+     * opened a frame of its own and the reader got their change plus a tab
+     * called "Odin: Change Graph" still saying "Reading the change" — a loader
+     * waiting for a graph that had arrived somewhere else.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    await reading(editor);
+    const before = editor.opened.length;
+
+    // A second reading of the same branch: the committed one, which has no
+    // frame of its own yet.
+    await (editor.commands.get("odin.reviewAgainst") as undefined | (() => Promise<void>))?.();
+    await (editor.commands.get("odin.review") as () => Promise<void>)();
+    await wait(1500);
+
+    const made = editor.opened.slice(before);
+    // At most one new tab, and if there is one it holds a change rather than a
+    // pulsing mark.
+    expect(made.length).toBeLessThanOrEqual(1);
+    for (const frame of made) {
+      expect(frame.page()).toContain('id="app"');
+      expect(frame.page()).not.toContain("breathe");
+    }
+  }, 120_000);
+
+  it("says which reading is of the files on disk, in the tab", async () => {
+    // Two tabs for one change, and the only difference between them is which
+    // follows the reader's typing. A title that does not say it leaves them to
+    // tell two identical tabs apart by clicking one.
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+
+    expect(panel.panel.title.startsWith("LIVE ")).toBe(true);
+
+    /*
+     * And in the one place in that strip a colour can live: the icon.
+     *
+     * A tab's title is plain text, so the mark beside it is the only thing
+     * there that can be green. The word stays as well — a colour nobody can
+     * name says nothing to a reader who does not already know the convention.
+     */
+    expect(JSON.stringify(panel.panel.iconPath ?? null)).toContain("odin-live");
+  }, 60_000);
+
+  it("keeps the plain mark for a reading of the forge's copy", async () => {
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    await reading(editor);
+
+    const committed = recorder();
+    await editor.serializer!.deserializeWebviewPanel(committed.panel, {
+      repo,
+      baseRef: "base",
+    });
+    for (let i = 0; i < 200 && !committed.page().includes('id="app"'); i++) {
+      await wait(50);
+    }
+
+    const icon = JSON.stringify(committed.panel.iconPath ?? null);
+    expect(icon).toContain("odin-dark.svg");
+    expect(icon).not.toContain("odin-live");
+    expect(committed.panel.title.startsWith("LIVE ")).toBe(false);
+  }, 120_000);
+
+  it("marks the tab while its change is being worked out", async () => {
+    /*
+     * A rebuild takes seconds, and every sign of one was inside the page — so a
+     * reader who has turned to their editor cannot tell a graph that is current
+     * from one three saves behind. The tab is where they are looking.
+     *
+     * A pulse rather than a colour, because a colour is a state and this is a
+     * process; the editor gives no other way to animate a tab, so it is two
+     * icons alternating.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+    const quiet = JSON.stringify(panel.panel.iconPath ?? null);
+
+    writeFileSync(join(repo, "two.ts"), ON_DISK.replace("x5", "x8"));
+    let working: string | undefined;
+    for (const save of editor.saves) {
+      save({ uri: { scheme: "file", fsPath: join(repo, "two.ts") } });
+    }
+    for (let i = 0; i < 200 && working === undefined; i++) {
+      const now = JSON.stringify(panel.panel.iconPath ?? null);
+      if (now !== quiet) working = now;
+      await wait(25);
+    }
+
+    expect(working).toBeDefined();
+    expect(working).toContain("odin-working");
+
+    /*
+     * And it goes back to the tab's own mark when the rebuild is over.
+     *
+     * Not back to what it was before, which for a restored frame is nothing at
+     * all: the editor hands those back without the icon the extension gave the
+     * original, and this is the first thing to set one.
+     */
+    for (let i = 0; i < 400; i++) {
+      const now = JSON.stringify(panel.panel.iconPath ?? null);
+      if (now.includes("odin-live")) break;
+      await wait(50);
+    }
+    const ended = JSON.stringify(panel.panel.iconPath ?? null);
+    // This is a reading of the files on disk, so its resting mark is the green
+    // one rather than the plain one.
+    expect(ended).toContain("odin-live");
+    expect(ended).not.toContain("odin-working");
+  }, 120_000);
+
   it("redraws the card when the file behind it changes", async () => {
     restore();
     const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
@@ -776,6 +1102,35 @@ describe("a live reading of the working tree", () => {
     const page = await save(editor, panel, ON_DISK.replace("x5", "x6"));
     expect(page).toContain("test x6");
   }, 120_000);
+
+  /**
+   * A redraw the page applies to itself, and never a new document.
+   *
+   * Replacing the document is what throws the reader across the drawing: the
+   * page boots again, and everything it knew about where they were is gone
+   * except the little it wrote down. The page has been able to take a rebuilt
+   * model over the wire for a while; what matters is that the rebuild actually
+   * arrives that way, every time, and not only when the shortcut happened to
+   * be available.
+   */
+  it("never writes a second document for a file that changed", async () => {
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+    const documents = panel.written.length;
+
+    // Three saves, one of them structural: a file's imports change, which is
+    // the kind of edit that cannot take the rows shortcut.
+    await save(editor, panel, ON_DISK.replace("x5", "x6"));
+    await save(editor, panel, ON_DISK.replace("x5", "x7"));
+    await save(
+      editor,
+      panel,
+      'import { one } from "./one.js";\n\n// test x8\nexport const two = one() + 2;\n',
+    );
+
+    expect(panel.written.length).toBe(documents);
+  }, 180_000);
 });
 
 /**
@@ -900,4 +1255,58 @@ describe("work appearing under a committed reading", () => {
     await wait(1500);
     expect(offered.length).toBe(asked);
   }, 60_000);
+
+  it("replaces the tab it was promoted from rather than adding to it", async () => {
+    /*
+     * Accepting the offer is not asking for a second tab. It is the same change
+     * read the other way, and what the reader wants at the end of it is the
+     * live one — so the tab it came from goes.
+     *
+     * Closed after the replacement is drawn rather than before: closing first
+     * leaves them looking at nothing for the seconds a build takes, and at
+     * nothing at all if it fails.
+     */
+    execFileSync("git", ["checkout", "--", "."], { cwd: repo, stdio: "ignore" });
+
+    const editor = stub(
+      { repo, baseRef: "base", at: new Date().toISOString() },
+      { folder: repo, baseRef: "base" },
+    );
+    // Accepted this time.
+    editor.information = (message: string, ...rest: unknown[]) =>
+      Promise.resolve(/changed on disk/.test(message) ? rest[0] : undefined);
+
+    const committed = recorder();
+    await editor.serializer!.deserializeWebviewPanel(committed.panel, undefined);
+    for (let waited = 0; waited < 40_000; waited += 50) {
+      if (committed.page().includes("window.__ODIN__=")) break;
+      await wait(50);
+    }
+    for (let waited = 0; waited < 10_000; waited += 25) {
+      if (editor.saves.length > 0) break;
+      await wait(25);
+    }
+
+    writeFileSync(
+      join(repo, "two.ts"),
+      'import { one } from "./one.js";\n\n// promoted\nexport const two = one() + 4;\n',
+    );
+    for (const save of editor.saves) {
+      save({ uri: { scheme: "file", fsPath: join(repo, "two.ts") } });
+    }
+
+    // The live reading arrives in a frame of its own...
+    for (let waited = 0; waited < 40_000; waited += 50) {
+      if (editor.opened.some((frame) => frame.page().includes("window.__ODIN__="))) break;
+      await wait(50);
+    }
+    const live = editor.opened.find((frame) => frame.page().includes("window.__ODIN__="));
+    expect(live).toBeDefined();
+
+    // ...and the tab it was promoted from is gone.
+    for (let waited = 0; waited < 5_000 && !committed.disposed; waited += 50) {
+      await wait(50);
+    }
+    expect(committed.disposed).toBe(true);
+  }, 90_000);
 });

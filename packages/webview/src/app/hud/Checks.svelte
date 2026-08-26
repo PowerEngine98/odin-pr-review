@@ -39,8 +39,6 @@
     total: number;
   }
 
-  let { chromeHeight = 0 }: { chromeHeight?: number } = $props();
-
   const summary = $derived(model.current.checks as CheckSummary | undefined);
 
   /** What the forge would say if asked to merge this now. */
@@ -378,7 +376,7 @@
 <!-- Nothing ran, or no forge answered: no panel rather than a panel of
      nothing. -->
 {#if settings.hud.checks && summary && summary.total > 0}
-  <div class="checks-panel" style="top:{chromeHeight + 14}px">
+  <div class="checks-panel">
     <div class="checks-head">
       Checks
       <span class="checks-count {verdict}">{summary.done}/{summary.total}</span>
@@ -574,19 +572,16 @@
 {/if}
 
 <style>
+  /* Placed by the column it sits in rather than by itself: it shares the left
+     edge with the pairing panel, and two fixed elements both measuring from the
+     top of the chrome sit on top of one another. */
   .checks-panel {
-    position: fixed;
-    /* One edge, said explicitly. A fixed element given both a left and a right
-       is stretched between them rather than positioned twice. */
-    left: 12px;
-    right: auto;
-    z-index: var(--z-hud, 25);
     width: 260px;
     max-height: 52vh;
     overflow-y: auto;
     padding: 8px;
     border-radius: 6px;
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     font-size: 11px;
   }

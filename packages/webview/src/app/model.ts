@@ -199,6 +199,42 @@ export interface CommentView {
   url: string;
   outdated: boolean;
   wholeFile?: boolean;
+  /**
+   * Written here and nowhere else.
+   *
+   * A conversation with an agent is working out what to do, not a review of
+   * what was done, so the forge is never told about it. Drawn the same way as
+   * everything else on purpose — a conversation about a passage is one
+   * conversation — and marked rather than separated.
+   */
+  local?: boolean;
+  /** The agent that wrote it, when an agent did. */
+  agent?: string;
+  /** How the work this message asked for is going. */
+  task?: "queued" | "working" | "done" | "failed" | "asking" | "stopped";
+  /**
+   * A decision this remark is waiting on.
+   *
+   * In the thread rather than in a dialogue, so that what was asked, what was
+   * decided and what happened next are one record. A modal settles the same
+   * question and leaves nothing behind.
+   */
+  approval?: { id: string; what: string; state: "waiting" | "allowed" | "denied" };
+}
+
+/**
+ * A coding agent this machine can run, as the panel shows it.
+ *
+ * Sent by the host rather than worked out here: whether a tool is installed is
+ * a fact about the machine, and the page has no way to ask. Absent entirely
+ * until the host has looked, which is not the same as an empty list — one means
+ * "not asked yet" and the other means "asked, and there are none".
+ */
+export interface AgentView {
+  id: string;
+  name: string;
+  /** Whatever the tool said when asked, for the hover. Often empty. */
+  version: string;
 }
 
 /**
@@ -235,6 +271,14 @@ export interface ViewModel {
   checks?: unknown;
   /** How the change stands against being merged, as the forge sees it. */
   merging?: unknown;
+  /**
+   * The agents this machine can run, once the host has looked.
+   *
+   * Undefined means it has not looked yet, which the panel draws as a wait.
+   * An empty array means it looked and found none, which is a different thing
+   * to say and a different thing to do about it.
+   */
+  agents?: AgentView[];
   canReview: boolean;
   /** What a half-written review is filed under between page loads. */
   review: string;
@@ -267,7 +311,88 @@ export interface ReaderSettings {
     checks: boolean;
     /** The checks panel folded to its head, as opposed to hidden altogether. */
     checksFolded: boolean;
+    /** The pairing panel, which only ever appears over a live reading. */
+    agents: boolean;
+    agentsFolded: boolean;
   };
+  /**
+   * Which agents the reader has switched on, in the order they take work.
+   *
+   * An array rather than a set of flags, because the order is the whole of the
+   * priority rule: the first one that is idle takes the next message. An id
+   * naming a tool that is no longer installed is kept rather than dropped —
+   * somebody who uninstalls a tool for an afternoon should not come back to
+   * their ordering rearranged.
+   */
+  pairing?: string[];
+  /**
+   * Whose terminal is open.
+   *
+   * Kept with the rest of the reader's choices rather than only in the page,
+   * because a window reload is not a decision to stop watching. The session
+   * itself lives in the host and is asked for when a terminal appears.
+   */
+  terminals?: string[];
+  /**
+   * How much each agent may do without being asked, by agent id.
+   *
+   * Per agent rather than one switch for all of them, because the useful
+   * setting is rarely the same for each: the tool doing the editing wants to
+   * edit, and the one being asked to look something up does not need to touch
+   * anything. Absent means the default, which the host decides.
+   */
+  agency?: Record<string, "read" | "ask" | "edits" | "full">;
+  /**
+   * How big the terminals are, once somebody has dragged one.
+   *
+   * One size for all of them rather than one each: they are stacked in a
+   * column against the same edge, and terminals of differing widths would be a
+   * ragged edge down the side of the drawing. Dragging any of them is a
+   * statement about how much room a log needs, which is the same statement
+   * whichever one is under the pointer.
+   */
+  terminalWidth?: number;
+  terminalHeight?: number;
+  /**
+   * Terminals folded to their head.
+   *
+   * Kept apart from which are open, because they are different questions: a
+   * folded terminal is still being watched — the reader wants to know the agent
+   * is there and what it may do — they simply do not want its log taking half
+   * the drawing while they read the code it is about.
+   */
+  terminalsFolded?: string[];
+  /**
+   * Diagrams the reader pinned to the drawing, by which reading they belong to.
+   *
+   * An agent asked how something is put together answers with a picture, and
+   * the picture belongs next to the thing it is about rather than at the bottom
+   * of a log that scrolls. Dropping one on the canvas keeps it: it is pinned in
+   * the drawing's own coordinates, so it stays where it was put whatever the
+   * reader does to the camera, and it stays until they throw it away.
+   *
+   * The source rather than the drawing. Mermaid is a few lines of text and the
+   * SVG it becomes is not — and a picture stored as text redraws itself at
+   * whatever size and theme the reader is in when they come back.
+   *
+   * Filed under the reading rather than kept in one list, because a picture
+   * dropped beside a card is about the change it was dropped on. One list meant
+   * the diagrams from one pull request turning up over the cards of the next.
+   */
+  diagrams?: Record<string, PinnedDiagram[]>;
+}
+
+/** One pinned drawing: what it says, where it is, and how big. */
+export interface PinnedDiagram {
+  /** Ours, so two identical drawings are still two drawings. */
+  id: string;
+  /** The mermaid source, exactly as the agent wrote it. */
+  code: string;
+  /** In the drawing's coordinates, not the window's. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 declare global {

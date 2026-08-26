@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./agents/marks.js": {
+      "types": "./dist/agents/marks.d.ts",
+      "default": "./dist/agents/marks.js"
     }
   },
   "scripts": {

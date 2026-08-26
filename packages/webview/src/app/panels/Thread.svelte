@@ -117,6 +117,9 @@
 
   /** Which file and which lines, as short as it can be said. */
   export function placeOf(root: CommentView): string {
+    // A question about the change rather than about a line has no file to name
+    // and is not nowhere.
+    if (!root.path) return "the change";
     const file = root.path.split("/").pop() ?? root.path;
     if (root.wholeFile) return file;
     const span =
@@ -160,7 +163,10 @@
 
 <script lang="ts">
   import type { CommentView } from "../model.js";
-  import { host, model, notify } from "../state.svelte.js";
+  import { host, model, notify, ui } from "../state.svelte.js";
+  // The exact module, not the package: `@odin/core` reaches git and spawns
+  // processes, none of which exists in a browser.
+  import { markOf } from "@odin/core/agents/marks.js";
   import { forget, load, remember, threadKey } from "./drafts.js";
   import Editor from "./Editor.svelte";
   import { EDGE, leftOf, topOf, WIDEST, widthOf } from "./thread.js";
@@ -183,17 +189,96 @@
      * canvas knows them, and a suggestion needs them to show what it replaces.
      */
     linesOf = null,
+    /**
+     * Which end of the conversation the reader asked for.
+     *
+     * "agent" means they pressed an agent's face — on the mark in the margin,
+     * or wherever else one is drawn — and what they are asking is what it said.
+     * That is at the bottom of a thread that by then holds their question, a
+     * plan and an answer, so the box opens there rather than at the top.
+     */
+    at = null,
     onclose = () => {},
   }: {
     openId?: string | null;
     anchor?: Anchor | null;
     linesOf?: ((comment: CommentView) => string[]) | null;
+    at?: "agent" | null;
     onclose?: () => void;
   } = $props();
 
+  /**
+   * What a message's badge says.
+   *
+   * Only while it is not finished: a remark that has been answered has its
+   * answer under it, and a tick saying so as well is a second way of stating
+   * the same thing. Failure keeps its badge, because the reply an agent leaves
+   * on a failure says what happened and not that it happened.
+   */
+  const TASK: Record<string, string> = {
+    queued: "waiting",
+    working: "working",
+    asking: "asking you",
+    failed: "failed",
+    // The window went away mid-turn. The conversation is intact and the agent
+    // still remembers it; answering here carries on from where it stopped.
+    stopped: "stopped",
+  };
+
+  /**
+   * The agent that owns this conversation, ready to draw.
+   *
+   * The claim itself is the host's answer, not one worked out here: the same
+   * rule decides who the next message in this thread goes to, and a second
+   * spelling of it would eventually have the thread naming one agent while the
+   * work went to another.
+   */
+  const claimed = $derived.by(() => {
+    if (!thread) return null;
+    const who = ui.owners[String(thread.root.id)];
+    if (!who) return null;
+    const agent = (model.current.agents ?? []).find((one) => one.id === who);
+    return {
+      name: agent?.name ?? who,
+      mark: markOf(who),
+      working: ui.busyAgents.has(who),
+    };
+  });
+
+  /**
+   * Asks a question again, as a new remark rather than by rerunning the old.
+   *
+   * The thread is the record: a question asked twice was asked twice, and a
+   * silent re-run would leave an answer sitting under a remark already marked
+   * as having failed to get one.
+   */
+  function askAgain(root: CommentView): void {
+    notify("askAgents", {
+      path: root.path,
+      line: root.line,
+      ...(root.startLine !== undefined && root.startLine < root.line
+        ? { startLine: root.startLine }
+        : {}),
+      side: root.side,
+      body: root.body,
+      inReplyTo: Number(root.id),
+    });
+  }
+
   const threads = $derived(threadsOf(model.current.comments ?? []));
   const thread = $derived(threads.find((one) => one.root.id === openId) ?? null);
-  const open = $derived(thread !== null && anchor !== null);
+  /**
+   * A conversation about the change rather than about a line has no mark.
+   *
+   * Everything else here hangs off one: the box is placed beside the mark, and
+   * a thread with no rectangle is a thread that cannot be positioned. A remark
+   * with no file has no card, so no mark, so no rectangle — and it would have
+   * been a conversation that exists, holds an agent's answers, and cannot be
+   * opened anywhere. It stands at the edge instead, where an anchorless box
+   * already goes.
+   */
+  const anchorless = $derived(thread !== null && !thread.root.path);
+  const open = $derived(thread !== null && (anchor !== null || anchorless));
 
   /**
    * The conversation the reader was in, gone.
@@ -204,6 +289,46 @@
    */
   $effect(() => {
     if (openId && !thread) onclose();
+  });
+
+  /* ------------------------------------------------- opening at the answer */
+
+  let body = $state<HTMLElement | null>(null);
+
+  /**
+   * The last thing the agent said, brought into view.
+   *
+   * Keyed on the conversation and on how much of it there is, so it happens
+   * again when the agent adds to a thread the reader opened this way — that is
+   * the point of having opened it this way — and not on every unrelated update.
+   *
+   * Measured against the box rather than handed to `scrollIntoView`, which is
+   * entitled to scroll every scrollable ancestor including the page: this box
+   * floats over a canvas that is itself pannable, and the drawing sliding out
+   * from under a thread is not what anybody asked for.
+   */
+  let shown = "";
+  $effect(() => {
+    if (!open || at !== "agent" || !body || !thread) {
+      if (!open) shown = "";
+      return;
+    }
+    const key = `${openId}:${thread.comments.length}`;
+    if (shown === key) return;
+    shown = key;
+
+    const said = [...thread.comments].reverse().find((comment) => comment.agent);
+    const box = body;
+    const found = said
+      ? box.querySelector<HTMLElement>(`[data-remark="${CSS.escape(String(said.id))}"]`)
+      : null;
+    if (!found) {
+      // Nothing of the agent's yet, or the page has not drawn it. The end of
+      // the conversation is still the newest thing in it.
+      box.scrollTop = box.scrollHeight;
+      return;
+    }
+    box.scrollTop += found.getBoundingClientRect().top - box.getBoundingClientRect().top - 6;
   });
 
   /* ------------------------------------------------------------- placement */
@@ -236,8 +361,34 @@
   const width = $derived(anchor ? widthOf(anchor.left) : WIDEST);
   const left = $derived(anchor ? leftOf(anchor.left, width) : EDGE);
   const top = $derived(
-    anchor ? topOf(anchor.top, height, chromeBottom + EDGE, window.innerHeight) : 0,
+    anchor
+      ? topOf(anchor.top, height, chromeBottom + EDGE, window.innerHeight)
+      : chromeBottom + EDGE,
   );
+
+  /**
+   * How tall the box is allowed to be, which is the room there actually is.
+   *
+   * It used to be three fifths of the window, which is a guess that is wrong in
+   * both directions: on a short window it reaches under the chrome, and on a
+   * tall one it stops well short and leaves the conversation scrolling inside a
+   * letterbox with empty space beneath it. What bounds this box is the same
+   * thing that bounds where it may sit — the bottom of the chrome, the bottom
+   * of the window, and the margin it keeps from both.
+   *
+   * Measured on resize with the chrome, because both answers change together
+   * and a height that was right for the last window is a box hanging off the
+   * bottom of this one.
+   */
+  let room = $state(0);
+  $effect(() => {
+    const measure = () => (room = window.innerHeight);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  });
+
+  const tallest = $derived(Math.max(220, room - chromeBottom - EDGE * 2));
 
   /* ----------------------------------------------------------- the answer */
 
@@ -264,9 +415,33 @@
   function send(): void {
     const body = reply.trim();
     if (!body || !thread) return;
+
     if (editing !== null) {
-      notify("editComment", { id: editing, body });
+      notify(local ? "editLocal" : "editComment", { id: editing, body });
       editing = null;
+    } else if (local) {
+      /*
+       * A conversation the forge has never heard of.
+       *
+       * These threads are held on this machine and their remarks carry ids of
+       * our own, which are not ids the forge can be asked about — sending one
+       * to it produced "Parent comment not found", after the reader had
+       * written the reply and pressed the button.
+       *
+       * And the answer is not merely "post it locally instead": a reply here is
+       * the next thing said to the agent working in this thread, which is what
+       * asking does. The message goes where the conversation is.
+       */
+      notify("askAgents", {
+        path: thread.root.path,
+        line: thread.root.line,
+        ...(thread.root.startLine !== undefined && thread.root.startLine < thread.root.line
+          ? { startLine: thread.root.startLine }
+          : {}),
+        side: thread.root.side,
+        body,
+        inReplyTo: thread.root.id,
+      });
     } else {
       // Answering belongs to the thread, not to the line: a second remark
       // beside the first is how one conversation becomes two.
@@ -275,6 +450,16 @@
     forget(model.current.review, key);
     reply = "";
   }
+
+  /**
+   * Whether this conversation is one the forge knows about.
+   *
+   * Read off the thread's root rather than off each remark: a thread is local
+   * or it is not, and every remark in it follows. What hangs on it is which
+   * side every action goes to — the forge refuses an id it never issued, and
+   * says so only after the reader has written something.
+   */
+  const local = $derived(thread?.root.local === true);
 
   /* ------------------------------------------------- a remark's own actions */
 
@@ -378,7 +563,7 @@
 {#if open && thread}
   <div
     class="thread"
-    style="left:{left}px;top:{top}px;width:{width}px"
+    style="left:{left}px;top:{top}px;width:{width}px;max-height:{tallest}px"
     bind:clientHeight={height}
     bind:this={box}
     role="dialog"
@@ -387,6 +572,25 @@
   >
     <div class="thread-head">
       <span class="thread-where">{placeOf(thread.root)}</span>
+      <!-- Whoever answered here first, and it does not change hands. An agent
+           that replied has already started changing files, so a claim a faster
+           second agent could take would be no claim at all. Naming somebody in
+           a message still overrides it — the reader is the one authority above
+           the agents. -->
+      {#if claimed}
+        <span class="claimed" title="{claimed.name} claimed this conversation. Follow-ups here go to it; name another agent to override.">
+          <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
+            <rect width="24" height="24" rx="12" fill={claimed.mark.color} />
+            {#if claimed.mark.stroke}
+              <path d={claimed.mark.path} fill="none" stroke={claimed.mark.ink} stroke-width="2" stroke-linecap="round" />
+            {:else}
+              <path d={claimed.mark.path} fill={claimed.mark.ink} />
+            {/if}
+          </svg>
+          {claimed.name}
+          {#if claimed.working}<span class="claimed-state">working</span>{/if}
+        </span>
+      {/if}
       <button class="thread-close" title="Close" aria-label="Close" onclick={onclose}>
         <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
           <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -394,15 +598,26 @@
       </button>
     </div>
 
-    <div class="thread-body">
+    <div class="thread-body" bind:this={body}>
       {#each thread.comments as comment (comment.id)}
-        <div class="remark">
+        <div class="remark" data-remark={comment.id}>
           {@render face(comment, "face")}
           <div class="said">
             <div class="head">
               <span class="who">{comment.author || "?"}</span>
               <span class="when" title={exactly(comment.createdAt)}>{ago(comment.createdAt)}</span>
               {#if comment.outdated}<span class="outdated">outdated</span>{/if}
+              <!-- Never sent anywhere. Said on every local remark rather than
+                   only on the reader's own, because the thing worth knowing is
+                   about the conversation: nobody else can see any of this, and
+                   a thread where that is true of some messages and not others
+                   is a thread nobody can reason about. -->
+              {#if comment.local}
+                <span class="only-here" title="On this machine only. The forge has not been told.">local</span>
+              {/if}
+              {#if comment.task && comment.task !== "done"}
+                <span class="task {comment.task}">{TASK[comment.task]}</span>
+              {/if}
               {#if host}
                 <button
                   class="more-actions"
@@ -413,6 +628,34 @@
               {/if}
             </div>
 
+            <!--
+              A decision, where the conversation is.
+
+              The buttons sit on the message that asks, so what was asked, what
+              was decided and what the agent did next read in order. Once
+              answered the buttons go and the answer stays: a thread that
+              forgets what was allowed is not a record of anything.
+            -->
+            {#if comment.approval}
+              <div class="approval {comment.approval.state}">
+                {#if comment.approval.state === "waiting"}
+                  <button
+                    class="approve"
+                    onclick={() => notify("answerApproval", { id: comment.approval?.id, allow: true })}
+                  >Allow</button>
+                  <button
+                    class="refuse"
+                    onclick={() => notify("answerApproval", { id: comment.approval?.id, allow: false })}
+                  >Deny</button>
+                  <span class="approval-why">once, for this action</span>
+                {:else}
+                  <span class="approval-said">
+                    {comment.approval.state === "allowed" ? "You allowed this" : "You refused this"}
+                  </span>
+                {/if}
+              </div>
+            {/if}
+
             <div class="text">
               <!-- The body is a person's text from a forge, rendered by the
                    same box the reply is written in: it is parsed into elements
@@ -420,7 +663,37 @@
               <Editor readonly value={comment.body || ""} context={contextOf(comment)} />
             </div>
 
-            <div class="reactions">
+            <!--
+              A turn that never finished, and the one thing to do about it.
+
+              Here as well as in the terminal, because this is where the
+              question is: a reader looking at a remark marked "stopped" is
+              already looking at the thing they would retry, and sending them
+              to a log to do it is a detour.
+
+              Below the question rather than beside the name. In the head it
+              sat in a row of labels — author, time, "local", "stopped" — which
+              is a row that says what this remark is, and a thing you press is
+              not one of those. It also pushed the labels around as it came and
+              went. Under the text it is what it is: the question, then the one
+              thing to do about it.
+            -->
+            {#if comment.local && !comment.agent
+              && (comment.task === "stopped" || comment.task === "failed")}
+              <div class="after">
+                <button
+                  class="again"
+                  title="Ask again. The conversation is intact, so this carries on from where it stopped."
+                  onclick={(event) => { event.stopPropagation(); askAgain(comment); }}
+                >ask again</button>
+              </div>
+            {/if}
+
+            <!-- Reactions are the forge's: they live on a comment it issued an
+                 id for, and there is nowhere to put one on a remark it has
+                 never seen. Offering the picker anyway would be a button that
+                 always fails. -->
+            <div class="reactions" class:none={local}>
               {#each reactionsOf(comment) as reaction}
                 <button
                   class="pill"
@@ -469,10 +742,10 @@
       <button onclick={() => { copy(menu?.comment.url || ""); closeMenus(); }}>Copy link</button>
       <button onclick={() => { copy(menu?.comment.body || ""); closeMenus(); }}>Copy Markdown</button>
       <button onclick={() => { if (menu) quote(menu.comment); closeMenus(); }}>Quote reply</button>
-      {#if model.current.viewer && menu.comment.author === model.current.viewer}
+      {#if (local && !menu.comment.agent) || (model.current.viewer && menu.comment.author === model.current.viewer)}
         <span class="divider"></span>
         <button onclick={() => { if (menu) startEdit(menu.comment); closeMenus(); }}>Edit</button>
-        <button class="danger" onclick={() => { notify("deleteComment", { id: menu?.comment.id }); closeMenus(); }}>Delete</button>
+        <button class="danger" onclick={() => { notify(local ? "deleteLocal" : "deleteComment", { id: menu?.comment.id }); closeMenus(); }}>Delete</button>
       {/if}
     </div>
   {/if}
@@ -490,11 +763,162 @@
 {/if}
 
 <style>
+  /*
+    A remark is shown whole, however long it is.
+
+    The renderer caps its box at a fraction of the viewport and scrolls inside
+    it, which is one answer to a long comment — and the wrong one here. It puts
+    a second scrollbar inside a panel that already scrolls, so a reader dragging
+    down the thread stops dead in the middle of a remark and has to find the
+    inner one. The thread is the thing that scrolls; a remark is as tall as it
+    is.
+  */
+  .text :global(.rendered) {
+    max-height: none;
+    overflow: visible;
+  }
+
+  /* Its own line under the remark, left-aligned with the text it belongs to. */
+  .after {
+    margin: 4px 0 2px;
+  }
+
+  .again {
+    padding: 2px 8px 2px 9px;
+    border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 10px;
+    /* Set like the labels above it — "local", "stopped" — because it belongs to
+       the same row of small facts about this remark, and a lowercase pill among
+       uppercase ones reads as a different kind of thing. The trailing pixel is
+       the letter-spacing's gap after the last letter, which padding doubles. */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+  }
+
+  .again:hover {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+  }
+
+  .approval {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 2px;
+  }
+
+  .approve,
+  .refuse {
+    padding: 2px 10px;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+
+  /* The allowing one is the coloured one, and it is the narrower claim: this
+     action, once. Nothing here grants anything standing. */
+  .approve {
+    border-color: transparent;
+    background: var(--action, #0a84ff);
+    color: var(--action-ink, #fff);
+  }
+
+  .refuse:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+
+  .approval-why,
+  .approval-said {
+    color: var(--muted);
+    font-size: 10px;
+  }
+
+  /* Who is on this, in the one place that is about the conversation rather
+     than about any message in it. */
+  .claimed {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 1px 7px 1px 3px;
+    border-radius: 9px;
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+    color: var(--muted);
+    font-size: 10px;
+  }
+
+  .claimed-state {
+    color: var(--warning, #e2b341);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 9px;
+    animation: claim-breathing 1.6s ease-in-out infinite;
+  }
+
+  @keyframes claim-breathing {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  /* The two marks a local conversation carries: that nobody else can see it,
+     and what is being done about it. Both read as asides rather than as state
+     to act on, which is what they are. */
+  .only-here,
+  .task {
+    /* The head is `gap: 0` and every child carries its own leading space —
+       the name, the time, the outdated pill. These two did not, so they sat
+       hard against the time and against each other and read as one word. */
+    margin-left: 6px;
+    /* Room around the word. At `0 5px` the letters sat against the ends of the
+       pill and it read as a highlight rather than a label. */
+    padding: 1px 7px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .task.working {
+    color: var(--warning, #e2b341);
+    /* Breathing rather than spinning: there is nothing here to turn, and a
+       thread with a spinner in it reads as a page that is still loading. */
+    animation: task-breathing 1.6s ease-in-out infinite;
+  }
+
+  .task.failed { color: var(--removed, #f85149); }
+
+  /* Not a failure and not a state to act on: something ended it from outside,
+     and the next thing said in the thread picks it up. */
+  .task.stopped { color: var(--muted); }
+
+  .task.asking {
+    color: var(--warning, #e2b341);
+    animation: task-breathing 1.6s ease-in-out infinite;
+  }
+
+  @keyframes task-breathing {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
   /* Fixed rather than placed on the canvas: prose at a tenth of its size is not
      readable, and a comment is not part of the drawing. */
   .thread {
     position: fixed;
     z-index: 41;
+    /* The height is measured and set on the element: what bounds this box is
+       the chrome above it and the edge of the window below, and a fraction of
+       the viewport is a guess that is wrong in both directions. Kept here as
+       the answer for a page rendered with no browser to measure in. */
     max-height: 60vh;
     /* A column, so the reply box stays put and the remarks scroll behind it. A
        long thread used to push the button that answers it off the bottom of the
@@ -640,6 +1064,8 @@
   }
 
   /* What was left on a remark, and the way to leave one. */
+  .reactions.none { display: none; }
+
   .reactions {
     display: flex;
     flex-wrap: wrap;

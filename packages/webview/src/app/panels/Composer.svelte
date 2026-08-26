@@ -10,7 +10,7 @@
   to be.
 -->
 <script lang="ts">
-  import { model, view } from "../state.svelte.js";
+  import { model, notify, settings, view } from "../state.svelte.js";
   import { sideOf } from "../marks/marks.js";
   import type { Anchor } from "./Thread.svelte";
   import { initialsOf } from "./Thread.svelte";
@@ -127,7 +127,30 @@
     // Folded away, held back by the card's cap, or not drawn at this zoom.
     if (!row || row.offsetParent === null) return null;
 
-    return { row: row.getBoundingClientRect(), card: card.getBoundingClientRect() };
+    /*
+     * The pane the remark is about, when the card is showing two.
+     *
+     * A split card is two checkouts side by side, and a remark on the head is
+     * about the right-hand one. The box hung off the card's left edge either
+     * way, so writing about a line on the right meant a box that began under
+     * the other pane entirely — pointing, as far as the eye is concerned, at
+     * the code it is not about.
+     *
+     * Only for a card actually split in two: a one-sided file has a single
+     * pane, and a unified reading has one column carrying both numberings.
+     * There the card's edge is the pane's edge and this changes nothing.
+     */
+    const pane = row.classList.contains("split")
+      ? row.querySelector<HTMLElement>(`.side.${sideOf(where.side)}`)
+      : null;
+
+    return {
+      row: row.getBoundingClientRect(),
+      card: card.getBoundingClientRect(),
+      ...(pane && pane.offsetParent !== null
+        ? { pane: pane.getBoundingClientRect() }
+        : {}),
+    };
   });
 
   const language = $derived(
@@ -159,9 +182,11 @@
    * markdown and hides half its buttons is worse than one that never offered
    * them.
    */
-  /** As wide as the card it hangs from, within reason. */
+  /** As wide as what it hangs from — a pane where there are two, within reason. */
   const width = $derived(
-    placed ? Math.max(320, Math.min(placed.card.width, 680)) : 520,
+    placed
+      ? Math.max(320, Math.min(placed.pane?.width ?? placed.card.width, 680))
+      : 520,
   );
 
   /*
@@ -172,7 +197,9 @@
    * code and started crawling along the edge of the screen instead, which is
    * the one place it means nothing.
    */
-  const left = $derived(placed ? Math.round(placed.card.left) : 8);
+  const left = $derived(
+    placed ? Math.round(placed.pane?.left ?? placed.card.left) : 8,
+  );
   const top = $derived(placed ? Math.round(placed.row.bottom + 6) : 0);
 
   /**
@@ -200,6 +227,47 @@
     // wearing a fence.
     const fenced = /^```suggestion\s*\n([\s\S]*?)\n?```$/.exec(body);
     return fenced ? fenced[1]!.trim().length > 0 : true;
+  }
+
+  /**
+   * Whether asking an agent is a thing that can be done from here.
+   *
+   * A live reading with at least one agent switched on. Both halves matter: an
+   * agent works on the files on disk, so over a reading of the forge's copy it
+   * would be changing a checkout the reader is not looking at — and a button
+   * that hands work to nobody is a button that does nothing.
+   */
+  const canAsk = $derived(
+    model.current.meta.worktree === true &&
+      (settings.pairing ?? []).length > 0 &&
+      (model.current.agents ?? []).length > 0,
+  );
+
+  /**
+   * Sends what was written to the agents, and keeps it here.
+   *
+   * Not a draft and not a review: it goes into the conversation immediately as
+   * a local remark, and the forge is never told. That is the whole difference
+   * between the two buttons — one is a note to the team about code that exists,
+   * the other is a message to somebody who is about to change it.
+   */
+  function ask(): void {
+    const body = text.trim();
+    if (!sayable || !where || !canAsk) return;
+
+    notify("askAgents", {
+      path: where.path,
+      line: where.line,
+      ...(where.startLine !== undefined && where.line !== undefined && where.startLine < where.line
+        ? { startLine: where.startLine }
+        : {}),
+      side: where.side,
+      body,
+    });
+
+    forget(model.current.review, key);
+    text = "";
+    onadded();
   }
 
   function add(): void {
@@ -309,6 +377,36 @@
 
     <div class="composer-actions">
       <button class="composer-cancel" onclick={oncancel}>Cancel</button>
+      <!-- Beside the review button rather than instead of it. The same passage
+           is worth both: a note for whoever reads this later, and a message to
+           somebody who is about to change it. Which one is meant is the
+           reader's to say, and a box that guessed would post half of them to
+           the wrong place. -->
+      {#if canAsk}
+        <button
+          class="composer-ask"
+          disabled={!sayable}
+          title={sayable
+            ? "Send this to the agents. It stays on this machine."
+            : "Write something first"}
+          onclick={ask}
+        >
+          <!-- The one press on this box that does not go to the forge. Marked
+               as such rather than only worded as such: a colour and a shape
+               are read before any label is. -->
+          <svg class="sparks" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path
+              d="M6.4 1.8 7.5 4.6 10.3 5.7 7.5 6.8 6.4 9.6 5.3 6.8 2.5 5.7 5.3 4.6z"
+              fill="currentColor"
+            />
+            <path
+              d="M11.6 8.6 12.2 10.2 13.8 10.8 12.2 11.4 11.6 13 11 11.4 9.4 10.8 11 10.2z"
+              fill="currentColor"
+            />
+          </svg>
+          Ask agents
+        </button>
+      {/if}
       <button
         class="composer-add primary"
         disabled={!sayable}
@@ -319,6 +417,37 @@
 {/if}
 
 <style>
+  /* Not the primary, deliberately. Reviewing is what this box is for, and the
+     agents are a second thing it can also do — drawn as an alternative rather
+     than as the obvious press. */
+  /*
+   * Purple, which is the one colour on this box that does not mean the forge.
+   *
+   * Everything else here posts to the pull request. This does not: it sends the
+   * passage to a tool on this machine, and what comes back stays local until
+   * somebody says otherwise. That is worth being able to see without reading —
+   * hence a colour and a mark, not only a different word.
+   */
+  .composer-actions .composer-ask {
+    border-color: color-mix(in srgb, var(--ai, #a371f7) 55%, transparent);
+    color: var(--ai, #a371f7);
+  }
+
+  .composer-actions .composer-ask:hover:not(:disabled) {
+    color: var(--ai, #a371f7);
+    border-color: var(--ai, #a371f7);
+    background: color-mix(in srgb, var(--ai, #a371f7) 12%, transparent);
+  }
+
+  .composer-ask .sparks {
+    flex: 0 0 auto;
+  }
+
+  .composer-actions .composer-ask:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
   /* Never taller than the window it hangs in.
      The box is placed against a row and flips above it when it will not fit
      below; with nothing bounding its height, a preview that ran long simply
@@ -415,13 +544,29 @@
   .composer-actions {
     flex: 0 0 auto;
     display: flex;
-    align-items: center;
+    /* Stretched rather than centred, so three buttons of different lengths are
+       still one row of the same height. */
+    align-items: stretch;
     gap: 6px;
     justify-content: flex-end;
     margin-top: 8px;
   }
 
+  /*
+   * One height for all three.
+   *
+   * They were sized by their text: on a narrow card "Ask agents" and "Start a
+   * review" wrapped onto two lines and grew, while "Cancel" stayed one line and
+   * sat short beside them — a row of buttons at three different heights. The
+   * words stay on one line and the box has a floor, so the row is a row.
+   */
   .composer-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 26px;
+    white-space: nowrap;
     font: inherit;
     color: var(--muted);
     background: transparent;

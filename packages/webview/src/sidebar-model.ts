@@ -33,6 +33,26 @@ export interface ChangeView {
   tree: FolderView;
   /** The shape of the change: how big it is and who wrote it. */
   totals: TotalsView;
+  /** Which reading this is, and whether it is of the files on disk. */
+  reading: ReadingView;
+}
+
+/**
+ * What is being read, as opposed to what is in it.
+ *
+ * A change can be read two ways: as the forge has it, which touches nothing on
+ * this machine, or as the files on disk have it, which follows the reader's own
+ * edits. The list says which, because only one of them is worth offering to
+ * change — and because a reader looking at a picture that will not follow their
+ * typing should be told so somewhere.
+ */
+export interface ReadingView {
+  /** The pull request this belongs to, when it belongs to one. */
+  number?: number;
+  /** The branch it is a reading of. */
+  branch: string;
+  /** The files on disk, which means edits show up as they are made. */
+  local: boolean;
 }
 
 export interface TotalsView {

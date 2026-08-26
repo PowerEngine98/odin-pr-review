@@ -278,6 +278,17 @@
   }
 
   /**
+   * The same conversation, opened at what the agent said.
+   *
+   * A thread on a working agent grows from the bottom, and by the time there is
+   * a badge to press there is usually a question, a plan and an answer above it.
+   * Opening at the top shows the reader the thing they wrote.
+   */
+  function openAtAgent(mark: Placed): void {
+    ui.thread = { id: mark.id, anchor: rectOf(mark), at: "agent" };
+  }
+
+  /**
    * The open conversation's anchor, kept in step with the mark it hangs off.
    *
    * The thread derives its position from this rectangle, so the rectangle has
@@ -311,10 +322,42 @@
     }
     thread.anchor = rectOf(mark);
   });
+  /**
+   * What an agent is doing in this conversation, if one is.
+   *
+   * Read off the thread rather than asked for: which agent claimed it is
+   * already the first agent to have spoken in it, and how its turn is going is
+   * on the remark it is answering. Nothing here needs the host to say anything
+   * it has not already said.
+   *
+   * Only for conversations Odin holds. A thread on the forge has no agent in it
+   * and never will, and a badge that could never appear is a branch nobody can
+   * check.
+   */
+  function stateOf(
+    thread: { root: CommentView; comments: CommentView[] },
+  ): { agent: string; task: string } | null {
+    if (!thread.root.local) return null;
+
+    // The turn most recently asked about, which is the one worth reporting: an
+    // older finished one says nothing a reader wants at a glance.
+    const asked = [...thread.comments]
+      .filter((comment) => comment.task && !comment.agent)
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .pop();
+    if (!asked?.task) return null;
+
+    const owner =
+      ui.owners[String(thread.root.id)] ??
+      thread.comments.find((comment) => comment.agent)?.agent;
+    if (!owner) return null;
+    return { agent: owner, task: asked.task };
+  }
 </script>
 
 <div class="marks" bind:this={layer}>
   {#each placed as mark (mark.id)}
+    {@const going = stateOf(mark.thread)}
     <Mark
       root={mark.thread.root}
       count={mark.thread.comments.length}
@@ -323,6 +366,8 @@
       size={mark.size}
       open={ui.thread?.id === mark.id}
       onopen={() => open(mark)}
+      working={going}
+      onagent={() => openAtAgent(mark)}
     />
   {/each}
 </div>

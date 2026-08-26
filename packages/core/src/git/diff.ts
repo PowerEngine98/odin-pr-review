@@ -136,8 +136,25 @@ export async function readPatch(req: DiffRequest): Promise<{
 
   let pull: PullRequest | undefined;
   if (req.pullRequest) {
-    const branch = (await currentBranch(req)) ?? headRef;
-    pull = await readPullRequest(branch, req);
+    /*
+     * The branch this reading is *of*, not the one the working tree is on.
+     *
+     * Those were the same thing while opening a change meant checking it out.
+     * They are routinely different now: reading a change no longer moves the
+     * working tree, so a reviewer sits on their own branch and reads somebody
+     * else's. Asking the forge about the checkout meant every such reading was
+     * labelled with the pull request of whatever the reader happened to have
+     * out — a graph built from one branch, wearing another's number and title,
+     * in the tab strip and in the bar across the top.
+     *
+     * Nothing about it looks like a bug. Both halves are real, and the only way
+     * to catch it is to notice that the branch named in the bar is not the
+     * branch the files came from.
+     */
+    const branch = pullBranch(req.headRef);
+    pull = branch
+      ? await readPullRequest(branch, req)
+      : await readPullRequest((await currentBranch(req)) ?? headRef, req);
   }
   const wanted =
     req.baseRef ??
@@ -211,6 +228,48 @@ export async function readPatch(req: DiffRequest): Promise<{
 
   return { patch, meta };
 }
+
+/**
+ * The branch a ref names, as the forge would know it.
+ *
+ * A reading of the forge's copy asks for `origin/feature/x`, and `gh` knows
+ * nothing about this machine's remotes — it wants `feature/x`. Undefined when
+ * the ref does not name a branch at all: `HEAD` and a bare sha are questions
+ * about this checkout, and the answer to those is the branch it is on.
+ */
+function pullBranch(ref: string | undefined): string | undefined {
+  if (!ref || ref === "HEAD") return undefined;
+  // A commit, not a branch. Asking the forge about one gets an answer about
+  // whatever branch happens to contain it, which is not what was asked.
+  if (/^[0-9a-f]{7,40}$/i.test(ref)) return undefined;
+
+  const full = ref.startsWith("refs/remotes/")
+    ? ref.slice("refs/remotes/".length)
+    : ref.startsWith("refs/heads/")
+      ? ref.slice("refs/heads/".length)
+      : ref;
+
+  /*
+   * The remote's name, dropped when it is one.
+   *
+   * Only for the remotes anybody actually has: stripping the first segment of
+   * every ref would turn the branch `feat/lab-135` into `lab-135`, which the
+   * forge has never heard of — so a reading of a local branch with a slash in
+   * its name would quietly lose its pull request instead of gaining one.
+   */
+  const at = full.indexOf("/");
+  if (at > 0 && REMOTES.has(full.slice(0, at))) return full.slice(at + 1);
+  return full;
+}
+
+/**
+ * Remote names common enough to recognise without asking git.
+ *
+ * Asking would be a subprocess on every diff read to settle a question that is
+ * `origin` in overwhelmingly the most cases, and getting it wrong costs a
+ * title rather than a wrong graph.
+ */
+const REMOTES = new Set(["origin", "upstream", "fork"]);
 
 /** Convenience: repo + refs in, change graph (without edges) out. */
 export async function graphFromRepo(req: DiffRequest): Promise<ChangeGraph> {

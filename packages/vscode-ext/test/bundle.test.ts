@@ -110,6 +110,13 @@ function createStub(): Stub {
     },
     Uri: {
       file: (path: string) => ({ scheme: "file", path, toString: () => path }),
+      // The stub is a stand-in for the editor, so it has to answer what the
+      // extension actually asks — a missing method here is a failure of the
+      // test's imagination rather than of the code.
+      joinPath: (base: { path?: string }, ...parts: string[]) => {
+        const path = [base?.path ?? "", ...parts].join("/");
+        return { scheme: "file", path, fsPath: path, toString: () => path };
+      },
       from: (parts: Record<string, string>) => ({
         ...parts,
         toString: () => `${parts.scheme}:${parts.path}?${parts.query}`,

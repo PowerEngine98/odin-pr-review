@@ -61,7 +61,22 @@
       open = !open;
       return;
     }
-    notify("checkout", { number: pr.number });
+    /*
+     * Read, rather than check out.
+     *
+     * Pressing a row used to move the working tree — which fails outright on a
+     * dirty tree, refuses a branch some other checkout already holds, and takes
+     * the reader off whatever they were doing to look at something. None of
+     * that is what "show me this change" should cost. The branch this checkout
+     * is already on is read from disk, because there the files are the change;
+     * everything else is read from the forge's copy and touches nothing.
+     *
+     * Going the other way is a button of its own under the file list.
+     */
+    notify("read", {
+      number: pr.number,
+      where: pull.current ? "local" : "origin",
+    });
   }
 </script>
 
@@ -77,7 +92,7 @@
   onkeydown={(event) => {
     if (event.key !== "Enter") return;
     if (drifted) open = !open;
-    else notify("checkout", { number: pr.number });
+    else notify("read", { number: pr.number, where: pull.current ? "local" : "origin" });
   }}
 >
   <div class="line">

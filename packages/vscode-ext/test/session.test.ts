@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SessionStore, type Session } from "../src/session.js";
+import { keyOf, SessionStore, type Session } from "../src/session.js";
 
 /** A workspace memento that forgets nothing and asks nobody. */
 function memento(seed: Record<string, unknown> = {}) {
@@ -93,5 +93,79 @@ describe("reopening against a base that has moved", () => {
     const store = new SessionStore(memento());
     store.remember({ repo: "/w", baseRef: "origin/development" });
     expect(store.last()?.baseRef).toBe("origin/development");
+  });
+});
+
+/**
+ * Every reading that was on screen, not merely the last one.
+ *
+ * There is one tab per reading now. The single slot this store used to be
+ * answered for whichever was opened most recently, so a reviewer comparing two
+ * changes came back to one of them and no sign the other had existed.
+ */
+describe("coming back to all of them", () => {
+  it("keeps one entry per reading", () => {
+    const store = new SessionStore(memento() as never);
+    store.remember({ repo: "/w", baseRef: "main", headRef: "one", number: 1 });
+    store.remember({ repo: "/w", baseRef: "main", headRef: "two", number: 2 });
+
+    expect(store.readings().map((r) => r.headRef)).toEqual(["two", "one"]);
+  });
+
+  it("tells the live reading of a branch from the committed one", () => {
+    // Two tabs onto the same branch, and the reader means to have both: one
+    // follows their typing and the other does not.
+    const store = new SessionStore(memento() as never);
+    store.remember({ repo: "/w", baseRef: "main", headRef: "one" });
+    store.remember({ repo: "/w", baseRef: "main", headRef: "one", worktree: true });
+
+    expect(store.readings()).toHaveLength(2);
+  });
+
+  it("replaces a reading rather than stacking it up", () => {
+    const store = new SessionStore(memento() as never);
+    store.remember({ repo: "/w", baseRef: "main", headRef: "one" });
+    store.remember({ repo: "/w", baseRef: "main", headRef: "one" });
+
+    expect(store.readings()).toHaveLength(1);
+  });
+
+  it("forgets the one whose tab was closed and keeps the rest", () => {
+    const store = new SessionStore(memento() as never);
+    store.remember({ repo: "/w", baseRef: "main", headRef: "one" });
+    store.remember({ repo: "/w", baseRef: "main", headRef: "two" });
+    store.forget(keyOf({ repo: "/w", baseRef: "main", headRef: "one" }));
+
+    expect(store.readings().map((r) => r.headRef)).toEqual(["two"]);
+  });
+
+  it("reads a window that last ran a build with only the one slot", () => {
+    // Nothing wrote the list, and the reading that build did record is still a
+    // reading. Coming back to nothing would be worse than coming back to one.
+    const store = new SessionStore(
+      memento({ "odin.session": { repo: "/w", baseRef: "main", at: ago(1000) } }) as never,
+    );
+    expect(store.readings().map((r) => r.repo)).toEqual(["/w"]);
+  });
+
+  it("drops the ones nobody has been back to", () => {
+    const stale = { repo: "/w", headRef: "old", at: ago(48 * 60 * 60 * 1000) };
+    const store = new SessionStore(
+      memento({
+        "odin.sessions": [stale, { repo: "/w", headRef: "new", at: ago(1000) }],
+      }) as never,
+    );
+    expect(store.readings().map((r) => r.headRef)).toEqual(["new"]);
+  });
+
+  it("bounds how many a reload will rebuild", () => {
+    // Each one is a diff read and every reference in it resolved. A dozen at
+    // once is a minute of a machine doing nothing else.
+    const store = new SessionStore(memento() as never);
+    for (let i = 0; i < 12; i++) {
+      store.remember({ repo: "/w", baseRef: "main", headRef: `b${i}` });
+    }
+    expect(store.readings().length).toBeLessThanOrEqual(6);
+    expect(store.readings()[0]?.headRef).toBe("b11");
   });
 });

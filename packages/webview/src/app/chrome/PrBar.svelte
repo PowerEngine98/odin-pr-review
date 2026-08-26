@@ -13,7 +13,6 @@
   offline case.
 -->
 <script lang="ts">
-  import Refreshing from "../Refreshing.svelte";
   import Settings from "./Settings.svelte";
   import { model, notify, ui } from "../state.svelte.js";
   import { CARET, COPY_ICON, PR_ICON, RING } from "./icons.js";
@@ -248,6 +247,20 @@
       {:else}
         <span class="pr-title">{meta?.headRef ?? ""}</span>
       {/if}
+      <!--
+        Which of the two readings this is, where a colour can say it.
+
+        The tab carries the same word and cannot carry the colour — an editor
+        tab is plain text — so the bar is where it is worth being obvious. Green
+        because this is the reading that follows the reader's own typing: it is
+        the one that is alive, and the same green everything added to the change
+        is drawn in.
+      -->
+      {#if meta?.worktree}
+        <span class="tag live" title="Read from the files on disk, and redrawn as you edit them"
+          >live</span
+        >
+      {/if}
     </span>
     <!-- "wants to merge" is the forge's phrasing, and it is worth borrowing: it
          names the direction, which two ref names side by side never quite do.
@@ -280,8 +293,6 @@
   </span>
 
   <span class="spacer"></span>
-
-  <Refreshing on={ui.refreshing} note={ui.note} />
 
   <span class="viewed-count" title="Files you have marked as reviewed">
     {@html RING(read.total ? read.done / read.total : 0)}
@@ -565,6 +576,14 @@
     flex: 0 0 auto;
     background: color-mix(in srgb, currentColor 18%, transparent);
   }
+  /* The one tag that is not a verdict from the forge: it says where the picture
+     is being read from, which is Odin's own business. */
+  .tag.live {
+    color: var(--added-ink, #0b2a12);
+    background: var(--added, #3fb950);
+    font-weight: 600;
+  }
+
   .tag.ok { color: var(--added); }
   .tag.warn { color: var(--warning); }
   .tag.muted { color: var(--muted); }

@@ -251,12 +251,23 @@ const MEMBER_CALL = /(?:(\w+)\??\.)([A-Za-z_]\w*)\s*\(/g;
 const PLAIN_CALL = /(?:^|[^\w.])([A-Za-z_]\w*)\s*\(/g;
 
 /**
- * Names used on a line that might reference something.
+ * Names on a line that might reference something.
  *
- * Only names in call position are considered. Bare identifiers would multiply
- * the arrows by an order of magnitude while adding almost nothing: a reviewer
- * following a change cares where control goes, not every type mentioned along
- * the way.
+ * Call position, and type position — which is narrower than it sounds and was
+ * missing entirely. A Kotlin class takes its collaborators in its constructor:
+ *
+ *     class NotificationsProjection(
+ *       notificationStatisticsProjection: NotificationStatisticsProjection,
+ *     ) : ModelProjection<NotificationsModel> by project(
+ *
+ * Every name there is a dependency, and not one of them is followed by a
+ * bracket. Under the old rule the two files sat next to each other in the
+ * drawing with nothing between them, which is exactly the arrow a reviewer
+ * opened the graph to see.
+ *
+ * Still not bare identifiers. What counts is a name that follows a colon or
+ * sits inside the angle brackets of one — a declared type, a supertype, a type
+ * argument. `val x = something` is not a reference and does not become one.
  */
 export function findCandidates(line: string): Candidate[] {
   const imported = IMPORT_LINE.exec(line);
@@ -301,6 +312,69 @@ export function findCandidates(line: string): Candidate[] {
     });
   }
 
+  for (const { name, column } of typesIn(line)) {
+    if (seen.has(column)) continue;
+    if (found.some((one) => one.column === column)) continue;
+    found.push({ name, column, kind: "type", label });
+  }
+
   found.sort((a, b) => a.column - b.column);
   return found;
+}
+
+/**
+ * Where a type is written down, as opposed to used.
+ *
+ * After a colon — `x: Thing`, `) : Thing` — and inside the angle brackets of
+ * one. Capitalised, because Kotlin types are and this is the cheapest way to
+ * leave locals, parameters and keywords alone.
+ *
+ * Nothing is resolved here. A name that matches no declaration in this
+ * repository — `String`, `Int`, `List` — simply finds nothing and draws
+ * nothing, which is the right answer without needing a list of what to ignore.
+ */
+function typesIn(line: string): { name: string; column: number }[] {
+  const out: { name: string; column: number }[] = [];
+
+  for (const at of positionsOf(line)) {
+    // From the colon to the end of the type expression: a comma or a closing
+    // bracket at depth zero, whichever comes first.
+    let depth = 0;
+    let end = at;
+    for (; end < line.length; end++) {
+      const ch = line[end]!;
+      if (ch === "<") depth += 1;
+      else if (ch === ">") depth -= 1;
+      else if (depth === 0 && (ch === "," || ch === ")" || ch === "=" || ch === "{")) break;
+    }
+
+    const span = line.slice(at, end);
+    for (const match of span.matchAll(/[A-Z]\w*/g)) {
+      const name = match[0];
+      if (KEYWORDS.has(name)) continue;
+      out.push({ name, column: at + match.index });
+    }
+  }
+  return out;
+}
+
+/**
+ * Every colon that introduces a type, and none of the ones that do not.
+ *
+ * `::` is a reference to a member and `?:` is the elvis operator; neither
+ * introduces a type, and both are common enough on the lines this walks that
+ * treating them as one would produce arrows out of nowhere.
+ */
+function positionsOf(line: string): number[] {
+  const out: number[] = [];
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] !== ":") continue;
+    if (line[i + 1] === ":" || line[i - 1] === ":") {
+      i += 1;
+      continue;
+    }
+    if (line[i - 1] === "?") continue;
+    out.push(i + 1);
+  }
+  return out;
 }

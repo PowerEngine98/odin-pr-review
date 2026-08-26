@@ -34,6 +34,16 @@
     | { kind: "rule" }
     | { kind: "list"; ordered: boolean; items: { box: string; content: Inline[] }[] }
     | { kind: "code"; lang: string; code: string; id: number }
+    /*
+     * A picture, not a listing.
+     *
+     * Kept apart from `code` because the two want opposite things: a code block
+     * is sent to the host to be coloured and printed as text, and this is
+     * handed to a renderer that draws it. Telling them apart here rather than
+     * at the point of drawing means the highlighting round trip is never asked
+     * about a language no grammar has.
+     */
+    | { kind: "diagram"; code: string }
     | { kind: "table"; head: Inline[][]; rows: Inline[][][] }
     | {
         kind: "suggestion";
@@ -146,6 +156,11 @@
             beforeId: ++counter,
             afterId: ++counter,
           });
+          continue;
+        }
+
+        if (lang === "mermaid") {
+          out.push({ kind: "diagram", code: body.join("\n") });
           continue;
         }
 
@@ -292,6 +307,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { notify, host } from "../state.svelte.js";
+  import Diagram from "./Diagram.svelte";
 
   let {
     value = $bindable(""),
@@ -491,6 +507,11 @@
           {/each}
         </tbody>
       </table>
+    {:else if block.kind === "diagram"}
+      <!-- Liftable only where it is an answer that scrolls away. A drawing
+           already pinned to the change is drawn by the canvas, which passes
+           nothing. -->
+      <Diagram code={block.code} liftable />
     {:else if block.kind === "code"}
       <pre>{#if block.lang}<span class="lang">{block.lang}</span>{/if}<code>{@render code(block.id, block.code)}</code></pre>
     {:else if block.kind === "suggestion"}

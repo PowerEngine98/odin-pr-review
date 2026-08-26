@@ -158,6 +158,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       // One of the two readings of a change whose local copy has moved. Neither
       // switches branches: reading is not the same act as taking the work over,
       // and a list press should not move a working tree.
+      if (message.type === "checkoutLocal" && typeof message.number === "number") {
+        void vscode.commands.executeCommand("odin.checkoutLocal", message.number);
+        return;
+      }
       if (message.type === "read" && typeof message.number === "number") {
         void vscode.commands.executeCommand(
           message.where === "origin" ? "odin.readOrigin" : "odin.readLocal",
@@ -333,6 +337,13 @@ export function changeView(
       deletions: totals.deletions,
       authors: totals.authors,
       authorsFull: totals.authorsFull,
+    },
+    reading: {
+      ...(graph.meta.pullRequest ? { number: graph.meta.pullRequest.number } : {}),
+      branch: graph.meta.headRef,
+      // The head of a working-tree reading is the files themselves; anything
+      // else is a commit, and a commit does not change while it is being read.
+      local: graph.meta.worktree === true,
     },
   };
 }

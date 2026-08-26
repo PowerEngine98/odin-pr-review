@@ -68,6 +68,15 @@ export interface RenderOptions {
   /** Their picture, as a data uri, for the box they write in. */
   viewerFace?: string;
   /**
+   * Where the diagram renderer can be fetched from, if this host ships one.
+   *
+   * Absent for the file `odin view` writes: that page has no extension beside
+   * it and nothing to fetch, and a mermaid block in it stays the text it
+   * already is — which is what a diagram written in a fence looks like
+   * everywhere else, and readable on its own terms.
+   */
+  mermaid?: string;
+  /**
    * How the reader last had the page set up, if the host remembers such things.
    *
    * Written into the document rather than sent after it, so a page never draws
@@ -303,6 +312,7 @@ export function renderHtml(
       : `${graph.meta.baseRef}..${graph.meta.headRef}`,
     viewer: options.viewer ?? "",
     viewerFace: options.viewerFace ?? "",
+    ...(options.mermaid ? { mermaid: options.mermaid } : {}),
     comments: comments.map((c) => ({
       id: c.id,
       path: c.path,
@@ -318,6 +328,15 @@ export function renderHtml(
       url: c.url,
       outdated: c.outdated,
       ...(c.wholeFile ? { wholeFile: true } : {}),
+      // What the forge has never been told about. Carried through rather than
+      // inferred from the missing url, because "no link" is also what a
+      // comment looks like while it is being posted.
+      ...((c as { local?: boolean }).local ? { local: true } : {}),
+      ...((c as { agent?: string }).agent ? { agent: (c as { agent?: string }).agent } : {}),
+      ...((c as { task?: string }).task ? { task: (c as { task?: string }).task } : {}),
+      ...((c as { approval?: unknown }).approval
+        ? { approval: (c as { approval?: unknown }).approval }
+        : {}),
     })),
   };
 
@@ -363,7 +382,16 @@ function contentSecurityPolicy(csp: { nonce: string; source: string }): string {
   const policy = [
     `default-src 'none'`,
     `style-src ${csp.source} 'unsafe-inline'`,
-    `script-src 'nonce-${csp.nonce}'`,
+    /*
+     * The page's own script by nonce, and files beside the extension by origin.
+     *
+     * The second is for the diagram renderer, which is fetched the first time a
+     * mermaid block appears and never otherwise — three and a half megabytes
+     * that would otherwise be inlined into every document Odin writes. Widened
+     * to the host's own resource origin and nothing else: this admits files the
+     * extension ships, not the network, which `default-src 'none'` still bars.
+     */
+    `script-src 'nonce-${csp.nonce}' ${csp.source}`,
     `img-src ${csp.source} data:`,
     `font-src ${csp.source}`,
   ].join("; ");

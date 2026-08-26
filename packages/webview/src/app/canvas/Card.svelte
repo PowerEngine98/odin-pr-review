@@ -17,6 +17,7 @@
   import type { NodeView } from "../model.js";
   import { host, model, notify, settings, travel, ui, view } from "../state.svelte.js";
   import { anchors, lineIn, measure } from "./measured.svelte.js";
+  import { legibleAt } from "./legible.js";
   import { near } from "./near.svelte.js";
   import { patchOf, railSide, spanOf, type Piece } from "./picking.js";
   import { begin, drop, extendTo, gesture, grip, open } from "./picking.svelte.js";
@@ -125,7 +126,8 @@
    * question stops being "can this be read" and becomes "is there anything here
    * to read at all".
    */
-  const GLYPH = 3;
+  // Shared with everything else pinned to the drawing that is made of words.
+
 
   /** How big the name is drawn on screen, whatever the drawing is scaled to. */
   const NAME_SIZE = 13;
@@ -141,9 +143,7 @@
    * the reason to derive it rather than write it down: change the font and the
    * number follows instead of going stale.
    */
-  const legible = $derived(
-    model.current.charWidth > 0 ? GLYPH / model.current.charWidth : 0.4,
-  );
+  const legible = $derived(legibleAt(model.current.charWidth));
 
   /**
    * Past that, a card gives up drawing its code and draws its shape instead.
@@ -616,6 +616,86 @@
     }
     patch = patchOf(pieces);
   });
+
+  /**
+   * Where an agent is working, on the lines it was asked about.
+   *
+   * The margin says a conversation exists and the badge under it says who is
+   * acting — neither says *which lines*, and on a card of forty rows that is
+   * the whole question.
+   *
+   * Measured on its own rather than alongside the picked range. Those two look
+   * like the same job and share not one dependency: the pick moves when the
+   * reader drags, this when an agent starts or stops — and the pick's effect
+   * gives up early when nothing is picked, which is almost always, so anything
+   * measured inside it is measured almost never.
+   */
+  let busy = $state<{ box: Piece; task: string }[]>([]);
+
+  /** Turns still going, on this file. */
+  const running = $derived(
+    (model.current.comments ?? []).filter(
+      (comment) =>
+        comment.local &&
+        !comment.agent &&
+        comment.path === node.path &&
+        (comment.task === "working" ||
+          comment.task === "queued" ||
+          comment.task === "asking"),
+    ),
+  );
+
+  /**
+   * Set once the card exists, so measuring can wait for it.
+   *
+   * `element` is a plain binding rather than reactive state, so reading it
+   * subscribes to nothing: an effect that runs before the binding lands reads
+   * `undefined`, measures nothing, and — with no other dependency that changes
+   * afterwards — never runs again. The picked range never noticed because it
+   * depends on the reader dragging, which cannot happen before the card is on
+   * screen. This has no such luck: an agent can already be working when the
+   * card first draws.
+   */
+  let mounted = $state(false);
+  $effect(() => {
+    mounted = true;
+  });
+
+  $effect(() => {
+    void running;
+    void bodyHeight;
+    void settings.unified;
+    void expanded;
+    busy = mounted && element ? busyBoxes() : [];
+  });
+
+  function busyBoxes(): { box: Piece; task: string }[] {
+    const out: { box: Piece; task: string }[] = [];
+
+    for (const comment of running) {
+      const side = comment.side === "LEFT" ? "base" : "head";
+      const first = Math.min(comment.startLine || comment.line, comment.line);
+      const last = Math.max(comment.startLine || comment.line, comment.line);
+
+      const pieces: Piece[] = [];
+      for (let line = first; line <= last; line++) {
+        // Folded into a band, or below the cap: part of the range and not part
+        // of the picture, so it says nothing about where the box goes.
+        const row = rowFor(side, line);
+        if (!row) continue;
+        pieces.push({
+          top: row.offsetTop,
+          left: row.offsetLeft,
+          width: row.offsetWidth,
+          height: row.offsetHeight,
+          across: true,
+        });
+      }
+      const box = patchOf(pieces);
+      if (box) out.push({ box, task: comment.task ?? "working" });
+    }
+    return out;
+  }
 
   /**
    * The row the composer will hang under.
@@ -1222,6 +1302,18 @@
     written here rather than inside the body: both are painted by position, and
     among things that are, the order in the document is the order on screen.
   -->
+  <!--
+    Under the picked range on purpose. A reader picking lines is doing something
+    now; an agent working on them is something that is happening to them. Where
+    the two land on the same rows, the one being done by hand is on top.
+  -->
+  {#each busy as one, at (at)}
+    <div
+      class="busy-box {one.task}"
+      style="top:{one.box.top}px;left:{one.box.left}px;width:{one.box.width}px;height:{one.box.height}px"
+    ></div>
+  {/each}
+
   {#if patch}
     <div
       class="pick-box"
@@ -1688,6 +1780,34 @@
      instead of showing through in stripes. It is the colour a wash of the pick
      over the card would have produced, mixed once here rather than composited
      per row. */
+  /*
+    Lines an agent is working on, breathing.
+
+    A wash rather than an outline: an outline reads as a selection, which is
+    something the reader made, and this is something happening to them. The
+    colours are the ones the badge under the mark uses, so the two read as one
+    fact said in two places.
+  */
+  .busy-box {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--warning, #e2b341) 16%, transparent);
+    box-shadow: inset 2px 0 0 var(--warning, #e2b341);
+    animation: busy-breathing 1.7s ease-in-out infinite;
+  }
+
+  .busy-box.asking {
+    background: color-mix(in srgb, var(--vscode-textLink-foreground, #4aa3ff) 18%, transparent);
+    box-shadow: inset 2px 0 0 var(--vscode-textLink-foreground, #4aa3ff);
+  }
+
+  @keyframes busy-breathing {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
   .pick-box {
     position: absolute;
     background: color-mix(in srgb, var(--warning) 22%, var(--card-bg));

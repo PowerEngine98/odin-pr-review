@@ -238,6 +238,23 @@ export function sidebarTokens(theme: Theme): string {
    and cannot do that inside a body only as tall as its contents. */
 html, body { height: 100%; }
 
+/* And the mount between them, for the same reason. A percentage height resolves
+   against the parent's, and a plain block sized by its contents gives a child
+   nothing to be a percentage of — so a view asking for the height of the strip
+   silently got the height of its own text, and anything it meant to pin to the
+   bottom sat wherever the list happened to end.
+
+   A zero min-height because a flex item refuses to shrink below its content by
+   default: without it the middle of a view grows to fit every file and pushes
+   whatever follows it off the bottom, which is the same failure by a longer
+   route. */
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 body {
   margin: 0;
   padding: 4px 0;

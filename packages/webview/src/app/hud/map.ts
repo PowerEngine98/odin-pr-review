@@ -34,7 +34,18 @@ export interface Window {
  * empty space: a map framed on hidden files is mostly margin, and the shape it
  * draws is of a change that is not on screen.
  */
-export function bounds(nodes: readonly NodeView[], fallback: Box): Box {
+export function bounds(
+  /*
+   * Anything with a rectangle, not only the files.
+   *
+   * A drawing pinned to the change is part of the picture the map is of: put
+   * one beside the last card and the map that leaves it out is a map of
+   * somewhere slightly smaller than where the reader is, with a window frame
+   * that can wander off its own edge.
+   */
+  nodes: readonly Box[],
+  fallback: Box,
+): Box {
   let left = Infinity;
   let top = Infinity;
   let right = -Infinity;
@@ -140,7 +151,7 @@ export function fitMap(box: Box): MapFit {
  * judge where things are, and a reader cannot tell a crowded corner from a
  * rounding error. The browser is left to deal with the fraction.
  */
-export function placeNode(node: NodeView, fit: MapFit): Box {
+export function placeNode(node: Box, fit: MapFit): Box {
   const drawn = { width: node.width * fit.scale, height: node.height * fit.scale };
 
   // At this size a card is a few pixels; a file that rounds away is a file the
