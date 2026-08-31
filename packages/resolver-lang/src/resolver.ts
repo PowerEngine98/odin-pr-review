@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { breathe, SLICE } from "@odin/core";
+
 import type {
   LineProbe,
   ProbeResult,
@@ -60,7 +62,22 @@ export class DialectResolver implements ReferenceResolver {
   async resolve(probes: LineProbe[], onProbe?: () => void): Promise<ProbeResult[]> {
     const results: ProbeResult[] = [];
 
+    /*
+     * Answered in slices, so the editor can breathe between them.
+     *
+     * This is the slow half of a build and every probe in it is synchronous,
+     * so a plain loop holds the extension host from the first to the last —
+     * an `async` function whose body never awaits is one unbroken block. What
+     * that looks like from outside is a window that has stopped answering,
+     * including the progress this very loop is reporting.
+     */
+    let since = 0;
+
     for (const probe of probes) {
+      if (++since >= SLICE) {
+        since = 0;
+        await breathe();
+      }
       // Counted before anything can skip the rest of the loop, so the tally is
       // of lines looked at rather than of lines that happened to answer.
       onProbe?.();
