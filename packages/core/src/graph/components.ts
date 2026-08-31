@@ -95,15 +95,76 @@ export function components(
     groups.push(group);
   }
 
-  return groups
-    .filter((group) => group.some((n) => n.kind !== "database"))
-    .map((group) => describe(group, links, [...schema]))
+  const kept = groups.filter((group) => group.some((n) => n.kind !== "database"));
+  const carried = travellers(graph, kept, byId);
+  // A file that now travels with a part is not also a part of its own: it would
+  // be listed under "files nothing else in the change calls" while sitting in
+  // the middle of a chain that plainly does use it.
+  const travelling = new Set([...carried.values()].flat());
+
+  return kept
+    .filter((group) => group.length > 1 || !travelling.has(group[0]!.id))
+    .map((group) => describe(group, links, [...schema, ...(carried.get(group[0]!.id) ?? [])]))
     .sort(
       (a, b) =>
         b.files - a.files ||
         b.additions + b.deletions - (a.additions + a.deletions) ||
         a.path.localeCompare(b.path),
     );
+}
+
+/**
+ * Files that belong to a part without being called by anything in it.
+ *
+ * A module of nothing but types is the plain case: three components import
+ * `MediaProps` from it, and not one of them calls anything, so it has no call
+ * edge at all and lands on its own. Which is both wrong and unhelpfully wrong —
+ * it is the definition three files in this part are written against, filed
+ * under "files nothing else in the change calls", where the arrows into it have
+ * no other end on the canvas and nothing at all is drawn.
+ *
+ * So a file that would otherwise be alone travels with every part that imports
+ * it, the way the schema travels with every part that talks to it. Only a file
+ * that is alone: this is not a licence for imports to fuse the change back into
+ * one picture, which is the whole reason they are left out of the grouping.
+ */
+function travellers(
+  graph: ChangeGraph,
+  groups: FileNode[][],
+  byId: Map<string, FileNode>,
+): Map<string, string[]> {
+  const alone = new Set(
+    groups.filter((group) => group.length === 1).map((group) => group[0]!.id),
+  );
+  if (alone.size === 0) return new Map();
+
+  const home = new Map<string, string>();
+  for (const group of groups) {
+    for (const node of group) home.set(node.id, group[0]!.id);
+  }
+
+  const carried = new Map<string, string[]>();
+  const add = (groupId: string, nodeId: string) => {
+    const here = carried.get(groupId);
+    if (here) {
+      if (!here.includes(nodeId)) here.push(nodeId);
+    } else carried.set(groupId, [nodeId]);
+  };
+
+  for (const edge of graph.edges) {
+    if (edge.kind !== "import") continue;
+    const from = edge.from.nodeId;
+    const to = edge.to.nodeId;
+    if (!byId.has(from) || !byId.has(to)) continue;
+
+    // Whichever end is the lonely one, filed with the part at the other end.
+    // Both ends alone means two files that only know each other, and moving
+    // either into the other's part of one would say more than is true.
+    if (alone.has(to) && !alone.has(from)) add(home.get(from)!, to);
+    else if (alone.has(from) && !alone.has(to)) add(home.get(to)!, from);
+  }
+
+  return carried;
 }
 
 /**

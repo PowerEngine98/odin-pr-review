@@ -150,3 +150,87 @@ describe("splitting a change into what can be read on its own", () => {
     );
   });
 });
+
+/**
+ * A file nothing calls, which two files in a part are written against.
+ *
+ * The plain case is a module of nothing but types: three components import
+ * `MediaProps` from it and not one of them calls anything in it, so it has no
+ * call edge at all. Grouped by calls alone it lands under "files nothing else
+ * in the change calls" — where the arrows into it have no other end on the
+ * canvas, so the reader is shown a card with nothing attached to it and no way
+ * to find out what uses it.
+ */
+describe("a file that is only ever imported", () => {
+  it("travels with the part that imports it", () => {
+    const parts = components(
+      graph(
+        [file("a.ts"), file("b.ts"), file("types.ts")],
+        [edge("a.ts", "b.ts"), edge("b.ts", "types.ts", "import")],
+      ),
+    );
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.nodeIds).toContain("n:types.ts");
+  });
+
+  it("is not also listed as a part of its own", () => {
+    const parts = components(
+      graph(
+        [file("a.ts"), file("b.ts"), file("types.ts")],
+        [edge("a.ts", "b.ts"), edge("b.ts", "types.ts", "import")],
+      ),
+    );
+    expect(parts.some((part) => part.files === 1)).toBe(false);
+  });
+
+  it("goes with every part that imports it", () => {
+    // It belongs to each chain written against it, the same way the schema
+    // belongs to every part that talks to it.
+    const parts = components(
+      graph(
+        [file("a.ts"), file("b.ts"), file("x.ts"), file("y.ts"), file("types.ts")],
+        [
+          edge("a.ts", "b.ts"),
+          edge("x.ts", "y.ts"),
+          edge("b.ts", "types.ts", "import"),
+          edge("y.ts", "types.ts", "import"),
+        ],
+      ),
+    );
+    expect(parts).toHaveLength(2);
+    for (const part of parts) expect(part.nodeIds).toContain("n:types.ts");
+  });
+
+  it("does not count towards the size of the part it travels with", () => {
+    // The count answers "how much is there to read here", and the same file
+    // counted once in every part it appears in adds up to more than the change.
+    const parts = components(
+      graph(
+        [file("a.ts"), file("b.ts"), file("types.ts")],
+        [edge("a.ts", "b.ts"), edge("b.ts", "types.ts", "import")],
+      ),
+    );
+    expect(parts[0]!.files).toBe(2);
+  });
+
+  it("leaves two files that only import each other where they are", () => {
+    // Neither is the part and neither is the traveller. Moving either into the
+    // other would be inventing a chain out of one import.
+    const parts = components(
+      graph([file("one.ts"), file("two.ts")], [edge("one.ts", "two.ts", "import")]),
+    );
+    expect(parts).toHaveLength(2);
+  });
+
+  it("still refuses to let imports fuse the change into one picture", () => {
+    // The rule is for files that would otherwise be alone. Two real chains that
+    // happen to import each other are still two chains.
+    const parts = components(
+      graph(
+        [file("a.ts"), file("b.ts"), file("x.ts"), file("y.ts")],
+        [edge("a.ts", "b.ts"), edge("x.ts", "y.ts"), edge("b.ts", "x.ts", "import")],
+      ),
+    );
+    expect(parts).toHaveLength(2);
+  });
+});
