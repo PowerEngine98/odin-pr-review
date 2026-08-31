@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { discoverAgents, KNOWN_AGENTS } from "../src/agents/discover.js";
+import { markOf } from "../src/agents/marks.js";
 import { avatarFor, markOf } from "../src/agents/marks.js";
 
 /**
@@ -153,5 +154,52 @@ describe("what an agent looks like in a thread", () => {
     // is an outline of a blob. Either is a face nobody recognises.
     expect(avatarFor("codex")).toContain("stroke-width");
     expect(avatarFor("gemini")).not.toContain("stroke-width");
+  });
+});
+
+/**
+ * opencode, which names its rungs after agents rather than flags.
+ *
+ * `plan` looks and does not touch; `build` is the primary one that writes, and
+ * how much it may do without asking is the reader's own permission config —
+ * theirs to set and not ours to override.
+ */
+describe("opencode", () => {
+  const kind = () => KNOWN_AGENTS.find((agent) => agent.id === "opencode")!;
+
+  it("is looked for", () => {
+    expect(kind()).toBeDefined();
+    expect(kind().command).toBe("opencode");
+  });
+
+  it("is asked one question at a time", () => {
+    // The bare command starts its terminal interface, which would sit waiting
+    // for a keystroke that never comes.
+    expect(kind().once).toEqual(["run"]);
+  });
+
+  it("has the two rungs it actually has, and not a third", () => {
+    /*
+     * There is no "ask me nothing" switch, and a rung with the same arguments
+     * as the one below it would be a control that reads as doing something and
+     * does not. The panel shows only the rungs a tool offers.
+     */
+    expect(kind().agency).toEqual({
+      read: ["--agent", "plan"],
+      edits: ["--agent", "build"],
+    });
+    expect(kind().agency?.full).toBeUndefined();
+  });
+
+  it("says nothing about carrying a conversation, because it cannot be told one", () => {
+    // `--session` continues a session that exists; there is no naming one that
+    // does not, so each turn is a fresh one and the page says so.
+    expect(kind().session).toBeUndefined();
+  });
+
+  it("has a face of its own", () => {
+    const mine = markOf("opencode");
+    expect(mine).not.toEqual(markOf("something-nobody-planned-for"));
+    expect(mine.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 });

@@ -297,7 +297,7 @@
              yet", and a different thing for the reader to do about it. -->
         <div class="pairing-empty">
           No agents on this machine. Odin looks for Claude, Codex, Gemini,
-          Cursor, Antigravity and Aider on your PATH.
+          Cursor, Antigravity, opencode and Aider on your PATH.
         </div>
       {:else}
         {#each ordered as agent, index (agent.id)}

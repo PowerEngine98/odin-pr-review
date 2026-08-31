@@ -140,12 +140,25 @@ export function wheel(event: WheelEvent, viewport: HTMLElement): void {
   event.preventDefault();
   letGo();
 
-  // Trackpad two-finger scroll pans; pinch and ctrl+wheel zoom. Matching the
-  // platform convention matters more here than any cleverness, because this
-  // canvas is meant to be navigated without thinking about it.
-  if (!event.ctrlKey && !event.metaKey) {
-    view.x -= event.deltaX;
-    view.y -= event.deltaY;
+  /*
+   * The wheel zooms. Panning is the drag.
+   *
+   * This is a drawing rather than a document, and the two want opposite things
+   * from a wheel: scrolling down a page means "further on", scrolling down a
+   * map means nothing at all — what a reader of a map wants is nearer or
+   * further away. A canvas that panned on the wheel spent most of its time
+   * being scrolled off the edge of itself and back.
+   *
+   * Everything else about the gesture is unchanged: a pinch still zooms, since
+   * a pinch has always been this, and the drawing is still dragged to move it.
+   * Holding shift pans across for a mouse with one wheel and no way to drag —
+   * the axis it reports is the one it has.
+   */
+  if (event.shiftKey && !event.ctrlKey && !event.metaKey) {
+    // Whichever axis the device actually reports. A wheel gives it on Y, a
+    // trackpad's sideways swipe on X, and taking both means neither has to be
+    // guessed at.
+    view.x -= event.deltaX || event.deltaY;
     apply();
     return;
   }
@@ -153,8 +166,18 @@ export function wheel(event: WheelEvent, viewport: HTMLElement): void {
   const rect = viewport.getBoundingClientRect();
   const px = event.clientX - rect.left;
   const py = event.clientY - rect.top;
+  /*
+   * How far one turn of the wheel goes.
+   *
+   * A pinch arrives as a stream of small deltas and reads as continuous at any
+   * rate; a mouse wheel arrives as one notch of a hundred, and at the pinch's
+   * rate that is a third of the picture per click — enough to lose your place
+   * on every one. The notch is given a gentler constant so a click is about a
+   * fifth, which is a step you can walk back.
+   */
+  const rate = event.ctrlKey || event.metaKey ? 320 : 520;
   const next = clamp(
-    view.scale * Math.exp(-event.deltaY / 320),
+    view.scale * Math.exp(-event.deltaY / rate),
     MIN_SCALE,
     MAX_SCALE,
   );

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -206,5 +207,46 @@ describe("where the camera is sent", () => {
         expect(topOnScreen).toBeGreaterThanOrEqual(60);
       }
     }
+  });
+});
+
+/**
+ * What the wheel does over the drawing.
+ *
+ * A drawing and a document want opposite things from it: scrolling down a page
+ * means "further on", scrolling down a map means nothing at all — what a reader
+ * of a map wants is nearer or further away. A canvas that panned on the wheel
+ * spent its time being scrolled off the edge of itself and back.
+ */
+describe("the wheel over the canvas", () => {
+  const camera = readFileSync(
+    new URL("../src/app/canvas/camera.svelte.ts", import.meta.url),
+    "utf8",
+  );
+  const wheel = camera.slice(
+    camera.indexOf("export function wheel("),
+    camera.indexOf("/* ------", camera.indexOf("export function wheel(")),
+  );
+
+  it("zooms, rather than panning down the page", () => {
+    // No plain-wheel branch that moves the view: whatever is not a shift is a
+    // zoom, pinch included.
+    expect(wheel).not.toMatch(/view\.y -= event\.deltaY/);
+    expect(wheel).toMatch(/view\.scale \* Math\.exp\(-event\.deltaY \/ rate\)/);
+  });
+
+  it("keeps what is under the cursor under the cursor", () => {
+    expect(wheel).toMatch(/view\.x = px - \(px - view\.x\) \* \(next \/ view\.scale\)/);
+  });
+
+  it("still pans across for a mouse that cannot drag", () => {
+    expect(wheel).toMatch(/event\.shiftKey[\s\S]{0,400}?view\.x -= event\.deltaX \|\| event\.deltaY/);
+  });
+
+  it("takes a notch more gently than a pinch", () => {
+    // A pinch arrives as a stream of small deltas; a wheel arrives as one notch
+    // of a hundred, and at the pinch's rate that is a third of the picture per
+    // click.
+    expect(wheel).toMatch(/event\.ctrlKey \|\| event\.metaKey \? 320 : 520/);
   });
 });

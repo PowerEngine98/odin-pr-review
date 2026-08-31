@@ -19,32 +19,48 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   return `
 :root {
   /*
-   * The palette, which is the drawing's own and not the editor's.
+   * The surfaces are the reader's; the vocabulary is the drawing's.
    *
-   * These were briefly taken from the running VS Code theme, on the reasoning
-   * that a graph should belong to the editor around it. It does not survive
-   * contact: the editor names its colours for a file list and a gutter, where
-   * a single amber says "modified" against a neutral background. Here the same
-   * token fills whole cards and every arrow between them, and a palette built
-   * for small marks turns the entire change one colour.
+   * A card is a piece of a file, and it should look like the file does two
+   * panes away — same background, same foreground, same grey on the line
+   * numbers. The editor publishes exactly those to a webview as variables it
+   * keeps in step with the theme, so they are taken as they are and the
+   * drawing's own colours become the fallback for a page with no editor around
+   * it: the document odin view writes, and the one in these tests.
    *
-   * The diff's greens and reds are load-bearing in a way a decoration is not —
-   * they are how a reader tells what happened to a line — so they are chosen
-   * here, together, against this background.
+   * What is *not* taken is the vocabulary — the status colours, the diff's
+   * greens and reds, the arrows. Those were briefly taken from the theme too,
+   * on the reasoning that a graph should belong to the editor around it, and it
+   * did not survive contact: the editor names its colours for a file list and a
+   * gutter, where a single amber says "modified" against a neutral background.
+   * Here the same token fills whole cards and every arrow between them, and a
+   * palette built for small marks turns the entire change one colour. They are
+   * chosen below, together, and they are how a reader tells what happened to a
+   * line.
    */
-  --bg: ${theme.background};
-  --card-bg: ${theme.cardBackground};
-  --text: ${theme.text};
-  --muted: ${theme.mutedText};
-  --gutter: ${theme.gutter};
+  --bg: var(--vscode-editor-background, ${theme.background});
+  /*
+   * A card sits on the page rather than in it, so it takes the editor's own
+   * word for a surface that floats — which most themes set a shade apart from
+   * the editor, and the ones that do not fall through to the editor's own
+   * background, where a card is told apart by its border instead.
+   */
+  --card-bg: var(--vscode-editorWidget-background, var(--vscode-editor-background, ${theme.cardBackground}));
+  --text: var(--vscode-editor-foreground, var(--vscode-foreground, ${theme.text}));
+  --muted: var(--vscode-descriptionForeground, ${theme.mutedText});
+  --gutter: var(--vscode-editorLineNumber-foreground, ${theme.gutter});
 
   /* The diff's own greens and reds. The editor names these for its gutter and
      its own diff view, which is exactly this job. */
   --added: ${theme.change.added};
   --removed: ${theme.change.removed};
   --unchanged: ${theme.change.unchanged};
-  --add-bg: ${theme.lineBackground.add};
-  --del-bg: ${theme.lineBackground.del};
+  /*
+   * The wash behind a changed line, which the editor names for its own diff
+   * view — the same job, on the same code, a pane away.
+   */
+  --add-bg: var(--vscode-diffEditor-insertedLineBackground, var(--vscode-diffEditor-insertedTextBackground, ${theme.lineBackground.add}));
+  --del-bg: var(--vscode-diffEditor-removedLineBackground, var(--vscode-diffEditor-removedTextBackground, ${theme.lineBackground.del}));
 
   --status-added: ${theme.status.added};
   --status-modified: ${theme.status.modified};
@@ -52,7 +68,9 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --status-renamed: ${theme.status.renamed};
   --status-phantom: ${theme.status.phantom};
 
-  --gap-bg: ${theme.gapBackground};
+  /* The band standing in for code nobody changed: the editor's own colour for
+     a stretch it is not asking you to read. */
+  --gap-bg: var(--vscode-editorGutter-background, ${theme.gapBackground});
   --warning: ${theme.warning};
 
   /* The one colour in the page that means "do the thing". The editor's button

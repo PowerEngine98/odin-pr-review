@@ -261,3 +261,58 @@ describe("a pull request that is over", () => {
     expect(bar()).not.toContain('"state"');
   });
 });
+
+/**
+ * The surfaces are the reader's; the vocabulary is the drawing's.
+ *
+ * A card is a piece of a file and should look like that file does two panes
+ * away. The editor publishes its own background, foreground and line-number
+ * grey to a webview as variables it keeps in step with the theme, so they are
+ * taken as they are — and the drawing's own colours are what a page with no
+ * editor around it falls back to.
+ */
+describe("colouring a card the way the editor is coloured", () => {
+  const page = () => {
+    const graph: ChangeGraph = {
+      schemaVersion: "0.1.0",
+      meta: { baseRef: "main", headRef: "feat", generator: "test" },
+      nodes: [], edges: [],
+    };
+    return renderHtml(graph, layoutGraph(graph));
+  };
+
+  it("takes the editor's surfaces, with its own as the fallback", () => {
+    const html = page();
+    expect(html).toMatch(/--bg: var\(--vscode-editor-background, #[0-9a-f]{6}\)/);
+    expect(html).toMatch(/--text: var\(--vscode-editor-foreground, var\(--vscode-foreground, #[0-9a-f]{6}\)\)/);
+    expect(html).toMatch(/--gutter: var\(--vscode-editorLineNumber-foreground, #[0-9a-f]{6}\)/);
+  });
+
+  it("lets a card float, on whatever the theme floats things on", () => {
+    // Most themes set a widget surface a shade apart from the editor; the ones
+    // that do not fall through to the editor's own, where a card is told apart
+    // by its border instead.
+    expect(page()).toMatch(
+      /--card-bg: var\(--vscode-editorWidget-background, var\(--vscode-editor-background, #[0-9a-f]{6}\)\)/,
+    );
+  });
+
+  it("takes the editor's own diff colours for a changed line", () => {
+    expect(page()).toMatch(/--add-bg: var\(--vscode-diffEditor-insertedLineBackground/);
+    expect(page()).toMatch(/--del-bg: var\(--vscode-diffEditor-removedLineBackground/);
+  });
+
+  it("keeps the vocabulary, which is the graph's rather than the theme's", () => {
+    /*
+     * The status colours and the diff's greens and reds say what happened to a
+     * file and to a line. Taken from a theme they turn the whole change one
+     * colour: an editor names those for small marks in a gutter, not for the
+     * fill of every card on a canvas.
+     */
+    const html = page();
+    expect(html).toMatch(/--status-added: #[0-9a-f]{6}/);
+    expect(html).toMatch(/--status-modified: #[0-9a-f]{6}/);
+    expect(html).not.toMatch(/--status-added: var\(--vscode/);
+    expect(html).not.toMatch(/--added: var\(--vscode/);
+  });
+});

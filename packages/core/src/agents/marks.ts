@@ -60,6 +60,13 @@ const MARKS: Record<string, AgentMark> = {
     // Up, which is the whole joke.
     path: "M12 5l6 7h-4v7h-4v-7H6z",
   },
+  opencode: {
+    color: "#fbbf24",
+    ink: "#1f1300",
+    // A terminal's block cursor, which is what the tool is: a prompt that
+    // writes code.
+    path: "M5 5h14v3.2H5zM5 10.4h14v3.2H5zM5 15.8h8.4V19H5z",
+  },
   aider: {
     color: "#14b8a6",
     ink: "#ffffff",

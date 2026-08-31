@@ -200,6 +200,33 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     version: ["--version"],
   },
   {
+    id: "opencode",
+    name: "opencode",
+    command: "opencode",
+    /*
+     * `run` takes the message as positional arguments, which is why this is
+     * the subcommand rather than a flag: everything after it is the prompt.
+     * The bare command starts its terminal interface, which would sit waiting
+     * for a keystroke that never comes.
+     */
+    once: ["run"],
+    version: ["--version"],
+    /*
+     * Its rungs are agents rather than flags. `plan` is the one that looks and
+     * does not touch, `build` is the primary one that writes — and how much
+     * `build` may do without asking is the reader's own permission config,
+     * which is theirs to set and not ours to override.
+     *
+     * So there is no `full`: this tool has no "ask me nothing" switch, and a
+     * rung with the same arguments as the one below it would be a control that
+     * reads as doing something and does not.
+     */
+    agency: {
+      read: ["--agent", "plan"],
+      edits: ["--agent", "build"],
+    },
+  },
+  {
     id: "aider",
     name: "Aider",
     command: "aider",
