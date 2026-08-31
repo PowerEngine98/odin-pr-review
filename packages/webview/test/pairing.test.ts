@@ -41,7 +41,11 @@ describe("pairing with an agent", () => {
       expect(ask).toMatch(/body: root\.body|body: said/);
     }
     // And the box's own text goes nowhere until it is sent as one of those.
-    expect(terminal).toMatch(/function send\(\): void \{[\s\S]{0,400}?notify\("askAgents", \{ body: said, to: id \}\)/);
+    // Matched by what it carries rather than by how it is laid out: the call
+    // grew a second line when pictures could be attached, and the rule this
+    // defends has nothing to say about line breaks.
+    const box = terminal.slice(terminal.indexOf("function send(): void {"));
+    expect(box).toMatch(/notify\("askAgents", \{[\s\S]{0,200}?body: said,[\s\S]{0,200}?to: id,/);
 
     // Two boxes now, and both are accounted for: the name of a conversation,
     // which never leaves this side, and the question, which becomes a remark.
@@ -300,7 +304,10 @@ describe("pairing with an agent", () => {
      * — the file `odin view` writes, which has no extension beside it — the same
      * block stayed the text it was.
      */
-    expect(source("panels/Editor.svelte")).toMatch(/if \(lang === "mermaid"\)/);
+    // The rule lives in the parser rather than in the component that draws it:
+    // the markdown a review is written in is the same markdown everywhere, and
+    // it is worth being able to test without a browser to render it in.
+    expect(source("panels/markdown.ts")).toMatch(/if \(lang === "mermaid"\)/);
     expect(source("panels/Diagram.svelte")).toMatch(/if \(loading\) return loading/);
     expect(source("panels/Diagram.svelte")).toMatch(/class="diagram-source"/);
     // Named in the document, fetched only when a diagram appears: three and a
@@ -750,6 +757,30 @@ describe("answering a local thread", () => {
     expect(mark).toMatch(/prefers-reduced-motion: reduce\) \{\s*\n\s*\.doing \.ring \{\s*\n\s*animation: none/);
   });
 
+  it("marks a task the moment it is placed, before anybody has taken it", () => {
+    /*
+     * The badge used to need an owner, and an owner is the last thing to
+     * arrive: a message that has been written and not yet taken is `queued`,
+     * and one taken a moment ago has an owner the page has not been told about
+     * yet. So a reader who had just asked for something saw nothing at all in
+     * the margin until the agent's first word came back — measured: badge
+     * count 0 with the task marked `working` and no owner known, 1 once the
+     * owner arrived.
+     *
+     * The state is the news. Whose it is arrives with it or shortly after, and
+     * until then the badge wears a plain ring rather than a face.
+     */
+    const marks = source("marks/Marks.svelte");
+    expect(marks).toMatch(/\{ agent\?: string; task: string \} \| null/);
+    expect(marks).toMatch(/return \{ \.\.\.\(owner \? \{ agent: owner \} : \{\}\), task: asked\.task \}/);
+    expect(marks).not.toMatch(/if \(!owner\) return null/);
+
+    const mark = source("marks/Mark.svelte");
+    expect(mark).toMatch(/\{#if working\.agent\}[\s\S]{0,200}?\{:else\}[\s\S]{0,200}?class="nobody"/);
+    // And it says so in words, for the reader who hovers rather than decodes.
+    expect(mark).toMatch(/"Waiting for an agent to take this"/);
+  });
+
   it("turns in the colour of the state it is reporting", () => {
     /*
      * A button does not inherit `color` — it takes the browser's own, which
@@ -946,5 +977,44 @@ describe("writing about a line on the right", () => {
     // `.row.split`, so neither is moved.
     expect(composer).toMatch(/\? row\.querySelector<HTMLElement>\(/);
     expect(composer).toMatch(/: null;/);
+  });
+});
+
+/**
+ * The queue, where somebody watching an agent work is actually looking.
+ *
+ * The terminal said what was running and nothing about what was stacked behind
+ * it, so four questions asked in a row looked exactly like one — and the only
+ * way to take one back was to let it run.
+ */
+describe("the messages waiting behind the one being worked on", () => {
+  const terminal = source("hud/Terminal.svelte");
+
+  it("shows a message addressed to this agent, and one addressed to nobody", () => {
+    // An unaddressed message goes to whoever is free first, which is not
+    // knowable until it happens, so every terminal shows it: any of them may
+    // be the one that takes it.
+    expect(terminal).toMatch(
+      /ui\.queued\.filter\(\(ask\) => ask\.addressee === undefined \|\| ask\.addressee === id\)/,
+    );
+  });
+
+  it("wears the agent's own face, on the colour for work not started", () => {
+    expect(terminal).toMatch(/queued-face[\s\S]{0,200}fill="var\(--warning\)"/);
+    expect(terminal).toMatch(/d=\{mark\.path\}/);
+  });
+
+  it("offers to take back each one, by itself", () => {
+    // Per row rather than per queue: four questions are four things a reader
+    // may want back, and one control acting on all of them is a control
+    // nobody presses twice.
+    expect(terminal).toMatch(/notify\("cancelAsk", \{ id: ask\.id \}\)/);
+  });
+
+  it("stands at the foot of the log, under what is running", () => {
+    const still = terminal.indexOf('class="still"');
+    const render = terminal.indexOf("{@render queue()}", still);
+    expect(still).toBeGreaterThan(-1);
+    expect(render).toBeGreaterThan(still);
   });
 });

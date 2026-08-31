@@ -1016,4 +1016,137 @@ describe("who has a conversation while the first turn is still running", () => {
     await until(() => paired.local().some((comment) => comment.agent), 12_000);
     expect(paired.owners()[said.id]).toBe("claude");
   }, 30_000);
+
+  it("says who took it in the very message that says work has started", async () => {
+    /*
+     * The page is only ever told these two things together, and it draws them
+     * together: a mark that is being worked on, wearing the face of whoever is
+     * working on it. The claim used to be recorded a line after the message
+     * that announces the work, so that message went out with no owner in it and
+     * the next one to carry the claim was the agent's first reply — minutes
+     * later. What the reader watched in the meantime was a mark turning yellow
+     * with nobody on it.
+     */
+    const store = memento();
+    // The whole map each time, because the first of these arrives while `ask`
+    // is still returning and there is no id to look up yet.
+    const seen: { working: boolean; owners: Record<number, string> }[] = [];
+    const paired = new PairingSession(store as never, "k", repo, () => {
+      seen.push({
+        working: paired.local().some((comment) => comment.task === "working"),
+        owners: paired.owners(),
+      });
+    });
+    await paired.look();
+    paired.setOrder(["claude"]);
+
+    const root = paired.ask({
+      path: "src/one.ts",
+      line: 12,
+      side: "RIGHT" as const,
+      author: "marco",
+      body: "rename this",
+    }).id;
+
+    await until(() => seen.some((told) => told.working));
+    const first = seen.find((told) => told.working)!;
+    expect(first.owners[root]).toBe("claude");
+  }, 30_000);
+});
+
+/**
+ * The queue, which is the one part of this the reader cannot see anywhere else.
+ *
+ * A message written and not yet started is a mark in a margin they may be
+ * nowhere near. Four questions asked in a row looked exactly like one: the
+ * terminal said what was running and nothing about what was stacked behind it,
+ * and there was no way at all to take one back short of letting it run.
+ */
+describe("what is written and waiting", () => {
+  let bin: string;
+  let repo: string;
+  let path: string | undefined;
+
+  beforeAll(() => {
+    bin = mkdtempSync(join(tmpdir(), "odin-queue-bin-"));
+    repo = mkdtempSync(join(tmpdir(), "odin-queue-repo-"));
+    // Slow on purpose, so a second message is still waiting when it is asked
+    // about: the queue only exists while something else is running.
+    const file = join(bin, "claude");
+    writeFileSync(
+      file,
+      '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "claude 1"; exit 0; fi\nsleep 3\necho "done"\n',
+    );
+    chmodSync(file, 0o755);
+    path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+  });
+
+  afterAll(() => {
+    process.env.PATH = path;
+    rmSync(bin, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  });
+
+  const where = { path: "src/one.ts", line: 1, side: "RIGHT" as const, author: "marco" };
+
+  async function busySession() {
+    const paired = new PairingSession(memento() as never, "k", repo, () => {});
+    await paired.look();
+    paired.setOrder(["claude"]);
+    const first = paired.ask({ ...where, body: "the one that runs" });
+    await until(() => paired.busy().includes("claude"));
+    return { paired, first };
+  }
+
+  it("says what is waiting, and in the order it will be taken", async () => {
+    const { paired } = await busySession();
+    paired.ask({ ...where, body: "second" });
+    paired.ask({ ...where, body: "third" });
+
+    expect(paired.queued().map((ask) => ask.body)).toEqual(["second", "third"]);
+  }, 30_000);
+
+  it("says nothing about the one that is already running", async () => {
+    // It is not waiting: it is the thing the reader is watching, and a queue
+    // that included it would be off by one for as long as anything ran.
+    const { paired } = await busySession();
+    expect(paired.queued()).toHaveLength(0);
+  }, 30_000);
+
+  it("carries who a message was addressed to", async () => {
+    // A message written into an agent's own terminal can only be taken by that
+    // agent, so it belongs in that terminal and in no other.
+    const { paired } = await busySession();
+    paired.ask({ body: "for codex only", to: "codex", author: "marco" });
+    expect(paired.queued()[0]?.addressee).toBe("codex");
+  }, 30_000);
+
+  it("takes a queued message back, leaving the remark behind", async () => {
+    const { paired } = await busySession();
+    const second = paired.ask({ ...where, body: "never mind this one" });
+
+    paired.cancel(second.id);
+
+    expect(paired.queued()).toHaveLength(0);
+    // The remark stays: a review's record is what was said, not what survived.
+    const still = paired.local().find((comment) => comment.id === second.id);
+    expect(still?.body).toBe("never mind this one");
+    // And it is marked as the state that offers to ask it again.
+    expect(still?.task).toBe("stopped");
+  }, 30_000);
+
+  it("does nothing to a message an agent has already taken", async () => {
+    /*
+     * Between deciding to cancel and pressing the button, an agent may have
+     * picked it up. The honest answer then is that it is running — stopping a
+     * turn is a different control — and quietly doing nothing beats
+     * half-cancelling something that is already writing files.
+     */
+    const { paired, first } = await busySession();
+    paired.cancel(first.id);
+
+    expect(paired.local().find((comment) => comment.id === first.id)?.task).toBe("working");
+    expect(paired.busy()).toContain("claude");
+  }, 30_000);
 });

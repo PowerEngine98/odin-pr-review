@@ -774,6 +774,9 @@ export function listen(): void {
         if (Array.isArray(message.pending)) {
           ui.pending = message.pending as { id: string; what: string }[];
         }
+        if (Array.isArray(message.queued)) {
+          ui.queued = message.queued as { id: number; body: string; addressee?: string }[];
+        }
         return;
 
       /*

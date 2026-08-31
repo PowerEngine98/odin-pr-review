@@ -476,7 +476,6 @@ export class PairingSession {
     if (!kind) return;
 
     this.state.set(agentId, "working");
-    this.mark(Number(ask.id), "working");
     /*
      * Who is on this conversation, from the moment it is taken.
      *
@@ -487,9 +486,16 @@ export class PairingSession {
      * beside the mark, no name in the thread, nothing on screen tying the work
      * to the tool doing it. Taking a message is the claim; speaking is the
      * evidence of one.
+     *
+     * Recorded *before* the message is marked as being worked on, because
+     * marking it is what tells the page — and a claim written a line later
+     * missed that message and waited for the next one, which is the agent's
+     * first word. Which is precisely the wait this exists to remove: the mark
+     * went yellow with nobody's face on it.
      */
     const claiming = this.rootOf(Number(ask.id));
     if (claiming) this.taking.set(claiming.id, agentId);
+    this.mark(Number(ask.id), "working");
     // So a permission request arriving mid-turn can be attributed and put in
     // the thread it belongs to rather than at the top of the file.
     this.asking = agentId;
@@ -1180,6 +1186,44 @@ export class PairingSession {
    */
   stop(agentId: string): void {
     this.running.get(agentId)?.stop();
+  }
+
+  /**
+   * What is written and waiting, in the order it will be taken.
+   *
+   * The queue is the one part of this the reader cannot see anywhere else. A
+   * message that has been written and not yet started is a mark in a margin
+   * they may be nowhere near, and the terminal — where somebody watching an
+   * agent work is actually looking — said only what was running. So four
+   * questions asked in a row looked exactly like one.
+   */
+  queued(): { id: number; body: string; addressee?: string }[] {
+    return this.waiting.map((ask) => ({
+      id: Number(ask.id),
+      body: ask.body,
+      ...(ask.addressee ? { addressee: ask.addressee } : {}),
+    }));
+  }
+
+  /**
+   * Takes a message back before anybody has started on it.
+   *
+   * Cheap and complete, which is the whole difference between this and
+   * stopping a turn: nothing has run, so there is nothing to undo. The remark
+   * stays in the thread — it was written, and the record of a review is what
+   * was said, not what survived — and it is marked as stopped, which is the
+   * state that offers to ask it again.
+   *
+   * Silent for a message that has already been taken. Between deciding to
+   * cancel and pressing the button an agent may have picked it up, and the
+   * honest answer then is that it is running: `stop` is the control for that,
+   * and quietly doing nothing is better than half-cancelling something.
+   */
+  cancel(id: number): void {
+    const before = this.waiting.length;
+    this.waiting = this.waiting.filter((ask) => Number(ask.id) !== id);
+    if (this.waiting.length === before) return;
+    this.mark(id, "stopped");
   }
 
   /** Ends every turn in flight. The reading is going away. */

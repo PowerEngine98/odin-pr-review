@@ -184,6 +184,12 @@ interface StopMessage {
   payload: { agent: string };
 }
 
+/** Taking a message back before any agent has started on it. */
+interface CancelMessage {
+  type: "cancelAsk";
+  payload: { id: number | string };
+}
+
 /** Asking which coding agents this machine can actually run. */
 interface DiscoverMessage {
   type: "discoverAgents";
@@ -210,6 +216,7 @@ type Message =
   | ForgetMessage
   | TranscriptMessage
   | StopMessage
+  | CancelMessage
   | CopyMessage
   | AskMessage
   | DiscoverMessage
@@ -1130,6 +1137,10 @@ export class GraphPanel {
       carrying: this.paired?.carrying() ?? [],
       // What the reader has been asked and not yet answered.
       pending: this.paired?.pending() ?? [],
+      // And what they have asked that nobody has started on. The queue is only
+      // visible in the margins otherwise, which is not where somebody watching
+      // an agent work is looking.
+      queued: this.paired?.queued() ?? [],
       // What the reader calls each conversation, and which rungs each tool
       // actually offers — a level a tool has no word for would be a control
       // that silently does nothing.
@@ -2251,6 +2262,10 @@ export class GraphPanel {
           `Odin: ${message.payload.said ?? "copied"}`,
           3000,
         );
+        return;
+      }
+      if (message.type === "cancelAsk") {
+        this.paired?.cancel(Number(message.payload.id));
         return;
       }
       if (message.type === "stopAgent") {

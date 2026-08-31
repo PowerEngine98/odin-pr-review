@@ -336,7 +336,7 @@
    */
   function stateOf(
     thread: { root: CommentView; comments: CommentView[] },
-  ): { agent: string; task: string } | null {
+  ): { agent?: string; task: string } | null {
     if (!thread.root.local) return null;
 
     // The turn most recently asked about, which is the one worth reporting: an
@@ -347,11 +347,20 @@
       .pop();
     if (!asked?.task) return null;
 
+    /*
+     * Who has it, when anybody has.
+     *
+     * Not a condition of saying anything, which it used to be. A message that
+     * has been written and not yet taken is `queued`, and one taken a moment
+     * ago has an owner the page has not been told about yet — so a reader who
+     * had just asked for something saw nothing at all in the margin until the
+     * agent's first word came back. The state is the news; whose it is is a
+     * detail that arrives with it or shortly after.
+     */
     const owner =
       ui.owners[String(thread.root.id)] ??
       thread.comments.find((comment) => comment.agent)?.agent;
-    if (!owner) return null;
-    return { agent: owner, task: asked.task };
+    return { ...(owner ? { agent: owner } : {}), task: asked.task };
   }
 </script>
 

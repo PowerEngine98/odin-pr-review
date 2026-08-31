@@ -58,7 +58,7 @@
     size?: number;
     open?: boolean;
     onopen?: () => void;
-    working?: { agent: string; task: string } | null;
+    working?: { agent?: string; task: string } | null;
     onagent?: () => void;
   } = $props();
 
@@ -101,6 +101,17 @@
    */
   const turning = $derived(
     working?.task === "working" || working?.task === "queued",
+  );
+
+  /** What the badge says it is, in words, whoever has it. */
+  const said = $derived(
+    !working
+      ? ""
+      : working.agent
+        ? turning
+          ? `${working.agent} is working`
+          : `What ${working.agent} said`
+        : "Waiting for an agent to take this",
   );
 
   /** The badge's own press, which must not also be the mark's. */
@@ -162,11 +173,23 @@
     <button
       class="agent"
       class:turning
-      title={turning ? `${working.agent} is working` : `What ${working.agent} said`}
-      aria-label={turning ? `${working.agent} is working` : `What ${working.agent} said`}
+      title={said}
+      aria-label={said}
       onclick={pressAgent}
     >
-      <img src={agentFace(working.agent)} alt="" />
+      <!--
+        Whose turn it is, once anybody has taken it.
+        
+        Until then a plain mark rather than nothing: the message has been
+        written and is waiting to be taken, which is worth saying in the margin
+        beside the line it is about. Drawn as an empty ring so that a face
+        arriving is a face arriving rather than one thing turning into another.
+      -->
+      {#if working.agent}
+        <img src={agentFace(working.agent)} alt="" />
+      {:else}
+        <span class="nobody" aria-hidden="true"></span>
+      {/if}
       {#if turning}
         <!-- Around the face rather than beside it: one thing to look at, and it
              stays whole however small the mark is drawn. -->
@@ -238,6 +261,17 @@
     line-height: 0;
     pointer-events: auto;
     cursor: pointer;
+  }
+
+  /* A face-sized nothing, so the badge is the same shape before and after an
+     agent takes it. */
+  .nobody {
+    display: block;
+    width: calc(var(--mark-size) * 0.62);
+    height: calc(var(--mark-size) * 0.62);
+    border-radius: 50%;
+    background: color-mix(in srgb, currentColor 18%, transparent);
+    box-shadow: inset 0 0 0 2px currentColor;
   }
 
   .doing .agent img {

@@ -70,6 +70,27 @@
   const working = $derived(ui.busyAgents.has(id));
 
   /**
+   * What is written and waiting, as far as this terminal is concerned.
+   *
+   * A message addressed to an agent can only be taken by that agent, so it
+   * belongs in that agent's terminal and nowhere else. One addressed to nobody
+   * goes to whoever is free first, which is not knowable until it happens — so
+   * it is shown in every terminal, because every one of them might be the one
+   * that takes it. Showing it in none was the state before this, and the reader
+   * had nowhere at all to see that four questions were stacked up behind the
+   * one they were watching.
+   */
+  const waiting = $derived(
+    ui.queued.filter((ask) => ask.addressee === undefined || ask.addressee === id),
+  );
+
+  /** The first line of an ask, which is what a queued row has room for. */
+  function gist(body: string): string {
+    const line = body.split("\n").find((one) => one.trim() !== "") ?? "";
+    return line.trim();
+  }
+
+  /**
    * The session so far, asked for once when the terminal appears.
    *
    * A terminal opened halfway through a turn — or after a window reload — has
@@ -860,6 +881,7 @@
           <span class="still-what">working</span>
         </p>
       {/if}
+      {@render queue()}
     {:else}
       <!--
         Three different nothings, said as three different things.
@@ -868,6 +890,7 @@
         telling a reader "ask something from a comment" when they already have
         is how a tool teaches them not to read it.
       -->
+      {@render queue()}
       <p class="terminal-empty">
         {#if working}
           Starting…
@@ -947,6 +970,53 @@
   </form>
   {/if}
 </div>
+
+<!--
+  What is stacked up behind whatever is running.
+
+  At the foot of the log, under the line that says something is still happening,
+  because that is the reader's answer to "what now" — first what is running,
+  then what is waiting, in the order it will be taken.
+
+  The same face as everywhere else, on yellow: this is the agent that will do
+  the work, and yellow is what this page already uses for work that has not
+  started. A face in the agent's own colour would say it was under way.
+-->
+{#snippet queue()}
+  {#if waiting.length > 0}
+    <ul class="queue">
+      {#each waiting as ask (ask.id)}
+        <li class="queued">
+          <svg class="queued-face" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <rect width="24" height="24" rx="12" fill="var(--warning)" />
+            {#if mark.stroke}
+              <path d={mark.path} fill="none" stroke="var(--bg)" stroke-width="2" stroke-linecap="round" />
+            {:else}
+              <path d={mark.path} fill="var(--bg)" />
+            {/if}
+          </svg>
+          <span class="queued-what" title={ask.body}>{gist(ask.body)}</span>
+          <button
+            class="queued-drop"
+            title="Take this back. Nothing has run, and it can be asked again."
+            aria-label="Cancel this queued message"
+            onclick={() => notify("cancelAsk", { id: ask.id })}
+          >
+            <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
 
 <style>
   /* Folded, it is its own head and nothing else — so the height it was dragged
@@ -1485,6 +1555,64 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.06em;
+  }
+
+  /* The messages waiting behind the one being worked on.
+
+     A stack rather than a count: four questions asked in a row are four things
+     the reader may want to take back, and "3 queued" is a number they would
+     have to go and decode somewhere else. */
+  .queue {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .queued {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 4px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .queued-face {
+    flex: 0 0 auto;
+    /* Waiting, not running: the same shape everywhere else in the page draws
+       for this agent, on the colour this page already uses for work that has
+       not started. */
+    opacity: 0.9;
+  }
+  .queued-what {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Only the row it belongs to. A cross that acts on the queue rather than on
+     one message would be a control nobody presses twice. */
+  .queued-drop {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .queued-drop:hover {
+    color: var(--removed);
+    background: color-mix(in srgb, var(--removed) 16%, transparent);
   }
 
   /* A block where the next character would go, which is what a terminal does
