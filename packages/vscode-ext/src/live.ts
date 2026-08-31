@@ -16,7 +16,21 @@ import * as vscode from "vscode";
  */
 export function isNoise(relative: string): boolean {
   const parts = relative.split("/");
-  return parts.includes(".git") || parts.some((p) => p.endsWith(".swp"));
+  /*
+   * `.worktrees` is the other one, and it is Odin's own doing.
+   *
+   * Reading two branches at once means a second checkout, and the second
+   * checkout is kept inside the repository so that git can hide it. Hidden from
+   * git is not hidden from a file watcher: without this, every save in the
+   * branch being read side by side would rebuild the main reading as well, and
+   * a checkout being made — thousands of files at once — would rebuild it for
+   * minutes.
+   */
+  return (
+    parts.includes(".git") ||
+    parts.includes(".worktrees") ||
+    parts.some((p) => p.endsWith(".swp"))
+  );
 }
 
 /** How many paths one `check-ignore` is asked about, to stay under ARGV. */

@@ -1093,6 +1093,297 @@ describe("a live reading of the working tree", () => {
     expect(ended).not.toContain("odin-working");
   }, 120_000);
 
+  it("follows the checkout when the branch moves under it", async () => {
+    /*
+     * A live reading is of a checkout, not of a branch: it is the base against
+     * the files on disk, and what is on disk is whatever HEAD happens to be. So
+     * switching branch under one makes it a reading of something else, and it
+     * has to say so.
+     *
+     * The drawing already followed — a checkout rewrites the files, which is
+     * what the watcher watches — but the tab did not: only a whole new document
+     * re-titled it, and a rebuild applied in place is not one. What that left
+     * was a tab naming the branch the reader had left, over a drawing of the
+     * one they had moved to.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const panel = await reading(editor);
+    const before = panel.panel.title;
+    expect(before).toContain("main");
+
+    // Somewhere else to be, with a file that differs so the rebuild has news.
+    execFileSync("git", ["checkout", "-B", "elsewhere"], { cwd: repo, stdio: "ignore" });
+    writeFileSync(join(repo, "two.ts"), ON_DISK.replace("x5", "x11"));
+    for (const save of editor.saves) {
+      save({ uri: { scheme: "file", fsPath: join(repo, "two.ts") } });
+    }
+    for (let i = 0; i < 300 && panel.panel.title === before; i++) await wait(50);
+
+    expect(panel.panel.title).not.toBe(before);
+    expect(panel.panel.title).toContain("elsewhere");
+    expect(panel.panel.title.startsWith("LIVE ")).toBe(true);
+
+    execFileSync("git", ["checkout", "main"], { cwd: repo, stdio: "ignore" });
+  }, 120_000);
+
+  it("reads a second branch live from a checkout of its own", async () => {
+    /*
+     * A live reading is of a working tree and a working tree holds one branch,
+     * so two live readings need two working trees. Git's own answer is a linked
+     * worktree — a second checkout of the same repository with its own HEAD —
+     * and it refuses to put one branch in two of them, which is what keeps
+     * several live readings from contradicting each other.
+     *
+     * The two are separate readings all the way down: different roots, so
+     * different keys, different tabs, different watchers.
+     */
+    restore();
+    const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+    const here = await reading(editor);
+    expect(here.page()).toContain('id="app"');
+
+    // A branch to read beside it, and a checkout to read it from.
+    execFileSync("git", ["branch", "-f", "beside", "HEAD"], { cwd: repo, stdio: "ignore" });
+    const { readableCheckout } = await import("@odin/core");
+    const made = await readableCheckout("beside", { cwd: repo });
+    expect(made.path).toContain(".worktrees");
+
+    // The main reading is blind to it: git hides it, and so does the watcher.
+    const status = execFileSync("git", ["status", "--porcelain"], {
+      cwd: repo,
+      encoding: "utf8",
+    });
+    expect(status).not.toContain(".worktrees");
+
+    // And a save inside it does not rebuild the reading of this checkout.
+    const drew = redraws(here);
+    writeFileSync(join(made.path, "two.ts"), ON_DISK.replace("x5", "x21"));
+    for (const save of editor.saves) {
+      save({ uri: { scheme: "file", fsPath: join(made.path, "two.ts") } });
+    }
+    await wait(2000);
+    expect(redraws(here)).toBe(drew);
+
+    execFileSync("git", ["worktree", "remove", "--force", made.path], {
+      cwd: repo,
+      stdio: "ignore",
+    });
+  }, 120_000);
+
+  it("fetches a ref this checkout has not got rather than blaming the base", async () => {
+    /*
+     * The reader's own failure: a reading of the forge's copy of a change,
+     * rebuilt in a checkout that had never fetched that branch. `git merge-base`
+     * said `Not a valid object name origin/luis/lab-147`, and what reached the
+     * reader was that sentence plus an offer to pick a *base* branch — for a
+     * head ref nobody had asked them about.
+     *
+     * The ref is in the message: one naming a remote is fetched and the reading
+     * tried again, and only a missing base is a question for the reader.
+     *
+     * Driven with a clone whose tracking ref has been deleted, which is the
+     * same position as a checkout that never fetched it.
+     */
+    restore();
+    const origin = mkdtempSync(join(tmpdir(), "odin-origin-"));
+    const clone = mkdtempSync(join(tmpdir(), "odin-clone-"));
+    const run = (dir: string, ...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: dir,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+
+    try {
+      run(origin, "init", "-b", "main");
+      writeFileSync(join(origin, "one.ts"), "export const one = () => 1;\n");
+      run(origin, "add", "-A");
+      run(origin, "commit", "-m", "first");
+      run(origin, "branch", "base", "HEAD");
+      run(origin, "checkout", "-b", "topic");
+      writeFileSync(join(origin, "one.ts"), "export const one = () => 2;\n");
+      run(origin, "add", "-A");
+      run(origin, "commit", "-m", "on the topic");
+      run(origin, "checkout", "main");
+
+      execFileSync("git", ["clone", origin, clone], { stdio: "ignore" });
+      // The position a checkout is in when it has never fetched that branch.
+      run(clone, "update-ref", "-d", "refs/remotes/origin/topic");
+      expect(() =>
+        execFileSync("git", ["rev-parse", "origin/topic"], { cwd: clone, stdio: "ignore" }),
+      ).toThrow();
+
+      const editor = stub(undefined, { folder: clone, baseRef: "origin/base" });
+      const panel = recorder();
+      await editor.serializer!.deserializeWebviewPanel(panel.panel, {
+        repo: clone,
+        baseRef: "origin/base",
+        headRef: "origin/topic",
+      });
+
+      for (let i = 0; i < 400 && !panel.page().includes("window.__ODIN__="); i++) {
+        await wait(50);
+      }
+
+      // The reading arrived, and the ref it needed is now here.
+      expect(panel.page()).toContain("window.__ODIN__=");
+      expect(() =>
+        execFileSync("git", ["rev-parse", "origin/topic"], { cwd: clone, stdio: "ignore" }),
+      ).not.toThrow();
+    } finally {
+      rmSync(origin, { recursive: true, force: true });
+      rmSync(clone, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("reaches a deleted branch through the pull request it belongs to", async () => {
+    /*
+     * The reader's actual failure, run to ground: the branch had been deleted
+     * from the forge — seventy heads there, none of them it — and the reading
+     * was of a ref that no longer exists anywhere but in the pull request.
+     *
+     * A forge keeps the head it merged under `refs/pull/<n>/head`, so the
+     * change is still readable. Reaching it needs the number, and the number
+     * used to be looked up in the list of open pull requests — which is only
+     * populated when `gh` is signed in. A reader whose `gh` is signed out is
+     * exactly the reader who cannot get at the branch any other way.
+     *
+     * The reading carries its own number. That is what is used.
+     */
+    restore();
+    const origin = mkdtempSync(join(tmpdir(), "odin-pr-origin-"));
+    const clone = mkdtempSync(join(tmpdir(), "odin-pr-clone-"));
+    const run = (dir: string, ...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: dir,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+
+    try {
+      run(origin, "init", "-b", "main");
+      writeFileSync(join(origin, "one.ts"), "export const one = () => 1;\n");
+      run(origin, "add", "-A");
+      run(origin, "commit", "-m", "first");
+      run(origin, "branch", "base", "HEAD");
+      run(origin, "checkout", "-b", "gone");
+      writeFileSync(join(origin, "one.ts"), "export const one = () => 2;\n");
+      run(origin, "add", "-A");
+      run(origin, "commit", "-m", "the change");
+      // What a forge keeps after the branch is deleted.
+      run(origin, "update-ref", "refs/pull/171/head", "refs/heads/gone");
+      run(origin, "checkout", "main");
+
+      execFileSync("git", ["clone", origin, clone], { stdio: "ignore" });
+      run(clone, "update-ref", "-d", "refs/remotes/origin/gone");
+      run(origin, "branch", "-D", "gone");
+
+      // `gh` says nothing, so nothing knows this branch belongs to #171 except
+      // the reading itself.
+      const editor = stub(undefined, { folder: clone, baseRef: "origin/base" });
+      const panel = recorder();
+      await editor.serializer!.deserializeWebviewPanel(panel.panel, {
+        repo: clone,
+        baseRef: "origin/base",
+        headRef: "origin/gone",
+        number: 171,
+      });
+
+      for (let i = 0; i < 400 && !panel.page().includes("window.__ODIN__="); i++) {
+        await wait(50);
+      }
+      expect(panel.page()).toContain("window.__ODIN__=");
+      // Written into the ref the reading was looking for, so everything
+      // downstream goes on calling it what the reader calls it.
+      expect(() =>
+        execFileSync("git", ["rev-parse", "origin/gone"], { cwd: clone, stdio: "ignore" }),
+      ).not.toThrow();
+    } finally {
+      rmSync(origin, { recursive: true, force: true });
+      rmSync(clone, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("says what git said when a ref cannot be fetched at all", async () => {
+    /*
+     * The second half of the same failure. A branch is deleted the moment its
+     * change is merged, on most projects automatically, so a reading of a
+     * change that has landed asks for a ref the forge no longer has. Fetching
+     * it answers "couldn't find remote ref", and what the reader needs then is
+     * git's own words rather than "fetching it failed", which is the one thing
+     * they already know.
+     */
+    restore();
+    const origin = mkdtempSync(join(tmpdir(), "odin-gone-origin-"));
+    const clone = mkdtempSync(join(tmpdir(), "odin-gone-clone-"));
+    const run = (dir: string, ...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: dir,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+
+    try {
+      run(origin, "init", "-b", "main");
+      writeFileSync(join(origin, "one.ts"), "export const one = () => 1;\n");
+      run(origin, "add", "-A");
+      run(origin, "commit", "-m", "first");
+      run(origin, "branch", "base", "HEAD");
+      run(origin, "checkout", "-b", "landed");
+      writeFileSync(join(origin, "one.ts"), "export const one = () => 2;\n");
+      run(origin, "add", "-A");
+      run(origin, "commit", "-m", "on the branch");
+      run(origin, "checkout", "main");
+
+      execFileSync("git", ["clone", origin, clone], { stdio: "ignore" });
+      run(clone, "update-ref", "-d", "refs/remotes/origin/landed");
+      // Merged, and the branch tidied away — which is what most projects do.
+      run(origin, "branch", "-D", "landed");
+
+      const editor = stub(undefined, { folder: clone, baseRef: "origin/base" });
+      const said = editor.errors;
+
+      const panel = recorder();
+      await editor.serializer!.deserializeWebviewPanel(panel.panel, {
+        repo: clone,
+        baseRef: "origin/base",
+        headRef: "origin/landed",
+      });
+      for (let i = 0; i < 200 && said.length === 0; i++) await wait(50);
+
+      /*
+       * Said in full, and then the tab goes.
+       *
+       * The ref is not here, the forge has not got the branch, and there is no
+       * pull request left to reach its head through. No retry helps, so a frame
+       * left open on a git error is a tab that looks like a review, opens like
+       * one, and can never be one.
+       */
+      expect(said.join(" ")).toContain("origin/landed");
+      expect(said.join(" ")).toContain("not on the remote any more");
+      expect(said.join(" ")).toContain("this tab is closing");
+
+      for (let i = 0; i < 100 && !panel.disposed; i++) await wait(50);
+      expect(panel.disposed).toBe(true);
+    } finally {
+      rmSync(origin, { recursive: true, force: true });
+      rmSync(clone, { recursive: true, force: true });
+    }
+  }, 120_000);
+
   it("redraws the card when the file behind it changes", async () => {
     restore();
     const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });

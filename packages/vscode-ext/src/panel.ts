@@ -786,10 +786,23 @@ export class GraphPanel {
    */
   async refreshPullRequest(): Promise<void> {
     const known = this.graph.meta.pullRequest;
-    const branch = this.graph.meta.headRef;
-    if (!known || !branch) return;
+    if (!known) return;
 
-    const fresh = await readPullRequest(branch, {
+    /*
+     * Asked for by number, because the number is what this is.
+     *
+     * It used to ask by the branch the reading was built from, which is only
+     * sometimes a name the forge answers to. A reading of the forge's own copy
+     * is built from `origin/luis/lab-147` — a tracking ref, not a branch — and
+     * `gh pr view` given one of those finds nothing. Nothing came back, nothing
+     * was updated, and nothing said so: a reviewer who had just approved from
+     * inside Odin watched the bar go on saying what it said before and the
+     * reviewers panel go on showing them as pending.
+     *
+     * The pull request is already on screen, so its number is already known,
+     * and a number is unambiguous in a way no ref is.
+     */
+    const fresh = await readPullRequest(String(known.number), {
       cwd: this.repo,
       timeoutMs: 8000,
     }).catch(() => undefined);
@@ -1149,6 +1162,33 @@ export class GraphPanel {
     // Words are not a loader, so the retries have nothing left to replace.
     GraphPanel.settled.add(panel);
     panel.webview.html = await waitingHtml(panel.webview, note, false);
+  }
+
+  /**
+   * Gives up on a reading, and takes its tab with it.
+   *
+   * For the one failure nothing can be done about: the change is of a ref that
+   * is not here and cannot be fetched, because the branch has been deleted from
+   * the forge and there is no pull request left to reach its head through. No
+   * retry helps, so the frame would sit on a git error until somebody closed
+   * it — a tab that looks like a review, opens like a review, and can never be
+   * one.
+   *
+   * Only a frame with nothing in it. A reading that has drawn is a reading that
+   * worked; whatever has just failed, throwing that away would be taking a
+   * picture off the reader to report a problem with a different one.
+   */
+  static abandon(key?: string): void {
+    const waiting = GraphPanel.pending;
+    if (waiting) {
+      GraphPanel.pending = undefined;
+      GraphPanel.waiting = false;
+      waiting.dispose();
+      return;
+    }
+
+    const held = key ? GraphPanel.open.get(key) : undefined;
+    if (held && !held.painted) held.dispose();
   }
 
   /**
@@ -1958,6 +1998,29 @@ export class GraphPanel {
    * swaps the model whole, which is still far cheaper than a document and
    * still keeps the reader's camera.
    */
+  /**
+   * What the tab is called, and the mark beside it.
+   *
+   * Said from the graph every time one arrives, and that is the point: a live
+   * reading is of a checkout rather than of a branch, so switching branch under
+   * one makes it a reading of something else. The rebuild follows — a checkout
+   * rewrites the files, which is what the watcher is watching — but only a
+   * whole new document used to re-title the tab, and a rebuild applied in place
+   * is not one. What that left was a tab still naming the branch the reader had
+   * left, over a drawing of the branch they had moved to, with the bar inside
+   * the page already saying the new one.
+   */
+  private name(): void {
+    const pull = this.graph.meta.pullRequest;
+    const named = pull
+      ? `#${pull.number} ${pull.title}`
+      : `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
+    this.panel.title = this.graph.meta.worktree === true ? `LIVE ${named}` : named;
+    // The mark that goes with it, now there is a graph to ask which reading
+    // this is. The frame was given the plain one before anything was known.
+    this.mark(false);
+  }
+
   private send(
     layout: GraphLayout,
     redrawn?: readonly string[],
@@ -1966,6 +2029,7 @@ export class GraphPanel {
     const { model } = this.built(layout);
     if (!model) return false;
     this.layout = layout;
+    this.name();
 
     if (redrawn && redrawn.length > 0) {
       const wanted = new Set(redrawn);
@@ -2028,14 +2092,7 @@ export class GraphPanel {
      * a title that does not say it leaves them to tell two identical tabs apart
      * by clicking one.
      */
-    const pull = this.graph.meta.pullRequest;
-    const named = pull
-      ? `#${pull.number} ${pull.title}`
-      : `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
-    this.panel.title = this.graph.meta.worktree === true ? `LIVE ${named}` : named;
-    // The mark that goes with it, now there is a graph to ask which reading
-    // this is. The frame was given the plain one before anything was known.
-    this.mark(false);
+    this.name();
 
     // Marks made in an earlier session are restored once the page is up.
     const marked = this.viewed?.all() ?? [];

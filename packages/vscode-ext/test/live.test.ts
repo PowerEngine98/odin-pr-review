@@ -46,6 +46,20 @@ describe("what is not worth waking up for", () => {
     expect(isNoise("packages/thing/.git/HEAD")).toBe(true);
   });
 
+  it("throws away the checkouts kept for reading other branches", () => {
+    /*
+     * Reading two branches at once means a second checkout, and it is kept
+     * inside the repository so git can be told to hide it. Hidden from git is
+     * not hidden from a file watcher: without this, a save in the branch being
+     * read beside this one would rebuild this one too, and making a checkout —
+     * thousands of files at once — would rebuild it for minutes.
+     */
+    expect(isNoise(".worktrees/feat-lab-147/src/one.ts")).toBe(true);
+    expect(isNoise(".worktrees")).toBe(true);
+    // And a project file that merely says the word is still a project file.
+    expect(isNoise("docs/worktrees.md")).toBe(false);
+  });
+
   it("throws away an editor's swap files", () => {
     expect(isNoise(".src.ts.swp")).toBe(true);
   });

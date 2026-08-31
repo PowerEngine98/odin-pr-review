@@ -43,11 +43,31 @@ export function keyOf(reading: {
   headRef?: string;
   worktree?: boolean;
 }): string {
+  /*
+   * A live reading is named after its checkout, and not after a branch.
+   *
+   * It has no branch of its own: it is `git diff base..<the files on disk>`,
+   * and what is on disk is whatever HEAD happens to be. Naming one after the
+   * branch it was built from let two of them exist for one working tree — open
+   * a live reading, switch branch, open another — and only one of those can
+   * ever be true. The other went on rebuilding from a working tree that no
+   * longer held its branch, on every save, with nothing on screen saying so.
+   *
+   * A checkout holds one HEAD, so there is one live reading of it. Two live
+   * pictures at once is a real thing to want, and git already has the answer:
+   * a second worktree is a second checkout with its own path, so it is a
+   * different `repo` here and a different reading by this same rule.
+   *
+   * The base stays in the name. Reading the same working tree against `main`
+   * and against `develop` is two questions about one checkout, and both are
+   * answerable at once.
+   */
+  const live = reading.worktree === true;
   return [
     reading.repo,
     reading.baseRef,
-    reading.headRef,
-    reading.worktree === true ? "live" : "committed",
+    live ? "" : reading.headRef,
+    live ? "live" : "committed",
   ].join("\u0000");
 }
 

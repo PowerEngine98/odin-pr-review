@@ -10,6 +10,7 @@ import {
   inlineAvatars,
   listReviewComments,
   localBranches,
+  readableCheckout,
   worktreeFor,
   serializeGraph,
   uncommittedCount,
@@ -183,7 +184,15 @@ export function activate(context: vscode.ExtensionContext): void {
       // The reading in front of the reader, asked of the panel showing it.
       // "The last review" is the wrong tab the moment there is more than one.
       const here = GraphPanel.current() ?? last;
-      if (here) await review(here.baseRef, here.headRef, here.worktree === true);
+      if (here) {
+        await review(
+          here.baseRef,
+          here.headRef,
+          here.worktree === true,
+          undefined,
+          here.number,
+        );
+      }
     }),
     vscode.commands.registerCommand("odin.openFile", (path: string) =>
       GraphPanel.openPath(path),
@@ -410,6 +419,8 @@ function reopen(reading: Session, key: string): void {
             next.reading.baseRef,
             next.reading.headRef,
             next.reading.worktree === true,
+            undefined,
+            next.reading.number,
           );
         } finally {
           GraphPanel.endRestore(next.key);
@@ -552,22 +563,73 @@ async function readLocal(number: number): Promise<void> {
 
   const local = localState.get(pull.branch);
   const here = local?.worktree === repo;
-
-  // Uncommitted work belongs to the checkout holding it, and this is not that
-  // checkout. Said plainly rather than silently dropped: the reader asked for
-  // what is on this machine and is about to get slightly less than that.
-  if (!here && local && local.uncommitted > 0 && local.worktree) {
-    vscode.window.showInformationMessage(
-      `Odin: ${pull.branch} is checked out at ${local.worktree}, so its ` +
-        `${local.uncommitted} uncommitted change${local.uncommitted === 1 ? "" : "s"} ` +
-        `cannot be read from here. Showing its commits.`,
-    );
+  if (here) {
+    // The reader is on it. This checkout is the live reading of that branch.
+    await review(pull.baseRef, undefined, true);
+    return;
   }
 
-  await review(
-    pull.baseRef,
-    here ? undefined : pull.branch,
-    here,
+  /*
+   * A branch that is not the one this checkout holds, read live anyway.
+   *
+   * A live reading is of a working tree and a working tree holds one branch, so
+   * the only honest way to have two at once is to have two working trees — and
+   * that is a thing git does. A linked worktree is a second checkout of the
+   * same repository with its own HEAD, and git refuses to put one branch in two
+   * of them, which is what keeps several live readings from contradicting each
+   * other.
+   *
+   * It costs a checkout of the branch on disk, so the reader is asked. Reading
+   * the commits is the answer that costs nothing and is still a true picture of
+   * what the forge has; the offer is for when what they want is the work in
+   * progress.
+   */
+  const already = local?.worktree;
+  const asked = await vscode.window.showInformationMessage(
+    already
+      ? `Odin: ${pull.branch} is checked out at ${already}.`
+      : `Odin: ${pull.branch} is not checked out here.`,
+    {
+      modal: false,
+      detail: already
+        ? "Its uncommitted work lives there. Odin can read it from that checkout."
+        : "Odin can add a checkout of it under .worktrees and read that, live.",
+    },
+    already ? "Read it there" : "Add a checkout",
+    "Show its commits",
+  );
+
+  if (asked === "Show its commits" || asked === undefined) {
+    await review(pull.baseRef, pull.branch, false, undefined, pull.number);
+    return;
+  }
+
+  try {
+    const checkout = await withProgressOn(
+      `Preparing a checkout of ${pull.branch}`,
+      () => readableCheckout(pull.branch, { cwd: repo }),
+    );
+    await review(pull.baseRef, undefined, true, checkout.path, pull.number);
+  } catch (error) {
+    /*
+     * Every way this fails is worth saying rather than driving through: the
+     * path is in the way, the repository is mid-rebase, the branch moved. None
+     * of them is a reason to force a checkout over somebody's working tree.
+     */
+    vscode.window.showWarningMessage(
+      `Odin: could not prepare a checkout of ${pull.branch} — ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    await review(pull.baseRef, pull.branch, false, undefined, pull.number);
+  }
+}
+
+/** Runs something slow with the editor's own progress, and hands back its answer. */
+async function withProgressOn<T>(title: string, run: () => Promise<T>): Promise<T> {
+  return vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `Odin: ${title}` },
+    () => run(),
   );
 }
 
@@ -611,7 +673,7 @@ async function readOrigin(number: number): Promise<void> {
     return;
   }
 
-  await review(pull.baseRef, head);
+  await review(pull.baseRef, head, false, undefined, pull.number);
 }
 
 async function checkout(number: number): Promise<void> {
@@ -930,8 +992,27 @@ async function review(
   baseRef?: string,
   headRef?: string,
   worktree = false,
+  /**
+   * Which checkout to read, when it is not the one the window is open on.
+   *
+   * A live reading is of a working tree, so reading a second branch live means
+   * reading a second working tree — a linked worktree, with its own HEAD. It is
+   * a repository root like any other from here down: its own reading, its own
+   * watcher, its own tab.
+   */
+  at?: string,
+  /**
+   * Which pull request this is, when the caller already knows.
+   *
+   * Only used when a ref cannot be found. A branch is deleted the moment its
+   * change merges, so a reading of one asks for a ref the forge no longer has —
+   * and the forge still keeps the head it merged, under `refs/pull/<n>/head`.
+   * Reaching that needs the number, and the number is on the reading rather
+   * than in anything a signed-out `gh` could tell us.
+   */
+  is?: number,
 ): Promise<void> {
-  const repo = await repositoryRoot();
+  const repo = at ?? (await repositoryRoot());
   if (!repo) return;
 
   const settings = vscode.workspace.getConfiguration("odin");
@@ -1038,7 +1119,7 @@ async function review(
         await GraphPanel.stopLoading(
           error instanceof Error ? error.message : String(error),
         );
-        await reportFailure(repo, error);
+        await reportFailure(repo, error, { baseRef, headRef, worktree, at, is });
       }
     },
   );
@@ -1418,18 +1499,167 @@ function armLive(
 }
 
 /**
+ * The ref a git failure is complaining about, when it names one.
+ *
+ * `fatal: Not a valid object name origin/luis/lab-147` is a sentence with the
+ * answer in it, and every layer above this used to throw that answer away and
+ * report "could not find the base branch" — which for a missing *head* is not
+ * merely unhelpful but wrong, and sends the reader off to pick a base that was
+ * never the problem.
+ */
+function missingRef(message: string): string | undefined {
+  const named = /Not a valid object name ([^\s]+)/.exec(message);
+  if (named) return named[1];
+  const unknown = /unknown revision or path not in the working tree.*?'([^']+)'/s.exec(message);
+  return unknown?.[1];
+}
+
+/**
  * Turns a failed review into something actionable.
  *
- * The common failure by far is a base branch that does not exist in this
- * checkout — a worktree with no local `main`, or a repository that still uses
- * `master`. Offering the branch list on the spot beats making the reviewer go
- * and find the settings.
+ * Two failures, and they want different answers. A base that does not exist in
+ * this checkout — a worktree with no local `main`, a repository that still uses
+ * `master` — is a question for the reader, and the branch list is the way to
+ * ask it. A *head* that does not exist is usually not a question at all: it is
+ * a tracking ref this checkout has never fetched, and fetching it is the whole
+ * of the fix.
  */
-async function reportFailure(repo: string, error: unknown): Promise<void> {
+async function reportFailure(
+  repo: string,
+  error: unknown,
+  asked?: {
+    baseRef?: string;
+    headRef?: string;
+    worktree?: boolean;
+    at?: string;
+    is?: number;
+  },
+): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
+  const missing = missingRef(message);
+
+  /*
+   * A ref this checkout has not got, fetched and tried again.
+   *
+   * The case that provoked this: a reading of the forge's copy of a change,
+   * restored after a window reload into a checkout that had never fetched that
+   * branch. What the reader got was a raw `git merge-base` failure and an offer
+   * to pick a base branch, for a head ref nobody had asked them about.
+   *
+   * Only for a ref that names a remote, and only once. A missing local branch
+   * is not something a fetch can conjure, and a second failure after a fetch is
+   * a real answer rather than a race.
+   */
+  const remote = missing && /^([\w.-]+)\/(.+)$/.exec(missing);
+  if (remote && asked && missing !== asked.baseRef) {
+    const [, name, branch] = remote;
+    /*
+     * The branch first, and then the pull request's own copy of it.
+     *
+     * A branch is deleted the moment its change is merged, on most projects
+     * automatically — so a reading of a change that has landed asks for a ref
+     * the forge no longer has, and `git fetch origin <branch>` answers
+     * "couldn't find remote ref". The change itself is not gone: a forge keeps
+     * the head it was merged from under `refs/pull/<n>/head`, which is exactly
+     * what a reader coming back to a merged review wants to see.
+     *
+     * Written into the tracking ref it was looking for, so everything
+     * downstream — the diff, the title, the marks stored against the reading —
+     * goes on calling it what the reader calls it.
+     */
+    /*
+     * The number, from the reading rather than from the forge.
+     *
+     * It used to be looked up in the list of open pull requests, which is only
+     * populated when `gh` is signed in — and a reader whose `gh` is signed out
+     * is exactly the reader who cannot fetch a deleted branch any other way. A
+     * restored reading carries its own number; it was written down when the
+     * reading was made.
+     */
+    const number =
+      asked.is ?? [...known.values()].find((one) => one.branch === branch)?.number;
+    const fetched = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: `Odin: fetching ${missing}` },
+      async () => {
+        const first = await git(["fetch", "--quiet", name!, branch!], { cwd: repo })
+          .then(() => undefined)
+          .catch((why: unknown) => (why instanceof Error ? why.message : String(why)));
+        if (first === undefined) return undefined;
+        if (!number) return first;
+
+        return git(
+          [
+            "fetch",
+            "--quiet",
+            name!,
+            `refs/pull/${number}/head:refs/remotes/${name}/${branch}`,
+          ],
+          { cwd: repo },
+        )
+          .then(() => undefined)
+          .catch(() => first);
+      },
+    );
+    if (fetched === undefined) {
+      await review(
+        asked.baseRef,
+        asked.headRef,
+        asked.worktree === true,
+        asked.at,
+        asked.is,
+      );
+      return;
+    }
+    /*
+     * Git's own words, because "fetching it failed" is the one thing the reader
+     * already knows.
+     *
+     * Node puts the command on the first line of the error and git's reason on
+     * the ones after it, so taking the first line hands back the command that
+     * was run and none of why it did not work — "couldn't find remote ref" is
+     * the whole of the answer, and it was being cut off.
+     */
+    const why =
+      fetched
+        .split("\n")
+        .map((line) => line.trim())
+        .find((line) => line && !line.startsWith("Command failed:")) ?? fetched;
+
+    /*
+     * Said in full, and then the tab goes.
+     *
+     * This is the end of the line: the ref is not here, the forge does not have
+     * the branch any more, and either there is no pull request to reach its
+     * head through or that failed too. No retry helps and no button would, so a
+     * frame left open on a git error is a tab that looks like a review, opens
+     * like a review, and can never be one — and the reader is left to work out
+     * that closing it is the only thing to do.
+     */
+    const gone = /couldn't find remote ref|not found|does not appear to be a git repo/i.test(
+      why,
+    );
+    vscode.window.showErrorMessage(
+      gone
+        ? `Odin: ${missing} is not on the remote any more${
+            number ? ` and #${number}'s head could not be fetched` : ""
+          }. There is nothing left to read, so this tab is closing.`
+        : `Odin: ${missing} is not in this checkout — ${why.replace(/^fatal:\s*/, "")}. ` +
+          "This tab is closing.",
+    );
+    GraphPanel.abandon(
+      keyOf({
+        repo,
+        ...(asked.baseRef ? { baseRef: asked.baseRef } : {}),
+        ...(asked.headRef ? { headRef: asked.headRef } : {}),
+        ...(asked.worktree ? { worktree: true } : {}),
+      }),
+    );
+    return;
+  }
+
   const missingBase =
     message.includes("no base branch found") ||
-    message.includes("Not a valid object name");
+    (missing !== undefined && (!asked || missing === asked.baseRef));
 
   if (!missingBase) {
     vscode.window.showErrorMessage(`Odin: ${message}`);

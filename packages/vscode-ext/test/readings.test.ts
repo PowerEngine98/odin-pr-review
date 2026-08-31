@@ -27,11 +27,46 @@ describe("keeping several readings apart", () => {
   it("tells two readings of one branch apart by how they are read", () => {
     // The same branch read live and read as committed are different pictures:
     // one follows the reader's typing and the other does not.
-    expect(source("session.ts")).toMatch(/worktree === true \? "live" : "committed"/);
+    expect(source("session.ts")).toMatch(/live \? "live" : "committed"/);
     // One answer, shared. The panel registry and the store that survives a
     // reload have to agree on what "the same reading" means, or a restored
     // frame is paired with a change it never held.
     expect(panel).toMatch(/return keyOf\(\{/);
+  });
+
+  it("names a live reading after its checkout rather than a branch", () => {
+    /*
+     * A live reading has no branch of its own: it is the base against the files
+     * on disk, and what is on disk is whatever HEAD happens to be. Named after
+     * the branch it was built from, two of them could exist for one working
+     * tree — open one, switch branch, open another — and only one of those can
+     * ever be true. The other went on rebuilding from a working tree that no
+     * longer held its branch, on every save, saying nothing.
+     *
+     * Two live pictures at once is a real thing to want, and git's own answer
+     * is a second worktree: a second checkout, its own path, a different `repo`
+     * here, and so a different reading by this same rule.
+     */
+    expect(source("session.ts")).toMatch(/live \? "" : reading\.headRef/);
+    // The base stays in the name: one working tree read against `main` and
+    // against `develop` is two questions, and both can be open at once.
+    expect(source("session.ts")).toMatch(/reading\.baseRef,\s*\n\s*live \? "" : reading\.headRef/);
+  });
+
+  it("asks the forge about a pull request by its number", () => {
+    /*
+     * A reading of the forge's own copy is built from a tracking ref —
+     * `origin/luis/lab-147` — and `gh pr view` given one of those finds
+     * nothing. Nothing came back, nothing was updated, and nothing said so:
+     * approving from inside Odin left the bar saying what it said before and
+     * the reviewers panel showing the approver as pending.
+     *
+     * The pull request is already on screen, so its number is already known,
+     * and a number is unambiguous in a way no ref is. Driven separately against
+     * a forge that answers for the number and refuses the ref.
+     */
+    expect(panel).toMatch(/readPullRequest\(String\(known\.number\)/);
+    expect(panel).not.toMatch(/const branch = this\.graph\.meta\.headRef;\s*\n\s*if \(!known \|\| !branch\)/);
   });
 
   it("gives each reading its own watcher", () => {
