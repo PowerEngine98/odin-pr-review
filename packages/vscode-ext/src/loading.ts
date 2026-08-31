@@ -77,16 +77,51 @@ export function waitingPage(options: WaitingPage): string {
     .mark { animation: none; opacity: 0.7; }
   }
   .note { min-height: 1.2em; letter-spacing: 0.02em; text-align: center; }
+  /*
+   * How much of the wait is left.
+   *
+   * A note on its own says what is happening and nothing about how long it goes
+   * on for, and the phases here are seconds each — so a reader watching one
+   * sentence sit still has no way to tell it from the thing having stopped.
+   *
+   * The track is drawn from the start rather than appearing with the first
+   * number: a bar that turns up halfway through is a second thing to notice
+   * during the one moment the reader is already wondering what is going on.
+   */
+  .track {
+    width: 220px;
+    height: 3px;
+    margin-top: 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--vscode-foreground, #e6edf3) 14%, transparent);
+    overflow: hidden;
+  }
+  .track > i {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--vscode-progressBar-background, var(--vscode-foreground, #e6edf3));
+    /* Long enough to read as filling rather than stepping, short enough that it
+       has caught up before the next number arrives. */
+    transition: width 220ms ease-out;
+  }
 </style></head><body>
 <div class="mark">${mark}</div>
 <div class="note" id="note"></div>
+<div class="track"><i id="bar"></i></div>
 <script nonce="${nonce}">
   var note = document.getElementById("note");
   note.textContent = ${JSON.stringify(note)};
   // Each step of the build renames the wait rather than restarting it: setting
   // the page again would drop the animation back to its first frame.
+  var bar = document.getElementById("bar");
   window.addEventListener("message", function (event) {
-    if (event.data && event.data.type === "note") note.textContent = event.data.message;
+    if (!event.data || event.data.type !== "note") return;
+    note.textContent = event.data.message;
+    if (typeof event.data.percent === "number") {
+      bar.style.width = Math.max(0, Math.min(100, event.data.percent)) + "%";
+    }
   });
   /*
    * Says that it is here.

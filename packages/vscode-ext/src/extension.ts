@@ -26,7 +26,10 @@ import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo, forgetBase, stageGraphForRepo } from "./graph.js";
 import { LiveGraph } from "./live.js";
 import { GraphPanel } from "./panel.js";
+import { paintRows } from "@odin/webview";
+
 import { PairingSession } from "./pairing.js";
+import { Progress } from "./progress.js";
 import { ChangeSidebar } from "./sidebar.js";
 import { activeTheme } from "./theme.js";
 import { SeenStore } from "./seen.js";
@@ -1057,6 +1060,21 @@ async function review(
          * being told the picture is still being worked out.
          */
         let drawn = false;
+        /*
+         * One number for the whole build, rather than a note per phase.
+         *
+         * Every phase said what it was doing and only one of them could say how
+         * far along it was, so a large change showed a note that sat still for
+         * six seconds, a percentage that ran to a hundred, then another note
+         * that sat still for three — none of which a reader can tell from the
+         * thing having stopped.
+         */
+        const step = new Progress(({ note, percent }) => {
+          const said = `${note}… ${percent}%`;
+          progress.report({ message: said, increment: undefined });
+          if (drawn) GraphPanel.setRefreshing(true, said);
+          else GraphPanel.note(said, percent);
+        });
         const request = {
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
@@ -1065,11 +1083,13 @@ async function review(
           ...(worktree ? { worktree: true } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
-          report: (message: string) => {
-            progress.report({ message });
-            if (drawn) GraphPanel.setRefreshing(true, message);
-            else GraphPanel.note(message);
-          },
+          progress: step,
+          /*
+           * Kept for the phases that say something a percentage cannot — a ref
+           * being fetched, a checkout being made — and silent otherwise, since
+           * the same words now arrive with a number attached.
+           */
+          report: () => {},
         };
 
         /*
@@ -1090,7 +1110,7 @@ async function review(
         const graph = built.graph;
 
         progress.report({ message: "colouring" });
-        const reading = await present(built, repo, base, headRef);
+        const reading = await present(built, repo, base, headRef, false, step);
         drawn = true;
 
         // The expensive half, over the picture the reader already has. The
@@ -1101,7 +1121,7 @@ async function review(
           GraphPanel.setRefreshing(true, "Resolving references…");
           try {
             final = await staged.rest();
-            await present(final, repo, base, headRef);
+            await present(final, repo, base, headRef, false, step);
           } finally {
             GraphPanel.setRefreshing(false);
           }
@@ -1149,6 +1169,13 @@ async function present(
    */
   quick = false,
   /**
+   * The build reporting itself, when this is a review somebody asked for.
+   *
+   * Absent for a redraw provoked by a save: nothing about that is announced,
+   * so there is nobody to report to.
+   */
+  step?: Progress,
+  /**
    * Which reading this is, as the caller knows it.
    *
    * A watcher belongs to a reading and so does its rebuild. The name is passed
@@ -1181,6 +1208,21 @@ async function present(
         graph.nodes.map((n) => n.language ?? "plaintext"),
         { dark: isDark(), ...(theme ? { theme } : {}) },
       );
+
+  /*
+   * Coloured here, a file at a time, rather than inside the document build.
+   *
+   * It is two thirds of building the document and it is one synchronous
+   * stretch — two and a half seconds on a change of a hundred and thirty files,
+   * during which the extension host answers nobody, including the progress it
+   * is reporting. Split by file it is the same work in pieces short enough that
+   * the editor stays awake, and it is the last phase that can say how far along
+   * it is.
+   */
+  if (highlight) {
+    step?.begins("colour");
+    await paintRows(layout, highlight, (done, total) => step?.within(done, total));
+  }
 
   // The list follows whichever part the panel is showing.
   GraphPanel.onPart = (paths) => sidebar.setPart(paths);
@@ -1476,7 +1518,7 @@ function armLive(
     onSettled: () => GraphPanel.setRefreshingIn(shown, repo, false),
     onChange: async (_graph, delta) => {
       if (!fresh) return;
-      await present(fresh, repo, base, headRef, true, key);
+      await present(fresh, repo, base, headRef, true, undefined, key);
       // In the status bar rather than a notification: this happens every time
       // the reader saves, and a toast per save is a reason to turn the whole
       // thing off. It says what moved, then goes away on its own.

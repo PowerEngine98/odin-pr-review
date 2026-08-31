@@ -1488,6 +1488,38 @@ describe("a live reading of the working tree", () => {
     }
     expect(view.page()).toContain("one.ts");
   }, 60_000);
+
+  it("says how far through the build it is, as a number", async () => {
+    /*
+     * A note on its own says what is happening and nothing about how long it
+     * goes on for, and the phases here are seconds each on a change of any
+     * size. What the reader watched was one sentence sitting still, which is
+     * indistinguishable from the thing having stopped.
+     */
+    execFileSync("git", ["checkout", "--", "."], { cwd: repo, stdio: "ignore" });
+
+    const editor = stub(local(), { folder: repo, baseRef: "base" });
+    const panel = await reading(editor);
+
+    const notes = panel.posted.filter((message) => message["type"] === "note");
+    expect(notes.length).toBeGreaterThan(0);
+
+    const counted = notes.filter(
+      (message) => typeof message["percent"] === "number",
+    );
+    expect(counted.length).toBeGreaterThan(0);
+
+    // Forwards only, and never claiming to be finished while the reader waits.
+    const percents = counted.map((message) => message["percent"] as number);
+    for (let at = 1; at < percents.length; at++) {
+      expect(percents[at]!).toBeGreaterThanOrEqual(percents[at - 1]!);
+    }
+    expect(Math.max(...percents)).toBeLessThanOrEqual(99);
+
+    // And the page it landed on while the build ran had somewhere to draw it.
+    // The graph replaces that document, so it is the first one written.
+    expect(panel.written[0] ?? "").toContain('id="bar"');
+  }, 60_000);
 });
 
 /**

@@ -30,6 +30,53 @@ import type { LineAt } from "./wire.js";
 /** How tall each card really is. Empty until a browser has drawn one. */
 const heights = $state<Record<string, number>>({});
 
+/*
+ * The same numbers, unreactive, and the batch waiting to join them.
+ *
+ * Every card measures itself, and the placement reads all of the measurements —
+ * so a card writing its height on its own wakes the placement, which places all
+ * of them, which measures all of them again. On a change of a hundred and
+ * ninety-nine cards that is a hundred and ninety-nine placement passes over a
+ * hundred and ninety-nine cards apiece, and it is most of a thirty-second pause
+ * in which the editor's window answers nobody.
+ *
+ * So the writes are collected and published together. A round of measurements
+ * becomes one invalidation instead of one each, which is the difference between
+ * n² and n — and the answer is identical, because nothing here reads a
+ * measurement in order to produce one.
+ *
+ * `known` is what lets a card be told it has not changed without reading the
+ * reactive copy: reading that inside the effect that writes it is exactly the
+ * dependency this module exists to avoid.
+ */
+const known: Record<string, number> = {};
+let waiting: Record<string, number> | null = null;
+let publishing = 0;
+
+/**
+ * Publishes a round of measurements, once, on the next frame.
+ *
+ * A frame rather than a microtask because that is the beat the measurements
+ * themselves arrive on: they are taken after the browser has drawn, so
+ * gathering them until it is about to draw again collects the whole round.
+ * Where there are no frames — a page being rendered to a string, a test — the
+ * timer is the same promise a beat later.
+ */
+function later(publish: () => void): void {
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(publish);
+  else setTimeout(publish, 0);
+}
+
+function publish(): void {
+  publishing = 0;
+  const batch = waiting;
+  waiting = null;
+  if (!batch) return;
+  // Assigned one by one on purpose: each card is its own piece of state, so a
+  // card whose height did not change is not woken by one whose height did.
+  for (const id of Object.keys(batch)) heights[id] = batch[id]!;
+}
+
 /**
  * A card, reporting itself.
  *
@@ -39,11 +86,16 @@ const heights = $state<Record<string, number>>({});
  * along.
  */
 export function measure(id: string, height: number): void {
-  // Written without first looking at what is there. Reading the entry inside the
-  // effect that writes it is what would make that effect depend on its own
-  // answer, and there is nothing to gain by it: a height that has not changed is
-  // an assignment that changes nothing and wakes nobody.
-  if (height > 0) heights[id] = height;
+  if (height <= 0) return;
+  // Against the unreactive copy, so this asks nothing of the state it is about
+  // to write and a card that has settled stops taking part.
+  if (known[id] === height) return;
+  known[id] = height;
+  (waiting ??= {})[id] = height;
+  if (!publishing) {
+    publishing = 1;
+    later(publish);
+  }
 }
 
 /** What a card measured, or nothing when nothing has measured it. */

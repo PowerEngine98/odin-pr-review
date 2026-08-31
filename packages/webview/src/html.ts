@@ -1,5 +1,6 @@
 import {
   DARK_THEME,
+  breathe,
   cardTitle,
   components,
   describeGaps,
@@ -1010,6 +1011,10 @@ function colourRows(
   const coloured = new Map<DisplayRow, CodeToken[]>();
   const language = node.node.language;
   if (!highlight || !language || !highlight.supports(language)) return coloured;
+  // Already painted, by the pass that does it a file at a time so the editor
+  // can answer in between. Doing it again would be the same answer for the
+  // same two seconds.
+  if (painted(node)) return coloured;
 
   let base: DisplayRow[] = [];
   let head: DisplayRow[] = [];
@@ -1056,6 +1061,51 @@ function colourRows(
   walk(node.rows);
   flush();
   return coloured;
+}
+
+/** Whether a card's rows already carry their colours. */
+function painted(node: PlacedNode): boolean {
+  const code = node.rows.find((row) => row.kind !== "gap");
+  return code !== undefined && "tokens" in code;
+}
+
+/**
+ * Colours a whole drawing, a file at a time, yielding between them.
+ *
+ * The colouring is two thirds of building the document and it is one
+ * synchronous stretch: on a change of a hundred and thirty files that is two
+ * and a half seconds in which the extension host answers nobody — not the
+ * progress it is reporting, not the messages to its own page, not the editor
+ * asking whether it is still alive.
+ *
+ * Split by file, because a file is the unit the grammar needs anyway: the rows
+ * of one card are lexed together, and there is no smaller piece that is still
+ * correct. The tokens are written onto the rows, so whoever renders the
+ * document afterwards finds the work already done.
+ *
+ * `onFile` is called once per card with how many are finished, which is the
+ * only honest way to say how far along this half is.
+ */
+export async function paintRows(
+  layout: GraphLayout,
+  highlight: CodeHighlighter | undefined,
+  onFile?: (done: number, total: number) => void,
+): Promise<void> {
+  const total = layout.nodes.length;
+  if (!highlight) {
+    onFile?.(total, total);
+    return;
+  }
+
+  let done = 0;
+  for (const node of layout.nodes) {
+    const coloured = colourRows(node, highlight);
+    for (const [row, tokens] of coloured) {
+      (row as { tokens?: CodeToken[] }).tokens = tokens;
+    }
+    onFile?.(++done, total);
+    await breathe();
+  }
 }
 
 /**

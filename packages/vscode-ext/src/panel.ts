@@ -1178,10 +1178,14 @@ export class GraphPanel {
   }
 
   /** A line of progress, without restarting the animation. */
-  static note(message: string): void {
+  static note(message: string, percent?: number): void {
     if (!GraphPanel.waiting) return;
     const panel = GraphPanel.target();
-    void panel?.webview.postMessage({ type: "note", message });
+    void panel?.webview.postMessage({
+      type: "note",
+      message,
+      ...(percent === undefined ? {} : { percent }),
+    });
   }
 
   /**

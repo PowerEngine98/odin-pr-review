@@ -29,6 +29,8 @@ import {
 } from "@odin/resolver-lang";
 import { TsResolver } from "@odin/resolver-ts";
 
+import type { Progress } from "./progress.js";
+
 
 
 export interface BuildRequest {
@@ -57,6 +59,14 @@ export interface BuildRequest {
   includeContext: boolean;
   /** Called with coarse progress so the editor can show it. */
   report?: (message: string) => void;
+  /**
+   * How far through the whole build we are, for the reader watching it.
+   *
+   * Separate from `report` because they answer different questions and only
+   * one of them can be answered by every phase: a note says what is happening,
+   * this says how much of it is left.
+   */
+  progress?: Progress;
 }
 
 export interface BuiltGraph {
@@ -119,6 +129,7 @@ export async function buildGraphForRepo(
   previous?: BuiltGraph,
 ): Promise<BuiltGraph> {
   const report = request.report ?? (() => {});
+  const step = request.progress;
   // `HEAD` rather than the branch's name, because naming the branch is naming a
   // commit and the working tree is not one. The graph still records the branch:
   // the diff resolves `HEAD` back to it for everything a reader sees.
@@ -127,6 +138,7 @@ export async function buildGraphForRepo(
     : request.headRef ?? (await currentBranch({ cwd: request.cwd })) ?? "HEAD";
 
   report("Reading the diff…");
+  step?.begins("diff");
   let graph = await graphFromRepo({
     cwd: request.cwd,
     ...(request.baseRef ? { baseRef: request.baseRef } : {}),
@@ -190,6 +202,7 @@ export async function buildGraphForRepo(
       let baseRoot: string | undefined;
       if (probes.some((p) => p.side === "base") && graph.meta.mergeBase) {
         report("Materialising the merge base…");
+        step?.begins("base");
         // A commit's tree does not change, so the copy taken for the last
         // rebuild is still the copy this one wants. Kept rather than extracted
         // again, which is a fifth of a second spent reproducing a directory
@@ -210,6 +223,7 @@ export async function buildGraphForRepo(
       }
 
       report("Resolving references…");
+      step?.begins("resolve");
       const resolver = new CompositeResolver(
         build({ head: headRoot, ...(baseRoot ? { base: baseRoot } : {}) }),
         languageLookup(graph),
@@ -232,6 +246,7 @@ export async function buildGraphForRepo(
             if (percent === last) return;
             last = percent;
             report(`Resolving references… ${percent}%`);
+            step?.within(done, total);
           }),
           { resolver: "ts" },
         );
@@ -245,8 +260,12 @@ export async function buildGraphForRepo(
 
     graph = annotateCoverage(graph, languages);
 
+    // Reading the code around the change, which is the other slow half: every
+    // gap a card shows is a piece of a file that had to be fetched.
+    step?.begins("context");
     report("Laying out…");
     const snippets = await freshSnippets(graph, previous, request.cwd);
+    step?.begins("draw");
 
     // Tests are hidden by default and the checkbox swaps arrangements, so both
     // are laid out here — the webview has no layout engine to compute the
