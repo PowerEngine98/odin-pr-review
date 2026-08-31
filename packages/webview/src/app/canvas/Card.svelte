@@ -336,6 +336,9 @@
   /** Everything the card is holding back, shown in one go. */
   let expanded = $state(false);
 
+  /** The pointer is on the file's name, which is where its path belongs. */
+  let overName = $state(false);
+
   /** The title's own height, measured rather than assumed. */
   let titleHeight = $state(0);
   /**
@@ -1129,7 +1132,6 @@
     class="card-title"
     class:pinned={pin > 0}
     style:transform={pin > 0 ? `translateY(${pin}px)` : null}
-    title={node.path}
     bind:offsetHeight={titleHeight}
     bind:offsetWidth={titleWidth}
   >
@@ -1145,7 +1147,25 @@
       class:slid={stuck.name > 0}
       style:transform={stuck.name > 0 ? `translateX(${stuck.name}px)` : null}
       bind:offsetWidth={nameWidth}
+      onpointerenter={() => (overName = true)}
+      onpointerleave={() => (overName = false)}
     >
+      <!--
+        Where the file actually lives, for a name that only says the last part
+        of it.
+
+        Drawn rather than left to the browser's own tooltip, which the header
+        already asked for and which a reader on a live change rarely sees: the
+        native one waits about a second and any redraw under the pointer starts
+        that wait again, so on a picture that rebuilds while an agent works it
+        mostly never appears. This one is immediate, and it is legible at any
+        zoom — sized against the canvas's scale the way the label over a
+        shrunken card is, since a tip drawn in canvas units is unreadable at
+        exactly the zoom where the name is too short to help.
+      -->
+      {#if overName}
+        <span class="path-tip">{node.path}</span>
+      {/if}
       <span class="box">{@render statusMark(node.status)}</span>
       {head.name}
       {#if head.was}<span class="was">{head.was}</span>{/if}
@@ -1618,6 +1638,38 @@
   .card-name.status-deleted { color: var(--status-deleted); }
   .card-name.status-renamed { color: var(--status-renamed); }
   .card-name.status-phantom { color: var(--status-phantom); }
+
+  /* The full path, under the name it is the rest of.
+
+     Sized and offset against `--zoom`, like the label a shrunken card wears:
+     the canvas is one scaled layer, so a tip written in canvas units shrinks
+     exactly as fast as the name it is explaining, which is no use at the zoom
+     where the explaining is needed.
+
+     Below the name rather than above it: above is where the card's own label
+     goes when the drawing is pulled back, and two things in one place is one of
+     them covering the other. */
+  .path-tip {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 6;
+    margin-top: calc(4px / var(--zoom, 1));
+    padding: calc(3px / var(--zoom, 1)) calc(7px / var(--zoom, 1));
+    border: 1px solid var(--line);
+    border-radius: calc(4px / var(--zoom, 1));
+    background: var(--bg);
+    color: var(--text);
+    font-size: calc(11px / var(--zoom, 1));
+    line-height: 1.3;
+    font-weight: 400;
+    white-space: nowrap;
+    box-shadow: 0 calc(2px / var(--zoom, 1)) calc(8px / var(--zoom, 1)) rgb(0 0 0 / 0.35);
+    /* A label, not a control: it must not take the press meant for the header
+       it is hanging off, nor swallow the drag that crosses it. */
+    pointer-events: none;
+    user-select: none;
+  }
 
   /* A box is a place to press, so it says so under the pointer. */
   .card :global(.symbol-box) { cursor: pointer; }
