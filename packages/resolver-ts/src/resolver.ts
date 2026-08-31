@@ -1,5 +1,7 @@
 import { join, resolve as resolvePath } from "node:path";
 
+import { breathe, SLICE } from "@odin/core";
+
 import type {
   LineProbe,
   ProbeResult,
@@ -10,7 +12,7 @@ import type {
 import ts from "typescript";
 
 import { DomainFilter } from "./domain.js";
-import { createProgram } from "./program.js";
+import { Projects, type Project } from "./program.js";
 import { findReferencesOnLine, type ReferenceSite } from "./references.js";
 
 export interface TsResolverOptions {
@@ -24,11 +26,10 @@ export interface TsResolverOptions {
   includeTypes?: boolean;
 }
 
-/** One checkout's program, checker and path filter, created on first use. */
+/** One checkout's projects and path filter, created on first use. */
 interface SideContext {
   root: string;
-  program: ts.Program;
-  checker: ts.TypeChecker;
+  projects: Projects;
   filter: DomainFilter;
 }
 
@@ -60,22 +61,54 @@ export class TsResolver implements ReferenceResolver {
   async resolve(probes: LineProbe[], onProbe?: () => void): Promise<ProbeResult[]> {
     const results: ProbeResult[] = [];
 
+    /*
+     * Answered in slices, so the editor can breathe between them.
+     *
+     * This is the slow half of a build and every probe in it is synchronous,
+     * so a plain loop holds the extension host from the first to the last —
+     * an `async` function whose body never awaits is one unbroken block. What
+     * that looks like from outside is a window that has stopped answering,
+     * including the progress this very loop is reporting.
+     */
+    let since = 0;
+
     for (const probe of probes) {
+      if (++since >= SLICE) {
+        since = 0;
+        await breathe();
+      }
       // Counted before anything can skip the rest of the loop, so the tally is
       // of lines looked at rather than of lines that happened to answer.
       onProbe?.();
+      // Reading every `tsconfig.json` in the checkout and expanding its globs
+      // is the other unbroken stretch, and it is the first thing that happens.
+      if (!this.knows(probe.side)) await breathe();
       const context = this.contextFor(probe.side);
       if (!context) continue;
 
-      const source = this.sourceFor(context, probe.path);
-      if (!source) continue;
+      /*
+       * Out of the way before the one part of this that cannot be divided.
+       *
+       * Building a compiler program is a single synchronous call — the file,
+       * everything it imports, and every declaration behind those — and on a
+       * project of any size it is a second or more with no seam in it. Slicing
+       * the loop does nothing for that; what a yield here buys is that
+       * everything already queued is delivered *before* the block rather than
+       * after it. Without it the reader watches a note about the step before
+       * this one while the step that is actually running says nothing, which
+       * is indistinguishable from a stall.
+       */
+      if (context.projects.unbuilt(join(context.root, probe.path))) await breathe();
+
+      const found = this.sourceFor(context, probe.path);
+      if (!found) continue;
 
       const targets: ResolvedTarget[] = [];
-      for (const site of findReferencesOnLine(source, probe.line)) {
+      for (const site of findReferencesOnLine(found.source, probe.line)) {
         if (site.kind === "import" && this.options.includeImports === false) continue;
         if (site.kind === "type" && this.options.includeTypes !== true) continue;
 
-        const target = this.resolveSite(context, site, probe);
+        const target = this.resolveSite(context, found.project, site, probe);
         if (target) targets.push(target);
       }
 
@@ -87,10 +120,11 @@ export class TsResolver implements ReferenceResolver {
 
   private resolveSite(
     context: SideContext,
+    project: Project,
     site: ReferenceSite,
     probe: LineProbe,
   ): ResolvedTarget | undefined {
-    const declaration = declarationOf(context.checker, site.node);
+    const declaration = declarationOf(project.checker, site.node);
     if (!declaration) return undefined;
 
     const declSource = declaration.getSourceFile();
@@ -134,6 +168,11 @@ export class TsResolver implements ReferenceResolver {
     return target;
   }
 
+  /** Whether this side has already been looked at, cheaply. */
+  private knows(side: Side): boolean {
+    return this.contexts.has(side);
+  }
+
   private contextFor(side: Side): SideContext | undefined {
     if (this.contexts.has(side)) return this.contexts.get(side) ?? undefined;
 
@@ -144,11 +183,9 @@ export class TsResolver implements ReferenceResolver {
     }
 
     const absolute = resolvePath(root);
-    const program = createProgram(absolute);
     const context: SideContext = {
       root: absolute,
-      program,
-      checker: program.getTypeChecker(),
+      projects: new Projects(absolute),
       filter: new DomainFilter({
         root: absolute,
         ...(this.options.excludeSegments
@@ -160,13 +197,27 @@ export class TsResolver implements ReferenceResolver {
     return context;
   }
 
-  private sourceFor(context: SideContext, path: string): ts.SourceFile | undefined {
+  /**
+   * The file, and the project that knows what its imports mean.
+   *
+   * They travel together because a symbol only means anything to the checker
+   * that produced the file it sits in. Asking one project's checker about
+   * another's node answers nothing — silently, which is the dangerous part.
+   */
+  private sourceFor(
+    context: SideContext,
+    path: string,
+  ): { source: ts.SourceFile; project: Project } | undefined {
     const absolute = join(context.root, path);
-    return (
-      context.program.getSourceFile(absolute) ??
-      // TypeScript normalises separators; try the forward-slash form too.
-      context.program.getSourceFile(absolute.split("\\").join("/"))
-    );
+    // TypeScript normalises separators; try the forward-slash form too.
+    const slashed = absolute.split("\\").join("/");
+    const project = context.projects.for(slashed) ?? context.projects.for(absolute);
+    if (!project) return undefined;
+
+    const source =
+      project.program.getSourceFile(absolute) ??
+      project.program.getSourceFile(slashed);
+    return source ? { source, project } : undefined;
   }
 
   dispose(): void {
