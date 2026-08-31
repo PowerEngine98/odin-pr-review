@@ -135,6 +135,59 @@ const GRAMMARS: Record<string, () => Promise<LanguageInput>> = {
   yaml: () => import("@shikijs/langs/yaml"),
 };
 
+/**
+ * What people write on a fence, in the ids this knows.
+ *
+ * The table above is keyed by VS Code's language ids, because that is what a
+ * change graph carries — a file says it is `typescriptreact`. Nobody writes
+ * that on a code fence. An agent writes ```tsx, a reviewer writes ```ts, and
+ * both arrived here as a language nothing could colour, so the block came out
+ * in one flat colour beside a card of the same code fully lit.
+ *
+ * Only spellings that are unambiguous. `c` already means C and is left alone;
+ * anything not listed falls through unchanged, which is the right answer for
+ * an id that was already an id.
+ */
+const ALIASES: Record<string, string> = {
+  bash: "shellscript",
+  "c++": "cpp",
+  cs: "csharp",
+  console: "shellscript",
+  htm: "html",
+  js: "javascript",
+  jsx: "javascriptreact",
+  kt: "kotlin",
+  kts: "kotlin",
+  md: "markdown",
+  mjs: "javascript",
+  cjs: "javascript",
+  psql: "postgres",
+  py: "python",
+  rb: "ruby",
+  rs: "rust",
+  sh: "shellscript",
+  shell: "shellscript",
+  tf: "toml",
+  ts: "typescript",
+  tsx: "typescriptreact",
+  mts: "typescript",
+  cts: "typescript",
+  yml: "yaml",
+  zsh: "shellscript",
+};
+
+/**
+ * The id to look a grammar up by, whatever it was called.
+ *
+ * Case is folded because a fence saying `TSX` is the same request as one
+ * saying `tsx`, and the label a page prints above the block is the reader's
+ * spelling either way.
+ */
+export function canonicalLanguage(language: string): string {
+  const said = language.trim().toLowerCase();
+  return ALIASES[said] ?? said;
+}
+
 /** What a reviewer would call the language, for saying it is not covered. */
 export function languageLabel(language: string): string {
   return LABELS[language] ?? language;
@@ -176,7 +229,7 @@ export async function loadHighlighter(
 
   for (const language of new Set(languages)) {
     if (language === "plaintext") continue;
-    const id = SHIKI_ID[language];
+    const id = SHIKI_ID[canonicalLanguage(language)];
     if (id && GRAMMARS[id]) wanted.add(id);
     else if (!missing.includes(language)) missing.push(language);
   }
@@ -213,11 +266,11 @@ export async function loadHighlighter(
   return {
     missing,
     supports(language: string): boolean {
-      const id = SHIKI_ID[language];
+      const id = SHIKI_ID[canonicalLanguage(language)];
       return Boolean(core && id && loaded.has(id));
     },
     async ensure(language: string): Promise<boolean> {
-      const id = SHIKI_ID[language];
+      const id = SHIKI_ID[canonicalLanguage(language)];
       if (!id || !GRAMMARS[id]) return false;
       if (core && loaded.has(id)) return true;
 
@@ -238,7 +291,7 @@ export async function loadHighlighter(
       }
     },
     tokenize(language: string, code: string): Token[][] {
-      const id = SHIKI_ID[language];
+      const id = SHIKI_ID[canonicalLanguage(language)];
       if (!core || !id || !loaded.has(id)) return plain(code);
 
       try {

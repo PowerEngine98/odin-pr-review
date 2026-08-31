@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { languageLabel, loadHighlighter } from "../src/index.js";
+import { canonicalLanguage, languageLabel, loadHighlighter } from "../src/index.js";
 
 describe("loading grammars", () => {
   it("loads only what the change contains", async () => {
@@ -109,5 +109,57 @@ describe("a language the change does not contain", () => {
     expect(await h.ensure("python")).toBe(true);
     const [line] = h.tokenize("python", "def go(): pass");
     expect(line!.some((t) => t.color)).toBe(true);
+  });
+});
+
+
+/**
+ * What people actually write on a code fence.
+ *
+ * The grammars are keyed by VS Code's language ids, because that is what a
+ * change graph carries: a file says it is `typescriptreact`. Nobody writes that
+ * on a fence. An agent writes ```tsx and a reviewer writes ```ts, and both
+ * arrived here as a language nothing could colour — so the block came out in
+ * one flat colour next to a card of the same code fully lit.
+ */
+describe("the name on a fence", () => {
+  it("reads the short spellings as the ids they mean", () => {
+    expect(canonicalLanguage("tsx")).toBe("typescriptreact");
+    expect(canonicalLanguage("ts")).toBe("typescript");
+    expect(canonicalLanguage("jsx")).toBe("javascriptreact");
+    expect(canonicalLanguage("py")).toBe("python");
+    expect(canonicalLanguage("bash")).toBe("shellscript");
+    expect(canonicalLanguage("kt")).toBe("kotlin");
+  });
+
+  it("does not mind how it was capitalised or spaced", () => {
+    expect(canonicalLanguage("  TSX ")).toBe("typescriptreact");
+  });
+
+  it("leaves an id that was already an id alone", () => {
+    expect(canonicalLanguage("typescript")).toBe("typescript");
+    expect(canonicalLanguage("kotlin")).toBe("kotlin");
+    // `c` means C, and no alias may quietly take it somewhere else.
+    expect(canonicalLanguage("c")).toBe("c");
+  });
+
+  it("colours a block written as tsx", async () => {
+    const h = await loadHighlighter(["typescriptreact"]);
+    expect(h.supports("tsx")).toBe(true);
+    const [line] = h.tokenize("tsx", "const a = <div className='x' />");
+    const colours = new Set((line ?? []).map((token) => token.color));
+    expect(colours.size).toBeGreaterThan(1);
+  });
+
+  it("loads a grammar asked for by its short name", async () => {
+    const h = await loadHighlighter(["ts"]);
+    expect(h.supports("typescript")).toBe(true);
+    expect(h.missing).toEqual([]);
+  });
+
+  it("fetches one on demand by its short name too", async () => {
+    const h = await loadHighlighter(["kotlin"]);
+    expect(await h.ensure("py")).toBe(true);
+    expect(h.supports("python")).toBe(true);
   });
 });
