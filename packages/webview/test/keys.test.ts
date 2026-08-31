@@ -211,12 +211,13 @@ describe("where the camera is sent", () => {
 });
 
 /**
- * What the wheel does over the drawing.
+ * What a wheel does over the drawing, which depends on what is under the hand.
  *
- * A drawing and a document want opposite things from it: scrolling down a page
- * means "further on", scrolling down a map means nothing at all — what a reader
- * of a map wants is nearer or further away. A canvas that panned on the wheel
- * spent its time being scrolled off the edge of itself and back.
+ * On a Mac the gesture is almost always a trackpad, and a trackpad already has
+ * both — two fingers pan, a pinch zooms — so taking the pan away there would be
+ * removing the better gesture to imitate the worse one. Everywhere else it is
+ * almost always a mouse: one wheel, no pinch, and a drawing where scrolling
+ * down means nothing at all.
  */
 describe("the wheel over the canvas", () => {
   const camera = readFileSync(
@@ -228,25 +229,41 @@ describe("the wheel over the canvas", () => {
     camera.indexOf("/* ------", camera.indexOf("export function wheel(")),
   );
 
-  it("zooms, rather than panning down the page", () => {
-    // No plain-wheel branch that moves the view: whatever is not a shift is a
-    // zoom, pinch included.
-    expect(wheel).not.toMatch(/view\.y -= event\.deltaY/);
-    expect(wheel).toMatch(/view\.scale \* Math\.exp\(-event\.deltaY \/ rate\)/);
+  it("pans where the pointing device already zooms", () => {
+    expect(wheel).toMatch(/if \(!pinching && \(onApple\(\) \|\| event\.shiftKey\)\)/);
+    expect(wheel).toMatch(/view\.y -= event\.deltaY/);
   });
 
-  it("keeps what is under the cursor under the cursor", () => {
+  it("zooms everywhere else, around the cursor", () => {
+    expect(wheel).toMatch(/view\.scale \* Math\.exp\(-event\.deltaY \/ rate\)/);
     expect(wheel).toMatch(/view\.x = px - \(px - view\.x\) \* \(next \/ view\.scale\)/);
   });
 
-  it("still pans across for a mouse that cannot drag", () => {
-    expect(wheel).toMatch(/event\.shiftKey[\s\S]{0,400}?view\.x -= event\.deltaX \|\| event\.deltaY/);
+  it("still pans across on shift, for a mouse with one wheel", () => {
+    expect(wheel).toMatch(/if \(event\.shiftKey\) view\.x -= event\.deltaX \|\| event\.deltaY/);
+  });
+
+  it("leaves a pinch alone, which has always been a zoom", () => {
+    expect(wheel).toMatch(/const pinching = event\.ctrlKey \|\| event\.metaKey/);
   });
 
   it("takes a notch more gently than a pinch", () => {
     // A pinch arrives as a stream of small deltas; a wheel arrives as one notch
     // of a hundred, and at the pinch's rate that is a third of the picture per
     // click.
-    expect(wheel).toMatch(/event\.ctrlKey \|\| event\.metaKey \? 320 : 520/);
+    expect(wheel).toMatch(/pinching \? 320 : 520/);
+  });
+
+  it("asks the platform rather than guessing from the event", () => {
+    /*
+     * A trackpad and a wheel arrive as the same kind of message, and the
+     * folklore for telling them apart — fractional deltas, multiples of a
+     * hundred and twenty — is wrong often enough to be worse than choosing by
+     * platform, where it is right nearly always.
+     */
+    expect(camera).toMatch(/function onApple\(\)/);
+    expect(camera).toMatch(/Mac\|iPad\|iPhone\|iPod/);
+    // Answered once: the hardware does not change under a window.
+    expect(camera).toMatch(/let apple: boolean \| undefined/);
   });
 });

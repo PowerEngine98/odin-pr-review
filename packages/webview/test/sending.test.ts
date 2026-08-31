@@ -31,8 +31,10 @@ describe("what the page sends to the extension", () => {
     const send = APP_SCRIPT.match(/postMessage\(\{\s*type:\s*(\w+)\s*,\s*payload:\s*([^}]+)\}\)/);
     expect(send).not.toBeNull();
     const [, type, payload] = send!;
-    // The payload is passed through something; the type is not.
-    expect(payload).toMatch(new RegExp(`^\\w+\\(${type}?.*\\)$|^\\w+\\(\\w+\\)$`));
+    // The payload is passed through something; the type is not. The name of
+    // that something is whatever the minifier chose, which is any identifier —
+    // `$` and `_` included, and it has been both.
+    expect(payload).toMatch(new RegExp(`^[\\w$]+\\(${type}?.*\\)$|^[\\w$]+\\([\\w$]+\\)$`));
     expect(payload.trim()).not.toBe(type);
   });
 });

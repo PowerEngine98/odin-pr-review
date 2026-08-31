@@ -219,7 +219,7 @@
   the reader has dismissed it.
 -->
 {#if live && settings.hud.agents}
-  <div class="pairing-panel">
+  <div class="pairing-panel" class:folded>
     <div class="pairing-head">
       AI pairing
       {#if on.length > 0}
@@ -461,6 +461,17 @@
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     font-size: 11px;
   }
+
+  /*
+   * Folded, the head is the whole panel.
+   *
+   * The gap under it is there to separate it from the list, and with the list
+   * away it is a strip of nothing along the bottom — so a box that should be
+   * one line tall stands a third taller than its own contents, with the words
+   * sitting above the middle of it.
+   */
+  .pairing-panel.folded { max-height: none; overflow: visible; }
+  .pairing-panel.folded .pairing-head { padding-bottom: 0; }
 
   .pairing-head {
     display: flex;

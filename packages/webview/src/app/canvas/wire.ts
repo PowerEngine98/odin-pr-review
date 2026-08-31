@@ -15,6 +15,14 @@
  * recomputed when the camera moves.
  */
 
+import {
+  roadEnd,
+  roadPath,
+  roadPoints,
+  round,
+  shortenRoad,
+} from "@odin/core/layout/roads.js";
+
 import type { Arrangement, EdgeView, NodeView, ViewModel } from "../model.js";
 
 export interface Point {
@@ -63,72 +71,18 @@ export function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-export function mix(a: Point, b: Point, t: number): Point {
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-}
-
-export function pointAt(p: Point[], t: number): Point {
-  const a = mix(p[0]!, p[1]!, t);
-  const b = mix(p[1]!, p[2]!, t);
-  const c = mix(p[2]!, p[3]!, t);
-  return mix(mix(a, b, t), mix(b, c, t), t);
-}
-
-export function bezier(p: Point[]): string {
-  return (
-    `M ${p[0]!.x} ${p[0]!.y} C ${p[1]!.x} ${p[1]!.y}, ` +
-    `${p[2]!.x} ${p[2]!.y}, ${p[3]!.x} ${p[3]!.y}`
-  );
-}
-
-/**
- * The same curve with its last `back` pixels taken off.
+/*
+ * The curve maths that used to live here is gone.
  *
- * Cut with de Casteljau rather than by stepping back along the end tangent: the
- * curve is at its most bent right where it arrives, so a straight backoff of a
- * head's length lands off the line and leaves a visible kink.
- *
- * The points come back rounded. Every one of them is about to be printed into a
- * path attribute, and full double precision writes sixteen digits per number
- * for a difference nothing can see.
+ * `mix`, `pointAt`, `bezier` and `shorten` existed to draw a cubic and to cut
+ * the head's length off the end of one, which had to be done with de Casteljau
+ * because a curve is at its most bent exactly where it arrives. A road's last
+ * leg is straight, so that is subtraction, and the shape itself is now
+ * `roadPath` in the layout — shared, because three renderers draw these and an
+ * arrow that changed shape when the page booted would be a picture moving for
+ * no reason anybody can see.
  */
-export function shorten(p: Point[], back: number): Point[] {
-  const steps = 96;
-  const seen: Point[] = [];
-  for (let i = 0; i <= steps; i++) seen.push(pointAt(p, i / steps));
 
-  let travelled = 0;
-  let t = 0;
-  for (let i = steps; i > 0; i--) {
-    const step = Math.hypot(seen[i]!.x - seen[i - 1]!.x, seen[i]!.y - seen[i - 1]!.y);
-    if (travelled + step >= back) {
-      // Between two samples, not at one of them. On a long arrow a single step
-      // is tens of pixels, and stopping at the near end of it leaves the head
-      // floating that far off the end of the line.
-      t = (i - 1 + (travelled + step - back) / (step || 1)) / steps;
-      break;
-    }
-    travelled += step;
-  }
-
-  const a = mix(p[0]!, p[1]!, t);
-  const b = mix(p[1]!, p[2]!, t);
-  const c = mix(p[2]!, p[3]!, t);
-  const d = mix(a, b, t);
-  const e = mix(b, c, t);
-  return [p[0]!, a, d, mix(d, e, t)].map((q) => ({ x: round(q.x), y: round(q.y) }));
-}
-
-/** The point on the dot's rim that faces the far end of the arrow. */
-export function rim(cx: number, cy: number, tx: number, ty: number): Point {
-  const dx = tx - cx;
-  const dy = ty - cy;
-  const length = Math.hypot(dx, dy) || 1;
-  return {
-    x: round(cx + (dx / length) * PORT_RIM),
-    y: round(cy + (dy / length) * PORT_RIM),
-  };
-}
 
 /** Where an arrow meets a card: which card, and the line's height on it. */
 export interface Anchor {
@@ -174,22 +128,21 @@ export function route(from: Anchor, to: Anchor): Wire {
   const fromX = goesRight ? from.box.x + from.box.width : from.box.x;
   const toX = goesRight ? to.box.x : to.box.x + to.box.width;
 
-  const dx = Math.max(40, Math.abs(toX - fromX) * 0.45);
-  const c1 = goesRight ? fromX + dx : fromX - dx;
-  const c2 = goesRight ? toX - dx : toX + dx;
-
   // Clear of the card, not on its edge: half a dot under the border is a
   // smudge, and this one is meant to be pressed.
   const port = { x: fromX + away * PORT_GAP, y: from.y };
-  const start = rim(port.x, port.y, toX, to.y);
+  /*
+   * Straight out of the dot rather than aimed at the far end.
+   *
+   * A road leaves horizontally, so the line starts at the side of the dot the
+   * road runs from — aiming it at the destination would put the first pixel of
+   * a straight line at an angle to it.
+   */
+  const start = { x: round(port.x + away * PORT_RIM), y: port.y };
 
-  const points: Point[] = [
-    start,
-    { x: c1, y: from.y },
-    { x: c2, y: to.y },
-    { x: toX, y: to.y },
-  ];
-  const cut = shorten(points, HEAD);
+  const points = roadPoints(start, { x: toX, y: to.y }, goesRight);
+  const cut = shortenRoad(points, HEAD);
+  const last = roadEnd(cut);
 
   return {
     goesRight,
@@ -198,11 +151,11 @@ export function route(from: Anchor, to: Anchor): Wire {
     port,
     home: { x: toX + away * HOME_GAP, y: to.y },
     start,
-    hit: bezier(points),
-    stem: bezier(cut),
+    hit: roadPath(points),
+    stem: roadPath(cut),
     // The head rides its own segment so it can be oriented and placed without
     // anything drawn along it — the stroke is off, only the marker shows.
-    head: `M ${cut[3]!.x} ${cut[3]!.y} L ${toX} ${to.y}`,
+    head: `M ${last.x} ${last.y} L ${toX} ${to.y}`,
   };
 }
 
@@ -487,15 +440,12 @@ function gather(key: string, run: Arrow[]): void {
 
   for (const arrow of run) {
     // Each line keeps its own short stem into the junction, so the row it comes
-    // from is still the thing you press and still says where it is.
+    // from is still the thing you press and still says where it is. A slip
+    // road: out of the card, across, and onto the trunk.
     const start = arrow.wire.start;
-    const bend = Math.max(18, Math.abs(joinX - start.x) * 0.55);
-    const stem = bezier([
-      start,
-      { x: start.x + away * bend, y: start.y },
-      { x: joinX - away * bend, y: joinY },
-      { x: joinX, y: joinY },
-    ]);
+    const stem = roadPath(
+      roadPoints(start, { x: joinX, y: joinY }, first.goesRight),
+    );
     arrow.run = key;
     arrow.stem = stem;
     arrow.hit = stem;
@@ -506,18 +456,13 @@ function gather(key: string, run: Arrow[]): void {
 
   const carrier = run[0]!;
   const to = carrier.wire.to;
-  const dx = Math.max(40, Math.abs(to.x - joinX) * 0.45);
-  const road: Point[] = [
-    { x: joinX, y: joinY },
-    { x: joinX + away * dx, y: joinY },
-    { x: to.x - away * dx, y: to.y },
-    to,
-  ];
-  const cut = shorten(road, HEAD);
+  const road = roadPoints({ x: joinX, y: joinY }, to, first.goesRight);
+  const cut = shortenRoad(road, HEAD);
+  const last = roadEnd(cut);
   carrier.carrier = true;
-  carrier.trunk = bezier(cut);
+  carrier.trunk = roadPath(cut);
   // The road is most of what the eye follows, so it is what the pointer finds.
   // Its own hit area, along the whole of it, rather than the stem's.
-  carrier.road = bezier(road);
-  carrier.head = `M ${cut[3]!.x} ${cut[3]!.y} L ${to.x} ${to.y}`;
+  carrier.road = roadPath(road);
+  carrier.head = `M ${last.x} ${last.y} L ${to.x} ${to.y}`;
 }

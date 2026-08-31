@@ -1167,3 +1167,28 @@ describe("a picture named in a conversation", () => {
     expect(editor).toMatch(/class="pictured-waiting"/);
   });
 });
+
+/**
+ * The pairing panel with the agents folded away.
+ *
+ * The gap under the heading is there to separate it from the list, and with the
+ * list away it is a strip of nothing along the bottom: a box that should be one
+ * line tall stood a third taller than its contents, with the words sitting
+ * above the middle of it. Measured in a browser: nine pixels above the heading
+ * and nine below once folded, against nine and fifteen before.
+ */
+describe("the pairing panel, folded", () => {
+  const pairing = source("hud/Pairing.svelte");
+
+  it("says which state it is in, where the styles can see it", () => {
+    expect(pairing).toMatch(/class="pairing-panel" class:folded/);
+  });
+
+  it("takes back the gap that separated the heading from the list", () => {
+    expect(pairing).toMatch(/\.pairing-panel\.folded \.pairing-head \{ padding-bottom: 0; \}/);
+  });
+
+  it("stops being a scrolling box when there is nothing to scroll", () => {
+    expect(pairing).toMatch(/\.pairing-panel\.folded \{ max-height: none; overflow: visible; \}/);
+  });
+});

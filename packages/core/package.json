@@ -13,6 +13,10 @@
     "./agents/marks.js": {
       "types": "./dist/agents/marks.d.ts",
       "default": "./dist/agents/marks.js"
+    },
+    "./layout/roads.js": {
+      "types": "./dist/layout/roads.d.ts",
+      "default": "./dist/layout/roads.js"
     }
   },
   "scripts": {

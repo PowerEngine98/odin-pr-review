@@ -136,29 +136,61 @@ export function endPan(event: PointerEvent, viewport: HTMLElement): void {
   }
 }
 
+/**
+ * Whether this is a machine whose pointing device already zooms.
+ *
+ * Asked of the platform rather than of the event, because there is no honest
+ * way to ask the event: a trackpad and a wheel arrive as the same kind of
+ * message, and the folklore for telling them apart — fractional deltas,
+ * multiples of a hundred and twenty — is wrong often enough to be worse than
+ * choosing by platform, where it is right nearly always.
+ *
+ * Answered once. The hardware does not change under a window, and a page
+ * rendered where there is no navigator at all is a page nobody is scrolling.
+ */
+let apple: boolean | undefined;
+
+function onApple(): boolean {
+  if (apple === undefined) {
+    const said =
+      typeof navigator === "undefined"
+        ? ""
+        : `${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`;
+    apple = /Mac|iPad|iPhone|iPod/.test(said);
+  }
+  return apple;
+}
+
 export function wheel(event: WheelEvent, viewport: HTMLElement): void {
   event.preventDefault();
   letGo();
 
   /*
-   * The wheel zooms. Panning is the drag.
+   * What a wheel means, which depends on what is under the hand.
    *
-   * This is a drawing rather than a document, and the two want opposite things
-   * from a wheel: scrolling down a page means "further on", scrolling down a
-   * map means nothing at all — what a reader of a map wants is nearer or
-   * further away. A canvas that panned on the wheel spent most of its time
-   * being scrolled off the edge of itself and back.
+   * On a Mac the gesture is almost always a trackpad, and a trackpad already
+   * has both: two fingers pan in any direction and a pinch zooms. Taking the
+   * pan away there to make the wheel zoom would be removing the better of the
+   * two gestures to imitate the worse one.
    *
-   * Everything else about the gesture is unchanged: a pinch still zooms, since
-   * a pinch has always been this, and the drawing is still dragged to move it.
-   * Holding shift pans across for a mouse with one wheel and no way to drag —
-   * the axis it reports is the one it has.
+   * Everywhere else it is almost always a mouse, which has one wheel and no
+   * pinch — and this is a drawing rather than a document, so scrolling down it
+   * means nothing: what a reader of a map wants is nearer or further away. A
+   * canvas that panned there spent its time being scrolled off the edge of
+   * itself and back, with the only way to zoom being a modifier nobody guesses.
+   *
+   * Either way a pinch zooms and a drag pans, so nothing that already worked
+   * stops working.
    */
-  if (event.shiftKey && !event.ctrlKey && !event.metaKey) {
-    // Whichever axis the device actually reports. A wheel gives it on Y, a
-    // trackpad's sideways swipe on X, and taking both means neither has to be
-    // guessed at.
-    view.x -= event.deltaX || event.deltaY;
+  const pinching = event.ctrlKey || event.metaKey;
+  if (!pinching && (onApple() || event.shiftKey)) {
+    // Shift is the mouse's way across on the platforms where the wheel zooms:
+    // one wheel, and whichever axis it reports is the one it has.
+    if (event.shiftKey) view.x -= event.deltaX || event.deltaY;
+    else {
+      view.x -= event.deltaX;
+      view.y -= event.deltaY;
+    }
     apply();
     return;
   }
@@ -175,7 +207,7 @@ export function wheel(event: WheelEvent, viewport: HTMLElement): void {
    * on every one. The notch is given a gentler constant so a click is about a
    * fifth, which is a step you can walk back.
    */
-  const rate = event.ctrlKey || event.metaKey ? 320 : 520;
+  const rate = pinching ? 320 : 520;
   const next = clamp(
     view.scale * Math.exp(-event.deltaY / rate),
     MIN_SCALE,

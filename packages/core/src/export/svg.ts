@@ -1,6 +1,7 @@
 import type { GraphLayout, PlacedEdge, PlacedNode } from "../layout/layout.js";
 import { cardTitle, singlePane, type DisplayRow } from "../layout/display.js";
 import { fitText, rowOffset, textCapacity } from "../layout/layout.js";
+import { roadPath, roadPoints } from "../layout/roads.js";
 import { DARK_THEME, type Theme } from "../layout/theme.js";
 import type { EdgeChange } from "../model/types.js";
 
@@ -250,15 +251,12 @@ function arrow(placed: PlacedEdge, theme: Theme): string {
   const colour = theme.change[placed.edge.change];
   const dash = placed.edge.kind === "import" ? ` stroke-dasharray="4 4"` : "";
 
-  // A horizontal-tangent cubic keeps the arrow leaving and arriving square to
-  // the card border, which reads as "this line points at that line".
-  const dx = Math.max(40, Math.abs(placed.to.x - placed.from.x) * 0.45);
-  const c1 = placed.fromSide === "right" ? placed.from.x + dx : placed.from.x - dx;
-  const c2 = placed.toSide === "left" ? placed.to.x - dx : placed.to.x + dx;
-
-  const d =
-    `M ${placed.from.x} ${placed.from.y} ` +
-    `C ${c1} ${placed.from.y}, ${c2} ${placed.to.y}, ${placed.to.x} ${placed.to.y}`;
+  // A road: straight out of the card, one turn into the gap between the
+  // columns, one turn to arrive. The same shape the page draws, from the same
+  // function, so a change looks like itself wherever it is rendered.
+  const d = roadPath(
+    roadPoints(placed.from, placed.to, placed.fromSide === "right"),
+  );
 
   return (
     `<path d="${d}" fill="none" stroke="${colour}" stroke-width="1.8"${dash} ` +

@@ -38,14 +38,25 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
    * chosen below, together, and they are how a reader tells what happened to a
    * line.
    */
-  --bg: var(--vscode-editor-background, ${theme.background});
   /*
-   * A card sits on the page rather than in it, so it takes the editor's own
-   * word for a surface that floats — which most themes set a shade apart from
-   * the editor, and the ones that do not fall through to the editor's own
-   * background, where a card is told apart by its border instead.
+   * The page behind the cards: the editor's own background, moved a hair.
+   *
+   * Mixed with the foreground rather than darkened, so it steps away from the
+   * editor in a light theme as well as a dark one. It is a shade, not a
+   * colour — the drawing should read as cards laid on the editor rather than
+   * on a surface of Odin's choosing.
    */
-  --card-bg: var(--vscode-editorWidget-background, var(--vscode-editor-background, ${theme.cardBackground}));
+  --bg: color-mix(in srgb, var(--vscode-editor-background, ${theme.background}) 93%, var(--vscode-editor-foreground, var(--vscode-foreground, ${theme.text})));
+  /*
+   * And the card itself: exactly the background the file has two panes away.
+   *
+   * Not editorWidget.background, which was the first thing tried and is the
+   * editor's colour for a floating panel — a find box, a hover. Themes set it
+   * warmer or cooler than the editor on purpose, so every card in the change
+   * picked up a tint that had nothing to do with the file in it, and a reader
+   * looking at a hundred and thirty of them saw the tint rather than the code.
+   */
+  --card-bg: var(--vscode-editor-background, ${theme.cardBackground});
   --text: var(--vscode-editor-foreground, var(--vscode-foreground, ${theme.text}));
   --muted: var(--vscode-descriptionForeground, ${theme.mutedText});
   --gutter: var(--vscode-editorLineNumber-foreground, ${theme.gutter});

@@ -143,3 +143,37 @@ describe("painting a drawing before it is written out", () => {
     expect(seen).toEqual([4]);
   });
 });
+
+/**
+ * The same shape in all three renderers.
+ *
+ * There are three: the page, the first paint the host writes into the document,
+ * and the standalone SVG. An arrow that took one shape in the document and
+ * another once the page booted is a picture moving for no reason anybody can
+ * see — so the geometry is one function and this is what checks they all use it.
+ */
+describe("arrows in the document the host writes", () => {
+  it("draws them as roads rather than curves", () => {
+    const change = graph(3);
+    change.edges = [
+      {
+        id: "e:1",
+        kind: "call",
+        change: "added",
+        confidence: "resolved",
+        from: { nodeId: "n:0", path: "src/file0.ts", side: "head", line: 1 },
+        to: { nodeId: "n:2", path: "src/file2.ts", side: "head", line: 1 },
+      },
+    ];
+    const html = renderHtml(change, layoutGraph(change), {});
+    // The compiler scopes the class, so it is matched by its start rather than
+    // whole — and both orders of the two attributes are written.
+    const arrows = [
+      ...html.matchAll(/class="(?:wire|hit|head)[^"]*"[^>]*?d="([^"]+)"/g),
+      ...html.matchAll(/d="([^"]+)"[^>]*?class="(?:wire|hit|head)[^"]*"/g),
+    ].map((found) => found[1]!);
+
+    expect(arrows.length).toBeGreaterThan(0);
+    for (const path of arrows) expect(path).not.toContain(" C ");
+  });
+});

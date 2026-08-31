@@ -283,18 +283,28 @@ describe("colouring a card the way the editor is coloured", () => {
 
   it("takes the editor's surfaces, with its own as the fallback", () => {
     const html = page();
-    expect(html).toMatch(/--bg: var\(--vscode-editor-background, #[0-9a-f]{6}\)/);
+    expect(html).toContain("--vscode-editor-background");
     expect(html).toMatch(/--text: var\(--vscode-editor-foreground, var\(--vscode-foreground, #[0-9a-f]{6}\)\)/);
     expect(html).toMatch(/--gutter: var\(--vscode-editorLineNumber-foreground, #[0-9a-f]{6}\)/);
   });
 
-  it("lets a card float, on whatever the theme floats things on", () => {
-    // Most themes set a widget surface a shade apart from the editor; the ones
-    // that do not fall through to the editor's own, where a card is told apart
-    // by its border instead.
-    expect(page()).toMatch(
-      /--card-bg: var\(--vscode-editorWidget-background, var\(--vscode-editor-background, #[0-9a-f]{6}\)\)/,
-    );
+  it("gives a card the file's own background, and nothing warmer", () => {
+    /*
+     * Not the editor's floating-panel colour, which was the first thing tried:
+     * themes set it warmer or cooler than the editor on purpose, so every card
+     * in the change picked up a tint that had nothing to do with the file in
+     * it, and a reader looking at a hundred and thirty of them saw the tint
+     * rather than the code.
+     */
+    const html = page();
+    expect(html).toMatch(/--card-bg: var\(--vscode-editor-background, #[0-9a-f]{6}\)/);
+    expect(html).not.toContain("--vscode-editorWidget-background");
+  });
+
+  it("steps the page off the editor rather than picking a colour for it", () => {
+    // Mixed with the foreground, so it moves away in a light theme as well as
+    // a dark one.
+    expect(page()).toMatch(/--bg: color-mix\(in srgb, var\(--vscode-editor-background/);
   });
 
   it("takes the editor's own diff colours for a changed line", () => {

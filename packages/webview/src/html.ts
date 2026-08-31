@@ -1,6 +1,10 @@
 import {
   DARK_THEME,
   breathe,
+  roadEnd,
+  roadPath,
+  roadPoints,
+  shortenRoad,
   cardTitle,
   components,
   describeGaps,
@@ -1593,25 +1597,22 @@ function portLayer(layout: GraphLayout): string {
  */
 function wire(edge: PlacedEdge): { stem: string; head: string; full: string } {
   const away = edge.fromSide === "right" ? 1 : -1;
-  const start = rim(edge.from.x + away * PORT_GAP, edge.from.y, edge.to.x, edge.to.y);
-  const dx = Math.max(40, Math.abs(edge.to.x - edge.from.x) * 0.45);
-  const c1 = edge.fromSide === "right" ? edge.from.x + dx : edge.from.x - dx;
-  const c2 = edge.toSide === "left" ? edge.to.x - dx : edge.to.x + dx;
+  // Straight out of the dot, because that is the direction the road runs.
+  const start = {
+    x: edge.from.x + away * (PORT_GAP + PORT_RIM),
+    y: edge.from.y,
+  };
 
-  const points: Point[] = [
-    start,
-    { x: c1, y: edge.from.y },
-    { x: c2, y: edge.to.y },
-    { x: edge.to.x, y: edge.to.y },
-  ];
-  const cut = shorten(points, HEAD);
+  const points = roadPoints(start, { x: edge.to.x, y: edge.to.y }, away > 0);
+  const cut = shortenRoad(points, HEAD);
+  const last = roadEnd(cut);
 
   return {
-    full: bezier(points),
-    stem: bezier(cut),
+    full: roadPath(points),
+    stem: roadPath(cut),
     // The head rides its own segment so it can be oriented and placed without
     // anything drawn along it — the stroke is off, only the marker shows.
-    head: `M ${cut[3]!.x} ${cut[3]!.y} L ${points[3]!.x} ${points[3]!.y}`,
+    head: `M ${last.x} ${last.y} L ${edge.to.x} ${edge.to.y}`,
   };
 }
 
@@ -1680,16 +1681,6 @@ function mix(a: Point, b: Point, t: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
-/** The point on the dot's rim that faces the far end of the arrow. */
-function rim(cx: number, cy: number, tx: number, ty: number): { x: number; y: number } {
-  const dx = tx - cx;
-  const dy = ty - cy;
-  const length = Math.hypot(dx, dy) || 1;
-  return {
-    x: round(cx + (dx / length) * PORT_RIM),
-    y: round(cy + (dy / length) * PORT_RIM),
-  };
-}
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
