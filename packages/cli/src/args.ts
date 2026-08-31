@@ -5,6 +5,7 @@ Usage:
   odin graph [options]                write the graph to stdout in any format
   odin comments [options]             list the review comments on the pull request
   odin review --event <e> [options]   send a review
+  odin update [--dry-run]             pull the latest main and reinstall
   odin approve [options]              shorthand for --event approve
   odin request-changes [options]      shorthand for --event request-changes
 
@@ -108,15 +109,30 @@ export interface ReviewOptions {
   dryRun: boolean;
 }
 
+/**
+ * Bringing this copy of Odin level with what is on main.
+ *
+ * Its own command rather than a flag on another, because it is the one thing
+ * `odin` does to itself rather than to a repository being read.
+ */
+export interface UpdateOptions {
+  kind: "update";
+  /** Say what would happen and change nothing. */
+  dryRun: boolean;
+  /** The branch to follow, for a copy that tracks something other than main. */
+  branch?: string;
+}
+
 export type ParseResult =
   | GraphOptions
   | CommentsOptions
   | ReviewOptions
+  | UpdateOptions
   | { kind: "help" }
   | { kind: "error"; message: string };
 
 const COMMANDS = [
-  "graph", "view", "comments", "review", "approve", "request-changes",
+  "graph", "view", "comments", "review", "approve", "request-changes", "update",
 ] as const;
 
 export function parseArgs(argv: string[]): ParseResult {
@@ -126,11 +142,32 @@ export function parseArgs(argv: string[]): ParseResult {
   }
   const rest = argv[0] && !argv[0].startsWith("-") ? argv.slice(1) : argv;
 
+  if (command === "update") return parseUpdate(rest);
   if (command === "comments") return parseComments(rest);
   if (command === "review" || command === "approve" || command === "request-changes") {
     return parseReview(command, rest);
   }
   return parseGraph(rest, command === "view");
+}
+
+/** Updating Odin itself, which takes almost nothing. */
+function parseUpdate(argv: string[]): ParseResult {
+  const opts: UpdateOptions = { kind: "update", dryRun: false };
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg === "-h" || arg === "--help") return { kind: "help" };
+    if (arg === "--dry-run") { opts.dryRun = true; continue; }
+    if (arg === "--branch") {
+      const value = argv[++i];
+      if (value === undefined) return { kind: "error", message: "--branch requires a value" };
+      opts.branch = value;
+      continue;
+    }
+    return { kind: "error", message: `unknown option '${arg}'` };
+  }
+
+  return opts;
 }
 
 /** Reading the review comments already on the pull request. */

@@ -28,6 +28,7 @@ import { renderHtml, renderSvg } from "@odin/webview";
 import { parseArgs, USAGE, type GraphOptions } from "./args.js";
 import { resolveEdges } from "./pipeline.js";
 import { runComments, runReview } from "./review.js";
+import { update } from "./update.js";
 import { summarize } from "./summary.js";
 import { pagePath, serve, writePage } from "./view.js";
 
@@ -44,6 +45,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   const write = (text: string) => process.stdout.write(text);
+  if (opts.kind === "update") return runUpdate(opts);
   if (opts.kind === "comments") return runComments(opts, write);
   if (opts.kind === "review") return runReview(opts, write);
 
@@ -127,6 +129,31 @@ async function pullRequestComments(cwd: string): Promise<ReviewComment[]> {
   // Inlined here rather than fetched by the page: a rendered graph is one file
   // with no network access, and a mark with a picture in it has to carry it.
   return inlineAvatars(comments).catch(() => comments);
+}
+
+/**
+ * Odin updating itself, said out loud as it goes.
+ *
+ * Written to standard error rather than standard output, because everything
+ * else this tool prints is a document somebody may be piping somewhere and
+ * progress is not part of it.
+ */
+async function runUpdate(opts: { dryRun: boolean; branch?: string }): Promise<number> {
+  const say = (line: string) => process.stderr.write(`${line}\n`);
+  try {
+    const done = await update(
+      { dryRun: opts.dryRun, ...(opts.branch ? { branch: opts.branch } : {}) },
+      say,
+    );
+    if (done.installed) {
+      say(`Odin is now at ${done.now.slice(0, 7)} (${done.arrived.length} new).`);
+      say("Reload the editor window to pick it up.");
+    }
+    return 0;
+  } catch (error) {
+    process.stderr.write(`odin: ${(error as Error).message}\n`);
+    return 1;
+  }
 }
 
 async function render(

@@ -64,6 +64,18 @@ One line of noise is expected on the way past: `The engine "vscode" appears to
 be invalid`. VS Code requires `engines.vscode` in the extension's manifest and
 yarn 1 does not recognise it, so it says so every time and nothing is wrong.
 
+Afterwards, Odin updates itself:
+
+```sh
+odin update
+```
+
+It pulls `main` into the clone it was installed from — found by following the
+command on your PATH back through its symlink — and runs the install script
+again. Fast-forward only, and it refuses over changes that are not committed:
+an update should never be the thing that starts a merge or quietly stashes work
+somebody was in the middle of. `--dry-run` says what it would do.
+
 Two things it will not do for you. `gh` is what Odin asks for pull request
 titles, comments, checks and the list of what is open, so install it and run
 `gh auth login` if the script says it is missing — everything else works
@@ -708,6 +720,7 @@ every function body opens with are kept out so `let` does not draw arrows.
 
 ```sh
 ./scripts/install.sh           # build everything and install the extension
+odin update                    # pull the latest main and do that again
 yarn test                      # 343 unit tests
 yarn test:integration          # 6 tests inside a real VS Code extension host
 yarn build                     # compile all packages
