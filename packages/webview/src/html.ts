@@ -981,13 +981,27 @@ function reviewPanel(): string {
 
 
 /**
- * Colours a card's code, one contiguous run at a time.
+ * Colours a card's code, one contiguous run at a time, once per side.
  *
  * Runs matter: a line taken on its own cannot be told apart from the middle of
  * a block comment, so the largest genuinely adjacent stretch is handed over at
  * once. Lines hidden inside an expandable gap are part of the stretch — they
  * are the file's own lines, just folded — while a gap that knows nothing about
  * what it hides ends it, since the next row is somewhere else in the file.
+ *
+ * And sides matter for the same reason, which is what this used to get wrong. A
+ * diff's rows are not a file: a deleted line and the line that replaced it sit
+ * one above the other, and handing both to the grammar is handing it a file
+ * where the same tag is opened twice. It lexes what it is given, so from the
+ * first mismatch onwards everything is scoped against the wrong thing — which
+ * on JSX shows up as a closing tag painted like a syntax error, several lines
+ * below anything that actually changed.
+ *
+ * So each side is lexed as the file it is: base is the deletions and the
+ * context, head is the insertions and the context, and each row takes the
+ * colours from the reading it belongs to. Runs that come out identical — an
+ * added file, an untouched stretch — are lexed once and shared, which is most
+ * of them.
  */
 function colourRows(
   node: PlacedNode,
@@ -997,15 +1011,34 @@ function colourRows(
   const language = node.node.language;
   if (!highlight || !language || !highlight.supports(language)) return coloured;
 
-  let run: DisplayRow[] = [];
-  const flush = () => {
+  let base: DisplayRow[] = [];
+  let head: DisplayRow[] = [];
+  /** Lexed text to its lines, so a card with no deletions is lexed once. */
+  const already = new Map<string, CodeToken[][]>();
+
+  const paint = (run: DisplayRow[], side: "base" | "head") => {
     if (run.length === 0) return;
-    const lines = highlight.tokenize(language, run.map((r) => r.text).join("\n"));
+    const text = run.map((r) => r.text).join("\n");
+    let lines = already.get(text);
+    if (!lines) {
+      lines = highlight.tokenize(language, text);
+      already.set(text, lines);
+    }
     run.forEach((row, i) => {
       const line = lines[i];
-      if (line) coloured.set(row, line);
+      if (!line) return;
+      // Context is in both readings and drawn once. Head wins, so an unchanged
+      // line is coloured as the file it is being reviewed as.
+      if (side === "base" && row.kind === "ctx" && coloured.has(row)) return;
+      coloured.set(row, line);
     });
-    run = [];
+  };
+
+  const flush = () => {
+    paint(head, "head");
+    paint(base, "base");
+    head = [];
+    base = [];
   };
 
   const walk = (rows: readonly DisplayRow[]): void => {
@@ -1015,7 +1048,8 @@ function colourRows(
         else flush();
         continue;
       }
-      run.push(row);
+      if (row.kind !== "add") base.push(row);
+      if (row.kind !== "del") head.push(row);
     }
   };
 
