@@ -1,17 +1,27 @@
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { odinRoot, update } from "../src/update.js";
+import {
+  chooseRoot, fetchedPath, findCheckout, isOdinCheckout, odinRoot, update,
+} from "../src/update.js";
 
 const made: string[] = [];
 
 afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
+
+function scratch(name: string): string {
+  const dir = mkdtempSync(join(tmpdir(), name));
+  made.push(dir);
+  return dir;
+}
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, {
@@ -28,160 +38,220 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 /**
- * A repository to pull from, and a clone standing in for an installed Odin.
+ * What makes a directory look like a clone of Odin, and an install that leaves
+ * a trace rather than building anything.
  *
- * The clone carries an install script that writes a marker rather than building
- * anything: what is being tested is whether an update runs it, not what a build
- * does.
+ * What is under test is which checkout gets installed and why, not what a build
+ * does — so the script writes down that it ran, and from where.
  */
-function checkout(): { origin: string; clone: string; marker: string } {
-  const origin = mkdtempSync(join(tmpdir(), "odin-origin-"));
-  made.push(origin);
-  git(origin, "init", "--quiet", "-b", "main");
-  mkdirSync(join(origin, "scripts"), { recursive: true });
-  writeFileSync(join(origin, "README.md"), "one\n");
-  const script = join(origin, "scripts", "install.sh");
-  writeFileSync(script, '#!/usr/bin/env bash\nprintf ran > "$(dirname "$0")/../installed"\n');
+function asOdin(dir: string): void {
+  writeFileSync(
+    join(dir, "package.json"),
+    JSON.stringify({ name: "odin-pr-review-workspace", private: true }, null, 2),
+  );
+  mkdirSync(join(dir, "scripts"), { recursive: true });
+  const script = join(dir, "scripts", "install.sh");
+  writeFileSync(script, '#!/usr/bin/env bash\nroot="$(cd "$(dirname "$0")/.." && pwd)"\ncat "$root/README.md" > "$root/installed"\n');
   chmodSync(script, 0o755);
+}
+
+/** An origin with one commit on main, and a clone of it. */
+function checkout(): { origin: string; clone: string; installed: string } {
+  const origin = scratch("odin-origin-");
+  git(origin, "init", "--quiet", "-b", "main");
+  asOdin(origin);
+  writeFileSync(join(origin, "README.md"), "one\n");
   git(origin, "add", "-A");
   git(origin, "commit", "--quiet", "-m", "one");
 
-  const clone = mkdtempSync(join(tmpdir(), "odin-clone-"));
-  made.push(clone);
+  const clone = scratch("odin-clone-");
   rmSync(clone, { recursive: true, force: true });
   git(tmpdir(), "clone", "--quiet", origin, clone);
 
-  return { origin, clone, marker: join(clone, "installed") };
+  return { origin, clone, installed: join(clone, "installed") };
 }
 
-/** Something new on main, for the clone to pull. */
+/** Something new on main, for a clone to be behind. */
 function commitOnOrigin(origin: string, what: string): void {
   writeFileSync(join(origin, "README.md"), `${what}\n`);
   git(origin, "add", "-A");
   git(origin, "commit", "--quiet", "-m", what);
 }
 
+/** What the install script recorded: which tree it built. */
+const built = (marker: string) => readFileSync(marker, "utf8").trim();
+
 /**
- * Odin bringing itself level with main.
+ * Which copy of Odin an update works on, and what it does to it.
  *
- * It is installed from a checkout rather than from a registry, so an update is
- * "pull, then build, then put the result back in the editor" — three commands
- * and a directory nobody has thought about since the day they cloned it.
+ * The rule is that local work wins. Somebody standing in a clone means that
+ * clone, including what they have not committed — the usual reason to
+ * reinstall is to try the change just made. Only a clean checkout that is
+ * purely behind is pulled.
  */
-describe("updating Odin", () => {
-  it("pulls what is on main and runs the install", async () => {
-    const { origin, clone, marker } = checkout();
-    commitOnOrigin(origin, "two");
-
-    const done = await update({ root: clone });
-
-    expect(done.arrived).toHaveLength(1);
-    expect(done.arrived[0]).toContain("two");
-    expect(done.was).not.toBe(done.now);
-    expect(done.installed).toBe(true);
-    expect(existsSync(marker)).toBe(true);
-  }, 30_000);
-
-  it("says so, and installs nothing, when there is nothing to pull", async () => {
-    // Rebuilding a copy that has not changed is a minute of somebody's time
-    // for no reason, and the answer they wanted was "you are up to date".
-    const { clone, marker } = checkout();
-
-    const done = await update({ root: clone });
-
-    expect(done.arrived).toEqual([]);
-    expect(done.installed).toBe(false);
-    expect(existsSync(marker)).toBe(false);
-  }, 30_000);
-
-  it("refuses to pull over work that is not committed", async () => {
-    /*
-     * An update is meant to be the boring option. Pulling over somebody's
-     * half-finished edit — or stashing it for them — is the opposite of that,
-     * and the copy of Odin most likely to have local changes is the one being
-     * worked on.
-     */
-    const { origin, clone } = checkout();
+describe("updating the checkout the command was run in", () => {
+  it("installs what is here, uncommitted changes and all", async () => {
+    const { origin, clone, installed } = checkout();
     commitOnOrigin(origin, "two");
     writeFileSync(join(clone, "README.md"), "mine\n");
 
-    await expect(update({ root: clone })).rejects.toThrow(/not committed/);
-    expect(git(clone, "log", "--oneline")).not.toContain("two");
-  }, 30_000);
+    const done = await update({ cwd: clone });
 
-  it("refuses when the checkout is on another branch", async () => {
-    // Following main from a branch would take the reader off their own work
-    // without saying so.
-    const { clone } = checkout();
-    git(clone, "checkout", "--quiet", "-b", "mine");
-
-    await expect(update({ root: clone })).rejects.toThrow(/is on mine, not main/);
-  }, 30_000);
-
-  it("follows another branch when asked to", async () => {
-    const { origin, clone, marker } = checkout();
-    git(origin, "checkout", "--quiet", "-b", "next");
-    commitOnOrigin(origin, "from next");
-    git(clone, "fetch", "--quiet", "origin", "next");
-    git(clone, "checkout", "--quiet", "-b", "next", "origin/next");
-    git(origin, "checkout", "--quiet", "main");
-    commitOnOrigin(origin, "later, on next");
-    git(origin, "checkout", "--quiet", "next");
-    commitOnOrigin(origin, "newer on next");
-
-    const done = await update({ root: clone, branch: "next" });
-
-    expect(done.branch).toBe("next");
+    expect(done.where).toBe("here");
     expect(done.installed).toBe(true);
-    expect(existsSync(marker)).toBe(true);
-  }, 30_000);
-
-  it("says what it would do without doing any of it", async () => {
-    const { origin, clone, marker } = checkout();
-    commitOnOrigin(origin, "two");
-
-    const said: string[] = [];
-    const done = await update({ root: clone, dryRun: true }, (line) => said.push(line));
-
-    expect(done.installed).toBe(false);
-    expect(existsSync(marker)).toBe(false);
+    expect(done.pulled).toBe(false);
+    // What it built is the working tree, not what is on main.
+    expect(built(installed)).toBe("mine");
+    // And main was left where it was.
     expect(git(clone, "log", "--oneline")).not.toContain("two");
-    expect(said.join("\n")).toMatch(/would pull main/);
   }, 30_000);
 
-  it("will not merge, only fast-forward", async () => {
+  it("installs what is here when it is ahead of main", async () => {
+    const { clone, installed } = checkout();
+    writeFileSync(join(clone, "README.md"), "ours\n");
+    git(clone, "add", "-A");
+    git(clone, "commit", "--quiet", "-m", "ours");
+
+    const done = await update({ cwd: clone });
+
+    expect(done.standing.ahead).toBe(1);
+    expect(done.pulled).toBe(false);
+    expect(done.installed).toBe(true);
+    expect(built(installed)).toBe("ours");
+    expect(done.because).toMatch(/main has not got/);
+  }, 30_000);
+
+  it("installs what is here rather than merging a copy that has diverged", async () => {
     /*
-     * A copy with a commit of its own on main has diverged, and an update is
-     * not the place to find that out by being dropped into a conflict.
+     * Ahead and behind at once. An update is not the place to discover that by
+     * being dropped into a conflict, and the work in front of the reader is
+     * the thing they were about to try.
      */
-    const { origin, clone } = checkout();
+    const { origin, clone, installed } = checkout();
     commitOnOrigin(origin, "theirs");
     writeFileSync(join(clone, "README.md"), "ours\n");
     git(clone, "add", "-A");
     git(clone, "commit", "--quiet", "-m", "ours");
 
-    await expect(update({ root: clone })).rejects.toThrow();
-    // Whatever it did, it did not write a merge.
+    const done = await update({ cwd: clone });
+
+    expect(done.standing.ahead).toBe(1);
+    expect(done.standing.behind).toBe(1);
+    expect(done.pulled).toBe(false);
+    expect(built(installed)).toBe("ours");
+    // Two commits, and no merge among them.
     expect(git(clone, "log", "--oneline").split("\n").filter(Boolean)).toHaveLength(2);
   }, 30_000);
 
-  it("says plainly when it is not looking at a checkout at all", async () => {
-    const plain = mkdtempSync(join(tmpdir(), "odin-plain-"));
-    made.push(plain);
+  it("pulls and installs when it is clean and purely behind", async () => {
+    const { origin, clone, installed } = checkout();
+    commitOnOrigin(origin, "two");
 
-    await expect(update({ root: plain })).rejects.toThrow(/not a git checkout/);
+    const done = await update({ cwd: clone });
+
+    expect(done.pulled).toBe(true);
+    expect(done.arrived).toHaveLength(1);
+    expect(built(installed)).toBe("two");
   }, 30_000);
 
-  it("stops when the new version has no install script", async () => {
-    // Better than half an update: the pull has happened and the reader is told
-    // exactly what is left to do.
-    const { origin, clone } = checkout();
-    rmSync(join(origin, "scripts", "install.sh"));
-    git(origin, "add", "-A");
-    git(origin, "commit", "--quiet", "-m", "no script");
+  it("does nothing at all when it is level and clean", async () => {
+    // Rebuilding an unchanged copy is a minute of somebody's time for the
+    // answer they already had.
+    const { clone, installed } = checkout();
 
-    await expect(update({ root: clone })).rejects.toThrow(/cannot install itself/);
+    const done = await update({ cwd: clone });
+
+    expect(done.installed).toBe(false);
+    expect(done.because).toBe("already the latest");
+    expect(existsSync(installed)).toBe(false);
   }, 30_000);
+
+  it("leaves another branch alone rather than pulling main into it", async () => {
+    const { origin, clone, installed } = checkout();
+    commitOnOrigin(origin, "two");
+    git(clone, "checkout", "--quiet", "-b", "mine");
+
+    const done = await update({ cwd: clone });
+
+    expect(done.pulled).toBe(false);
+    expect(done.installed).toBe(false);
+    expect(done.because).toMatch(/on mine, 1 behind main — left alone/);
+    expect(existsSync(installed)).toBe(false);
+  }, 30_000);
+
+  it("is found from anywhere inside the clone", async () => {
+    const { clone } = checkout();
+    const deep = join(clone, "packages", "cli", "src");
+    mkdirSync(deep, { recursive: true });
+
+    expect(findCheckout(deep)).toBe(clone);
+  });
+
+  it("says what it would do without doing any of it", async () => {
+    const { origin, clone, installed } = checkout();
+    commitOnOrigin(origin, "two");
+    writeFileSync(join(clone, "README.md"), "mine\n");
+
+    const said: string[] = [];
+    const done = await update({ cwd: clone, dryRun: true }, (line) => said.push(line));
+
+    expect(done.installed).toBe(false);
+    expect(existsSync(installed)).toBe(false);
+    expect(said.join("\n")).toMatch(/would install this checkout as it stands/);
+    expect(said.join("\n")).toMatch(/changes that are not committed/);
+  }, 30_000);
+
+  it("stops when the checkout has no install script", async () => {
+    const { clone } = checkout();
+    rmSync(join(clone, "scripts", "install.sh"));
+
+    await expect(update({ cwd: clone })).rejects.toThrow(/cannot install itself/);
+  }, 30_000);
+});
+
+/**
+ * Standing somewhere that is not a clone of Odin.
+ *
+ * Then the copy that is installed is what "update Odin" means — and when there
+ * is not one of those either, one is fetched, because telling that reader to go
+ * and clone something is telling them to do the one thing this command is for.
+ */
+describe("updating from outside any checkout", () => {
+  it("falls back to the copy the command itself was installed from", async () => {
+    const elsewhere = scratch("odin-elsewhere-");
+
+    const { root, where } = await chooseRoot({ cwd: elsewhere });
+
+    expect(where).toBe("installed");
+    expect(root).toBe(odinRoot());
+    expect(isOdinCheckout(root)).toBe(true);
+  });
+
+  it("fetches a clone when there is no checkout to be found", async () => {
+    const { origin } = checkout();
+    const home = scratch("odin-home-");
+    const kept = fetchedPath(home);
+
+    const said: string[] = [];
+    const { root, where } = await chooseRoot(
+      // Nothing in the cwd, and nothing behind the command either — which is
+      // what a machine that was handed a `.vsix` rather than a clone looks
+      // like.
+      { cwd: scratch("odin-nothing-"), installed: scratch("odin-none-"), origin, home },
+      (line) => said.push(line),
+    );
+
+    expect(where).toBe("fetched");
+    expect(root).toBe(kept);
+    expect(existsSync(join(kept, ".git"))).toBe(true);
+    expect(said.join("\n")).toMatch(/fetching one into/);
+  }, 60_000);
+
+  it("keeps a fetched clone where such things go", () => {
+    const home = "/home/somebody";
+    const kept = fetchedPath(home);
+    expect(kept.endsWith(join("odin", "checkout"))).toBe(true);
+  });
 });
 
 /**
@@ -192,14 +262,12 @@ describe("updating Odin", () => {
  */
 describe("finding the checkout Odin was installed from", () => {
   it("follows the link back to the repository", () => {
-    const root = mkdtempSync(join(tmpdir(), "odin-linked-"));
-    made.push(root);
+    const root = scratch("odin-linked-");
     mkdirSync(join(root, "packages", "cli", "dist"), { recursive: true });
     const real = join(root, "packages", "cli", "dist", "main.js");
     writeFileSync(real, "");
 
-    const bin = mkdtempSync(join(tmpdir(), "odin-bin-"));
-    made.push(bin);
+    const bin = scratch("odin-bin-");
     const link = join(bin, "odin");
     symlinkSync(real, link);
 

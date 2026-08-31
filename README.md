@@ -70,11 +70,26 @@ Afterwards, Odin updates itself:
 odin update
 ```
 
-It pulls `main` into the clone it was installed from — found by following the
-command on your PATH back through its symlink — and runs the install script
-again. Fast-forward only, and it refuses over changes that are not committed:
-an update should never be the thing that starts a merge or quietly stashes work
-somebody was in the middle of. `--dry-run` says what it would do.
+Which copy it works on is the interesting part, and it is decided by where you
+are standing:
+
+- **inside a clone** — that clone, wherever in the tree you are
+- **anywhere else** — the copy the command was installed from, found by
+  following `odin` on your PATH back through its symlink
+- **neither** — one is fetched into `~/.local/share/odin/checkout`, for a
+  machine that was handed a `.vsix` rather than a clone
+
+Then local work wins. A checkout with changes of its own — uncommitted, or
+committed and not yet on `main` — is built and installed as it stands, because
+that is what standing in it means: the usual reason to reinstall is to try the
+change you just made. Only a clean checkout that is purely behind is pulled,
+and by fast-forward, so an update is never the thing that starts a merge or
+resolves a conflict on your behalf. A copy that has diverged is installed as it
+is, and one on another branch is left alone.
+
+Nothing to do means nothing is built. `--dry-run` says which of those it would
+be, `-C <dir>` looks somewhere else, and `--branch <name>` follows something
+other than `main`.
 
 Two things it will not do for you. `gh` is what Odin asks for pull request
 titles, comments, checks and the list of what is open, so install it and run

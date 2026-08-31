@@ -5,7 +5,7 @@ Usage:
   odin graph [options]                write the graph to stdout in any format
   odin comments [options]             list the review comments on the pull request
   odin review --event <e> [options]   send a review
-  odin update [--dry-run]             pull the latest main and reinstall
+  odin update [--dry-run]             build and install Odin, pulling if behind
   odin approve [options]              shorthand for --event approve
   odin request-changes [options]      shorthand for --event request-changes
 
@@ -117,6 +117,8 @@ export interface ReviewOptions {
  */
 export interface UpdateOptions {
   kind: "update";
+  /** Where to look for a checkout first. */
+  cwd: string;
   /** Say what would happen and change nothing. */
   dryRun: boolean;
   /** The branch to follow, for a copy that tracks something other than main. */
@@ -152,12 +154,18 @@ export function parseArgs(argv: string[]): ParseResult {
 
 /** Updating Odin itself, which takes almost nothing. */
 function parseUpdate(argv: string[]): ParseResult {
-  const opts: UpdateOptions = { kind: "update", dryRun: false };
+  const opts: UpdateOptions = { kind: "update", cwd: process.cwd(), dryRun: false };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === "-h" || arg === "--help") return { kind: "help" };
     if (arg === "--dry-run") { opts.dryRun = true; continue; }
+    if (arg === "-C" || arg === "--cwd") {
+      const value = argv[++i];
+      if (value === undefined) return { kind: "error", message: `${arg} requires a value` };
+      opts.cwd = value;
+      continue;
+    }
     if (arg === "--branch") {
       const value = argv[++i];
       if (value === undefined) return { kind: "error", message: "--branch requires a value" };

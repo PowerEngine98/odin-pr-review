@@ -138,17 +138,20 @@ async function pullRequestComments(cwd: string): Promise<ReviewComment[]> {
  * else this tool prints is a document somebody may be piping somewhere and
  * progress is not part of it.
  */
-async function runUpdate(opts: { dryRun: boolean; branch?: string }): Promise<number> {
+async function runUpdate(
+  opts: { cwd: string; dryRun: boolean; branch?: string },
+): Promise<number> {
   const say = (line: string) => process.stderr.write(`${line}\n`);
   try {
     const done = await update(
-      { dryRun: opts.dryRun, ...(opts.branch ? { branch: opts.branch } : {}) },
+      {
+        cwd: opts.cwd,
+        dryRun: opts.dryRun,
+        ...(opts.branch ? { branch: opts.branch } : {}),
+      },
       say,
     );
-    if (done.installed) {
-      say(`Odin is now at ${done.now.slice(0, 7)} (${done.arrived.length} new).`);
-      say("Reload the editor window to pick it up.");
-    }
+    if (done.installed) say("Installed. Reload the editor window to pick it up.");
     return 0;
   } catch (error) {
     process.stderr.write(`odin: ${(error as Error).message}\n`);
