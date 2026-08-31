@@ -1066,3 +1066,35 @@ describe("pasting a picture into the console", () => {
     expect(terminal).toMatch(/if \(!said && pasted\.length === 0\) return;/);
   });
 });
+
+/**
+ * A question quoted in a log, drawn as what it is.
+ *
+ * A question that carries a suggestion is mostly the suggestion, and in the
+ * console it arrived as a fenced block with the backticks showing — the one
+ * thing in the conversation a reader is most likely to be checking, printed as
+ * source. The answer underneath it was already rendered; only the question was
+ * not.
+ */
+describe("a suggestion quoted in the console", () => {
+  const terminal = source("hud/Terminal.svelte");
+
+  it("goes through the same renderer as the answer and the composer", () => {
+    expect(terminal).toMatch(
+      /class="asked-what"><Editor readonly value=\{block\.text\} \/>/,
+    );
+  });
+
+  it("is no longer printed as the markdown it was written in", () => {
+    expect(terminal).not.toMatch(/class="asked-what">\{block\.text\}</);
+  });
+
+  it("is still the way back to the conversation", () => {
+    // It stopped being a button — a table cannot live inside one — so it has
+    // to say what it is and answer a key the way a button would.
+    const quoted = terminal.slice(terminal.indexOf('class="asked"\n'));
+    expect(quoted).toMatch(/role="button"/);
+    expect(quoted).toMatch(/tabindex="0"/);
+    expect(quoted).toMatch(/event\.key !== "Enter" && event\.key !== " "/);
+  });
+});

@@ -841,10 +841,18 @@
             turn that never finished, which is the state a reader is scanning a
             log to find.
           -->
-          <button
+          <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
+          <div
             class="asked"
             class:unfinished={unfinished(block.thread)}
+            role="button"
+            tabindex="0"
             title="Go to this conversation"
+            onkeydown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              if (block.thread !== undefined) goTo(block.thread);
+            }}
             onclick={(event) => {
               /*
                * Opening a conversation must not also be the click that closes
@@ -882,8 +890,19 @@
                 </svg>
               </span>
             {/if}
-            <span class="asked-what">{block.text}</span>
-          </button>
+            <!--
+              Drawn the way the composer draws it, rather than as the markdown
+              it is written in.
+
+              A question that carries a suggestion is mostly the suggestion, and
+              in a log it arrived as a fenced block with the backticks showing —
+              the one thing in the conversation the reader is most likely to be
+              checking, printed as source. Same renderer as the answer below it
+              and as the preview the reader wrote it in, so a suggestion looks
+              like a change everywhere it appears.
+            -->
+            <div class="asked-what"><Editor readonly value={block.text} /></div>
+          </div>
           <!--
             A turn that never finished.
 
@@ -1910,10 +1929,18 @@
   .asked-what {
     flex: 1 1 auto;
     min-width: 0;
-    white-space: pre-wrap;
+    /* The renderer inside brings its own wrapping and its own spacing, and a
+       `pre-wrap` around it would put the markdown's own newlines back on top
+       of the paragraphs it has already made. */
     overflow-wrap: anywhere;
     line-height: 1.4;
+    text-align: left;
   }
+  /* A quoted question is a line or two of a log, so what is inside it sits
+     tighter than an answer does: no margin above the first thing in it, and
+     none below the last. */
+  .asked-what :global(.rendered > *:first-child) { margin-top: 0; }
+  .asked-what :global(.rendered > *:last-child) { margin-bottom: 0; }
 
   .terminal-empty {
     margin: 0;
