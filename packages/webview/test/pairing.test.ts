@@ -339,7 +339,7 @@ describe("pairing with an agent", () => {
      */
     expect(terminal).toMatch(/\[odin:ask \(-\?\\d\+\)\\\]/);
     expect(terminal).toMatch(/class="asked"/);
-    expect(terminal).toMatch(/asked-face/);
+    expect(terminal).toMatch(/quoted-face/);
   });
 
   it("takes the reader back to the conversation, the way the list does", () => {
@@ -421,15 +421,15 @@ describe("pairing with an agent", () => {
      * red rgb(248, 113, 113), a finished one keeps green rgb(0, 124, 54).
      */
     expect(terminal).toMatch(/class:unfinished=\{unfinished\(block\.thread\)\}/);
-    expect(terminal).toMatch(/\.asked\.unfinished \{[\s\S]{0,120}?border-left-color: var\(--removed/);
+    expect(terminal).toMatch(/\.quoted\.unfinished \{[\s\S]{0,120}?border-left-color: var\(--removed/);
   });
 
   it("says retry with a mark rather than a sentence", () => {
     // A log is narrow and its questions are long: a button spelling "Ask again"
     // took a third of the row and pushed the question onto a second line. The
     // words move to the tooltip. Measured 22x22, and pressing it re-asks.
-    expect(terminal).toMatch(/class="asked-again"[\s\S]{0,300}?aria-label="Ask again"/);
-    expect(terminal).toMatch(/\.asked-again \{[\s\S]{0,300}?width: 22px;\s*\n\s*height: 22px/);
+    expect(terminal).toMatch(/class="quoted-again"[\s\S]{0,300}?aria-label="Ask again"/);
+    expect(terminal).toMatch(/\.quoted-again \{[\s\S]{0,300}?width: 22px;\s*\n\s*height: 22px/);
     // The mark and nothing else inside it.
     expect(terminal).toMatch(/<\/svg>\s*\n\s*<\/button>/);
   });
@@ -440,12 +440,12 @@ describe("pairing with an agent", () => {
      * third thing in the log rather than as part of the question — and left a
      * gap under every unfinished turn. Measured: same row, against the far end.
      */
-    expect(terminal).toMatch(/<div class="ask-row">[\s\S]{0,600}?class="asked"/);
+    expect(terminal).toMatch(/<div class="ask-row">[\s\S]{0,900}?class="quoted"/);
     expect(terminal).toMatch(/\.ask-row \{[\s\S]{0,140}?display: flex/);
     // The quote takes the room and the retry takes what it needs, or a long
     // question pushes the button off the end of the box.
-    expect(terminal).toMatch(/\.asked \{[\s\S]{0,220}?flex: 1 1 auto;[\s\S]{0,60}?min-width: 0/);
-    expect(terminal).toMatch(/\.asked-again \{[\s\S]{0,140}?flex: 0 0 auto/);
+    expect(terminal).toMatch(/\.quoted \{[\s\S]{0,320}?flex: 1 1 auto;[\s\S]{0,60}?min-width: 0/);
+    expect(terminal).toMatch(/\.quoted-again \{[\s\S]{0,140}?flex: 0 0 auto/);
   });
 
   it("draws the working-out apart from the answer", () => {
@@ -1081,20 +1081,57 @@ describe("a suggestion quoted in the console", () => {
 
   it("goes through the same renderer as the answer and the composer", () => {
     expect(terminal).toMatch(
-      /class="asked-what"><Editor readonly value=\{block\.text\} \/>/,
+      /class="quoted-what"><Editor readonly value=\{block\.text\} \/>/,
     );
   });
 
   it("is no longer printed as the markdown it was written in", () => {
-    expect(terminal).not.toMatch(/class="asked-what">\{block\.text\}</);
+    expect(terminal).not.toMatch(/class="quoted-what">\{block\.text\}</);
   });
 
   it("is still the way back to the conversation", () => {
     // It stopped being a button — a table cannot live inside one — so it has
     // to say what it is and answer a key the way a button would.
-    const quoted = terminal.slice(terminal.indexOf('class="asked"\n'));
+    const quoted = terminal.slice(terminal.indexOf('class="quoted"'));
     expect(quoted).toMatch(/role="button"/);
     expect(quoted).toMatch(/tabindex="0"/);
     expect(quoted).toMatch(/event\.key !== "Enter" && event\.key !== " "/);
+  });
+});
+
+/**
+ * A question is as long as somebody felt like making it.
+ *
+ * The quoted question in a log and the "May I …?" row above it were both called
+ * `asked`, so the row's rules reached into the log block — `nowrap` and an
+ * ellipsis, which are right for one line of a permission request and wrong for
+ * a prompt of any length. What that looked like was the reader's own question
+ * running off the right edge of the console with no way to read the end of it.
+ */
+describe("a question quoted in the console", () => {
+  const terminal = source("hud/Terminal.svelte");
+
+  it("does not share a class with the permission row", () => {
+    // Both are still in this file, so the collision is one rename away from
+    // coming back.
+    expect(terminal).toMatch(/class="quoted"/);
+    expect(terminal).toMatch(/class="quoted-what"/);
+    const log = terminal.slice(terminal.indexOf('class="quoted"'));
+    expect(log).not.toMatch(/class="asked-what"/);
+  });
+
+  it("wraps, and says so rather than inheriting it", () => {
+    // `white-space` comes down from whatever is above, so a block that means to
+    // wrap has to say it where it can be seen.
+    expect(terminal).toMatch(/\.quoted-what \{[\s\S]{0,600}?white-space: normal/);
+    expect(terminal).toMatch(/\.quoted-what \{[\s\S]{0,600}?overflow-wrap: anywhere/);
+  });
+
+  it("leaves the permission row on one line, as it was", () => {
+    // One line of "May I run this?" with an ellipsis is right for a row with
+    // two buttons on it, and that is all this rule is for now.
+    const row = terminal.slice(terminal.indexOf("  .asked-what {"));
+    expect(row.slice(0, 400)).toMatch(/text-overflow: ellipsis/);
+    expect(row.slice(0, 400)).toMatch(/white-space: nowrap/);
   });
 });

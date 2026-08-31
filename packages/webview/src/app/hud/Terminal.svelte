@@ -843,7 +843,7 @@
           -->
           <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
           <div
-            class="asked"
+            class="quoted"
             class:unfinished={unfinished(block.thread)}
             role="button"
             tabindex="0"
@@ -879,11 +879,11 @@
               copy is whatever the forge had last said by the time it was built.
             -->
             {#if wrote.avatar}
-              <img class="asked-face" src={wrote.avatar} alt={wrote.name} />
+              <img class="quoted-face" src={wrote.avatar} alt={wrote.name} />
             {:else if wrote.name}
-              <span class="asked-face initials">{initialsOf(wrote.name)}</span>
+              <span class="quoted-face initials">{initialsOf(wrote.name)}</span>
             {:else}
-              <span class="asked-face initials" title="You">
+              <span class="quoted-face initials" title="You">
                 <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
                   <circle cx="8" cy="5.4" r="2.8" fill="currentColor" />
                   <path d="M2.6 14.2a5.4 5.4 0 0 1 10.8 0z" fill="currentColor" />
@@ -901,7 +901,7 @@
               and as the preview the reader wrote it in, so a suggestion looks
               like a change everywhere it appears.
             -->
-            <div class="asked-what"><Editor readonly value={block.text} /></div>
+            <div class="quoted-what"><Editor readonly value={block.text} /></div>
           </div>
           <!--
             A turn that never finished.
@@ -923,7 +923,7 @@
           -->
           {#if unfinished(block.thread)}
             <button
-              class="asked-again"
+              class="quoted-again"
               title="Ask again. The conversation is intact, so this carries on from where it stopped."
               aria-label="Ask again"
               onclick={() => again(block.thread)}
@@ -1860,7 +1860,17 @@
     margin: 8px 0 6px;
   }
 
-  .asked {
+  /*
+   * A question quoted in the log.
+   *
+   * Named for itself rather than sharing `.asked` with the permission row above
+   * — they are two different things that happened to be called the same, and
+   * the row's own rules reached in here: its `nowrap` and its ellipsis, which
+   * are right for one line of "May I …?" and wrong for a question of any
+   * length. What that looked like was a prompt running off the right edge of
+   * the console with no way to read the end of it.
+   */
+  .quoted {
     display: flex;
     align-items: flex-start;
     gap: 6px;
@@ -1879,16 +1889,16 @@
     cursor: pointer;
   }
 
-  .asked:hover {
+  .quoted:hover {
     background: color-mix(in srgb, var(--text) 12%, transparent);
   }
 
-  .asked.unfinished {
+  .quoted.unfinished {
     border-left-color: var(--removed, #f85149);
   }
 
   /* Square, because it holds a mark rather than a word. */
-  .asked-again {
+  .quoted-again {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1905,19 +1915,19 @@
     cursor: pointer;
   }
 
-  .asked-again:hover {
+  .quoted-again:hover {
     color: var(--text);
     background: color-mix(in srgb, var(--text) 10%, transparent);
   }
 
-  .asked-face {
+  .quoted-face {
     flex: 0 0 auto;
     width: 15px;
     height: 15px;
     border-radius: 50%;
   }
 
-  .asked-face.initials {
+  .quoted-face.initials {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1926,12 +1936,16 @@
     font-weight: 700;
   }
 
-  .asked-what {
+  .quoted-what {
     flex: 1 1 auto;
     min-width: 0;
-    /* The renderer inside brings its own wrapping and its own spacing, and a
-       `pre-wrap` around it would put the markdown's own newlines back on top
-       of the paragraphs it has already made. */
+    /* Wrapped, and said here rather than left to be inherited: `white-space`
+       comes down from whatever is above, and a question is as long as somebody
+       felt like making it. The renderer inside brings its own paragraphs, so
+       this is `normal` rather than `pre-wrap` — a `pre-wrap` around it would
+       put the markdown's own newlines back on top of the paragraphs it has
+       already made. */
+    white-space: normal;
     overflow-wrap: anywhere;
     line-height: 1.4;
     text-align: left;
@@ -1939,8 +1953,8 @@
   /* A quoted question is a line or two of a log, so what is inside it sits
      tighter than an answer does: no margin above the first thing in it, and
      none below the last. */
-  .asked-what :global(.rendered > *:first-child) { margin-top: 0; }
-  .asked-what :global(.rendered > *:last-child) { margin-bottom: 0; }
+  .quoted-what :global(.rendered > *:first-child) { margin-top: 0; }
+  .quoted-what :global(.rendered > *:last-child) { margin-bottom: 0; }
 
   .terminal-empty {
     margin: 0;
