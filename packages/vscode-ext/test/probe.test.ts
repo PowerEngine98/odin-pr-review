@@ -22,9 +22,14 @@ function recorder() {
   const posted: { type?: string; [key: string]: unknown }[] = [];
   const closed: (() => void)[] = [];
   const seen = { written, posted, disposed: false, revealed: 0 };
+  /** What the extension is listening to the page with, so a test can speak. */
+  const heard: ((message: unknown) => void)[] = [];
   const webview = {
     cspSource: "vscode-webview:",
-    onDidReceiveMessage: () => ({ dispose() {} }),
+    onDidReceiveMessage: (fn: (message: unknown) => void) => {
+      heard.push(fn);
+      return { dispose() {} };
+    },
     postMessage: (message: { type?: string }) => {
       posted.push(message);
       return Promise.resolve(true);
@@ -64,6 +69,10 @@ function recorder() {
      * every page written afterwards would be invisible to the test reading it.
      */
     page: () => written[written.length - 1] ?? "",
+    /** Something the page would say, said. */
+    say: (message: unknown) => {
+      for (const fn of heard) fn(message);
+    },
   });
 }
 
@@ -87,8 +96,12 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
   /** Handlers listening for the reader saving a document in this window. */
   const saves: ((d: { uri: { scheme: string; fsPath: string } }) => void)[] = [];
   const status: string[] = [];
+  /** Everything said in an error toast, for the tests that read them. */
+  const errors: string[] = [];
   /** Handlers waiting for the window to be given focus again. */
   const focus: ((w: { focused: boolean }) => void)[] = [];
+  /** The side list's provider, so a test can give it somewhere to draw. */
+  const views: { resolveWebviewView(view: unknown): void }[] = [];
 
   const api: Record<string, never> & {
     information: (message: string, ...rest: unknown[]) => Promise<unknown>;
@@ -159,12 +172,20 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
         focus.push(fn);
         return disposable;
       },
-      registerWebviewViewProvider: () => disposable,
+      registerWebviewViewProvider: (_type: string, provider: {
+        resolveWebviewView(view: unknown): void;
+      }) => {
+        views.push(provider);
+        return disposable;
+      },
       registerWebviewPanelSerializer: (_type: string, s: typeof serializer) => {
         serializer = s;
         return disposable;
       },
-      showErrorMessage: () => Promise.resolve(),
+      showErrorMessage: (message: string) => {
+        errors.push(message);
+        return Promise.resolve(undefined);
+      },
       showInformationMessage: (message: string, ...rest: unknown[]) =>
         api.information(message, ...rest),
       showWarningMessage: () => Promise.resolve(),
@@ -278,7 +299,7 @@ function stub(session: unknown, workspace: { folder: string; baseRef: string }) 
   });
 
   return {
-    serializer, commands, opened, watchers, saves, status, focus, extension,
+    serializer, commands, opened, watchers, saves, status, focus, extension, errors, views,
     /** Swapped by a test that wants to see what the reader was offered. */
     set information(fn: (message: string, ...rest: unknown[]) => Promise<unknown>) {
       api.information = fn;
@@ -1422,6 +1443,51 @@ describe("a live reading of the working tree", () => {
 
     expect(panel.written.length).toBe(documents);
   }, 180_000);
+
+  it("narrows the side list to the part the reader opened", async () => {
+    /*
+     * One question, two panes. Pressing a tab is the reader saying "this part
+     * of the change is what I am reading", and a list beside it still showing
+     * every file in the change is a second answer to that question — the one
+     * they just said no to.
+     *
+     * Driven the whole way: the page says which files the part holds, the host
+     * hands it to the list, and the list is asked what it is showing.
+     */
+    execFileSync("git", ["checkout", "--", "."], { cwd: repo, stdio: "ignore" });
+
+    const editor = stub(local(), { folder: repo, baseRef: "base" });
+    const panel = await reading(editor);
+
+    // Somewhere for the list to draw, which the editor gives it in production
+    // and a test has to hand it deliberately.
+    const view = recorder();
+    expect(editor.views.length).toBeGreaterThan(0);
+    editor.views[0]!.resolveWebviewView({
+      webview: view.panel.webview,
+      onDidDispose: () => ({ dispose() {} }),
+    });
+    for (let waited = 0; waited < 5_000 && !view.page().includes("two.ts"); waited += 25) {
+      await wait(25);
+    }
+    expect(view.page()).toContain("one.ts");
+    expect(view.page()).toContain("two.ts");
+
+    // The page opening a part that holds one of the two files.
+    panel.say({ type: "part", payload: { paths: ["two.ts"] } });
+    for (let waited = 0; waited < 5_000 && view.page().includes("one.ts"); waited += 25) {
+      await wait(25);
+    }
+    expect(view.page()).toContain("two.ts");
+    expect(view.page()).not.toContain("one.ts");
+
+    // And back to Everything, which is what closing a part means.
+    panel.say({ type: "part", payload: { paths: null } });
+    for (let waited = 0; waited < 5_000 && !view.page().includes("one.ts"); waited += 25) {
+      await wait(25);
+    }
+    expect(view.page()).toContain("one.ts");
+  }, 60_000);
 });
 
 /**

@@ -8,6 +8,7 @@
   take up room to say so.
 -->
 <script lang="ts">
+  import { partPaths } from "../parts.js";
   import { model, notify, ui, view } from "../state.svelte.js";
   import { TICK } from "./icons.js";
 
@@ -81,10 +82,7 @@
     // The list beside the canvas follows the canvas: a part is a smaller
     // review, and a file list showing forty files while the drawing shows five
     // is two answers to the same question.
-    const part = (model.current.parts ?? []).find((p) => p.id === id);
-    notify("part", {
-      paths: part ? part.nodes.map((node) => paths.get(node)).filter(Boolean) : null,
-    });
+    notify("part", { paths: partPaths(model.current, id) });
 
     // Back where it was left, or framed if this part has not been opened
     // before: a part opened for the first time should fill the view rather than

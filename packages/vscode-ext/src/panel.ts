@@ -1890,6 +1890,15 @@ export class GraphPanel {
         // The file list, the viewed marks and the refresh button all mean "the
         // change in front of me", and which one that is has just changed.
         GraphPanel.onActive?.(this.graph, this.repo);
+        /*
+         * And which part of it, which only the page knows.
+         *
+         * Taking the list over resets it to the whole change — a different
+         * reading has a different set of parts, and nothing here can tell that
+         * one of them is the part this page still has open. So the page is
+         * asked, and answers with the files it is actually showing.
+         */
+        void this.panel.webview.postMessage({ type: "sayPart" });
       },
       undefined,
       this.disposables,

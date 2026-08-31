@@ -1,3 +1,7 @@
+import { deltaOf, type Delta } from "./canvas/deltas.js";
+import { partPaths } from "./parts.js";
+
+import type { RowView } from "./canvas/rows.js";
 import type { CommentView, ReaderSettings, ViewModel } from "./model.js";
 
 /**
@@ -427,6 +431,29 @@ export const travel: {
 } = {};
 
 /**
+ * Says again which part is open, over a graph that has just been rebuilt.
+ *
+ * A rebuild replaces the change wholesale, and the host drops whatever the list
+ * beside it was narrowed to when it does — it has a new set of parts and no way
+ * to know that one of them is the same part the reader had open. So the page,
+ * which does know, says so again.
+ *
+ * The paths are re-read rather than remembered, and that is the point of doing
+ * it here rather than keeping the old ones: what a part contains is exactly
+ * what the rebuild may have changed. A file renamed into a part, or one whose
+ * new import joins it to the chain, belongs in the list the moment it belongs
+ * in the drawing.
+ *
+ * A part that is gone — its files deleted, or its chain broken up — takes the
+ * reader back to the whole change rather than to a tab that no longer exists.
+ */
+function samePart(): void {
+  const paths = partPaths(model.current, ui.part);
+  if (ui.part && paths === null) ui.part = null;
+  notify("part", { paths });
+}
+
+/**
  * Everything the host says, routed to the field it belongs to.
  *
  * One listener rather than one per concern: the messages arrive on a single
@@ -442,6 +469,13 @@ export function listen(): void {
       case "refreshing":
         ui.refreshing = message.value === true;
         if (message.note) ui.note = message.note;
+        return;
+
+      // The host taking the file list over for this reading, and asking which
+      // part of it to show. Only the page knows: a part is where the reader is,
+      // and nothing outside this page has been told they moved.
+      case "sayPart":
+        samePart();
         return;
 
       /*
