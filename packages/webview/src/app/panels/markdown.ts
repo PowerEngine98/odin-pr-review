@@ -20,6 +20,16 @@ export interface Suggestion {
 
 export type Inline =
   | { kind: "text"; text: string }
+  /**
+   * A picture, named by where it is rather than carried inline.
+   *
+   * The only one anybody writes here is a screenshot pasted into a
+   * conversation, which becomes a file on this machine and a path in the
+   * remark — the path is what an agent can open. Printed as markdown it is a
+   * line of temp directory nobody can read and nothing to look at, which is
+   * the opposite of why a picture was pasted.
+   */
+  | { kind: "image"; alt: string; src: string }
   | { kind: "code"; text: string }
   | { kind: "strong"; text: string }
   | { kind: "em"; text: string }
@@ -77,7 +87,7 @@ let counter = 0;
  * is here to avoid — the text is a person's, and it is rendered as text.
  */
 const INLINE =
-  /`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_|~~([^~]+)~~|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s]+)/g;
+  /!\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_|~~([^~]+)~~|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s]+)/g;
 
 export function parseInline(text: string): Inline[] {
   const parts: Inline[] = [];
@@ -89,20 +99,25 @@ export function parseInline(text: string): Inline[] {
     if (found.index > at) {
       parts.push({ kind: "text", text: text.slice(at, found.index) });
     }
-    if (found[1] !== undefined) parts.push({ kind: "code", text: found[1] });
-    else if (found[2] !== undefined) parts.push({ kind: "strong", text: found[2] });
-    else if (found[3] !== undefined) parts.push({ kind: "em", text: found[3] });
-    else if (found[4] !== undefined) parts.push({ kind: "em", text: found[4] });
-    else if (found[5] !== undefined) parts.push({ kind: "del", text: found[5] });
-    else if (found[6] !== undefined) {
+    // A picture first, because `![alt](src)` is a link with a bang on it and
+    // the link rule would otherwise take it and print the path.
+    if (found[1] !== undefined || found[2] !== undefined) {
+      parts.push({ kind: "image", alt: found[1] ?? "", src: (found[2] ?? "").trim() });
+    }
+    else if (found[3] !== undefined) parts.push({ kind: "code", text: found[3] });
+    else if (found[4] !== undefined) parts.push({ kind: "strong", text: found[4] });
+    else if (found[5] !== undefined) parts.push({ kind: "em", text: found[5] });
+    else if (found[6] !== undefined) parts.push({ kind: "em", text: found[6] });
+    else if (found[7] !== undefined) parts.push({ kind: "del", text: found[7] });
+    else if (found[8] !== undefined) {
       // A link is its text and its target, never an anchor: a comment box is
       // not a place to put something a reader has not looked at one click
       // away.
-      parts.push({ kind: "text", text: found[6] + " (" });
-      parts.push({ kind: "code", text: found[7] });
+      parts.push({ kind: "text", text: found[8] + " (" });
+      parts.push({ kind: "code", text: found[9] ?? "" });
       parts.push({ kind: "text", text: ")" });
-    } else if (found[8] !== undefined) {
-      parts.push({ kind: "code", text: found[8] });
+    } else if (found[10] !== undefined) {
+      parts.push({ kind: "code", text: found[10] });
     }
     at = found.index + found[0].length;
   }

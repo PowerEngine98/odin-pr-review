@@ -36,7 +36,7 @@ import * as vscode from "vscode";
 import { SettingsStore } from "./settings.js";
 
 import { baseUri } from "./baseContent.js";
-import { imageFolder, keepPasted, withImages } from "./images.js";
+import { imageFolder, keepPasted, readImage, withImages } from "./images.js";
 import { waitingPage } from "./loading.js";
 import { failedToPost } from "./posting.js";
 import { activeTheme } from "./theme.js";
@@ -188,6 +188,17 @@ interface StopMessage {
   payload: { agent: string };
 }
 
+/**
+ * A picture named in a remark, wanted as something the page can draw.
+ *
+ * The page cannot open a file on this machine, so it asks. What comes back is
+ * the bytes or nothing at all — see `readImage` for how far that door opens.
+ */
+interface ShowImageMessage {
+  type: "showImage";
+  payload: { path: string };
+}
+
 /** Taking a message back before any agent has started on it. */
 interface CancelMessage {
   type: "cancelAsk";
@@ -221,6 +232,7 @@ type Message =
   | TranscriptMessage
   | StopMessage
   | CancelMessage
+  | ShowImageMessage
   | CopyMessage
   | AskMessage
   | DiscoverMessage
@@ -2275,6 +2287,22 @@ export class GraphPanel {
           `Odin: ${message.payload.said ?? "copied"}`,
           3000,
         );
+        return;
+      }
+      if (message.type === "showImage") {
+        const path = String(message.payload.path ?? "");
+        /*
+         * Only the two places a picture in this conversation can honestly have
+         * come from: the folder pasted screenshots land in, and the repository
+         * being read. Anything else is a page asking the host to read a file
+         * for it, which is not a thing this page has any reason to do.
+         */
+        const within = [this.repo, ...(this.images ? [this.images] : [])];
+        void this.panel.webview.postMessage({
+          type: "imageShown",
+          path,
+          data: readImage(path, within) ?? "",
+        });
         return;
       }
       if (message.type === "cancelAsk") {

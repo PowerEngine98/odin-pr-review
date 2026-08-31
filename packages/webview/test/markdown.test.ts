@@ -57,3 +57,44 @@ describe("a code fence that never closes", () => {
     expect(kinds(said).filter((kind) => kind === "paragraph").length).toBeGreaterThan(1);
   });
 });
+
+/**
+ * A picture named in a remark.
+ *
+ * The only one anybody writes here is a screenshot pasted into a conversation,
+ * which becomes a file on this machine and a path in the remark — the path is
+ * what an agent can open. Printed as markdown it is a line of temp directory
+ * nobody can read and nothing at all to look at, which is the opposite of why a
+ * picture was pasted.
+ */
+describe("a picture in a remark", () => {
+  const inlines = (source: string) => {
+    const [block] = parseMarkdown(source);
+    return block && "content" in block ? block.content : [];
+  };
+
+  it("is a picture rather than a link with a bang on it", () => {
+    expect(inlines("![a screenshot](/tmp/x.png)")).toEqual([
+      { kind: "image", alt: "a screenshot", src: "/tmp/x.png" },
+    ]);
+  });
+
+  it("keeps the words around it", () => {
+    const parts = inlines("look: ![](/tmp/x.png) what do you think?");
+    expect(parts[0]).toEqual({ kind: "text", text: "look: " });
+    expect(parts[1]!.kind).toBe("image");
+    expect(parts[2]).toEqual({ kind: "text", text: " what do you think?" });
+  });
+
+  it("does not take an ordinary link for one", () => {
+    // A link is still its text and its target, never an anchor.
+    const parts = inlines("see [the docs](https://example.test/x)");
+    expect(parts.some((part) => part.kind === "image")).toBe(false);
+  });
+
+  it("takes a path with spaces in it, which a screenshot often has", () => {
+    expect(inlines("![](/tmp/a folder/x.png)")).toEqual([
+      { kind: "image", alt: "", src: "/tmp/a folder/x.png" },
+    ]);
+  });
+});

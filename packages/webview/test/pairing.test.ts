@@ -1135,3 +1135,35 @@ describe("a question quoted in the console", () => {
     expect(row.slice(0, 400)).toMatch(/white-space: nowrap/);
   });
 });
+
+/**
+ * Drawing a picture a remark names.
+ *
+ * A webview cannot open a file on this machine — no `file://`, and the folder a
+ * pasted screenshot lands in is nowhere near the extension's own — so the page
+ * asks for the bytes and the host decides whether to hand them over.
+ */
+describe("a picture named in a conversation", () => {
+  const editor = source("panels/Editor.svelte");
+
+  it("draws it rather than printing where it is", () => {
+    expect(editor).toMatch(/part\.kind === "image"/);
+    expect(editor).toMatch(/<img class="pictured" src=\{pictured\(part\.src\)\}/);
+  });
+
+  it("asks the host once per picture", () => {
+    expect(editor).toMatch(/notify\("showImage", \{ path: src \}\)/);
+    expect(editor).toMatch(/asking\.add\(src\)/);
+  });
+
+  it("leaves alone the addresses a page can already draw", () => {
+    // A data URI is one the composer made a moment ago, before anything was
+    // written to disk.
+    expect(editor).toMatch(/\^\(data\|blob\|vscode-webview-resource\|https\):/);
+  });
+
+  it("says what is coming while it is coming", () => {
+    // A gap where a picture will be reads as a picture that failed.
+    expect(editor).toMatch(/class="pictured-waiting"/);
+  });
+});

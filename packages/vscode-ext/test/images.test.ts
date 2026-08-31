@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { decodePasted, keepPasted, withImages } from "../src/images.js";
+import { decodePasted, keepPasted, readImage, withImages } from "../src/images.js";
 
 /** A one-pixel PNG, which is a real one: it has to decode. */
 const PIXEL =
@@ -89,5 +89,69 @@ describe("a picture pasted into a conversation", () => {
     it("leaves a message with no pictures exactly as it was", () => {
       expect(withImages("just words", [])).toBe("just words");
     });
+  });
+});
+
+/**
+ * Reading a picture back so the page can draw it.
+ *
+ * A webview cannot open a file on this machine, so the bytes have to travel —
+ * which makes this a door into the file system with the page on the other side.
+ * It opens exactly as far as the reason for it.
+ */
+describe("a picture read back for the page", () => {
+  let folder: string;
+  let outside: string;
+
+  beforeAll(() => {
+    folder = mkdtempSync(join(tmpdir(), "odin-read-in-"));
+    outside = mkdtempSync(join(tmpdir(), "odin-read-out-"));
+  });
+  afterAll(() => {
+    rmSync(folder, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it("hands back the bytes as something a page can draw", () => {
+    const [path] = keepPasted([{ data: PIXEL }], folder);
+    const drawn = readImage(path!, [folder]);
+    expect(drawn?.startsWith("data:image/png;base64,")).toBe(true);
+    expect(drawn).toBe(PIXEL.replace(/\s+/g, ""));
+  });
+
+  it("refuses a file outside every folder it was given", () => {
+    // The page asking the host to read something it has no business reading is
+    // the whole reason this is not just `readFileSync`.
+    const [path] = keepPasted([{ data: PIXEL }], outside);
+    expect(readImage(path!, [folder])).toBeUndefined();
+  });
+
+  it("refuses a path that walks out of the folder", () => {
+    const [path] = keepPasted([{ data: PIXEL }], outside);
+    const through = join(folder, "..", basename(outside), basename(path!));
+    expect(readImage(through, [folder])).toBeUndefined();
+  });
+
+  it("refuses a link pointing out of the folder", () => {
+    // Resolved before it is compared, or the folder is a door held open by
+    // anything anyone can drop into it.
+    const [path] = keepPasted([{ data: PIXEL }], outside);
+    const link = join(folder, "linked.png");
+    symlinkSync(path!, link);
+    expect(readImage(link, [folder])).toBeUndefined();
+  });
+
+  it("refuses anything that is not a picture", () => {
+    const text = join(folder, "notes.txt");
+    writeFileSync(text, "hello");
+    expect(readImage(text, [folder])).toBeUndefined();
+    // Including something that merely sits next to one.
+    const shell = join(folder, "run.sh");
+    writeFileSync(shell, "#!/bin/sh\n");
+    expect(readImage(shell, [folder])).toBeUndefined();
+  });
+
+  it("says nothing about a file that is not there", () => {
+    expect(readImage(join(folder, "gone.png"), [folder])).toBeUndefined();
   });
 });

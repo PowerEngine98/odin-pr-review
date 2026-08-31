@@ -1,6 +1,6 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 /**
  * A picture on its way from the clipboard to an agent.
@@ -84,6 +84,50 @@ export function keepPasted(images: readonly Pasted[], folder: string): string[] 
     }
   }
   return kept;
+}
+
+/**
+ * A picture read back for the page to draw, or nothing.
+ *
+ * A webview cannot open a file on this machine, so the bytes have to travel —
+ * and that makes this a door into the file system with the page on the other
+ * side of it. It is opened exactly as far as the reason for it: a file with a
+ * picture's extension, inside one of the folders named by the caller, reached
+ * by a path that is really in there rather than one that walks out through
+ * `..` and a symlink.
+ */
+export function readImage(path: string, within: readonly string[]): string | undefined {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  const mime = Object.entries(EXTENSIONS).find(([, e]) => e === ext)?.[0];
+  if (!mime) return undefined;
+
+  let real: string;
+  try {
+    real = realpathSync(path);
+  } catch {
+    return undefined;
+  }
+
+  const inside = within.some((folder) => {
+    let root: string;
+    try {
+      root = realpathSync(folder);
+    } catch {
+      return false;
+    }
+    return real === root || real.startsWith(root.endsWith(sep) ? root : root + sep);
+  });
+  if (!inside) return undefined;
+
+  try {
+    const bytes = readFileSync(real);
+    // A picture nobody could see is not worth a megabyte of message, and a
+    // screenshot is nothing like this big.
+    if (bytes.length === 0 || bytes.length > 24 * 1024 * 1024) return undefined;
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
