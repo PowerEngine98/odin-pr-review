@@ -253,9 +253,58 @@
     grow();
   });
 
+  /**
+   * Pictures on their way to the agent, shown while they are on their way.
+   *
+   * A screenshot is the fastest way to say what is wrong with something drawn
+   * — a layout that is off, a chart that is unreadable, an error dialog — and
+   * every one of these tools can look at one. Pasting into the box did nothing
+   * at all before this: a textarea takes the text on the clipboard and drops
+   * the rest without a word, so the reader pasted, saw an empty box, and had
+   * no way to tell whether it had failed or whether nothing had been copied.
+   *
+   * Held as data URIs because that is what the page can draw. They travel to
+   * the host on send and become files there, since an agent takes a path.
+   */
+  let pasted = $state<{ id: number; url: string; name: string }[]>([]);
+  let nextImage = 0;
+
+  function paste(event: ClipboardEvent): void {
+    const items = [...(event.clipboardData?.items ?? [])].filter((item) =>
+      item.type.startsWith("image/"),
+    );
+    if (items.length === 0) return;
+    // Only when there is actually an image: a paste carrying text as well —
+    // which is what copying from a browser gives you — must still paste the
+    // text.
+    event.preventDefault();
+
+    for (const item of items) {
+      const file = item.getAsFile();
+      if (!file) continue;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = String(reader.result ?? "");
+        if (!url.startsWith("data:image/")) return;
+        pasted = [...pasted, { id: ++nextImage, url, name: file.name || "pasted" }];
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  /** Named for what it does to the picture, not the pointer: `drop` is taken
+      by the end of a resize drag, a few hundred lines down. */
+  function unpaste(id: number): void {
+    pasted = pasted.filter((one) => one.id !== id);
+  }
+
   function send(): void {
     const said = prompt.trim();
-    if (!said) return;
+    // A picture on its own is a message: "look at this" is the whole of what a
+    // reader usually means by pasting one.
+    if (!said && pasted.length === 0) return;
+    const images = pasted.map((one) => ({ name: one.name, data: one.url }));
+    pasted = [];
     prompt = "";
     /*
      * No path and no line, and addressed to this agent.
@@ -264,7 +313,11 @@
      * talking to Claude, and writing `@Codex` in the text still overrules it —
      * that is the reader saying so in as many words, and the words win.
      */
-    notify("askAgents", { body: said, to: id });
+    notify("askAgents", {
+      body: said,
+      to: id,
+      ...(images.length > 0 ? { images } : {}),
+    });
   }
 
   /* ------------------------------------------------------------ its size */
@@ -926,12 +979,48 @@
       send();
     }}
   >
+    <!--
+      What has been pasted and not yet sent.
+
+      The picture itself rather than a filename, because the reader is checking
+      that the right thing is on its way — half the time a clipboard holds the
+      screenshot before last, and a chip saying "pasted.png" cannot tell them
+      that. Above the box, where an attachment goes, and gone the moment it is
+      sent.
+    -->
+    {#if pasted.length > 0}
+      <ul class="pasted">
+        {#each pasted as image (image.id)}
+          <li>
+            <img src={image.url} alt={image.name} />
+            <button
+              class="pasted-drop"
+              type="button"
+              title="Do not send this picture"
+              aria-label="Remove this picture"
+              onclick={() => unpaste(image.id)}
+            >
+              <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+                <path
+                  d="M4 4l8 8M12 4l-8 8"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
     <textarea
       class="ask-box"
       bind:this={askBox}
       bind:value={prompt}
       rows="1"
       placeholder="Ask {name} about the change…"
+      onpaste={paste}
       onkeydown={(event) => {
         // Enter sends, because this is a message rather than a document. A
         // newline is still available for somebody laying out a list.
@@ -1297,10 +1386,57 @@
     flex: 0 0 auto;
     display: flex;
     align-items: flex-end;
+    /* So the pictures take a line of their own above the box rather than
+       standing in the row beside it, squeezing the thing being typed in. */
+    flex-wrap: wrap;
     gap: 6px;
     padding: 6px;
     border-top: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
   }
+
+  /* What has been pasted and not yet sent. Small enough to be a row of
+     attachments and large enough to tell one screenshot from another, which is
+     the entire question a reader has about it. */
+  .pasted {
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .pasted li {
+    position: relative;
+    line-height: 0;
+  }
+  .pasted img {
+    max-width: 96px;
+    max-height: 64px;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+    /* A screenshot of a dark window on a dark panel needs an edge to be a
+       thing rather than a hole. */
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    object-fit: cover;
+  }
+  .pasted-drop {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid var(--panel-edge);
+    border-radius: 50%;
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .pasted-drop:hover { color: var(--removed); }
 
   .ask-box {
     flex: 1 1 auto;

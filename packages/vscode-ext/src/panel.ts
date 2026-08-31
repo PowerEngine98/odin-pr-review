@@ -31,10 +31,12 @@ import {
 } from "@odin/core";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
+import { rmSync } from "node:fs";
 import * as vscode from "vscode";
 import { SettingsStore } from "./settings.js";
 
 import { baseUri } from "./baseContent.js";
+import { imageFolder, keepPasted, withImages } from "./images.js";
 import { waitingPage } from "./loading.js";
 import { failedToPost } from "./posting.js";
 import { activeTheme } from "./theme.js";
@@ -151,6 +153,8 @@ interface AskMessage {
     inReplyTo?: number;
     /** The agent whose terminal it was written in, if it was written in one. */
     to?: string;
+    /** Pictures pasted into the box, as data URIs the page could draw. */
+    images?: { name?: string; data: string }[];
   };
 }
 
@@ -1081,6 +1085,15 @@ export class GraphPanel {
   }
 
   private paired: PairingSession | undefined;
+
+  /**
+   * Where this reading keeps pictures pasted into a conversation.
+   *
+   * Made on first use rather than on every panel: most readings never paste
+   * anything, and a directory per tab whether or not it is used is litter in
+   * somebody's temp folder for the sake of a field.
+   */
+  private images: string | undefined;
 
   /**
    * Where the reader's own workspace notes are kept.
@@ -2288,8 +2301,22 @@ export class GraphPanel {
         // written onto it — a message that waits on the network to show up at
         // all reads as a message that was not sent.
         const paired = this.pairing();
+        /*
+         * Pictures become files before the message is written down.
+         *
+         * An agent takes a path, so the remark has to carry one — and it has to
+         * carry it in the remark itself rather than in something handed to the
+         * tool alongside, because the thread is the record. Somebody reading
+         * this conversation next week should be able to see that a screenshot
+         * was part of the question.
+         */
+        const { images, ...asked } = message.payload;
+        const paths = images?.length
+          ? keepPasted(images, (this.images ??= imageFolder()))
+          : [];
         paired.ask({
-          ...message.payload,
+          ...asked,
+          body: withImages(asked.body, paths),
           author: this.viewer || PLACEHOLDER,
           ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
         });
@@ -2423,6 +2450,16 @@ export class GraphPanel {
     // Turns in flight belong to this reading, and there is nowhere left for
     // them to write. What they have already said is on disk.
     this.paired?.dispose();
+    // Pictures pasted into this reading's conversations. They were copies of
+    // something the reader already had, kept only so an agent could open them.
+    if (this.images) {
+      try {
+        rmSync(this.images, { recursive: true, force: true });
+      } catch {
+        // A temp directory that will not go is the operating system's problem.
+      }
+      this.images = undefined;
+    }
     GraphPanel.onClosed?.(this.key);
     this.panel.dispose();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();

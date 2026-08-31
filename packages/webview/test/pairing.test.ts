@@ -1018,3 +1018,51 @@ describe("the messages waiting behind the one being worked on", () => {
     expect(render).toBeGreaterThan(still);
   });
 });
+
+/**
+ * A screenshot pasted into an agent's console.
+ *
+ * The fastest way to say what is wrong with something drawn — a layout that is
+ * off, a chart nobody can read, an error dialog — and every one of these tools
+ * can look at one. Pasting did nothing at all before: a textarea takes the text
+ * on the clipboard and drops the rest without a word, so the reader pasted, saw
+ * an empty box, and could not tell a failure from an empty clipboard.
+ */
+describe("pasting a picture into the console", () => {
+  const terminal = source("hud/Terminal.svelte");
+
+  it("takes pictures off the clipboard", () => {
+    expect(terminal).toMatch(/onpaste=\{paste\}/);
+    expect(terminal).toMatch(/item\.type\.startsWith\("image\/"\)/);
+  });
+
+  it("still pastes text when the clipboard carries both", () => {
+    // Copying from a browser gives you text as well as an image. Swallowing
+    // the paste outright would have quietly eaten what was typed.
+    expect(terminal).toMatch(
+      /if \(items\.length === 0\) return;[\s\S]{0,240}event\.preventDefault\(\)/,
+    );
+  });
+
+  it("shows the picture itself rather than its name", () => {
+    // Half the time a clipboard holds the screenshot before last, and a chip
+    // saying "pasted.png" cannot tell anybody that.
+    expect(terminal).toMatch(/<img src=\{image\.url\} alt=\{image\.name\} \/>/);
+  });
+
+  it("offers to take one back before it is sent", () => {
+    expect(terminal).toMatch(/onclick=\{\(\) => unpaste\(image\.id\)\}/);
+  });
+
+  it("sends the pictures with the words, and empties the strip", () => {
+    expect(terminal).toMatch(/\.\.\.\(images\.length > 0 \? \{ images \} : \{\}\)/);
+    expect(terminal).toMatch(/pasted = \[\];\s*\n\s*prompt = "";/);
+  });
+
+  it("lets a picture be the whole message", () => {
+    // "Look at this" is most of what somebody means by pasting a screenshot,
+    // and refusing to send without a sentence attached would ask them to type
+    // it out.
+    expect(terminal).toMatch(/if \(!said && pasted\.length === 0\) return;/);
+  });
+});
