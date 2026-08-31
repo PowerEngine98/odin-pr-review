@@ -272,8 +272,28 @@ export const ui = $state({
    * which is where somebody staring at a stalled log will be looking.
    */
   pending: [] as { id: string; what: string }[],
+  /**
+   * What the reader has asked that nobody has started on yet.
+   *
+   * In the order it will be taken, which is the order it is shown in: a queue
+   * whose order is not the order it runs in is a worse answer than no queue.
+   * Kept beside the comments rather than derived from them, because which agent
+   * a message is addressed to is the queue's own business and no remark says
+   * it.
+   */
+  queued: [] as { id: number; body: string; addressee?: string }[],
   /** The part of the change on screen, or null for all of it. */
   part: null as string | null,
+  /**
+   * What the last rebuild did to each card, by file.
+   *
+   * Drawn over the rows for as long as the animation runs and then invisible,
+   * so a reader looking elsewhere when a file changed is not left with a page
+   * covered in colour. Replaced wholesale by each rebuild: the marks are about
+   * the last one, and two rebuilds' worth of them at once would be a card
+   * claiming lines changed that changed a minute ago.
+   */
+  deltas: new Map<string, Delta>(),
   /** Files the reader has marked off. */
   viewed: new Set<string>(),
   /** The card and edge under the reader's attention, for dimming the rest. */
@@ -543,8 +563,38 @@ export function listen(): void {
          * like: the view left where it was and the change moved out from under
          * it.
          */
+        /*
+         * What this rebuild did, worked out before the old rows are let go.
+         *
+         * A whole new model is what arrives when the edit was structural — an
+         * arrow appeared, a file joined the change — and it is still the same
+         * file changing under the reader. The cards that only moved are silent;
+         * the ones whose lines are different say so.
+         */
+        const was = new Map(
+          model.current.nodes.map((node) => [
+            node.id,
+            node.rows ? ($state.snapshot(node.rows) as RowView[]) : undefined,
+          ]),
+        );
+
         rebuilding.before?.();
         model.current = next;
+
+        // After the swap, and against the model that is now on the page: the
+        // marks are keyed by the row objects the cards will read, which are the
+        // proxied ones this assignment has just made.
+        const deltas = new Map<string, Delta>();
+        for (const node of model.current.nodes) {
+          const before = was.get(node.id);
+          if (!before || !node.rows) continue;
+          const delta = deltaOf(before, node.rows as RowView[]);
+          if (delta.marks.size > 0 || delta.gone.length > 0) deltas.set(node.id, delta);
+        }
+        ui.deltas = deltas;
+        // The list beside the drawing is told again, because the part it was
+        // narrowed to has just been recomputed from a different graph.
+        samePart();
         return;
       }
 
@@ -601,10 +651,25 @@ export function listen(): void {
          */
         if (patches.length > 0) rebuilding.before?.();
 
+        const deltas = new Map<string, Delta>();
         for (const patch of patches) {
           const node = model.current.nodes.find((n) => n.id === patch["id"]);
           if (!node) continue;
           const fields = node as unknown as Record<string, unknown>;
+
+          /*
+           * What is about to be overwritten, kept until there is something to
+           * compare it with.
+           *
+           * The old rows are gone the moment the assignment below runs, and
+           * they are the only thing that says which of the new ones are new.
+           * Snapshotted because they are proxies, and a proxy of a row that no
+           * longer exists is not something to hold on to.
+           */
+          const before = Array.isArray(fields["rows"])
+            ? ($state.snapshot(fields["rows"]) as RowView[])
+            : undefined;
+
           for (const key of Object.keys(patch)) {
             if (key === "id") continue;
             // `rows` is an array rebuilt every time and never equal by
@@ -613,7 +678,43 @@ export function listen(): void {
             if (key !== "rows" && fields[key] === patch[key]) continue;
             fields[key] = patch[key];
           }
+
+          /*
+           * Compared after the assignment, against what the card will read.
+           *
+           * The marks are keyed by the row itself rather than by a line number,
+           * and the rows a card draws are the proxied ones this state holds —
+           * not the plain objects that arrived in the message. Keying on those
+           * looks right and matches nothing: every card comes up unmarked
+           * because no row on the page is the object the mark was filed under.
+           */
+          if (before && Array.isArray(node.rows)) {
+            const delta = deltaOf(before, node.rows as RowView[]);
+            if (delta.marks.size > 0 || delta.gone.length > 0) {
+              deltas.set(node.id, delta);
+            }
+          }
         }
+
+        /*
+         * Handed over as one object, so the cards that changed light up
+         * together and everything else is left alone. Cleared on the next
+         * patch: a mark that outlived the edit it was about would be a card
+         * claiming to be mid-change long after it had settled.
+         */
+        ui.deltas = deltas;
+        /*
+         * And the list beside it, again.
+         *
+         * A rebuild takes the list back to the whole change whichever message
+         * it sends, and this is the one it sends most: a save that moved no
+         * arrows patches a few cards' rows and nothing else. Which meant that
+         * on a live reading — the one being rebuilt every few seconds while an
+         * agent works — the list came back to the whole change almost as fast
+         * as a reader could narrow it, with the drawing beside it still showing
+         * the part they had opened.
+         */
+        samePart();
         return;
       }
 

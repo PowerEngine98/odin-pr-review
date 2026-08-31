@@ -1382,33 +1382,39 @@
          placed against has to be the height of the one on screen. -->
     <div class="card-body unified-view" bind:offsetHeight={bodyHeight}>
       {#each rows as row, i (rowKey(row, i))}
+        {@render removed(goneAbove(row))}
         <Row
           {row}
           single={oneSided}
           nodeId={node.id}
           {canComment}
           marks={symbols}
+          flash={flashOf(row)}
           beyondCap={i >= unifiedLimit && !held(row, anchored)}
           revealed={expanded}
         />
       {/each}
+      {@render removed(goneAtEnd)}
       {@render moreBar()}
     </div>
   {:else}
     <div class="card-body split-view" bind:offsetHeight={bodyHeight}>
       {#each pairs as pair, i (pairKey(pair, i))}
+        {@render removed(goneAbove(pair.right ?? pair.left ?? pair.band))}
         <Row
           {pair}
           single={oneSided}
           nodeId={node.id}
           {canComment}
           marks={symbols}
+          flash={flashOf(pair.right ?? pair.left ?? pair.band)}
           beyondCap={i >= splitLimit &&
             !held(pair.left, anchored) &&
             !held(pair.right, anchored)}
           revealed={expanded}
         />
       {/each}
+      {@render removed(goneAtEnd)}
       {@render moreBar()}
     </div>
   {/if}
@@ -1441,6 +1447,28 @@
   is left to show: it is both the statement that there is more and the way to
   reach it.
 -->
+<!--
+  Lines that are no longer here.
+
+  Every other kind of feedback can be drawn on the thing it is about; a removal
+  has nothing left to draw on. So it is drawn as the space the lines used to
+  take, which then closes — the shape of the edit rather than a note about it,
+  and the reason a reader who was looking elsewhere still sees that something
+  went from there.
+
+  Keyed by how many lines it stands for, so that a second rebuild removing more
+  lines from the same place plays again instead of leaving the first box up.
+-->
+{#snippet removed(lines: number)}
+  {#if lines > 0}
+    {#key lines}
+      <div class="row-gone" style="--gone:{lines}" aria-hidden="true">
+        <i></i>
+      </div>
+    {/key}
+  {/if}
+{/snippet}
+
 {#snippet moreBar()}
   {#if behind > 0 && !expanded}
     <div
@@ -1862,6 +1890,54 @@
   }
 
   .card-body { padding: var(--padding) 0; }
+
+  /* The space lines used to take, closing up.
+
+     It starts at exactly their height and animates to nothing, so the rows
+     under it rise the way they would have risen instantly — the removal is
+     shown by being played rather than by being described. Red because that is
+     what a deletion is everywhere else in this page; a removal that flashed
+     some other colour would be a new thing to learn.
+
+     It takes no space, and that is deliberate: the body's height is what every
+     arrow on the page is placed against, so a box that pushed the rows down
+     would move every arrow landing on this card for as long as it played. The
+     box inside it is drawn over the rows below — which is where the lines
+     were — while the card itself does not move. */
+  .row-gone {
+    position: relative;
+    height: 0;
+  }
+  .row-gone > i {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: block;
+    overflow: hidden;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--removed) 30%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--removed) 55%, transparent);
+    animation: gone-closing 620ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  }
+
+  @keyframes gone-closing {
+    /* Held for a moment at full height before it closes: a box that starts
+       shrinking on the first frame is a flicker, not a removal. */
+    0% { height: calc(var(--gone) * var(--line-height)); opacity: 1; }
+    35% { height: calc(var(--gone) * var(--line-height)); opacity: 1; }
+    100% { height: 0; opacity: 0; }
+  }
+
+  /* A reader who has asked for less movement is told the same thing without
+     the travel: the box appears where the lines were and fades. */
+  @media (prefers-reduced-motion: reduce) {
+    .row-gone > i { animation: gone-fading 620ms linear forwards; }
+    @keyframes gone-fading {
+      0% { height: calc(var(--gone) * var(--line-height)); opacity: 1; }
+      100% { height: calc(var(--gone) * var(--line-height)); opacity: 0; }
+    }
+  }
 
   /* The foot of a card that is holding lines back. A row like any other, so it
      sits in the same rhythm as the code above it. */

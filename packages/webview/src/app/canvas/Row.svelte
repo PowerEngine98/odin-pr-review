@@ -9,6 +9,7 @@
 -->
 <script lang="ts">
   import type { Side } from "../marks/marks.js";
+  import type { Mark } from "./deltas.js";
   import { commentOn, endAt, endsOf, holds, holdsBand, lineOn, type End } from "./picking.js";
   import { gesture } from "./picking.svelte.js";
   import { boxesOn, markKey, type SymbolBox, type SymbolMark } from "./symbols.js";
@@ -58,6 +59,14 @@
     gapOpen = false,
     /** The card has been asked to show everything it is holding back. */
     revealed = false,
+    /**
+     * This line has just changed under the reader, and how.
+     *
+     * Only ever set on a live reading, and only for as long as the animation
+     * runs: it is how somebody watching an agent work sees which lines it
+     * touched, on a card too long to spot the difference in.
+     */
+    flash = undefined,
   }: {
     row?: RowView;
     pair?: RowPair;
@@ -69,6 +78,7 @@
     inGap?: boolean;
     gapOpen?: boolean;
     revealed?: boolean;
+    flash?: Mark | undefined;
   } = $props();
 
   /** The band this row is, whichever reading asked for it. */
@@ -502,6 +512,8 @@
   -->
   <div
     class="row split"
+    class:just-changed={flash === "changed"}
+    class:just-added={flash === "added"}
     class:in-diff={inDiff(pair.left) || inDiff(pair.right)}
     class:beyond-cap={beyondCap}
     class:in-gap={inGap}
@@ -553,6 +565,8 @@
   {@const afterEnd = endAt(ends, after)}
   <div
     class="row flat {row.kind}"
+    class:just-changed={flash === "changed"}
+    class:just-added={flash === "added"}
     class:in-diff={row.inDiff}
     class:beyond-cap={beyondCap}
     class:in-gap={inGap}
@@ -611,6 +625,51 @@
     line-height: var(--line-height);
     font-size: var(--font-size);
     white-space: pre;
+  }
+
+  /* A line that has just changed under the reader.
+
+     Yellow for a rewrite and green for an arrival, which is the same pair of
+     meanings the rest of the page already uses — the point is to say *where*
+     something happened, on a card of two hundred rows, in the seconds after it
+     did. It fades out on its own rather than being cleared by a timer: the
+     animation ends transparent, so a reader who was looking at another card
+     comes back to code rather than to a page full of colour.
+
+     Painted with an inset shadow rather than a background, because the row's
+     own background is what says added, removed or untouched, and a line that
+     was rewritten is still whichever of those it was. */
+  .row.just-changed,
+  .row.just-added {
+    animation: line-touched 1400ms ease-out forwards;
+  }
+  .row.just-added { --touched: var(--added); }
+  .row.just-changed { --touched: var(--warning); }
+
+  @keyframes line-touched {
+    0% {
+      box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--touched) 34%, transparent);
+    }
+    45% {
+      box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--touched) 26%, transparent);
+    }
+    100% {
+      box-shadow: inset 0 0 0 999px transparent;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* The same fact, held still and then gone. */
+    .row.just-changed,
+    .row.just-added {
+      animation: line-touched-still 1400ms steps(2, end) forwards;
+    }
+    @keyframes line-touched-still {
+      0% {
+        box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--touched) 30%, transparent);
+      }
+      100% { box-shadow: inset 0 0 0 999px transparent; }
+    }
   }
 
   /* A run of changed lines is one block of colour, not a stack of them.
