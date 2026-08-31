@@ -734,13 +734,18 @@ every function body opens with are kept out so `let` does not draw arrows.
 ## Development
 
 ```sh
-./scripts/install.sh           # build everything and install the extension
-odin update                    # pull the latest main and do that again
-yarn test                      # 343 unit tests
-yarn test:integration          # 6 tests inside a real VS Code extension host
+./scripts/install.sh           # build this checkout and install it
+odin update                    # work out which checkout you mean, then do that
+yarn test                      # the unit suite
+yarn test:integration          # inside a real VS Code extension host
 yarn build                     # compile all packages
 scripts/generate-examples.sh   # regenerate docs/examples
 ```
+
+[docs/development.md](docs/development.md) is the longer version: which copy of
+Odin `odin update` decides to work on, why a checkout with changes of its own is
+installed rather than pulled over, and the two mistakes that cost half an hour
+each time.
 
 Screenshots in `docs/` are captured from the generated `graph.html` in a browser
 1600px wide. The comments in them are written against the fixture, so no real
