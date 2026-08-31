@@ -60,9 +60,31 @@ export function symbolMarks(
   nodeId: string,
   drawn: (edge: EdgeView) => boolean = () => true,
 ): Map<string, SymbolMark[]> {
-  const marks = new Map<string, SymbolMark[]>();
+  return allSymbolMarks(edges, drawn).get(nodeId) ?? new Map();
+}
 
-  const add = (key: string, mark: SymbolMark) => {
+/**
+ * The same answer for every card at once, in one pass over the edges.
+ *
+ * Asked per card it was the product of two large numbers — a hundred and thirty
+ * cards each walking nine hundred edges — and it is not asked once. Every card
+ * reads `drawn`, `drawn` reads which cards are on the canvas, and that changes
+ * as the reader pans: one card coming into view redid the work for all of them.
+ * On a large change that arithmetic was most of a thirty-second pause at boot,
+ * during which the editor's window is not answering anybody.
+ *
+ * Walking the edges once and filing each end under its own card gives the same
+ * marks for the same inputs, at a hundred and thirtieth of the cost.
+ */
+export function allSymbolMarks(
+  edges: readonly EdgeView[],
+  drawn: (edge: EdgeView) => boolean = () => true,
+): Map<string, Map<string, SymbolMark[]>> {
+  const byNode = new Map<string, Map<string, SymbolMark[]>>();
+
+  const add = (nodeId: string, key: string, mark: SymbolMark) => {
+    let marks = byNode.get(nodeId);
+    if (!marks) byNode.set(nodeId, (marks = new Map()));
     const here = marks.get(key);
     if (here) here.push(mark);
     else marks.set(key, [mark]);
@@ -75,25 +97,21 @@ export function symbolMarks(
     // points at.
     if (!drawn(edge)) continue;
 
-    if (edge.from === nodeId) {
-      add(at(edge.fromSide, edge.fromLine), {
-        edgeId: edge.id,
-        role: "out",
-        change: edge.change,
-        words: edge.fromSymbol ? [edge.symbol, edge.fromSymbol] : [edge.symbol],
-      });
-    }
-    if (edge.to === nodeId) {
-      add(at(edge.toSide, edge.toLine), {
-        edgeId: edge.id,
-        role: "in",
-        change: edge.change,
-        words: [edge.symbol],
-      });
-    }
+    add(edge.from, at(edge.fromSide, edge.fromLine), {
+      edgeId: edge.id,
+      role: "out",
+      change: edge.change,
+      words: edge.fromSymbol ? [edge.symbol, edge.fromSymbol] : [edge.symbol],
+    });
+    add(edge.to, at(edge.toSide, edge.toLine), {
+      edgeId: edge.id,
+      role: "in",
+      change: edge.change,
+      words: [edge.symbol],
+    });
   }
 
-  return marks;
+  return byNode;
 }
 
 /** Where a box goes, measured in characters along the line's own code. */

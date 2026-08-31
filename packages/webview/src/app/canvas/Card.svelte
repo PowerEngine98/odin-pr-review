@@ -17,12 +17,12 @@
   import type { NodeView } from "../model.js";
   import { host, model, notify, settings, travel, ui, view } from "../state.svelte.js";
   import { anchors, lineIn, measure } from "./measured.svelte.js";
+  import type { Mark } from "./deltas.js";
   import { legibleAt } from "./legible.js";
   import { near } from "./near.svelte.js";
   import { patchOf, railSide, spanOf, type Piece } from "./picking.js";
   import { begin, drop, extendTo, gesture, grip, open } from "./picking.svelte.js";
-  import { drawn } from "./marked.svelte.js";
-  import { symbolMarks } from "./symbols.js";
+  import { marksFor } from "./marked.svelte.js";
   import { sideOf } from "../marks/marks.js";
   import { threadsOf } from "../panels/Thread.svelte";
   import Viewed from "../shared/Viewed.svelte";
@@ -255,7 +255,37 @@
    * to search every edge is that product, for an answer that is almost always
    * nothing.
    */
-  const symbols = $derived(symbolMarks(model.current.edges, node.id, drawn));
+  const symbols = $derived(marksFor(node.id));
+
+  /**
+   * What the last rebuild did to this card.
+   *
+   * A live reading redraws itself whenever the file moves, and the redraw is
+   * silent: the rows are simply different ones. This is what makes an edit
+   * visible while it is happening — rewritten lines wear a wash of yellow,
+   * arriving lines green, and lines that went leave a red box behind them that
+   * closes up. Empty on every card the rebuild did not touch, which is nearly
+   * all of them.
+   */
+  const delta = $derived(ui.deltas.get(node.id));
+
+  /** The removals to draw above a given row, when any were taken from there. */
+  function goneAbove(row: RowView | undefined): number {
+    if (!delta || !row) return 0;
+    let lines = 0;
+    for (const run of delta.gone) if (run.before === row) lines += run.lines;
+    return lines;
+  }
+
+  /** What to say about one row, in either reading. */
+  function flashOf(row: RowView | undefined): Mark | undefined {
+    return delta && row ? delta.marks.get(row) : undefined;
+  }
+
+  /** And the ones taken from the end of the card, which sit above nothing. */
+  const goneAtEnd = $derived(
+    delta?.gone.reduce((n, run) => (run.before ? n : n + run.lines), 0) ?? 0,
+  );
 
   const pairs = $derived(pairRows(rows));
   const splitLimit = $derived(splitCap ?? pairs.length);

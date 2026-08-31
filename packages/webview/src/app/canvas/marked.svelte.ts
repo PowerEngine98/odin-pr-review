@@ -1,5 +1,6 @@
 import type { EdgeView } from "../model.js";
 import { model, settings, ui } from "../state.svelte.js";
+import { allSymbolMarks, type SymbolMark } from "./symbols.js";
 import { wantedEdges } from "./wire.js";
 
 /**
@@ -49,4 +50,22 @@ export function drawn(edge: EdgeView): boolean {
   if (!wanted(edge)) return false;
   if (ui.visible.size === 0) return true;
   return ui.visible.has(edge.from) && ui.visible.has(edge.to);
+}
+
+/**
+ * The words to box, for every card, worked out once.
+ *
+ * Same reason the filters are derived here rather than inside each card, and a
+ * far more expensive one: this walks every edge in the change, every card used
+ * to walk them all for itself, and the answer depends on which cards are on the
+ * canvas — so panning invalidated a hundred and thirty copies of one pass. It
+ * is the same map either way; only the number of times it is built changes.
+ */
+const boxes = $derived(allSymbolMarks(model.current.edges, drawn));
+
+const NOTHING: Map<string, SymbolMark[]> = new Map();
+
+/** This card's share of them. Empty for a card no arrow touches. */
+export function marksFor(nodeId: string): Map<string, SymbolMark[]> {
+  return boxes.get(nodeId) ?? NOTHING;
 }
