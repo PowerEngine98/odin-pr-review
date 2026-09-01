@@ -21,7 +21,9 @@
     arrows,
     detours,
     secondPass,
+    sharedRoads,
     HEAD,
+    type Arrow,
     type Box,
     type Journey,
     type LineAt,
@@ -79,6 +81,20 @@
   });
 
   /**
+   * The lanes several roads ended up sharing, drawn under all of them.
+   *
+   * Read after the arrows rather than worked out here: the roads are moved onto
+   * the lanes as part of laying them out, so the lanes are what that pass left
+   * behind. Deriving it from `drawn` is what keeps the two in step — a lane
+   * drawn from a placement the arrows are no longer using would be a grey line
+   * under nothing.
+   */
+  const shared = $derived.by(() => {
+    void drawn;
+    return sharedRoads();
+  });
+
+  /**
    * The roads are planned around the cards once the cards have stopped moving.
    *
    * During the first build every card that measures itself moves the ones
@@ -116,8 +132,24 @@
     return () => clearTimeout(settling);
   });
 
-  /** Whether anything at all is under the reader's attention. */
-  const quiet = $derived(ui.activeEdge !== null || ui.activeNode !== null);
+  /**
+   * Whether the drawing is hushed so one thing can be read.
+   *
+   * Not for a hover. Fading six hundred arrows means the browser resolving the
+   * rule against every one of them and repainting the whole layer, and doing
+   * that as the pointer crosses each hit area on its way somewhere is what the
+   * flicker was: a fifth of a second of repainting per crossing, measured, with
+   * a fifth of the time going to garbage collection. Pointing at a line now
+   * lights that line and leaves the rest alone.
+   *
+   * A deliberate choice still hushes everything — following an arrow, picking a
+   * card — because that is a reader who has said which one thing they are
+   * reading, and it happens once rather than continuously.
+   */
+  const quiet = $derived(ui.activeNode !== null || (ui.activeEdge !== null && !hovering));
+
+  /** Whether the lit arrow is lit because a pointer is resting on it. */
+  let hovering = $state(false);
 
   function lit(edge: EdgeView): boolean {
     if (ui.activeEdge !== null) return edge.id === ui.activeEdge;
@@ -126,20 +158,68 @@
   }
 
   /**
-   * The roads a gathered run travels, lit with whichever of their arrows is.
+   * Which arrow is lit, marked on the document rather than derived per arrow.
    *
-   * The stems belong to their own arrows but the road belongs to one of them, so
-   * following any other left the light stopping at the junction — the path to
-   * the destination went dim exactly when the reader was trying to follow it.
-   * Deriving the set of lit runs rather than lighting the followed arrow's own
-   * elements is what fixes it: a road is lit because something travelling it is,
-   * whoever happens to hold the path.
+   * `class:active={lit(arrow.edge)}` inside the list reads the shared flag from
+   * every one of six hundred blocks, so one hover re-runs all six hundred:
+   * measured, five milliseconds of script per pointer crossing, on top of the
+   * repaint. Nothing about that work is per arrow — one arrow stops being lit
+   * and one starts — so the two elements are found and marked directly.
+   *
+   * The road a gathered run travels is marked with them. The stems belong to
+   * their own arrows but the road belongs to one of them, so lighting only the
+   * followed arrow's own elements left the light stopping at the junction —
+   * dim exactly where the reader was trying to follow it.
    */
-  const litRuns = $derived(
-    new Set(drawn.filter((a) => a.run !== null && lit(a.edge)).map((a) => a.run)),
-  );
+  let layer: SVGSVGElement | undefined = $state();
+  let marked: Element[] = [];
+
+  /* An id as it can be written inside an attribute selector. Ids come from the
+     graph rather than from this page, and one with a quote in it would end the
+     selector early and match something else. */
+  const quoted = (value: string) => value.replace(/["\\]/g, "\\$&");
+
+  $effect(() => {
+    const edgeId = ui.activeEdge;
+    const nodeId = ui.activeNode;
+    // Re-marked after a rebuild as well as after a hover: the elements the last
+    // pass marked may not be in the document any more.
+    void drawn;
+    const root = layer;
+    if (!root) return;
+
+    for (const element of marked) element.classList.remove("active", "runlit");
+    marked = [];
+
+    const light = (group: Element) => {
+      group.classList.add("active");
+      marked.push(group);
+      const run = group.getAttribute("data-run");
+      if (!run) return;
+      for (const other of root.querySelectorAll(`g.edge[data-run="${run}"] path.trunk`)) {
+        other.classList.add("runlit");
+        marked.push(other);
+      }
+    };
+
+    if (edgeId !== null) {
+      const group = root.querySelector(`g.edge[data-id="${quoted(edgeId)}"]`);
+      if (group) light(group);
+      return;
+    }
+    if (nodeId !== null) {
+      for (const group of root.querySelectorAll(
+        `g.edge[data-from="${quoted(nodeId)}"], g.edge[data-to="${quoted(nodeId)}"]`,
+      )) {
+        light(group);
+      }
+    }
+  });
 
   function follow(edge: EdgeView, at: { x: number; y: number }, forward: boolean): void {
+    // Chosen rather than pointed at, which is what hushes the rest of the
+    // drawing: the reader has said which one thing they are reading.
+    hovering = false;
     ui.activeEdge = edge.id;
     onfollow?.({ edge, nodeId: forward ? edge.to : edge.from, x: at.x, y: at.y });
   }
@@ -178,6 +258,7 @@
       clearTimeout(going);
       going = undefined;
     }
+    hovering = true;
     ui.activeEdge = edge.id;
     const was = pointed;
     if (
@@ -200,13 +281,14 @@
    * arrow on the page. The gap between leaving one and entering the next is a
    * few milliseconds; the gap before a reader has actually looked away is not.
    */
-  const LINGER = 90;
+  const LINGER = 220;
   let going: ReturnType<typeof setTimeout> | undefined;
 
   function leave(): void {
     if (going !== undefined) clearTimeout(going);
     going = setTimeout(() => {
       going = undefined;
+      hovering = false;
       ui.activeEdge = null;
       pointed = null;
     }, LINGER);
@@ -218,46 +300,23 @@
 </script>
 
 <!--
-  Whether anything is being attended to is said once, on the layer.
+  Whether anything is being attended to is said once, and acted on once.
 
-  It used to be said on each arrow — a `dim` class computed per edge and
-  rewritten whenever the reader's attention moved. On a change of this size that
-  is a couple of thousand attribute updates for one crossing of one line, twice
-  for every line crossed on the way to it, and what it looks like is the drawing
-  flickering under the hand. The state is the same state; the browser is told it
-  once and works out which arrows it applies to, which is what a stylesheet is
-  for.
+  This has been wrong twice. First it was a `dim` class computed per arrow and
+  rewritten whenever attention moved — a couple of thousand attribute updates
+  for one crossing of one line. Then it was one class on the layer, which the
+  browser still had to resolve against every arrow under it, and every one of
+  those arrows had a transition on `opacity`: two thousand paths animating at
+  once, twice for each hit area a pointer crosses on the way to the one it
+  wants. Both of them look the same to a reader — the drawing flickering under
+  the hand — and neither is about the class.
+
+  So the fading is done to the group rather than to its members. Everything not
+  being followed sits in one element whose opacity is set; the followed arrow is
+  outside it, because a child cannot be brighter than the group it is in. Two
+  elements change, whatever the size of the change.
 -->
-<svg
-  id="edges"
-  class="edges"
-  class:quiet
-  width={size?.width ?? model.current.width}
-  height={size?.height ?? model.current.height}
->
-  <!-- Sized in canvas units rather than in stroke widths: the stem is cut short
-       by exactly the head's length, and a head that grew with the stroke — the
-       wire thickens while it is followed — would leave that cut in the wrong
-       place, with the line poking out past the triangle. -->
-  <defs>
-    {#each ["added", "removed", "unchanged"] as change (change)}
-      <marker
-        id="arrow-{change}"
-        viewBox="0 0 10 10"
-        refX="10"
-        refY="5"
-        markerUnits="userSpaceOnUse"
-        markerWidth={HEAD}
-        markerHeight={HEAD}
-        orient="auto-start-reverse"
-      >
-        <path d="M 0 0 L 10 5 L 0 10 z" class="head-{change}" />
-      </marker>
-    {/each}
-  </defs>
-
-  {#each drawn as arrow (arrow.edge.id)}
-    {@const active = lit(arrow.edge)}
+{#snippet oneArrow(arrow: Arrow)}
     <!-- `data-run` says which gathered run this arrow travels with, for anything
          that has to find a whole run in the document. It is not what lights the
          road — that is derived, below — but a run is otherwise invisible from
@@ -265,8 +324,9 @@
     <g
       class="edge {arrow.edge.change} {arrow.edge.kind}"
       class:schema={arrow.schema}
-      class:active
       data-id={arrow.edge.id}
+      data-from={arrow.edge.from}
+      data-to={arrow.edge.to}
       data-run={arrow.run}
     >
       <!-- A wide invisible stroke along the whole curve. A 1.8px line is not
@@ -310,11 +370,7 @@
           if (event.key === "Enter" || event.key === " ") follow(arrow.edge, arrow.wire.to, true);
         }}
       />
-      <path
-        class="trunk"
-        class:lit={arrow.run !== null && litRuns.has(arrow.run)}
-        d={arrow.trunk}
-      />
+      <path class="trunk" d={arrow.trunk} />
       <path class="head" d={arrow.head} marker-end="url(#arrow-{arrow.edge.change})" />
       <!-- The dot where the arrow leaves takes you to where it lands; its
            opposite number, over in the port layer, brings you back. Following a
@@ -338,6 +394,64 @@
         <title>Go to the definition this points at</title>
       </circle>
     </g>
+{/snippet}
+
+<svg
+  id="edges"
+  class="edges"
+  class:quiet
+  bind:this={layer}
+  width={size?.width ?? model.current.width}
+  height={size?.height ?? model.current.height}
+>
+  <!-- Sized in canvas units rather than in stroke widths: the stem is cut short
+       by exactly the head's length, and a head that grew with the stroke — the
+       wire thickens while it is followed — would leave that cut in the wrong
+       place, with the line poking out past the triangle. -->
+  <defs>
+    {#each ["added", "removed", "unchanged"] as change (change)}
+      <marker
+        id="arrow-{change}"
+        viewBox="0 0 10 10"
+        refX="10"
+        refY="5"
+        markerUnits="userSpaceOnUse"
+        markerWidth={HEAD}
+        markerHeight={HEAD}
+        orient="auto-start-reverse"
+      >
+        <path d="M 0 0 L 10 5 L 0 10 z" class="head-{change}" />
+      </marker>
+    {/each}
+  </defs>
+
+  <!--
+    The lanes several roads share, laid down before any of them.
+    Wide and grey and behind everything: it is the road rather than a journey
+    along it, so it must never be mistaken for an arrow — no colour, no head,
+    nothing to press. Its width says how many go this way, up to a point past
+    which one more makes no difference to a reader.
+  -->
+  {#each shared as lane (`${lane.axis}:${lane.at}:${lane.from}`)}
+    <path
+      class="highway"
+      style="stroke-width:{3 + Math.min(lane.users, 10) * 0.55}"
+      d={lane.axis === "vertical"
+        ? `M ${lane.at} ${lane.from} L ${lane.at} ${lane.to}`
+        : `M ${lane.from} ${lane.at} L ${lane.to} ${lane.at}`}
+    />
+  {/each}
+
+  <!--
+    Every arrow, once, in one list that does not change when attention moves.
+
+    Splitting them into "followed" and "the rest" reads better and measured
+    three times worse: the lists are rebuilt on every hover, and rebuilding a
+    keyed list of six hundred makes the compiler walk all six hundred. Which of
+    them is lit is a class, and the browser is better at that than this is.
+  -->
+  {#each drawn as arrow (arrow.edge.id)}
+    {@render oneArrow(arrow)}
   {/each}
 </svg>
 
@@ -367,11 +481,26 @@
     pointer-events: none;
   }
 
+  /* No transition on `opacity` here. Fading is the group's job now, and two
+     thousand paths each animating their own opacity is precisely the flicker
+     this drawing had. Width still animates: it is only ever the one arrow
+     being followed. */
   path.wire {
     fill: none;
     stroke-width: 1.8;
     opacity: 0.85;
-    transition: opacity 160ms ease, stroke-width 160ms ease;
+    transition: stroke-width 160ms ease;
+  }
+
+  /* The shared lane itself. Grey because it belongs to no arrow in particular,
+     rounded at the ends so it reads as a stretch of road rather than a bar, and
+     faint enough that the lines running along it are still the thing being
+     read. */
+  path.highway {
+    fill: none;
+    stroke: color-mix(in srgb, var(--text) 26%, transparent);
+    stroke-linecap: round;
+    pointer-events: none;
   }
 
   /* Carries the head and nothing else: the stem already stopped where it starts. */
@@ -402,7 +531,7 @@
     fill: none;
     stroke-width: 1.8;
     opacity: 0.85;
-    transition: opacity 160ms ease, stroke-width 160ms ease;
+    transition: stroke-width 160ms ease;
   }
 
   g.edge.added path.wire,
@@ -419,9 +548,11 @@
   g.edge.import path.wire,
   g.edge.import path.trunk { stroke-dasharray: 4 4; opacity: 0.5; }
 
-  /* Everything that is not the one being followed, while one is. Written from
-     the layer rather than from each arrow, so that attention moving is one
-     change to the document instead of one per arrow on the drawing. */
+  /* Everything that is not the one being followed, while one is. Said on the
+     layer rather than on each arrow, and without a transition: six hundred
+     paths fading in and out every time a pointer crosses a hit area is the
+     flicker, and the fade is what makes it one. A state change that happens at
+     once reads as the drawing answering. */
   .edges.quiet g.edge:not(.active) path.wire,
   .edges.quiet g.edge:not(.active) path.trunk { opacity: 0.12; }
   g.edge.active path.wire,
@@ -431,9 +562,9 @@
      whichever of them is being followed — even while that arrow's own group is
      the dimmed one. This has to outrank the dim rule above it, which is why it
      comes last rather than sitting with the other trunk rules. */
-  path.trunk.lit,
-  g.edge.schema path.trunk.lit,
-  .edges.quiet g.edge:not(.active) path.trunk.lit { opacity: 1; stroke-width: 3; }
+  path.trunk.runlit,
+  g.edge.schema path.trunk.runlit,
+  .edges.quiet g.edge:not(.active) path.trunk.runlit { opacity: 1; stroke-width: 3; }
 
   /* The dot at the tail. Filled with the page's background rather than left
      hollow, so the wire behind it does not show through the ring. */
@@ -460,6 +591,8 @@
   /* A dimmed edge keeps its dot out of the way with it — including out of the
      way of the pointer, so a faded arrow cannot be pressed by accident while
      the reader is following a different one. */
+  /* A faded arrow's dot goes with it, pointer and all: a line the reader is not
+     following should not be pressable by accident. */
   .edges.quiet g.edge:not(.active) .port { opacity: 0.1; pointer-events: none; }
 
   @media (prefers-reduced-motion: reduce) {

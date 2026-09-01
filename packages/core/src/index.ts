@@ -20,6 +20,7 @@ export * from "./git/review.js";
 export * from "./layout/display.js";
 export * from "./layout/metrics.js";
 export * from "./layout/layout.js";
+export * from "./layout/highways.js";
 export * from "./layout/roads.js";
 export * from "./layout/theme.js";
 export * from "./resolve/types.js";

@@ -15,6 +15,7 @@
  * recomputed when the camera moves.
  */
 
+import { highways, type Highway } from "@odin/core/layout/highways.js";
 import {
   roadAround,
   roadEnd,
@@ -581,8 +582,87 @@ export function arrows(scene: Scene): Arrow[] {
   }
 
   for (const [key, run] of runs) gather(key, run, walls, boxOf);
+  join(drawn);
   bridge(drawn);
   return drawn;
+}
+
+/**
+ * The roads that travel together, put on one lane.
+ *
+ * Twenty files calling one module drew twenty roads down twenty lanes a few
+ * pixels apart: twenty lines for the reader to tell from their neighbours, none
+ * of them saying anything the one beside it does not. A road network does not
+ * look like that — everything going that way joins the highway, travels
+ * together, and comes off at its own exit.
+ *
+ * Only the long middles are moved. Each arrow still leaves its own row and
+ * arrives at its own row, so nothing about which file calls which is lost; what
+ * is lost is nineteen parallel lines.
+ *
+ * The lanes come back for the drawing to lay down underneath the arrows, wide
+ * and grey, which is what says "many of these go this way" without saying it in
+ * words.
+ */
+let lanes: Highway[] = [];
+
+function join(drawn: Arrow[]): void {
+  /*
+   * Only once the roads have been planned around the cards.
+   *
+   * Before that they are the plain way through, and gathering plain roads onto
+   * shared lanes would be arranging a picture that is about to be replaced —
+   * and doing it on every measurement pass of the boot.
+   */
+  if (!detours.on) {
+    lanes = [];
+    return;
+  }
+
+  const travelling = drawn
+    .filter((arrow) => arrow.line.length > 1)
+    .map((arrow) => ({ id: arrow.edge.id, corners: arrow.line }));
+  if (travelling.length < 2) {
+    lanes = [];
+    return;
+  }
+
+  const gathered = highways(travelling);
+  lanes = gathered.highways;
+
+  for (const arrow of drawn) {
+    const moved = gathered.roads.get(arrow.edge.id);
+    if (moved && moved.length > 1) redraw(arrow, moved);
+  }
+}
+
+/** The lanes the last set of arrows ended up sharing. */
+export function sharedRoads(): Highway[] {
+  return lanes;
+}
+
+/**
+ * An arrow's paths, written again from corners that have moved.
+ *
+ * Every one of them is derived from the same list of corners — what is drawn,
+ * what is pressed, where the head sits — so moving the corners without redoing
+ * all four leaves an arrow whose head is where the road used to end.
+ */
+function redraw(arrow: Arrow, corners: Point[]): void {
+  arrow.line = corners;
+  const cut = shortenRoad(corners, HEAD);
+  const last = roadEnd(cut);
+  const end = corners[corners.length - 1]!;
+  const whole = roadPath(corners);
+
+  if (arrow.lineIs === "trunk") {
+    arrow.trunk = roadPath(cut);
+    arrow.road = whole;
+  } else {
+    arrow.stem = roadPath(cut);
+    arrow.hit = whole;
+  }
+  arrow.head = `M ${round(last.x)} ${round(last.y)} L ${round(end.x)} ${round(end.y)}`;
 }
 
 /**

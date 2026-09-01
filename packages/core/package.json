@@ -14,6 +14,10 @@
       "types": "./dist/agents/marks.d.ts",
       "default": "./dist/agents/marks.js"
     },
+    "./layout/highways.js": {
+      "types": "./dist/layout/highways.d.ts",
+      "default": "./dist/layout/highways.js"
+    },
     "./layout/roads.js": {
       "types": "./dist/layout/roads.d.ts",
       "default": "./dist/layout/roads.js"

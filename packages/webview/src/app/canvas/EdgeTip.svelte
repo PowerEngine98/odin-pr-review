@@ -56,24 +56,52 @@
   });
 
   /**
-   * Where the box goes, worked out afresh on every move.
+   * How big the box is, measured when what it says changes and not before.
    *
-   * Below and to the right of the pointer, so it never covers the arrow that
-   * asked for it. Measured rather than assumed, because a wrapped call site
-   * makes the height depend on what it says — and a box placed from a guessed
-   * height runs off the bottom of the window exactly when the reader is near
-   * it, which is where arrows to the foot of a column are pointed at.
+   * This used to be measured on every move, and measuring is not free: asking
+   * an element for its rectangle makes the browser lay the page out there and
+   * then, and the page under this one holds two hundred cards and six hundred
+   * arrows. At sixty moves a second that is a full layout sixty times a second
+   * for a box whose size has not changed — the reason following a line made the
+   * drawing stutter under the hand.
+   *
+   * The size only depends on the words, so it is taken when the words change.
+   */
+  let size = $state({ width: 260, height: 64 });
+
+  /*
+   * Watched rather than asked.
+   *
+   * Asking an element for its rectangle makes the browser lay the page out then
+   * and there, and the page under this one holds two hundred cards and six
+   * hundred arrows: measured, one such question costs a fifth of a second, and
+   * following a line across the drawing asks one per arrow crossed. That is the
+   * stutter, and it is not fixed by asking less often — an observer is told the
+   * answer by the layout the browser was going to do anyway.
    */
   $effect(() => {
     const element = box;
-    const point = at;
-    // The text is read for its effect on the box's size: a longer label wraps
-    // to another line, and the flip below is decided on the height that line
-    // added.
-    void edge;
-    if (!element || !point) return;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const watching = new ResizeObserver((seen) => {
+      const rect = seen[0]?.contentRect;
+      if (rect && rect.width > 0) size = { width: rect.width, height: rect.height };
+    });
+    watching.observe(element);
+    return () => watching.disconnect();
+  });
 
-    const size = element.getBoundingClientRect();
+  /**
+   * Where the box goes.
+   *
+   * Below and to the right of the pointer, so it never covers the arrow that
+   * asked for it — and flipped above when it would otherwise run off the foot
+   * of the window, which is exactly where arrows to the bottom of a column are
+   * pointed at.
+   */
+  $effect(() => {
+    const point = at;
+    if (!point) return;
+
     const x = Math.min(point.x + 14, window.innerWidth - size.width - 12);
     let y = point.y + 18;
     if (y + size.height > window.innerHeight - 12) {
