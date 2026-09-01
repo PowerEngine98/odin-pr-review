@@ -39,6 +39,14 @@
      * left alone, so the log opens by itself when there is room again.
      */
     cramped?: boolean;
+    /**
+     * The tallest this one may be, which is the column's share rather than its
+     * own preference.
+     *
+     * Without it the first log takes the height it wants and the ones under it
+     * take what is left, which on a short window is nothing at all.
+     */
+    cap?: number;
   } = $props();
 
   const mark = markOf(id);
@@ -634,7 +642,10 @@
   class="terminal"
   class:sizing={dragging !== null}
   class:folded
-  style="width:{settings.terminalWidth ?? 360}px;max-height:{settings.terminalHeight ?? 320}px"
+  style="width:{settings.terminalWidth ?? 360}px;max-height:{Math.min(
+    settings.terminalHeight ?? 320,
+    cap ?? Number.POSITIVE_INFINITY,
+  )}px"
 >
   <!--
     The two edges that face the drawing. The other two are against the window
@@ -1283,6 +1294,12 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    /* Never squeezed below what the column allowed it. The dock is a flex
+       column, so without this a console with a long log takes the height it
+       wants and the one under it is shrunk to a strip — which is what the
+       reader saw: a second agent present, unreadable, and easy to mistake for
+       a rendering fault. */
+    flex: 0 0 auto;
     /* Both are set on the element from the reader's own answer; these are what
        a page rendered with no browser to drag in gets. */
     width: 360px;

@@ -79,6 +79,23 @@ describe("reading what opencode prints", () => {
     expect(said?.show).toContain("/src/components/TagCard.tsx");
   });
 
+  it("keeps what a search found on the search's own line", () => {
+    /*
+     * `0 matches` on a line of its own says nothing: the reader has to look up
+     * to find out what found nothing, and it is the half of a search that
+     * matters.
+     */
+    const said = readOpencode(
+      `${E}[0m${E}[0mGrep "component.tag"${E}[90m 100 matches${E}[0m`,
+    );
+    expect(said?.show).toBe("→ Grep(component.tag) · 100 matches");
+  });
+
+  it("drops the tool's own bullet, which the arrow already says", () => {
+    const said = readOpencode(`${E}[0m→ ${E}[0mRead /src/components/TagChip.tsx`);
+    expect(said?.show).toBe("→ Read(/src/components/TagChip.tsx)");
+  });
+
   it("shortens an argument that would take the whole line", () => {
     const long = `/very/long/path/${"section/".repeat(20)}file.tsx`;
     const said = readOpencode(`${E}[0mRead ${long}${E}[0m`);

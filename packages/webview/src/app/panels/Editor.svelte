@@ -58,8 +58,16 @@
 
 <script lang="ts">
   import { tick } from "svelte";
-  import { notify, host } from "../state.svelte.js";
+  import { model, notify, host } from "../state.svelte.js";
   import { showPicture } from "../hud/picture.svelte.js";
+  import { markOf } from "@odin/core/agents/marks.js";
+  import {
+    matching,
+    splitMentions,
+    typingMention,
+    withMention,
+    type Named,
+  } from "../mentions.js";
   import { pictured } from "../pictured.svelte.js";
   import Diagram from "./Diagram.svelte";
 
@@ -218,7 +226,9 @@
   }
 </script>
 
-{#snippet inline(parts: Inline[])}{#each parts as part}{#if part.kind === "code"}<code>{part.text}</code>{:else if part.kind === "strong"}<strong>{part.text}</strong>{:else if part.kind === "em"}<em>{part.text}</em>{:else if part.kind === "del"}<del>{part.text}</del>{:else if part.kind === "image"}{#if pictured(part.src)}<button class="pictured-open" type="button" title="{part.src} — press to see it full size" onclick={() => showPicture(pictured(part.src)!, part.alt || part.src)}><img class="pictured" src={pictured(part.src)} alt={part.alt} /></button>{:else}<span class="pictured-waiting" title={part.src}>{part.alt || "picture"}</span>{/if}{:else}{part.text}{/if}{/each}{/snippet}
+{#snippet said(text: string)}{#each splitMentions(text, agents) as piece}{#if piece.who}<span class="mention" style="--who:{markOf(piece.who.id).color}">{piece.text}</span>{:else}{piece.text}{/if}{/each}{/snippet}
+
+{#snippet inline(parts: Inline[])}{#each parts as part}{#if part.kind === "code"}<code>{part.text}</code>{:else if part.kind === "strong"}<strong>{part.text}</strong>{:else if part.kind === "em"}<em>{part.text}</em>{:else if part.kind === "del"}<del>{part.text}</del>{:else if part.kind === "image"}{#if pictured(part.src)}<button class="pictured-open" type="button" title="{part.src} — press to see it full size" onclick={() => showPicture(pictured(part.src)!, part.alt || part.src)}><img class="pictured" src={pictured(part.src)} alt={part.alt} /></button>{:else}<span class="pictured-waiting" title={part.src}>{part.alt || "picture"}</span>{/if}{:else}{@render said(part.text)}{/if}{/each}{/snippet}
 
 {#snippet code(id: number, plain: string)}{#if painted[id]}{#each painted[id] as line, at}{#if at > 0}{"\n"}{/if}{#each line as token}<span style="color:{safeColour(token.color)}">{token.text}</span>{/each}{/each}{:else}{plain}{/if}{/snippet}
 
@@ -318,14 +328,76 @@
     <!-- Hidden rather than removed: a reader who looks at the preview and comes
          back is in the middle of a sentence, and a field that was thrown away
          and rebuilt loses their cursor along with their scroll. -->
-    <textarea
-      class="editor-body"
-      bind:this={field}
-      bind:value
-      {rows}
-      {placeholder}
-      hidden={tab !== "write"}
-    ></textarea>
+    <!--
+      The field, and the names it can offer.
+
+      The menu is a sibling rather than a child: a textarea holds text and
+      nothing else, so anything drawn "inside" one is drawn over it, and it is
+      placed against the box rather than against the caret because a textarea
+      will not say where its caret is on screen without a second hidden copy of
+      itself to measure.
+    -->
+    <div class="editor-field">
+      <textarea
+        class="editor-body"
+        bind:this={field}
+        bind:value
+        {rows}
+        {placeholder}
+        hidden={tab !== "write"}
+        oninput={look}
+        onclick={look}
+        onkeyup={(event) => {
+          // Arrows and Home move the caret without changing the text, which is
+          // half of what decides whether a name is being typed.
+          if (event.key.startsWith("Arrow") || event.key === "Home" || event.key === "End") look();
+        }}
+        onkeydown={(event) => {
+          if (menuKeys(event)) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+        onblur={() => {
+          // A beat, so that pressing a name in the menu is not a blur that
+          // closes the menu before the press lands.
+          setTimeout(() => (typing = null), 120);
+        }}
+      ></textarea>
+
+      {#if typing && choices.length > 0 && tab === "write"}
+        <ul class="mentions" role="listbox" aria-label="Agents">
+          {#each choices as who, at (who.id)}
+            {@const mark = markOf(who.id)}
+            <li>
+              <button
+                type="button"
+                class="mention-choice"
+                class:on={at === chosen}
+                role="option"
+                aria-selected={at === chosen}
+                onmousedown={(event) => {
+                  // Before the blur, or the menu is gone by the time the click
+                  // would have arrived.
+                  event.preventDefault();
+                  void take(who);
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+                  <rect width="24" height="24" rx="12" fill={mark.color} />
+                  {#if mark.stroke}
+                    <path d={mark.path} fill="none" stroke={mark.ink} stroke-width="2" stroke-linecap="round" />
+                  {:else}
+                    <path d={mark.path} fill={mark.ink} />
+                  {/if}
+                </svg>
+                <span class="mention-name">{who.name}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
     <div class="editor-preview" hidden={tab === "write"}>
       {#if value.trim()}
         {@render rendered()}
@@ -520,6 +592,71 @@
     border-left: 3px solid color-mix(in srgb, var(--text) 20%, transparent);
     color: var(--muted);
   }
+
+  /*
+   * A name that reaches somebody, in that somebody's colour.
+   *
+   * A remark addressed to an agent used to look exactly like a remark addressed
+   * to nobody, so the only way to find out whether the name had been recognised
+   * was to send it and see who answered. The colour is the same one the agent
+   * wears in its console and on its mark, which is what makes it an answer to
+   * "who is that" rather than decoration.
+   */
+  .mention {
+    color: var(--who, var(--action));
+    background: color-mix(in srgb, var(--who, var(--action)) 16%, transparent);
+    border-radius: 4px;
+    padding: 0 3px;
+    font-weight: 600;
+  }
+
+  .editor-field {
+    position: relative;
+    display: contents;
+  }
+
+  /* Over the field, at its foot, where a menu opened from the bottom of a box
+     goes. Not at the caret: a textarea will not say where its caret is without
+     a second hidden copy of itself to measure, and a menu that is merely near
+     the right place is not worth that. */
+  .mentions {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: var(--z-menu, 45);
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    min-width: 180px;
+    max-height: 190px;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid var(--panel-edge);
+    background: var(--panel);
+    box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
+  }
+
+  .mention-choice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .mention-choice:hover,
+  .mention-choice.on {
+    background: color-mix(in srgb, var(--text) 12%, transparent);
+  }
+
+  .mention-name { font-size: 12px; }
 
   /* A picture in a remark, at a size that is a picture rather than a document.
      Big enough to see what was pasted, small enough that a screenshot does not

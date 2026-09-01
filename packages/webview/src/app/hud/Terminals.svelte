@@ -12,6 +12,7 @@
   import type { AgentView } from "../model.js";
   import { model, settings } from "../state.svelte.js";
   import Terminal from "./Terminal.svelte";
+  import { shareOut } from "./column.js";
 
   const live = $derived(model.current.meta.worktree === true);
 
@@ -65,12 +66,19 @@
    * The first stays open whatever happens. A column of nothing but bars would
    * be a page with no log on it at all, which is not what anybody opened.
    */
-  const fits = $derived.by(() => {
-    if (open.length < 2) return open.length;
-    const spare = room - open.length * BAR;
-    const many = Math.floor(spare / Math.max(1, LEAST - BAR));
-    return Math.min(open.length, Math.max(1, many));
-  });
+  /** The gap this column leaves between one console and the next. */
+  const BETWEEN = 8;
+
+  /**
+   * How the column is divided: how many logs stay open, and how tall each is.
+   *
+   * The arithmetic is its own module, where it can be tested — a component
+   * cannot be, here — and it is two answers rather than one for a reason
+   * written down there.
+   */
+  const column = $derived(
+    shareOut(room, open.length, { least: LEAST, bar: BAR, between: BETWEEN }),
+  );
 
   let dock = $state<HTMLElement | null>(null);
   let room = $state(0);
@@ -163,7 +171,12 @@
     style={room ? `max-height:${room}px` : undefined}
   >
     {#each open as agent, at (agent.id)}
-      <Terminal id={agent.id} name={agent.name} cramped={at >= fits} />
+      <Terminal
+        id={agent.id}
+        name={agent.name}
+        cramped={at >= column.showing}
+        cap={column.each}
+      />
     {/each}
   </div>
 {/if}

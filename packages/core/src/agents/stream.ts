@@ -128,16 +128,39 @@ function short(text: string): string {
 export function readOpencode(line: string): Said | undefined {
   const said: string[] = [];
   for (const piece of pieces(line)) {
-    const tool = piece.match(TOOL);
+    // The tool's own bullet, which says the same thing the arrow below says.
+    const plain = piece.replace(/^[→▸●•\-]\s*/, "").trim();
+    if (!plain) continue;
+
+    const tool = plain.match(TOOL);
     if (tool) {
       const about = (tool[2] ?? "").trim().replace(/^["']|["']$/g, "");
       said.push(about ? `→ ${tool[1]}(${short(about)})` : `→ ${tool[1]}`);
       continue;
     }
-    said.push(piece);
+
+    /*
+     * What the last tool found, kept on the last tool's line.
+     *
+     * `0 matches` on a line of its own says nothing — a reader has to look up
+     * to find out what found nothing — and it is the half of a search that
+     * matters. Claude's stream has no equivalent because its tool results are
+     * not shown at all; here they arrive whether they are wanted or not, so
+     * they are put where they mean something.
+     */
+    const last = said[said.length - 1];
+    if (last?.startsWith("→ ") && RESULT.test(plain)) {
+      said[said.length - 1] = `${last} · ${short(plain)}`;
+      continue;
+    }
+
+    said.push(plain);
   }
   return said.length > 0 ? { show: said.join("\n") } : undefined;
 }
+
+/** What a search or a read says about how it went. */
+const RESULT = /^(\d+\s+match|no matches|failed|error\b|not found)/i;
 
 /**
  * The tools opencode announces, as it spells them.
