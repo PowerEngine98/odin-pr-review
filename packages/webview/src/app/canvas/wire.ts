@@ -709,31 +709,89 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
    * Worked out after every road has been moved, because a road's ramps are
    * where it meets the lanes and the lanes are not settled until then.
    *
-   * What travels each lane is counted on the way past. A lane is the only thing
-   * drawn along the stretch it carries, so a lane drawn grey while everything
-   * on it is an addition says the wrong thing about that stretch — the reader
-   * sees a green stub, a long grey line, and a green head, and has to guess
-   * whether the grey part is the same road.
+   * Two passes, and the second depends on the first. What travels a lane
+   * decides what colour it is drawn in, and what colour it is drawn in decides
+   * which roads may hand it their middle: a road cedes the shared stretch only
+   * when the lane is already its own colour, because two roads of one colour on
+   * one line are indistinguishable anyway and hiding one loses nothing.
+   *
+   * A road of another colour keeps drawing itself the whole way. It has to: a
+   * single deletion travelling a lane full of additions had its middle handed
+   * to a green line and simply stopped — a road that goes into a junction and
+   * never comes out, which is exactly what somebody looking at it reported.
    */
-  const carrying = new Map<Highway, Set<string>>();
+  const carrying = new Map<Highway, Map<string, number>>();
   for (const arrow of drawn) {
-    if (arrow.line.length < 2) {
-      arrow.ramps = "";
-      continue;
-    }
-    const used: Highway[] = [];
-    arrow.ramps = ramping(shortenRoad(arrow.line, HEAD), lanes, used);
-    for (const lane of used) {
-      const kinds = carrying.get(lane) ?? new Set<string>();
-      kinds.add(arrow.edge.change);
+    if (arrow.line.length < 2) continue;
+    for (const lane of travelled(shortenRoad(arrow.line, HEAD), lanes)) {
+      const kinds = carrying.get(lane) ?? new Map<string, number>();
+      kinds.set(arrow.edge.change, (kinds.get(arrow.edge.change) ?? 0) + 1);
       carrying.set(lane, kinds);
     }
   }
 
   for (const lane of lanes) {
-    const kinds = carrying.get(lane);
-    lane.change = kinds && kinds.size === 1 ? [...kinds][0]! : "mixed";
+    lane.change = commonest(carrying.get(lane));
   }
+
+  for (const arrow of drawn) {
+    arrow.ramps =
+      arrow.line.length > 1
+        ? ramping(shortenRoad(arrow.line, HEAD), lanes, arrow.edge.change)
+        : "";
+  }
+}
+
+/** The kind of change most of a lane's traffic is, or nothing for an empty one. */
+function commonest(kinds: Map<string, number> | undefined): string | undefined {
+  if (!kinds || kinds.size === 0) return undefined;
+  let best: string | undefined;
+  let most = 0;
+  // Sorted, so a tie is broken by the name rather than by whichever road
+  // happened to be worked out first.
+  for (const kind of [...kinds.keys()].sort()) {
+    const many = kinds.get(kind)!;
+    if (many > most) {
+      most = many;
+      best = kind;
+    }
+  }
+  return best;
+}
+
+/** Every lane a road runs along, without building anything. */
+function travelled(corners: readonly Point[], lanes: readonly Highway[]): Highway[] {
+  const found: Highway[] = [];
+  for (let at = 1; at < corners.length; at++) {
+    const lane = laneUnder(corners[at - 1]!, corners[at]!, lanes);
+    if (lane && !found.includes(lane)) found.push(lane);
+  }
+  return found;
+}
+
+/** The lane a leg is running along, if it is running along one. */
+function laneUnder(a: Point, b: Point, lanes: readonly Highway[]): Highway | undefined {
+  const upright = a.x === b.x;
+  const at = upright ? a.x : a.y;
+  const from = upright ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+  const to = upright ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+  /*
+   * Long enough that handing it over is worth the handover.
+   *
+   * A road cedes a stretch and draws a ramp at each end of it, so on a short
+   * one the ramps are most of what was ceded and what is left is a stub of
+   * lane between two arrowheads — which is what a reader found in the middle of
+   * one subgraph and could make nothing of.
+   */
+  if (to - from <= RAMP * 6) return undefined;
+
+  return lanes.find(
+    (one) =>
+      (one.axis === "vertical") === upright &&
+      Math.abs(one.at - at) < 1 &&
+      from >= one.from - 1 &&
+      to <= one.to + 1,
+  );
 }
 
 /** How much of a shared stretch a road keeps for itself at either end. */
@@ -750,7 +808,7 @@ const RAMP = 16;
 function ramping(
   corners: readonly Point[],
   lanes: readonly Highway[],
-  used: Highway[],
+  change: string,
 ): string {
   if (lanes.length === 0 || corners.length < 2) return "";
 
@@ -762,17 +820,14 @@ function ramping(
     const a = corners[at - 1]!;
     const b = corners[at]!;
     const upright = a.x === b.x;
-    const along = upright ? { at: a.x, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y) }
-                          : { at: a.y, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x) };
 
-    const lane = lanes.find(
-      (one) =>
-        (one.axis === "vertical") === upright &&
-        Math.abs(one.at - along.at) < 1 &&
-        along.from >= one.from - 1 &&
-        along.to <= one.to + 1 &&
-        along.to - along.from > RAMP * 2.5,
-    );
+    const lane = laneUnder(a, b, lanes);
+    // Only to a lane of its own colour. Anything else stays visible for its
+    // whole length, or it disappears into a junction it never comes out of.
+    if (lane && lane.change !== change) {
+      run.push(b);
+      continue;
+    }
 
     if (!lane) {
       run.push(b);
@@ -792,7 +847,6 @@ function ramping(
     kept.push(run);
     run = [off, b];
     shared = true;
-    if (!used.includes(lane)) used.push(lane);
   }
 
   kept.push(run);

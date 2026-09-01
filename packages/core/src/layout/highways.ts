@@ -74,6 +74,16 @@ export const RUN = 70;
 /** How many roads make a highway. Two lines side by side are just two lines. */
 export const MANY = 3;
 
+/**
+ * The shortest stretch worth calling a shared one.
+ *
+ * A lane is drawn instead of the roads on it, so a short lane is a grey stub
+ * with two arrowheads either side of it and nothing to say what it is. Below
+ * this the roads simply draw themselves: three lines fifty pixels long are
+ * legible as three lines.
+ */
+export const WORTH = 150;
+
 /** One straight run of one road, as an interval along its axis. */
 interface Leg {
   road: number;
@@ -363,13 +373,12 @@ function merge(
             b.y = at;
           }
         }
-        found.push({
-          axis,
-          at,
-          from: Math.min(...joining.map((leg) => leg.from)),
-          to: Math.max(...joining.map((leg) => leg.to)),
-          users: joining.length,
-        });
+        const from = Math.min(...joining.map((leg) => leg.from));
+        const to = Math.max(...joining.map((leg) => leg.to));
+        // A lane is drawn instead of the roads on it, so one too short to be
+        // worth that is a grey stub between two arrowheads with nothing to say
+        // what it is. Below this the roads simply draw themselves.
+        if (to - from >= WORTH) found.push({ axis, at, from, to, users: joining.length });
       }
     }
     together = [];
