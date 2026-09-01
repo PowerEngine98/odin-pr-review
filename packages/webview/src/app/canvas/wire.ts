@@ -377,7 +377,21 @@ function planned(
  * facts and stay two arrows.
  */
 export function runKey(edge: EdgeView): string {
-  return [edge.from, edge.to, edge.toLine, edge.toSide, edge.change, edge.kind].join("|");
+  /*
+   * Where it lands, not where it left.
+   *
+   * The source used to be part of this, so two files calling the same line of
+   * the same file drew two roads the whole way and arrived a pixel apart — the
+   * same fact said twice, at twice the ink. What makes several references one
+   * road is that they end in the same place; where they start is what the slip
+   * roads are for.
+   *
+   * Which of them actually travel together is decided afterwards, by how near
+   * they are: two files at opposite ends of the drawing land on the same row
+   * without going anywhere near each other, and joining those would draw a road
+   * across everything between them.
+   */
+  return [edge.to, edge.toLine, edge.toSide, edge.change, edge.kind].join("|");
 }
 
 /** An arrow with everything the layers need to draw it. */
@@ -754,7 +768,9 @@ function routeAll(scene: Scene): Arrow[] {
     else runs.set(key, [arrow]);
   }
 
-  for (const [key, run] of runs) gather(key, run, walls, boxOf);
+  for (const [key, run] of runs) {
+    for (const near of together(run)) gather(key, near, walls, boxOf);
+  }
   join(drawn, walls);
   bridge(drawn);
 
@@ -1270,6 +1286,47 @@ function sweep(roads: readonly { arrow: Arrow; corners: Point[] }[]): void {
 }
 
 /**
+ * How far apart two arrows may start and still travel together.
+ *
+ * About a screen at reading distance. Beyond it the slip road that joins them
+ * is longer than the road they share, which is a detour drawn to save ink and
+ * saves none.
+ */
+const NEAR = 900;
+
+/**
+ * The arrows heading for one place, split into the groups that are near enough
+ * to be worth joining.
+ *
+ * Sorted down the drawing and cut wherever the next one is too far below the
+ * last, so a crowd in one column becomes one road and a straggler two screens
+ * away keeps its own. Arrows leaving in opposite directions are never joined:
+ * they meet the card on different sides and share nothing at all.
+ */
+function together(run: Arrow[]): Arrow[][] {
+  if (run.length < 2) return [run];
+
+  const groups: Arrow[][] = [];
+  for (const side of [true, false]) {
+    const facing = run
+      .filter((arrow) => arrow.wire.goesRight === side)
+      .sort((one, two) => one.wire.start.y - two.wire.start.y);
+
+    let group: Arrow[] = [];
+    for (const arrow of facing) {
+      const last = group[group.length - 1];
+      if (last && arrow.wire.start.y - last.wire.start.y > NEAR) {
+        groups.push(group);
+        group = [];
+      }
+      group.push(arrow);
+    }
+    if (group.length > 0) groups.push(group);
+  }
+  return groups;
+}
+
+/**
  * Several references to one place, drawn as one road.
  *
  * A file that reads the same table on ten lines drew ten curves along the same
@@ -1292,7 +1349,22 @@ function gather(
   const first = run[0]!.wire;
   const reach = Math.abs(first.to.x - first.from.x);
   const away = first.goesRight ? 1 : -1;
-  const joinX = first.from.x + away * Math.max(46, Math.min(160, reach * 0.16));
+  /*
+   * Clear of every card the run leaves, not merely of the first of them.
+   *
+   * The arrows in a run can now come from different files, so the junction has
+   * to sit beyond the furthest of their edges — put at the first one's, it
+   * would fall inside a neighbour and the slip road from that neighbour would
+   * set off backwards through its own card.
+   */
+  const edge = run.reduce(
+    (far, arrow) =>
+      first.goesRight
+        ? Math.max(far, arrow.wire.from.x)
+        : Math.min(far, arrow.wire.from.x),
+    first.from.x,
+  );
+  const joinX = edge + away * Math.max(46, Math.min(160, reach * 0.16));
   const joinY = run.reduce((sum, r) => sum + r.wire.from.y, 0) / run.length;
 
   for (const arrow of run) {

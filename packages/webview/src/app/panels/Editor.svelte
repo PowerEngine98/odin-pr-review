@@ -93,6 +93,71 @@
   let field = $state<HTMLTextAreaElement | null>(null);
 
   /**
+   * The agents this page can name, in the order the host found them.
+   *
+   * Whatever is installed: naming one that is switched off still routes — the
+   * host starts it — so a menu that hid it would be hiding a working answer.
+   */
+  const agents = $derived<Named[]>(
+    (model.current.agents ?? []).map((agent) => ({ id: agent.id, name: agent.name })),
+  );
+
+  /**
+   * The name being typed, and what it could be.
+   *
+   * Held rather than derived from the field, because it is about the caret as
+   * well as the text: the same remark with the caret somewhere else is a
+   * different question.
+   */
+  let typing = $state<{ from: number; to: number; query: string } | null>(null);
+  const choices = $derived(typing ? matching(typing.query, agents) : []);
+  let chosen = $state(0);
+
+  function look(): void {
+    const box = field;
+    if (!box) return;
+    const found = typingMention(box.value, box.selectionStart ?? box.value.length);
+    typing = found ?? null;
+    chosen = 0;
+  }
+
+  async function take(who: Named): Promise<void> {
+    const box = field;
+    if (!box || !typing) return;
+    const done = withMention(box.value, typing, who);
+    typing = null;
+    await place(done.text, done.caret, done.caret);
+  }
+
+  /**
+   * The four keys the menu owns while it is open, and only while it is open.
+   *
+   * Everything else belongs to the field: a box that swallowed Enter with
+   * nothing to choose would be a comment nobody can finish writing.
+   */
+  function menuKeys(event: KeyboardEvent): boolean {
+    if (!typing || choices.length === 0) return false;
+    if (event.key === "ArrowDown") {
+      chosen = (chosen + 1) % choices.length;
+      return true;
+    }
+    if (event.key === "ArrowUp") {
+      chosen = (chosen - 1 + choices.length) % choices.length;
+      return true;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      void take(choices[chosen] ?? choices[0]!);
+      return true;
+    }
+    if (event.key === "Escape") {
+      typing = null;
+      return true;
+    }
+    return false;
+  }
+
+
+  /**
    * Only parsed where it is shown.
    *
    * `$derived` is not computed until something reads it, and while the reader is
