@@ -62,6 +62,9 @@ export const HOME_GAP = 11;
  * background between the two. This tucks the end under the ring instead.
  */
 export const PORT_RIM = 4.5;
+
+/** How near an arrow may leave or land to the top or bottom of its own card. */
+const EDGE = 6;
 /**
  * Where an arrow about a whole file meets the card.
  *
@@ -206,9 +209,19 @@ export function route(
 
   const arrive = { x: toX, y: to.y };
   const arrivesRight = into > 0;
-  const points = detours.on
-    ? planned(start, arrive, arrivesRight, walls, from.box, to.box)
-    : roadPoints(start, arrive, arrivesRight);
+  /*
+   * A copy, because the plan is shared and what happens to a road afterwards is
+   * not. The same pair of ends is planned once and handed to every arrow that
+   * joins them — and a road is then moved onto a lane, fanned across it, and
+   * shortened for its head, all by writing to its corners. Handing out the one
+   * array meant one arrow's move was every arrow's move, and an arrow drawn by
+   * another layer entirely could shift this one.
+   */
+  const points = (
+    detours.on
+      ? planned(start, arrive, arrivesRight, walls, from.box, to.box)
+      : roadPoints(start, arrive, arrivesRight)
+  ).map((point) => ({ x: point.x, y: point.y }));
   const cut = shortenRoad(points, HEAD);
   const last = roadEnd(cut);
 
@@ -649,7 +662,25 @@ function routeAll(scene: Scene): Arrow[] {
     const box = boxOf(id);
     if (!box) return null;
     const measured = lineAt?.(id, side, line, fileLevel);
-    if (measured != null) return { box, y: box.y + measured };
+    if (measured != null) {
+      /*
+       * Held inside the card it belongs to.
+       *
+       * A card measures where its own rows are, and on a drawing of two hundred
+       * files forty-one of those answers put an arrow above the card that gave
+       * them — the worst of them two thousand seven hundred pixels above it —
+       * and eight below. What that draws is a road starting in open space with
+       * a dot floating beside it, which is one of the things being reported as
+       * a line that does not render.
+       *
+       * Why a card sometimes answers with a position outside itself is a
+       * separate question and not answered here. This is the thing that is true
+       * whatever the answer turns out to be: an arrow leaves the card it
+       * belongs to, so it is held there.
+       */
+      const inside = Math.min(Math.max(measured, EDGE), Math.max(EDGE, box.height - EDGE));
+      return { box, y: box.y + inside };
+    }
     // Nothing has measured the rows yet — the first paint, or a card asleep.
     // The middle of the card is the one position that is never wrong about
     // which card the arrow belongs to, which is what the reader reads first.
@@ -865,6 +896,29 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
    */
   spread(drawn, lanes);
 
+  /*
+   * And the dot is put back on the end of the line it belongs to.
+   *
+   * The dot marking where an arrow leaves is worked out with the road, from the
+   * same anchor, so the two cannot disagree — and on a drawing of two hundred
+   * files a hundred and twenty-nine of them did, the worst by two thousand
+   * eight hundred pixels: a dot sitting on a card with its road starting
+   * somewhere else entirely. That is one of the things being reported as a line
+   * that does not render.
+   *
+   * Read from the road rather than remembered beside it. Whatever moved the
+   * road — a lane, the fan across one, a hop over another — the dot goes with
+   * it, because a dot that marks where a road starts is the only kind worth
+   * drawing.
+   */
+  for (const arrow of drawn) {
+    if (arrow.lineIs !== "stem" || arrow.line.length < 2) continue;
+    const first = arrow.line[0]!;
+    const away = arrow.wire.goesRight ? 1 : -1;
+    arrow.wire.port = { x: first.x - away * PORT_RIM, y: first.y };
+  }
+
+
 }
 
 /** How far apart two roads sharing a lane are drawn. */
@@ -1015,8 +1069,24 @@ function redraw(arrow: Arrow, corners: Point[]): void {
  * that is the whole frame gone for a decoration.
  */
 function roadKey(arrow: Arrow): string {
-  const first = arrow.line[0]!;
-  const last = arrow.line[arrow.line.length - 1]!;
+  return keyOf(arrow.lineIs, arrow.line);
+}
+
+/**
+ * A road, as the key its finished line is kept under.
+ *
+ * Taken from the corners the line was actually drawn from rather than from
+ * whatever the arrow holds now. The sweep runs a frame after the roads are
+ * planned, and in between them a road can be moved — onto a shared lane, or
+ * across one to make room for another — so keying the result by the arrow's
+ * current geometry files a path drawn from where the road was under the name of
+ * where it now is. Applied on the next pass, that is an arrow drawn along its
+ * old course with its dot left behind on the card: a hundred and twenty-nine of
+ * them on this drawing, the worst two thousand eight hundred pixels adrift.
+ */
+function keyOf(lineIs: "stem" | "trunk", line: readonly Point[]): string {
+  const first = line[0]!;
+  const last = line[line.length - 1]!;
   /*
    * The whole road, not only its ends.
    *
@@ -1027,12 +1097,12 @@ function roadKey(arrow: Arrow): string {
    * it, and what that drew was an arrow running along its old course with a
    * wide grey lane beside it carrying nothing.
    */
-  let hash = arrow.line.length;
-  for (const point of arrow.line) {
+  let hash = line.length;
+  for (const point of line) {
     hash = (Math.imul(hash, 31) + Math.round(point.x)) | 0;
     hash = (Math.imul(hash, 31) + Math.round(point.y)) | 0;
   }
-  return `${arrow.lineIs}:${first.x},${first.y},${last.x},${last.y}:${hash}`;
+  return `${lineIs}:${first.x},${first.y},${last.x},${last.y}:${hash}`;
 }
 
 function bridge(drawn: Arrow[]): void {
@@ -1160,18 +1230,21 @@ function sweep(roads: readonly { arrow: Arrow; corners: Point[] }[]): void {
   // A finished sweep is a different set of arrows drawn from the same scene.
   rerouted();
 
+  const captured = new Map(roads.map((one) => [one.arrow, one.corners]));
+
   for (const [arrow, met] of hops) {
     // Only the drawn line hops. What the pointer follows stays the plain road:
     // a hit area with bumps in it is a hit area that misses.
     // The finished line rather than the crossings, so applying it on the next
     // redraw is an assignment rather than the drawing of it again.
-    bridging.set(roadKey(arrow), roadOver(shortenRoad(arrow.line, HEAD), met));
+    const corners = captured.get(arrow) ?? arrow.line;
+    bridging.set(keyOf(arrow.lineIs, corners), roadOver(shortenRoad(corners, HEAD), met));
   }
   // Recorded even when nobody hops, so the sweep is not repeated for this
   // placement just because it found nothing.
   if (hops.size === 0 && roads.length > 0) {
-    const first = roads[0]!.arrow;
-    bridging.set(roadKey(first), first[first.lineIs]);
+    const first = roads[0]!;
+    bridging.set(keyOf(first.arrow.lineIs, first.corners), first.arrow[first.arrow.lineIs]);
   }
 }
 
