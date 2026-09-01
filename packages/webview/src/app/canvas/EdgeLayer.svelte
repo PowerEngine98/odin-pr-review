@@ -349,7 +349,19 @@
           if (event.key === "Enter" || event.key === " ") follow(arrow.edge, arrow.wire.to, true);
         }}
       />
-      <path class="wire" d={arrow.stem} />
+      <!--
+        What is this arrow's own, and what the whole of it is.
+
+        A road that joins a lane draws its ramps and lets the lane draw the
+        stretch they all share; a road that shares nothing has no ramps and
+        draws itself. Following one puts the whole of it back, over the lane —
+        that is the one time the shared stretch belongs to a single arrow, and
+        it is exactly when the reader is trying to see where it goes.
+      -->
+      <path class="wire ramps" class:only={arrow.ramps !== ""} d={arrow.ramps || arrow.stem} />
+      {#if arrow.ramps !== ""}
+        <path class="wire whole" d={arrow.stem} />
+      {/if}
       <!-- The road onwards, when this arrow is the one carrying a gathered run,
            and the wider invisible stroke that makes it pressable. Both empty on
            an arrow that travels alone, which is most of them. -->
@@ -480,6 +492,13 @@
        would swallow every click meant for a card underneath. */
     pointer-events: none;
   }
+
+  /* The whole road is drawn only while it is being followed; the rest of the
+     time the lane has the middle of it and this would be a second copy over
+     the top of forty others. */
+  path.wire.whole { display: none; }
+  g.edge.active path.wire.whole { display: inline; }
+  g.edge.active path.wire.ramps.only { display: none; }
 
   /* No transition on `opacity` here. Fading is the group's job now, and two
      thousand paths each animating their own opacity is precisely the flicker

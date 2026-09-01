@@ -133,6 +133,71 @@ function through(path: string, box: Box): boolean {
 
 const drawnLines = (arrow: Arrow) => [arrow.stem, arrow.trunk].filter(Boolean);
 
+describe("which side of a card a road leaves by", () => {
+  /*
+   * A wide destination whose middle sits to the left of a narrow source, and
+   * whose right-hand edge is far to the right of it. Middles said "go left";
+   * the road then had to travel right, across the card it had just left and
+   * past its own beginning, to reach an edge on the far side of everything.
+   * What that draws is a hook.
+   */
+  const OVERLAPPING: Record<string, Box> = {
+    "n:a": { x: 900, y: 0, width: 200, height: 300 },
+    "n:middle": { x: 4000, y: 4000, width: 10, height: 10 },
+    "n:b": { x: 500, y: 400, width: 1400, height: 300 },
+  };
+
+  function road(boxes: Record<string, Box>) {
+    const [arrow] = arrows({
+      model: change([edge()]),
+      reading: READING,
+      boxes,
+      lineAt: level,
+    });
+    const numbers = (arrow!.stem.match(/-?[\d.]+/g) ?? []).map(Number);
+    return { arrow: arrow!, from: { x: numbers[0]!, y: numbers[1]! } };
+  }
+
+  it("sets off towards the edge it is going to land on", () => {
+    const { arrow, from } = road(OVERLAPPING);
+    const lands = arrow.wire.to.x;
+    const leaves = arrow.wire.from.x;
+    // The first thing it does and the last thing it does agree about direction.
+    expect(Math.sign(lands - leaves)).toBe(Math.sign(from.x - leaves) || Math.sign(lands - leaves));
+  });
+
+  it("lands on the near edge of a card it overlaps", () => {
+    const { arrow } = road(OVERLAPPING);
+    const near = OVERLAPPING["n:b"]!;
+    const leaves = arrow.wire.from.x;
+    const nearest =
+      Math.abs(near.x - leaves) <= Math.abs(near.x + near.width - leaves)
+        ? near.x
+        : near.x + near.width;
+    expect(arrow.wire.to.x).toBe(nearest);
+  });
+
+  it("keeps the dot inside the card it arrives at", () => {
+    // The dot marking where an arrow landed belongs just inside the border it
+    // came through, whichever border that turned out to be.
+    const { arrow } = road(OVERLAPPING);
+    const card = OVERLAPPING["n:b"]!;
+    expect(arrow.wire.home.x).toBeGreaterThan(card.x);
+    expect(arrow.wire.home.x).toBeLessThan(card.x + card.width);
+  });
+
+  it("still leaves by the facing sides when the cards are clear of each other", () => {
+    const apart: Record<string, Box> = {
+      "n:a": { x: 0, y: 0, width: 400, height: 300 },
+      "n:middle": { x: 4000, y: 4000, width: 10, height: 10 },
+      "n:b": { x: 1400, y: 0, width: 400, height: 300 },
+    };
+    const { arrow } = road(apart);
+    expect(arrow.wire.from.x).toBe(400);
+    expect(arrow.wire.to.x).toBe(1400);
+  });
+});
+
 describe("a road on a drawing with a card in the way", () => {
   it("goes around it", () => {
     const [arrow] = arrows({

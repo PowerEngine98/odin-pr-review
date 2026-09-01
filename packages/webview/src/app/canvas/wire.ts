@@ -139,10 +139,58 @@ export function route(
    */
   walls: readonly Blocking[] = [],
 ): Wire {
-  const goesRight = to.box.x + to.box.width / 2 >= from.box.x + from.box.width / 2;
-  const away = goesRight ? 1 : -1;
-  const fromX = goesRight ? from.box.x + from.box.width : from.box.x;
-  const toX = goesRight ? to.box.x : to.box.x + to.box.width;
+  /*
+   * Which side of each card the road uses, chosen by what it costs.
+   *
+   * Middles are the wrong question whenever two cards overlap in x, and on a
+   * drawing of files that is common: a wide card and a narrow one in
+   * neighbouring columns, or a card that grew when its rows were measured. The
+   * middle of a wide destination can sit to the left of a narrow source while
+   * its right-hand edge is far to the right — so the road left by the source's
+   * left side and then travelled right across the card it had just left, past
+   * its own beginning, to reach an edge on the far side of everything. What
+   * that draws is a hook: out, back over itself, and away.
+   *
+   * There are only four ways to join two cards side to side, so all four are
+   * costed and the cheapest wins. The cost is the distance, plus a heavy charge
+   * for setting off in one direction and arriving from the other — that is the
+   * hook, and it is worth a long way round to avoid it.
+   */
+  const options = [
+    { leaves: from.box.x + from.box.width, out: 1, lands: to.box.x, in: 1 },
+    { leaves: from.box.x + from.box.width, out: 1, lands: to.box.x + to.box.width, in: -1 },
+    { leaves: from.box.x, out: -1, lands: to.box.x, in: 1 },
+    { leaves: from.box.x, out: -1, lands: to.box.x + to.box.width, in: -1 },
+  ];
+
+  let best = options[0]!;
+  let cheapest = Infinity;
+  for (const option of options) {
+    const travel = option.lands - option.leaves;
+    // Setting off the wrong way for where it lands: the road has to come back
+    // across the card it just left.
+    const doubling = Math.sign(travel) !== 0 && Math.sign(travel) !== option.out;
+    // And arriving the wrong way round the destination, which puts the head on
+    // the far side of the card it is pointing into.
+    const wrongEnd = Math.sign(travel) !== 0 && Math.sign(travel) !== option.in;
+    const cost = Math.abs(travel) + (doubling ? 100_000 : 0) + (wrongEnd ? 100_000 : 0);
+    if (cost < cheapest) {
+      cheapest = cost;
+      best = option;
+    }
+  }
+
+  const goesRight = best.out > 0;
+  const away = best.out;
+  const fromX = best.leaves;
+  const toX = best.lands;
+  /*
+   * Which way the road is pointing when it arrives, which is not always the way
+   * it set off. Everything about the last few pixels follows the arrival: the
+   * head, the dot just inside the destination, and the channel the road turns
+   * in before it gets there.
+   */
+  const into = best.in;
 
   // Clear of the card, not on its edge: half a dot under the border is a
   // smudge, and this one is meant to be pressed.
@@ -157,9 +205,10 @@ export function route(
   const start = { x: round(port.x + away * PORT_RIM), y: port.y };
 
   const arrive = { x: toX, y: to.y };
+  const arrivesRight = into > 0;
   const points = detours.on
-    ? planned(start, arrive, goesRight, walls, from.box, to.box)
-    : roadPoints(start, arrive, goesRight);
+    ? planned(start, arrive, arrivesRight, walls, from.box, to.box)
+    : roadPoints(start, arrive, arrivesRight);
   const cut = shortenRoad(points, HEAD);
   const last = roadEnd(cut);
 
@@ -169,7 +218,8 @@ export function route(
     from: { x: fromX, y: from.y },
     to: { x: toX, y: to.y },
     port,
-    home: { x: toX + away * HOME_GAP, y: to.y },
+    // Just inside the destination's own edge, whichever edge the road came to.
+    home: { x: toX + into * HOME_GAP, y: to.y },
     start,
     hit: roadPath(points),
     stem: roadPath(cut),
@@ -340,6 +390,23 @@ export interface Arrow {
   line: Point[];
   /** Which of the two paths `line` is drawn into. */
   lineIs: "stem" | "trunk";
+  /**
+   * The same road with the stretches it shares with a lane left off.
+   *
+   * Everything that joins a lane used to go on drawing its own line along it,
+   * so a lane carrying forty roads was forty coloured lines in exactly the same
+   * place: one visible line, thirty-nine hidden under it, and no way to follow
+   * any of them. Measured on a change of two hundred files, eleven thousand
+   * pairs of legs were drawn one on top of another, the worst pair sharing
+   * twenty-three thousand pixels.
+   *
+   * So a road draws what is its own — the ramp on and the ramp off — and the
+   * lane draws the part they all share. Empty for a road that shares nothing,
+   * which is most of them, and ignored while an arrow is being followed: then
+   * the whole of it is drawn, over the lane, because following it is the one
+   * time the shared stretch belongs to one arrow.
+   */
+  ramps: string;
 }
 
 /**
@@ -572,6 +639,7 @@ export function arrows(scene: Scene): Arrow[] {
       road: "",
       line: wire.corners,
       lineIs: "stem",
+      ramps: "",
     };
     drawn.push(arrow);
 
@@ -636,6 +704,74 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
     const moved = gathered.roads.get(arrow.edge.id);
     if (moved && moved.length > 1) redraw(arrow, moved);
   }
+
+  // Worked out after every road has been moved, because a road's ramps are
+  // where it meets the lanes and the lanes are not settled until then.
+  for (const arrow of drawn) {
+    arrow.ramps = arrow.line.length > 1 ? ramping(shortenRoad(arrow.line, HEAD), lanes) : "";
+  }
+}
+
+/** How much of a shared stretch a road keeps for itself at either end. */
+const RAMP = 16;
+
+/**
+ * The road, with the stretches a lane already draws left to the lane.
+ *
+ * What is kept is what is the road's own: everything off the lane, and a short
+ * ramp at each end of every stretch on it, so that a reader can see which lane
+ * an arrow joined and where it came off. What is dropped is the long middle,
+ * which is the lane — drawn once, wide and grey, under all of them.
+ */
+function ramping(corners: readonly Point[], lanes: readonly Highway[]): string {
+  if (lanes.length === 0 || corners.length < 2) return "";
+
+  const kept: Point[][] = [];
+  let run: Point[] = [corners[0]!];
+  let shared = false;
+
+  for (let at = 1; at < corners.length; at++) {
+    const a = corners[at - 1]!;
+    const b = corners[at]!;
+    const upright = a.x === b.x;
+    const along = upright ? { at: a.x, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y) }
+                          : { at: a.y, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x) };
+
+    const lane = lanes.find(
+      (one) =>
+        (one.axis === "vertical") === upright &&
+        Math.abs(one.at - along.at) < 1 &&
+        along.from >= one.from - 1 &&
+        along.to <= one.to + 1 &&
+        along.to - along.from > RAMP * 2.5,
+    );
+
+    if (!lane) {
+      run.push(b);
+      continue;
+    }
+
+    // On a lane: keep the ramp on, break, and start again at the ramp off.
+    const towards = upright ? Math.sign(b.y - a.y) : Math.sign(b.x - a.x);
+    const on = upright
+      ? { x: a.x, y: a.y + towards * RAMP }
+      : { x: a.x + towards * RAMP, y: a.y };
+    const off = upright
+      ? { x: b.x, y: b.y - towards * RAMP }
+      : { x: b.x - towards * RAMP, y: b.y };
+
+    run.push(on);
+    kept.push(run);
+    run = [off, b];
+    shared = true;
+  }
+
+  kept.push(run);
+  if (!shared) return "";
+  return kept
+    .filter((one) => one.length > 1)
+    .map((one) => roadPath(one))
+    .join(" ");
 }
 
 /** The lanes the last set of arrows ended up sharing. */
@@ -652,6 +788,9 @@ export function sharedRoads(): Highway[] {
  */
 function redraw(arrow: Arrow, corners: Point[]): void {
   arrow.line = corners;
+  // Worked out again once the lanes are settled; anything cached from the road
+  // as it was before it moved describes a road that is no longer there.
+  arrow.ramps = "";
   const cut = shortenRoad(corners, HEAD);
   const last = roadEnd(cut);
   const end = corners[corners.length - 1]!;
@@ -688,7 +827,22 @@ function redraw(arrow: Arrow, corners: Point[]): void {
 function roadKey(arrow: Arrow): string {
   const first = arrow.line[0]!;
   const last = arrow.line[arrow.line.length - 1]!;
-  return `${arrow.lineIs}:${first.x},${first.y},${last.x},${last.y}`;
+  /*
+   * The whole road, not only its ends.
+   *
+   * The ends alone looked like enough — nothing moves a road without moving
+   * where it starts or stops — and then the lanes arrived, which move a road's
+   * middle and leave both ends exactly where they were. The key matched, the
+   * hopped line cached before the road was moved was applied to the road after
+   * it, and what that drew was an arrow running along its old course with a
+   * wide grey lane beside it carrying nothing.
+   */
+  let hash = arrow.line.length;
+  for (const point of arrow.line) {
+    hash = (Math.imul(hash, 31) + Math.round(point.x)) | 0;
+    hash = (Math.imul(hash, 31) + Math.round(point.y)) | 0;
+  }
+  return `${arrow.lineIs}:${first.x},${first.y},${last.x},${last.y}:${hash}`;
 }
 
 function bridge(drawn: Arrow[]): void {
