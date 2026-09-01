@@ -155,7 +155,10 @@ export function route(
    */
   const start = { x: round(port.x + away * PORT_RIM), y: port.y };
 
-  const points = planned(start, { x: toX, y: to.y }, goesRight, walls, from.box, to.box);
+  const arrive = { x: toX, y: to.y };
+  const points = detours.on
+    ? planned(start, arrive, goesRight, walls, from.box, to.box)
+    : roadPoints(start, arrive, goesRight);
   const cut = shortenRoad(points, HEAD);
   const last = roadEnd(cut);
 
@@ -210,6 +213,63 @@ const bridging = new Map<string, string>();
 export const secondPass: { run: ((go: () => void) => void) | null } = { run: null };
 let plannedFor = "";
 
+/**
+ * Whether roads are planned around the cards yet.
+ *
+ * They are worth planning once, and during the first build the cards move on
+ * every pass: each measured card changes the map, which throws away every road
+ * planned against the old one. Measured on a change of two hundred files, that
+ * was two and a half seconds of the boot spent planning roads around
+ * arrangements nobody ever saw — the drawing was covered the whole time.
+ *
+ * So the page starts with plain roads and turns this on when the cards have
+ * stopped moving. Everywhere else — the written document, the standalone
+ * drawing, the tests — there is no settling and no cover, the cards are where
+ * they are from the first line, and roads are planned from the start.
+ */
+export const detours = {
+  on: true,
+  set(on: boolean): void {
+    if (detours.on === on) return;
+    detours.on = on;
+    // Both memos are about the old answer, and the question has changed.
+    planning.clear();
+    bridging.clear();
+    plannedFor = "";
+  },
+};
+
+/**
+ * Every card's place in one number, so a move throws the plans away.
+ *
+ * It used to be the count and the first and last card, which is cheap and
+ * wrong: a column re-flowing in the middle of the drawing leaves both ends
+ * where they were, and the roads planned around where those cards used to be
+ * stayed on the drawing. Every card is folded in instead.
+ *
+ * Answered once per set rather than once per road. The set is built fresh each
+ * time the arrows are worked out, so its identity is the question "is this the
+ * same pass", and hundreds of roads asking within one pass ask it once.
+ */
+let counted: readonly Blocking[] | null = null;
+let count = "";
+
+function shapeOf(walls: readonly Blocking[]): string {
+  if (walls === counted) return count;
+  let hash = walls.length;
+  for (const wall of walls) {
+    // Rounded, because a measured card is a fraction of a pixel different on
+    // every pass and a road does not care about a third of a pixel.
+    hash = (Math.imul(hash, 31) + Math.round(wall.x)) | 0;
+    hash = (Math.imul(hash, 31) + Math.round(wall.y)) | 0;
+    hash = (Math.imul(hash, 31) + Math.round(wall.width)) | 0;
+    hash = (Math.imul(hash, 31) + Math.round(wall.height)) | 0;
+  }
+  counted = walls;
+  count = `${walls.length}:${hash}`;
+  return count;
+}
+
 function planned(
   from: Point,
   to: Point,
@@ -218,11 +278,7 @@ function planned(
   mine: Blocking,
   theirs: Blocking,
 ): Point[] {
-  // What the buildings are, cheaply: their count and where the first and last
-  // of them sit. Any move that matters changes one of the three.
-  const first = walls[0];
-  const last = walls[walls.length - 1];
-  const shape = `${walls.length}:${first?.x},${first?.y}:${last?.x},${last?.y}`;
+  const shape = shapeOf(walls);
   if (shape !== plannedFor) {
     planning.clear();
     bridging.clear();
@@ -269,6 +325,20 @@ export interface Arrow {
   head: string;
   trunk: string;
   road: string;
+  /**
+   * The long line this arrow actually draws, as the corners it turns at.
+   *
+   * Which path holds it depends on what the arrow is: an arrow travelling alone
+   * draws its whole road as its stem, and one carrying a gathered run draws the
+   * run's road as its trunk while its own stem is a slip road a few dozen
+   * pixels long. The bridges care about the long one and about nothing else, so
+   * it is named here rather than guessed at there — guessing was how a slip
+   * road came to be replaced by the full road it feeds, drawing a second copy
+   * of a line that was already there.
+   */
+  line: Point[];
+  /** Which of the two paths `line` is drawn into. */
+  lineIs: "stem" | "trunk";
 }
 
 /**
@@ -499,6 +569,8 @@ export function arrows(scene: Scene): Arrow[] {
       head: wire.head,
       trunk: "",
       road: "",
+      line: wire.corners,
+      lineIs: "stem",
     };
     drawn.push(arrow);
 
@@ -508,7 +580,7 @@ export function arrows(scene: Scene): Arrow[] {
     else runs.set(key, [arrow]);
   }
 
-  for (const [key, run] of runs) gather(key, run);
+  for (const [key, run] of runs) gather(key, run, walls, boxOf);
   bridge(drawn);
   return drawn;
 }
@@ -532,13 +604,13 @@ export function arrows(scene: Scene): Arrow[] {
  * that is the whole frame gone for a decoration.
  */
 function roadKey(arrow: Arrow): string {
-  const first = arrow.wire.corners[0]!;
-  const last = arrow.wire.corners[arrow.wire.corners.length - 1]!;
-  return `${first.x},${first.y},${last.x},${last.y}`;
+  const first = arrow.line[0]!;
+  const last = arrow.line[arrow.line.length - 1]!;
+  return `${arrow.lineIs}:${first.x},${first.y},${last.x},${last.y}`;
 }
 
 function bridge(drawn: Arrow[]): void {
-  const roads = drawn.filter((arrow) => arrow.wire.corners.length > 1);
+  const roads = drawn.filter((arrow) => arrow.line.length > 1);
   if (roads.length < 2) return;
 
   /*
@@ -551,7 +623,7 @@ function bridge(drawn: Arrow[]): void {
    * their hops.
    */
   if (bridging.size === 0) {
-    const pending = roads.map((arrow) => ({ arrow, corners: arrow.wire.corners }));
+    const pending = roads.map((arrow) => ({ arrow, corners: arrow.line }));
     /*
      * Handed to whoever is drawing rather than scheduled here.
      *
@@ -565,11 +637,12 @@ function bridge(drawn: Arrow[]): void {
     return;
   }
 
-  {
-    for (const arrow of roads) {
-      const drawnOver = bridging.get(roadKey(arrow));
-      if (drawnOver) arrow.stem = drawnOver;
-    }
+  for (const arrow of roads) {
+    const drawnOver = bridging.get(roadKey(arrow));
+    // Onto whichever path holds the long line. A run's hops belong on its
+    // trunk; putting them on the carrier's stem would draw the whole road a
+    // second time, over the top of the slip road it replaced.
+    if (drawnOver) arrow[arrow.lineIs] = drawnOver;
   }
 }
 
@@ -663,12 +736,13 @@ function sweep(roads: readonly { arrow: Arrow; corners: Point[] }[]): void {
     // a hit area with bumps in it is a hit area that misses.
     // The finished line rather than the crossings, so applying it on the next
     // redraw is an assignment rather than the drawing of it again.
-    bridging.set(roadKey(arrow), roadOver(shortenRoad(arrow.wire.corners, HEAD), met));
+    bridging.set(roadKey(arrow), roadOver(shortenRoad(arrow.line, HEAD), met));
   }
   // Recorded even when nobody hops, so the sweep is not repeated for this
   // placement just because it found nothing.
   if (hops.size === 0 && roads.length > 0) {
-    bridging.set(roadKey(roads[0]!.arrow), roads[0]!.arrow.stem);
+    const first = roads[0]!.arrow;
+    bridging.set(roadKey(first), first[first.lineIs]);
   }
 }
 
@@ -681,7 +755,12 @@ function sweep(roads: readonly { arrow: Arrow; corners: Point[] }[]): void {
  * a short stem from each line to a junction just clear of the card, and one
  * line from there to where they are all going.
  */
-function gather(key: string, run: Arrow[]): void {
+function gather(
+  key: string,
+  run: Arrow[],
+  walls: readonly Blocking[],
+  boxOf: (id: string) => Box | null,
+): void {
   if (run.length < 2) return;
 
   // The junction sits clear of the card the arrows leave, at the middle of the
@@ -704,6 +783,10 @@ function gather(key: string, run: Arrow[]): void {
     arrow.run = key;
     arrow.stem = stem;
     arrow.hit = stem;
+    // A slip road is a few dozen pixels between a row and the junction it feeds.
+    // Nothing long enough to be worth hopping, and its corners are not the road
+    // this arrow travels — the trunk is, and the trunk belongs to the carrier.
+    arrow.line = [];
     // The head is drawn once, at the far end of the road, by whichever of them
     // carries it. One triangle per stem would put a row of them at the junction.
     arrow.head = "";
@@ -711,11 +794,27 @@ function gather(key: string, run: Arrow[]): void {
 
   const carrier = run[0]!;
   const to = carrier.wire.to;
-  const road = roadPoints({ x: joinX, y: joinY }, to, first.goesRight);
+  /*
+   * The run's road is planned around the cards like any other.
+   *
+   * It was not, and it is the longest line on the drawing: a file that reads
+   * another on ten lines draws one road the whole way across, and drawing it
+   * straight put it through every card in between. The arrows are under the
+   * cards, so what that looked like was a road in pieces — the one report that
+   * kept coming back after the single arrows were fixed.
+   */
+  const mine = boxOf(carrier.edge.from);
+  const theirs = boxOf(carrier.edge.to);
+  const between = detours.on
+    ? walls.filter((wall) => wall !== mine && wall !== theirs)
+    : [];
+  const road = roadAround({ x: joinX, y: joinY }, to, first.goesRight, between);
   const cut = shortenRoad(road, HEAD);
   const last = roadEnd(cut);
   carrier.carrier = true;
   carrier.trunk = roadPath(cut);
+  carrier.line = road;
+  carrier.lineIs = "trunk";
   // The road is most of what the eye follows, so it is what the pointer finds.
   // Its own hit area, along the whole of it, rather than the stem's.
   carrier.road = roadPath(road);

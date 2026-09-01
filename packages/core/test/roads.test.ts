@@ -204,16 +204,38 @@ describe("planning a road around the buildings", () => {
     expect(roadAround(from, to, true, [clear])).toEqual(roadPoints(from, to, true));
   });
 
-  it("gives up rather than planning around a crowd", () => {
-    // The streets are the lines the buildings leave between them, so the map is
-    // their count squared — and a change carries hundreds of arrows.
-    const crowd = Array.from({ length: 40 }, (_, at) => ({
-      x: 60 + at * 4,
-      y: -40,
-      width: 3,
-      height: 200,
+  it("goes around a wall that a level road would run straight through", () => {
+    /*
+     * Two cards at the same height with a third between them. The road is two
+     * points and there is nothing to turn for — which is exactly why this case
+     * was waved through, and why it was the commonest broken road on a large
+     * drawing: the shortest road is also the one most likely to be obstructed.
+     */
+    const between = { x: 100, y: -30, width: 60, height: 60 };
+    const level = { x: 0, y: 0 };
+    const across = { x: 300, y: 0 };
+    expect(roadPoints(level, across, true)).toHaveLength(2);
+    expect(crosses(roadAround(level, across, true, [between]), between)).toBe(false);
+  });
+
+  it("plans around the buildings it is about to hit when there are too many to map", () => {
+    /*
+     * The streets are the lines the buildings leave between them, so the map is
+     * their count squared, and a change carries hundreds of arrows. Past what
+     * it will map, it plans around the ones nearest the line it would take —
+     * giving up entirely put the road through every one of them, which is the
+     * fault this whole file exists to prevent.
+     */
+    const crowd = Array.from({ length: 60 }, (_, at) => ({
+      x: 60 + at * 20,
+      y: -40 + (at % 5) * 80,
+      width: 14,
+      height: 60,
     }));
-    expect(roadAround(from, to, true, crowd)).toEqual(roadPoints(from, to, true));
+    const road = roadAround(from, to, true, crowd);
+    const hit = crowd.filter((wall) => crosses(road, wall));
+    expect(hit.length).toBeLessThan(crowd.filter((wall) =>
+      crosses(roadPoints(from, to, true), wall)).length);
   });
 
   it("plans hundreds of roads in a frame", () => {

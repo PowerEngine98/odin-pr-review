@@ -16,8 +16,16 @@
   import type { EdgeView } from "../model.js";
   import { model, settings, ui } from "../state.svelte.js";
   import EdgeTip from "./EdgeTip.svelte";
-  import { afterTheFrame, bridgesAt } from "./bridges.svelte.js";
-  import { arrows, secondPass, HEAD, type Box, type Journey, type LineAt } from "./wire.js";
+  import { afterTheFrame, bridgesAt, crossed } from "./bridges.svelte.js";
+  import {
+    arrows,
+    detours,
+    secondPass,
+    HEAD,
+    type Box,
+    type Journey,
+    type LineAt,
+  } from "./wire.js";
 
   let {
     size,
@@ -70,6 +78,44 @@
     return arrows({ model: model.current, reading, boxes, lineAt });
   });
 
+  /**
+   * The roads are planned around the cards once the cards have stopped moving.
+   *
+   * During the first build every card that measures itself moves the ones
+   * below it, and each move throws away every road planned against where they
+   * were. Planning through that is two and a half seconds of a large boot,
+   * measured, spent on arrangements that were replaced before they were drawn.
+   *
+   * So the drawing waits for a quiet moment and plans then. What the reader
+   * sees is arrows taking the plain way for the first second and then finding
+   * their way around the cards — the same shape the bridges appear in, and a
+   * beat the cover is usually still up for.
+   */
+  const QUIET = 250;
+  let settling: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    /*
+     * The cards moving, and nothing else.
+     *
+     * Watching the arrows instead looks equivalent and is not: they are
+     * rebuilt for a hover, for a bridge sweep, for anything at all, so on a
+     * large change they never go quiet for a quarter of a second and the roads
+     * were never planned. Where the cards are is the only thing planning
+     * depends on, and it does settle.
+     */
+    void boxes;
+    void model.current;
+    if (detours.on) return;
+    settling = setTimeout(() => {
+      detours.set(true);
+      // The arrows are derived from this, so turning the roads on is what
+      // redraws them. Without it the plans exist and nothing asks for them.
+      crossed();
+    }, QUIET);
+    return () => clearTimeout(settling);
+  });
+
   /** Whether anything at all is under the reader's attention. */
   const quiet = $derived(ui.activeEdge !== null || ui.activeNode !== null);
 
@@ -116,20 +162,76 @@
    */
   const hint = $derived(pointed !== null && ui.activeEdge === pointed.edge.id ? pointed : null);
 
+  /**
+   * The pointer moved enough to be worth answering.
+   *
+   * Every move over an arrow used to replace this state, and replacing it makes
+   * the hint measure itself — a synchronous layout of a document holding
+   * thousands of paths, on every one of the sixty-odd events a second a hand
+   * produces while it is still. What the reader saw was the drawing stuttering
+   * whenever the cursor rested on a line.
+   */
+  const NUDGE = 4;
+
   function enter(edge: EdgeView, event: MouseEvent): void {
+    if (going !== undefined) {
+      clearTimeout(going);
+      going = undefined;
+    }
     ui.activeEdge = edge.id;
+    const was = pointed;
+    if (
+      was &&
+      was.edge === edge &&
+      Math.abs(was.x - event.clientX) < NUDGE &&
+      Math.abs(was.y - event.clientY) < NUDGE
+    ) {
+      return;
+    }
     pointed = { edge, x: event.clientX, y: event.clientY };
   }
 
+  /**
+   * Let go a beat late.
+   *
+   * The hit areas are wide and they touch, so following a line means crossing
+   * in and out of several of them — and each crossing put the whole drawing
+   * back to full brightness and dimmed it again, which is a flash across every
+   * arrow on the page. The gap between leaving one and entering the next is a
+   * few milliseconds; the gap before a reader has actually looked away is not.
+   */
+  const LINGER = 90;
+  let going: ReturnType<typeof setTimeout> | undefined;
+
   function leave(): void {
-    ui.activeEdge = null;
-    pointed = null;
+    if (going !== undefined) clearTimeout(going);
+    going = setTimeout(() => {
+      going = undefined;
+      ui.activeEdge = null;
+      pointed = null;
+    }, LINGER);
   }
+
+  $effect(() => () => {
+    if (going !== undefined) clearTimeout(going);
+  });
 </script>
 
+<!--
+  Whether anything is being attended to is said once, on the layer.
+
+  It used to be said on each arrow — a `dim` class computed per edge and
+  rewritten whenever the reader's attention moved. On a change of this size that
+  is a couple of thousand attribute updates for one crossing of one line, twice
+  for every line crossed on the way to it, and what it looks like is the drawing
+  flickering under the hand. The state is the same state; the browser is told it
+  once and works out which arrows it applies to, which is what a stylesheet is
+  for.
+-->
 <svg
   id="edges"
   class="edges"
+  class:quiet
   width={size?.width ?? model.current.width}
   height={size?.height ?? model.current.height}
 >
@@ -164,7 +266,6 @@
       class="edge {arrow.edge.change} {arrow.edge.kind}"
       class:schema={arrow.schema}
       class:active
-      class:dim={quiet && !active}
       data-id={arrow.edge.id}
       data-run={arrow.run}
     >
@@ -318,8 +419,11 @@
   g.edge.import path.wire,
   g.edge.import path.trunk { stroke-dasharray: 4 4; opacity: 0.5; }
 
-  g.edge.dim path.wire,
-  g.edge.dim path.trunk { opacity: 0.12; }
+  /* Everything that is not the one being followed, while one is. Written from
+     the layer rather than from each arrow, so that attention moving is one
+     change to the document instead of one per arrow on the drawing. */
+  .edges.quiet g.edge:not(.active) path.wire,
+  .edges.quiet g.edge:not(.active) path.trunk { opacity: 0.12; }
   g.edge.active path.wire,
   g.edge.active path.trunk { opacity: 1; stroke-width: 3; }
 
@@ -329,7 +433,7 @@
      comes last rather than sitting with the other trunk rules. */
   path.trunk.lit,
   g.edge.schema path.trunk.lit,
-  g.edge.dim path.trunk.lit { opacity: 1; stroke-width: 3; }
+  .edges.quiet g.edge:not(.active) path.trunk.lit { opacity: 1; stroke-width: 3; }
 
   /* The dot at the tail. Filled with the page's background rather than left
      hollow, so the wire behind it does not show through the ring. */
@@ -356,7 +460,7 @@
   /* A dimmed edge keeps its dot out of the way with it — including out of the
      way of the pointer, so a faded arrow cannot be pressed by accident while
      the reader is following a different one. */
-  g.edge.dim .port { opacity: 0.1; pointer-events: none; }
+  .edges.quiet g.edge:not(.active) .port { opacity: 0.1; pointer-events: none; }
 
   @media (prefers-reduced-motion: reduce) {
     path.wire,

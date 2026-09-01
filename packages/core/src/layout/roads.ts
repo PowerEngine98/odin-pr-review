@@ -114,12 +114,57 @@ export const CLEAR = 12;
  * How many buildings one road will plan around.
  *
  * The streets are the lines the buildings leave between them, so the map is
- * their count squared. A dozen is a few hundred junctions and a fraction of a
- * millisecond; a hundred would be a hundred thousand, for one arrow, on a
- * drawing with hundreds of them. Past this it takes the plain road and accepts
- * that something is in the way, which is what it did before any of this.
+ * their count squared. Two dozen is a couple of thousand junctions and a
+ * fraction of a millisecond; a hundred would be forty thousand, for one arrow,
+ * on a drawing with hundreds of them.
+ *
+ * Past this the road is planned around the buildings nearest it rather than
+ * abandoned. Giving up entirely was the wrong answer to the wrong question: a
+ * road long enough to pass two dozen cards is exactly the road that most needs
+ * planning, and the plain one it fell back to went straight through all of
+ * them. Planning around the nearest two dozen may still clip something far
+ * down its length; it will not walk through the wall in front of it.
  */
-const CROWD = 12;
+const CROWD = 24;
+
+/**
+ * The buildings a road is most likely to hit, when there are too many to map.
+ *
+ * Nearest to the straight line between the ends, which is where the road will
+ * be if nothing pushes it off — so the ones it would walk into come first and
+ * the ones it would pass at a distance are the ones dropped. A dropped building
+ * is not a wrong road, only an unplanned one: the road may still clip something
+ * far down its length, where before it went through everything.
+ */
+function closest(
+  walls: readonly Blocking[],
+  from: Point,
+  to: Point,
+  keep: number,
+): Blocking[] {
+  const scored = walls.map((wall) => ({
+    wall,
+    away: toSegment(
+      { x: wall.x + wall.width / 2, y: wall.y + wall.height / 2 },
+      from,
+      to,
+    ),
+  }));
+  scored.sort((one, two) => one.away - two.away);
+  return scored.slice(0, keep).map((one) => one.wall);
+}
+
+/** How far a point is from a line segment. */
+function toSegment(point: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = dx * dx + dy * dy;
+  const along =
+    length === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length));
+  return Math.hypot(point.x - (a.x + along * dx), point.y - (a.y + along * dy));
+}
 
 /** Whether a run passes through any building. */
 function blocked(
@@ -221,7 +266,15 @@ export function roadAround(
   margin: number = CLEAR,
 ): Point[] {
   const plain = roadPoints(from, to, goesRight);
-  if (walls.length === 0 || plain.length < 3) return plain;
+  /*
+   * A level road is two points and used to be waved through here, on the
+   * grounds that there is nothing to plan. There is: two cards can sit at the
+   * same height with a third between them, and the straight line joining them
+   * goes through it. That was the commonest broken road on a large drawing —
+   * the one case where the shortest road is also the one most likely to be
+   * obstructed, and the only one that was never asked.
+   */
+  if (walls.length === 0 || plain.length < 2) return plain;
 
   const lowX = Math.min(from.x, to.x) - margin;
   const highX = Math.max(from.x, to.x) + margin;
@@ -238,7 +291,6 @@ export function roadAround(
       wall.y - margin < highY
     ) {
       near.push(wall);
-      if (near.length > CROWD) return plain;
     }
   }
   if (near.length === 0) return plain;
@@ -249,6 +301,55 @@ export function roadAround(
   }
   if (!crosses) return plain;
 
+  /*
+   * Planned against the buildings it is about to hit, and then checked against
+   * all of them.
+   *
+   * The map has to be small — it is the buildings squared — so on a crowded
+   * drawing it holds the ones nearest the straight line and nothing else. A
+   * road planned around those can still walk into one that was left off, and
+   * that is worth another go rather than a shrug: the ones it hit are exactly
+   * the ones the map was missing, so they go on it and it plans again.
+   *
+   * Twice more at most. Nearly every road is right the first time, the rest are
+   * usually right the second, and a road that is still wrong after three is one
+   * where the space genuinely does not exist.
+   */
+  let around = near.length > CROWD ? closest(near, from, to, CROWD) : near;
+  for (let go = 0; ; go++) {
+    const road = search(from, to, goesRight, around, margin);
+    if (!road) return plain;
+    if (go >= 2 || around.length >= near.length) return road;
+
+    const hit = near.filter(
+      (wall) => !around.includes(wall) && crossesAny(road, wall, margin),
+    );
+    if (hit.length === 0) return road;
+    around = [...around, ...hit].slice(0, CROWD * 3);
+  }
+}
+
+/** Whether any leg of a road passes through one building. */
+function crossesAny(road: readonly Point[], wall: Blocking, margin: number): boolean {
+  for (let at = 1; at < road.length; at++) {
+    if (blocked(road[at - 1]!, road[at]!, [wall], margin)) return true;
+  }
+  return false;
+}
+
+/**
+ * One run of the search, over the map it is given.
+ *
+ * Nothing here decides what is on the map — that is the caller's, and it may
+ * ask again with more on it.
+ */
+function search(
+  from: Point,
+  to: Point,
+  goesRight: boolean,
+  around: readonly Blocking[],
+  margin: number,
+): Point[] | null {
   /*
    * The search runs between the stubs, not the ends.
    *
@@ -263,7 +364,7 @@ export function roadAround(
 
   const xs = new Set<number>([leaves.x, arrives.x]);
   const ys = new Set<number>([leaves.y, arrives.y]);
-  for (const wall of near) {
+  for (const wall of around) {
     xs.add(wall.x - margin);
     xs.add(wall.x + wall.width + margin);
     ys.add(wall.y - margin);
@@ -314,7 +415,7 @@ export function roadAround(
 
       const a = { x: lanes[col]!, y: rows[row]! };
       const b = { x: lanes[nextCol]!, y: rows[nextRow]! };
-      if (blocked(a, b, near, margin)) continue;
+      if (blocked(a, b, around, margin)) continue;
 
       const step = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
       const nowVertical = nextCol === col;
@@ -330,7 +431,7 @@ export function roadAround(
       queue.push(next, cost + Math.abs(b.x - arrives.x) + Math.abs(b.y - arrives.y));
     }
   }
-  if (!reached) return plain;
+  if (!reached) return null;
 
   const road: Point[] = [];
   for (let node = goal; node >= 0; node = cameFrom[node]!) {

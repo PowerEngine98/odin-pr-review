@@ -66,9 +66,13 @@
   }
 </script>
 
+<!-- Attention is a fact about the layer, said once, for the same reason it is
+     in the arrow layer: a dot per arrow, rewritten on every crossing of every
+     line, is a thousand updates for one hover. -->
 <svg
   id="ports"
   class="edges"
+  class:quiet
   width={size?.width ?? model.current.width}
   height={size?.height ?? model.current.height}
 >
@@ -78,7 +82,6 @@
       class="edge {arrow.edge.change} {arrow.edge.kind}"
       class:schema={arrow.schema}
       class:active
-      class:dim={quiet && !active}
       data-id={arrow.edge.id}
     >
       <circle
@@ -146,7 +149,7 @@
 
   /* A dimmed edge keeps its dot out of the way with it, pointer and all: a
      faded arrow should not be pressable while the reader is following another. */
-  g.edge.dim .port { opacity: 0.1; pointer-events: none; }
+  .edges.quiet g.edge:not(.active) .port { opacity: 0.1; pointer-events: none; }
 
   @media (prefers-reduced-motion: reduce) {
     circle.port {
