@@ -16,7 +16,8 @@
   import type { EdgeView } from "../model.js";
   import { model, settings, ui } from "../state.svelte.js";
   import EdgeTip from "./EdgeTip.svelte";
-  import { arrows, HEAD, type Box, type Journey, type LineAt } from "./wire.js";
+  import { afterTheFrame, bridgesAt } from "./bridges.svelte.js";
+  import { arrows, secondPass, HEAD, type Box, type Journey, type LineAt } from "./wire.js";
 
   let {
     size,
@@ -53,7 +54,21 @@
     viewed: ui.viewed,
   });
 
-  const drawn = $derived(arrows({ model: model.current, reading, boxes, lineAt }));
+  /*
+   * The bridges are a stage of their own, after the frame the arrows go up in.
+   *
+   * Which roads cross which cannot be known until every road is planned, and
+   * planning them all is the last thing this pass does — so sweeping for
+   * crossings inside it would delay the thing the reader is waiting for in
+   * order to decorate it. The geometry hands the sweep back here to be
+   * scheduled, and reading the counter is what makes a finished sweep redraw
+   * these arrows with their hops on.
+   */
+  secondPass.run = afterTheFrame;
+  const drawn = $derived.by(() => {
+    void bridgesAt();
+    return arrows({ model: model.current, reading, boxes, lineAt });
+  });
 
   /** Whether anything at all is under the reader's attention. */
   const quiet = $derived(ui.activeEdge !== null || ui.activeNode !== null);

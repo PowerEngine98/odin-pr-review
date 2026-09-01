@@ -58,7 +58,33 @@ export function decodePasted(data: string): { bytes: Buffer; ext: string } | und
  * in the next diff — of the very branch being reviewed.
  */
 export function imageFolder(): string {
-  return mkdtempSync(join(tmpdir(), "odin-pasted-"));
+  return mkdtempSync(join(tmpdir(), KEPT));
+}
+
+/**
+ * What Odin calls the folders it keeps pictures in.
+ *
+ * A name rather than a list, because the list is not enough: a screenshot
+ * pasted last week is still named in the remark that carried it, and the folder
+ * it went to belonged to a reading whose window is long gone. Only this pattern
+ * is served, and only under the system's own temporary directory — which is a
+ * narrower door than "any picture on this machine" and a wider one than "any
+ * picture this panel happened to write".
+ */
+export const KEPT = "odin-pasted-";
+
+/** Whether a path is inside one of the folders Odin pastes into. */
+function odinPasted(real: string): boolean {
+  let root: string;
+  try {
+    root = realpathSync(tmpdir());
+  } catch {
+    return false;
+  }
+  if (!real.startsWith(root.endsWith(sep) ? root : root + sep)) return false;
+  const rest = real.slice(root.length + 1);
+  const folder = rest.slice(0, rest.indexOf(sep));
+  return folder.startsWith(KEPT) && rest.includes(sep);
 }
 
 /**
@@ -108,6 +134,8 @@ export function readImage(path: string, within: readonly string[]): string | und
     return undefined;
   }
 
+  if (odinPasted(real)) return bytesOf(real);
+
   const inside = within.some((folder) => {
     let root: string;
     try {
@@ -118,15 +146,18 @@ export function readImage(path: string, within: readonly string[]): string | und
     return real === root || real.startsWith(root.endsWith(sep) ? root : root + sep);
   });
   if (!inside) return undefined;
+  return bytesOf(real);
 
-  try {
-    const bytes = readFileSync(real);
-    // A picture nobody could see is not worth a megabyte of message, and a
-    // screenshot is nothing like this big.
-    if (bytes.length === 0 || bytes.length > 24 * 1024 * 1024) return undefined;
-    return `data:${mime};base64,${bytes.toString("base64")}`;
-  } catch {
-    return undefined;
+  function bytesOf(path: string): string | undefined {
+    try {
+      const bytes = readFileSync(path);
+      // A picture nobody could see is not worth a megabyte of message, and a
+      // screenshot is nothing like this big.
+      if (bytes.length === 0 || bytes.length > 24 * 1024 * 1024) return undefined;
+      return `data:${mime};base64,${bytes.toString("base64")}`;
+    } catch {
+      return undefined;
+    }
   }
 }
 

@@ -99,6 +99,277 @@ export function roadPoints(
   ];
 }
 
+/** A building the roads have to go around. */
+export interface Blocking {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** How far a road keeps off a card, so it passes rather than leans on it. */
+export const CLEAR = 12;
+
+/**
+ * How many buildings one road will plan around.
+ *
+ * The streets are the lines the buildings leave between them, so the map is
+ * their count squared. A dozen is a few hundred junctions and a fraction of a
+ * millisecond; a hundred would be a hundred thousand, for one arrow, on a
+ * drawing with hundreds of them. Past this it takes the plain road and accepts
+ * that something is in the way, which is what it did before any of this.
+ */
+const CROWD = 12;
+
+/** Whether a run passes through any building. */
+function blocked(
+  a: Point,
+  b: Point,
+  walls: readonly Blocking[],
+  margin: number,
+): boolean {
+  const lowX = Math.min(a.x, b.x);
+  const highX = Math.max(a.x, b.x);
+  const lowY = Math.min(a.y, b.y);
+  const highY = Math.max(a.y, b.y);
+
+  for (const wall of walls) {
+    if (
+      highX <= wall.x - margin ||
+      lowX >= wall.x + wall.width + margin ||
+      highY <= wall.y - margin ||
+      lowY >= wall.y + wall.height + margin
+    ) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** The cheapest open junction, in log time rather than by looking at them all. */
+class Queue {
+  private readonly nodes: number[] = [];
+  private readonly costs: number[] = [];
+
+  push(node: number, cost: number): void {
+    this.nodes.push(node);
+    this.costs.push(cost);
+    let at = this.nodes.length - 1;
+    while (at > 0) {
+      const up = (at - 1) >> 1;
+      if (this.costs[up]! <= this.costs[at]!) break;
+      this.swap(at, up);
+      at = up;
+    }
+  }
+
+  pop(): number | undefined {
+    if (this.nodes.length === 0) return undefined;
+    const top = this.nodes[0]!;
+    const node = this.nodes.pop()!;
+    const cost = this.costs.pop()!;
+    if (this.nodes.length > 0) {
+      this.nodes[0] = node;
+      this.costs[0] = cost;
+      let at = 0;
+      for (;;) {
+        const left = at * 2 + 1;
+        const right = left + 1;
+        let small = at;
+        if (left < this.costs.length && this.costs[left]! < this.costs[small]!) small = left;
+        if (right < this.costs.length && this.costs[right]! < this.costs[small]!) small = right;
+        if (small === at) break;
+        this.swap(at, small);
+        at = small;
+      }
+    }
+    return top;
+  }
+
+  private swap(a: number, b: number): void {
+    [this.nodes[a], this.nodes[b]] = [this.nodes[b]!, this.nodes[a]!];
+    [this.costs[a], this.costs[b]] = [this.costs[b]!, this.costs[a]!];
+  }
+}
+
+/**
+ * A road that goes around the buildings rather than through them.
+ *
+ * The picture is buildings and streets: cards, and the space between them. The
+ * arrows are drawn under the cards — they have to be, or every road would be
+ * laid across the code it connects — so a road that crosses a card is a road
+ * that disappears and comes out the other side. At a distance, where the cards
+ * are solid blocks, what the reader sees is a line in pieces with no way to
+ * tell which pieces belong together.
+ *
+ * The streets are found rather than invented: each building offers a line clear
+ * of each of its four sides, and where those lines cross is a junction. That is
+ * the gaps between the buildings, exactly. Then A* over it, by distance, with a
+ * small charge for turning so that two roads of equal length are not chosen
+ * between at random — the same pair would otherwise be joined by a staircase
+ * one frame and a dog-leg the next.
+ *
+ * The plain road is kept for the two cases where planning is not worth it:
+ * nothing is in the way, which is most arrows, and too much is.
+ */
+export function roadAround(
+  from: Point,
+  to: Point,
+  goesRight: boolean,
+  walls: readonly Blocking[],
+  margin: number = CLEAR,
+): Point[] {
+  const plain = roadPoints(from, to, goesRight);
+  if (walls.length === 0 || plain.length < 3) return plain;
+
+  const lowX = Math.min(from.x, to.x) - margin;
+  const highX = Math.max(from.x, to.x) + margin;
+  const lowY = Math.min(from.y, to.y) - margin;
+  const highY = Math.max(from.y, to.y) + margin;
+  // Only what stands between the two ends: a card on the far side of the
+  // drawing cannot be in the way, and counting it would cost the search dearly.
+  const near: Blocking[] = [];
+  for (const wall of walls) {
+    if (
+      wall.x + wall.width + margin > lowX &&
+      wall.x - margin < highX &&
+      wall.y + wall.height + margin > lowY &&
+      wall.y - margin < highY
+    ) {
+      near.push(wall);
+      if (near.length > CROWD) return plain;
+    }
+  }
+  if (near.length === 0) return plain;
+
+  let crosses = false;
+  for (let at = 1; at < plain.length && !crosses; at++) {
+    crosses = blocked(plain[at - 1]!, plain[at]!, near, margin);
+  }
+  if (!crosses) return plain;
+
+  /*
+   * The search runs between the stubs, not the ends.
+   *
+   * A road has to leave and arrive square to the card — that is what makes the
+   * head point at the row rather than down onto it — and a search left to
+   * itself will come down from above, because that is a perfectly good path and
+   * nobody told it otherwise. Those two legs are fixed here.
+   */
+  const away = goesRight ? 1 : -1;
+  const leaves = { x: from.x + away * STUB, y: from.y };
+  const arrives = { x: to.x - away * STUB, y: to.y };
+
+  const xs = new Set<number>([leaves.x, arrives.x]);
+  const ys = new Set<number>([leaves.y, arrives.y]);
+  for (const wall of near) {
+    xs.add(wall.x - margin);
+    xs.add(wall.x + wall.width + margin);
+    ys.add(wall.y - margin);
+    ys.add(wall.y + wall.height + margin);
+  }
+  const lanes = [...xs].sort((a, b) => a - b);
+  const rows = [...ys].sort((a, b) => a - b);
+
+  const wide = lanes.length;
+  const total = wide * rows.length;
+  const at = (col: number, row: number) => row * wide + col;
+  const start = at(lanes.indexOf(leaves.x), rows.indexOf(leaves.y));
+  const goal = at(lanes.indexOf(arrives.x), rows.indexOf(arrives.y));
+
+  const best = new Float64Array(total).fill(Infinity);
+  const cameFrom = new Int32Array(total).fill(-1);
+  const settled = new Uint8Array(total);
+  best[start] = 0;
+
+  const queue = new Queue();
+  queue.push(start, 0);
+
+  let reached = false;
+  for (;;) {
+    const here = queue.pop();
+    if (here === undefined) break;
+    if (settled[here]) continue;
+    if (here === goal) {
+      reached = true;
+      break;
+    }
+    settled[here] = 1;
+
+    const col = here % wide;
+    const row = (here - col) / wide;
+    const before = cameFrom[here] ?? -1;
+    const wasVertical = before >= 0 ? before % wide === col : null;
+
+    for (const [nextCol, nextRow] of [
+      [col - 1, row],
+      [col + 1, row],
+      [col, row - 1],
+      [col, row + 1],
+    ] as const) {
+      if (nextCol < 0 || nextRow < 0 || nextCol >= wide || nextRow >= rows.length) continue;
+      const next = at(nextCol, nextRow);
+      if (settled[next]) continue;
+
+      const a = { x: lanes[col]!, y: rows[row]! };
+      const b = { x: lanes[nextCol]!, y: rows[nextRow]! };
+      if (blocked(a, b, near, margin)) continue;
+
+      const step = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+      const nowVertical = nextCol === col;
+      const turn = wasVertical !== null && wasVertical !== nowVertical ? margin : 0;
+      const cost = best[here]! + step + turn;
+      if (cost >= best[next]!) continue;
+
+      best[next] = cost;
+      cameFrom[next] = here;
+      // The estimate is the distance left as the roads run, which never
+      // overstates it — so the first time the goal comes off the queue is by
+      // the cheapest road to it.
+      queue.push(next, cost + Math.abs(b.x - arrives.x) + Math.abs(b.y - arrives.y));
+    }
+  }
+  if (!reached) return plain;
+
+  const road: Point[] = [];
+  for (let node = goal; node >= 0; node = cameFrom[node]!) {
+    const col = node % wide;
+    road.push({ x: lanes[col]!, y: rows[(node - col) / wide]! });
+    if (node === start) break;
+  }
+  road.reverse();
+  // The two legs the search was not allowed an opinion about.
+  return straightened([from, ...road, to]);
+}
+
+/**
+ * The same road with its collinear points dropped.
+ *
+ * The search walks one junction at a time, so a straight run comes back as a
+ * dozen points on one line. They draw identically and they are not identical to
+ * work with: every corner routine downstream measures the legs either side of a
+ * point, and a leg of length zero has no direction.
+ */
+function straightened(road: readonly Point[]): Point[] {
+  const out: Point[] = [];
+  for (const point of road) {
+    const last = out[out.length - 1];
+    if (last && last.x === point.x && last.y === point.y) continue;
+    const before = out[out.length - 2];
+    if (last && before) {
+      const wasVertical = last.x === before.x;
+      const nowVertical = point.x === last.x;
+      if (wasVertical === nowVertical) {
+        out[out.length - 1] = point;
+        continue;
+      }
+    }
+    out.push(point);
+  }
+  return out;
+}
+
 /**
  * A path along those corners, with each turn rounded.
  *
@@ -144,6 +415,76 @@ function towards(corner: Point, other: Point, distance: number): Point {
     x: corner.x + (dx / length) * distance,
     y: corner.y + (dy / length) * distance,
   };
+}
+
+/**
+ * How wide a hop over another road is.
+ *
+ * Twice the stroke and then some: narrower and the two lines still touch at the
+ * shoulders, wider and it reads as a kink in the road rather than a crossing.
+ */
+export const HOP = 7;
+
+/**
+ * A road with a little bridge wherever it crosses one of the others.
+ *
+ * Two roads meeting at a right angle draw an X, and an X is the one thing this
+ * shape cannot say: at a junction of four straight lines there is no telling
+ * which pair belongs together, so a reader following an arrow across the change
+ * loses it at the first crossing and picks up whichever line continues. Every
+ * wiring diagram ever drawn solves this the same way — one wire hops the other
+ * — and it works because a hop is the only mark on a drawing of straight lines
+ * that can only mean "these two do not meet".
+ *
+ * Which one hops is not arbitrary. An addition goes over a deletion, because a
+ * change is read forwards: what the branch does now is the thing in front, and
+ * what it used to do passes underneath.
+ *
+ * The crossings are given rather than found here — whoever holds all the roads
+ * knows which cross which, and this only has to draw them.
+ */
+export function roadOver(points: readonly Point[], hops: readonly Point[]): string {
+  if (hops.length === 0) return roadPath(points);
+
+  let path = "";
+  for (let at = 1; at < points.length; at++) {
+    const a = points[at - 1]!;
+    const b = points[at]!;
+    const vertical = a.x === b.x;
+
+    // Only the hops on this leg, in the order the road meets them.
+    const along = hops
+      .filter((hop) =>
+        vertical
+          ? Math.abs(hop.x - a.x) < 0.5 &&
+            hop.y > Math.min(a.y, b.y) + HOP &&
+            hop.y < Math.max(a.y, b.y) - HOP
+          : Math.abs(hop.y - a.y) < 0.5 &&
+            hop.x > Math.min(a.x, b.x) + HOP &&
+            hop.x < Math.max(a.x, b.x) - HOP,
+      )
+      .sort((one, two) =>
+        vertical
+          ? (b.y > a.y ? one.y - two.y : two.y - one.y)
+          : (b.x > a.x ? one.x - two.x : two.x - one.x),
+      );
+
+    if (at === 1) path += `M ${round(a.x)} ${round(a.y)}`;
+    for (const hop of along) {
+      const before = vertical
+        ? { x: a.x, y: hop.y - Math.sign(b.y - a.y) * HOP }
+        : { x: hop.x - Math.sign(b.x - a.x) * HOP, y: a.y };
+      const after = vertical
+        ? { x: a.x, y: hop.y + Math.sign(b.y - a.y) * HOP }
+        : { x: hop.x + Math.sign(b.x - a.x) * HOP, y: a.y };
+      path += ` L ${round(before.x)} ${round(before.y)}`;
+      // A half circle over the road below. Swept the same way every time, so a
+      // row of hops along one road all bulge to the same side.
+      path += ` A ${HOP} ${HOP} 0 0 ${vertical ? 1 : 1} ${round(after.x)} ${round(after.y)}`;
+    }
+    path += ` L ${round(b.x)} ${round(b.y)}`;
+  }
+  return path;
 }
 
 /**

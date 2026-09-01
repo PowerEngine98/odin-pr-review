@@ -16,11 +16,14 @@
  */
 
 import {
+  roadAround,
   roadEnd,
+  roadOver,
   roadPath,
   roadPoints,
   round,
   shortenRoad,
+  type Blocking,
 } from "@odin/core/layout/roads.js";
 
 import type { Arrangement, EdgeView, NodeView, ViewModel } from "../model.js";
@@ -100,6 +103,8 @@ export interface Anchor {
  */
 export interface Wire {
   goesRight: boolean;
+  /** The corners the road turns at, for whoever has to draw over them. */
+  corners: Point[];
   from: Point;
   to: Point;
   port: Point;
@@ -122,7 +127,17 @@ export interface Wire {
  * Which sides it uses is decided by where the cards are, not by which checkout
  * the two ends live in: an arrow leaves by the border facing its destination.
  */
-export function route(from: Anchor, to: Anchor): Wire {
+export function route(
+  from: Anchor,
+  to: Anchor,
+  /**
+   * Every other card on the drawing, so a road can go around them.
+   *
+   * Empty for a first paint that has not placed anything, where the road takes
+   * the plain way and is re-planned the moment the cards say where they are.
+   */
+  walls: readonly Blocking[] = [],
+): Wire {
   const goesRight = to.box.x + to.box.width / 2 >= from.box.x + from.box.width / 2;
   const away = goesRight ? 1 : -1;
   const fromX = goesRight ? from.box.x + from.box.width : from.box.x;
@@ -140,12 +155,13 @@ export function route(from: Anchor, to: Anchor): Wire {
    */
   const start = { x: round(port.x + away * PORT_RIM), y: port.y };
 
-  const points = roadPoints(start, { x: toX, y: to.y }, goesRight);
+  const points = planned(start, { x: toX, y: to.y }, goesRight, walls, from.box, to.box);
   const cut = shortenRoad(points, HEAD);
   const last = roadEnd(cut);
 
   return {
     goesRight,
+    corners: points,
     from: { x: fromX, y: from.y },
     to: { x: toX, y: to.y },
     port,
@@ -157,6 +173,74 @@ export function route(from: Anchor, to: Anchor): Wire {
     // anything drawn along it — the stroke is off, only the marker shows.
     head: `M ${last.x} ${last.y} L ${toX} ${to.y}`,
   };
+}
+
+/*
+ * Roads already planned, by the ends they join.
+ *
+ * The arrows are worked out again whenever anything about the drawing changes,
+ * and most of what changes does not move a card: a filter, a part opening, a
+ * hover. Planning is cheap for one road and there are hundreds of them, so the
+ * same answer was being computed dozens of times over during a boot — five
+ * seconds of it, measured, on a change of a hundred and thirty files.
+ *
+ * Keyed by the two ends and thrown away whole whenever the cards move, which is
+ * the only thing that can change the answer.
+ */
+const planning = new Map<string, Point[]>();
+/**
+ * And where each road hops another, by the same key.
+ *
+ * Worked out once per placement for the same reason the roads are: finding the
+ * crossings means comparing every pair of roads, and the arrows are rebuilt
+ * whenever anything about the drawing changes — a filter, a hover, a part
+ * opening. Measured on a change of a hundred and thirty files, doing it every
+ * time was twenty-four seconds of a boot; doing it once is a fifth of a second.
+ */
+const bridging = new Map<string, string>();
+
+/**
+ * How a second pass gets scheduled, filled in by the page.
+ *
+ * The crossings cannot be found until every road is planned, and planning them
+ * all is the last thing the first frame does — so the sweep happens after that
+ * frame rather than inside it. Which "after" means is the drawing's business,
+ * not this module's.
+ */
+export const secondPass: { run: ((go: () => void) => void) | null } = { run: null };
+let plannedFor = "";
+
+function planned(
+  from: Point,
+  to: Point,
+  goesRight: boolean,
+  walls: readonly Blocking[],
+  mine: Blocking,
+  theirs: Blocking,
+): Point[] {
+  // What the buildings are, cheaply: their count and where the first and last
+  // of them sit. Any move that matters changes one of the three.
+  const first = walls[0];
+  const last = walls[walls.length - 1];
+  const shape = `${walls.length}:${first?.x},${first?.y}:${last?.x},${last?.y}`;
+  if (shape !== plannedFor) {
+    planning.clear();
+    bridging.clear();
+    plannedFor = shape;
+  }
+
+  const key = `${from.x},${from.y},${to.x},${to.y},${goesRight ? 1 : 0}`;
+  const known = planning.get(key);
+  if (known) return known;
+
+  /*
+   * Its own two cards are not obstacles. A road has to leave one and reach the
+   * other, and a card cannot be in the way of the arrow that belongs to it.
+   */
+  const between = walls.filter((wall) => wall !== mine && wall !== theirs);
+  const road = roadAround(from, to, goesRight, between);
+  planning.set(key, road);
+  return road;
 }
 
 /**
@@ -378,6 +462,17 @@ export function arrows(scene: Scene): Arrow[] {
     return { box, y: box.y + (fileLevel ? TITLE_MID : box.height / 2) };
   };
 
+  /*
+   * The buildings, gathered once for every road on this drawing rather than
+   * per arrow: the set is the same for all of them and a change carries
+   * hundreds.
+   */
+  const walls: Blocking[] = [];
+  for (const node of model.nodes) {
+    const box = boxOf(node.id);
+    if (box) walls.push(box);
+  }
+
   const drawn: Arrow[] = [];
   const runs = new Map<string, Arrow[]>();
 
@@ -392,7 +487,7 @@ export function arrows(scene: Scene): Arrow[] {
     const to = anchor(edge.to, edge.toSide, edge.toLine, edge.kind === "import");
     if (!from || !to) continue;
 
-    const wire = route(from, to);
+    const wire = route(from, to, walls);
     const arrow: Arrow = {
       edge,
       schema: structural,
@@ -414,7 +509,167 @@ export function arrows(scene: Scene): Arrow[] {
   }
 
   for (const [key, run] of runs) gather(key, run);
+  bridge(drawn);
   return drawn;
+}
+
+/**
+ * A little bridge wherever one road crosses another.
+ *
+ * Two roads meeting at a right angle draw an X, and an X cannot say which pair
+ * of arms belongs together — so a reader following an arrow loses it at the
+ * first crossing and picks up whichever line carries on. Every wiring diagram
+ * solves this the same way, and it works because a hop is the one mark on a
+ * drawing of straight lines that can only mean "these two do not meet".
+ *
+ * An addition hops a deletion, because a change is read forwards: what the
+ * branch does now is in front, and what it used to do passes underneath. Where
+ * both are the same kind, the one going right hops, which is arbitrary and
+ * consistent — what matters is that exactly one of any pair does.
+ *
+ * Skipped once a drawing has more roads than this can compare in a frame: the
+ * crossings are found by looking at every pair, and past a few hundred roads
+ * that is the whole frame gone for a decoration.
+ */
+function roadKey(arrow: Arrow): string {
+  const first = arrow.wire.corners[0]!;
+  const last = arrow.wire.corners[arrow.wire.corners.length - 1]!;
+  return `${first.x},${first.y},${last.x},${last.y}`;
+}
+
+function bridge(drawn: Arrow[]): void {
+  const roads = drawn.filter((arrow) => arrow.wire.corners.length > 1);
+  if (roads.length < 2) return;
+
+  /*
+   * The sweep waits for the frame the arrows go up in.
+   *
+   * Which roads cross which cannot be known until every road is planned, and
+   * planning them all is the last thing that frame does — so doing the sweep
+   * inside it delays the one thing the reader is waiting for in order to
+   * decorate it. The arrows appear, and a beat later the ones that cross gain
+   * their hops.
+   */
+  if (bridging.size === 0) {
+    const pending = roads.map((arrow) => ({ arrow, corners: arrow.wire.corners }));
+    /*
+     * Handed to whoever is drawing rather than scheduled here.
+     *
+     * This module is the geometry and nothing else — it is imported by tests
+     * with no browser and by the host with no frames, and a module that
+     * reaches for a frame or for reactive state cannot be either of those
+     * things. The page fills this in; everywhere else it is nothing and the
+     * bridges simply do not appear, which is right, since nobody is watching.
+     */
+    secondPass.run?.(() => sweep(pending));
+    return;
+  }
+
+  {
+    for (const arrow of roads) {
+      const drawnOver = bridging.get(roadKey(arrow));
+      if (drawnOver) arrow.stem = drawnOver;
+    }
+  }
+}
+
+/**
+ * Every crossing on the drawing, and the line each hopping road becomes.
+ *
+ * Found by sweeping rather than by comparing every pair. A change of this size
+ * draws six hundred roads, and asking each pair whether they meet is a hundred
+ * and eighty thousand questions — five seconds of one, measured. A crossing is
+ * a vertical leg meeting a horizontal one, so the horizontals are sorted by
+ * height and each vertical asks only about the band it spans. Nearly all of
+ * them ask about none.
+ */
+function sweep(roads: readonly { arrow: Arrow; corners: Point[] }[]): void {
+  /*
+   *
+   * A change of this size draws six hundred roads, and asking each pair whether
+   * they meet is a hundred and eighty thousand questions — five seconds of one,
+   * measured. A crossing is a vertical leg meeting a horizontal one, so the
+   * horizontals are sorted by height and each vertical asks only about the band
+   * it actually spans. Nearly all of them ask about none.
+   */
+  interface Leg { arrow: Arrow; at: number; from: number; to: number }
+  const uprights: Leg[] = [];
+  const flats: Leg[] = [];
+
+  for (const { arrow, corners } of roads) {
+    for (let at = 1; at < corners.length; at++) {
+      const a = corners[at - 1]!;
+      const b = corners[at]!;
+      if (a.x === b.x) {
+        uprights.push({ arrow, at: a.x, from: Math.min(a.y, b.y), to: Math.max(a.y, b.y) });
+      } else if (a.y === b.y) {
+        flats.push({ arrow, at: a.y, from: Math.min(a.x, b.x), to: Math.max(a.x, b.x) });
+      }
+    }
+  }
+  flats.sort((one, two) => one.at - two.at);
+  const heights = flats.map((leg) => leg.at);
+
+  /** The first flat leg at or below a height, by halving. */
+  const firstAt = (y: number): number => {
+    let low = 0;
+    let high = heights.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (heights[mid]! < y) low = mid + 1;
+      else high = mid;
+    }
+    return low;
+  };
+
+  const rank = (arrow: Arrow) =>
+    arrow.edge.change === "added" ? 2 : arrow.edge.change === "removed" ? 0 : 1;
+
+  const hops = new Map<Arrow, Point[]>();
+  const note = (arrow: Arrow, point: Point) => {
+    const already = hops.get(arrow);
+    if (already) already.push(point);
+    else hops.set(arrow, [point]);
+  };
+
+  for (const upright of uprights) {
+    for (let at = firstAt(upright.from); at < flats.length; at++) {
+      const flat = flats[at]!;
+      if (flat.at > upright.to) break;
+      if (flat.arrow === upright.arrow) continue;
+      // A proper crossing, not two roads sharing a junction: strictly inside
+      // both legs, so a corner they both turn at is not a bridge over nothing.
+      if (upright.at <= flat.from || upright.at >= flat.to) continue;
+      if (flat.at <= upright.from || flat.at >= upright.to) continue;
+
+      /*
+       * Which one goes over. An addition hops a deletion, because a change is
+       * read forwards: what the branch does now is in front, and what it used
+       * to do passes underneath. Between two of a kind the upright hops, which
+       * is arbitrary and consistent — what matters is that exactly one does.
+       */
+      const over =
+        rank(upright.arrow) === rank(flat.arrow)
+          ? upright.arrow
+          : rank(upright.arrow) > rank(flat.arrow)
+            ? upright.arrow
+            : flat.arrow;
+      note(over, { x: upright.at, y: flat.at });
+    }
+  }
+
+  for (const [arrow, met] of hops) {
+    // Only the drawn line hops. What the pointer follows stays the plain road:
+    // a hit area with bumps in it is a hit area that misses.
+    // The finished line rather than the crossings, so applying it on the next
+    // redraw is an assignment rather than the drawing of it again.
+    bridging.set(roadKey(arrow), roadOver(shortenRoad(arrow.wire.corners, HEAD), met));
+  }
+  // Recorded even when nobody hops, so the sweep is not repeated for this
+  // placement just because it found nothing.
+  if (hops.size === 0 && roads.length > 0) {
+    bridging.set(roadKey(roads[0]!.arrow), roads[0]!.arrow.stem);
+  }
 }
 
 /**

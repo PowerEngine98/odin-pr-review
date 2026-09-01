@@ -151,6 +151,34 @@ describe("a picture read back for the page", () => {
     expect(readImage(shell, [folder])).toBeUndefined();
   });
 
+  it("serves a picture pasted by a reading that is over", () => {
+    /*
+     * A screenshot pasted last week is still named in the remark that carried
+     * it, and the folder it went to belonged to a window long gone — so the
+     * panel asking for it has never heard of that folder and would refuse its
+     * own picture. Odin's own paste folders are served wherever they are.
+     */
+    const past = mkdtempSync(join(tmpdir(), "odin-pasted-"));
+    try {
+      const [path] = keepPasted([{ data: PIXEL }], past);
+      // Not named among the folders this reading knows about.
+      expect(readImage(path!, [folder])).toBe(PIXEL.replace(/\s+/g, ""));
+    } finally {
+      rmSync(past, { recursive: true, force: true });
+    }
+  });
+
+  it("does not serve the rest of the temporary directory", () => {
+    // The door is Odin's own folders, not everything anyone has left in /tmp.
+    const other = mkdtempSync(join(tmpdir(), "somebody-elses-"));
+    try {
+      const [path] = keepPasted([{ data: PIXEL }], other);
+      expect(readImage(path!, [folder])).toBeUndefined();
+    } finally {
+      rmSync(other, { recursive: true, force: true });
+    }
+  });
+
   it("says nothing about a file that is not there", () => {
     expect(readImage(join(folder, "gone.png"), [folder])).toBeUndefined();
   });

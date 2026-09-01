@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { CORNER, STUB, roadPath, roadPoints, shortenRoad } from "../src/layout/roads.js";
+import {
+  CORNER,
+  HOP,
+  STUB,
+  roadAround,
+  roadOver,
+  roadPath,
+  roadPoints,
+  shortenRoad,
+} from "../src/layout/roads.js";
 
 /** Every leg of a path, as the pairs of numbers written into it. */
 function legs(path: string): { dx: number; dy: number }[] {
@@ -132,5 +141,134 @@ describe("routing an arrow as a road", () => {
       ];
       expect(shortenRoad(road, 13)).toHaveLength(3);
     });
+  });
+});
+
+/**
+ * Roads that go around the buildings rather than through them.
+ *
+ * The arrows are drawn under the cards — they have to be, or every road would
+ * be laid across the code it connects — so a road that crosses a card is a road
+ * that disappears and comes out the other side. At a distance, where the cards
+ * are solid blocks, that is a line in pieces with no way to tell which pieces
+ * belong together.
+ */
+describe("planning a road around the buildings", () => {
+  const wall = { x: 90, y: -40, width: 60, height: 200 };
+  const from = { x: 0, y: 0 };
+  const to = { x: 260, y: 60 };
+
+  /** Whether any leg of a road passes through a rectangle. */
+  const crosses = (road: { x: number; y: number }[], box = wall) =>
+    road.slice(1).some((point, at) => {
+      const before = road[at]!;
+      const lowX = Math.min(before.x, point.x);
+      const highX = Math.max(before.x, point.x);
+      const lowY = Math.min(before.y, point.y);
+      const highY = Math.max(before.y, point.y);
+      return !(
+        highX <= box.x ||
+        lowX >= box.x + box.width ||
+        highY <= box.y ||
+        lowY >= box.y + box.height
+      );
+    });
+
+  it("goes around what the plain road would cross", () => {
+    expect(crosses(roadPoints(from, to, true))).toBe(true);
+    expect(crosses(roadAround(from, to, true, [wall]))).toBe(false);
+  });
+
+  it("still only turns at right angles", () => {
+    const road = roadAround(from, to, true, [wall]);
+    for (let at = 1; at < road.length; at++) {
+      const dx = road[at]!.x - road[at - 1]!.x;
+      const dy = road[at]!.y - road[at - 1]!.y;
+      expect(dx === 0 || dy === 0).toBe(true);
+    }
+  });
+
+  it("leaves and arrives square to the card", () => {
+    /*
+     * A search left to itself will come down onto the destination from above,
+     * because that is a perfectly good path and nobody told it otherwise — and
+     * then the head points at the top of the row rather than at the row.
+     */
+    const road = roadAround(from, to, true, [wall]);
+    expect(road[0]!.y).toBe(road[1]!.y);
+    expect(road[road.length - 1]!.y).toBe(road[road.length - 2]!.y);
+  });
+
+  it("takes the plain road when nothing is in the way", () => {
+    const clear = { x: 90, y: 900, width: 60, height: 200 };
+    expect(roadAround(from, to, true, [clear])).toEqual(roadPoints(from, to, true));
+  });
+
+  it("gives up rather than planning around a crowd", () => {
+    // The streets are the lines the buildings leave between them, so the map is
+    // their count squared — and a change carries hundreds of arrows.
+    const crowd = Array.from({ length: 40 }, (_, at) => ({
+      x: 60 + at * 4,
+      y: -40,
+      width: 3,
+      height: 200,
+    }));
+    expect(roadAround(from, to, true, crowd)).toEqual(roadPoints(from, to, true));
+  });
+
+  it("plans hundreds of roads in a frame", () => {
+    // Measured rather than assumed: this runs for every arrow on the drawing.
+    const walls = Array.from({ length: 40 }, (_, at) => ({
+      x: 200 + (at % 4) * 300,
+      y: at * 90,
+      width: 220,
+      height: 70,
+    }));
+    const started = Date.now();
+    for (let n = 0; n < 900; n++) {
+      roadAround({ x: 0, y: (n * 37) % 3000 }, { x: 1400, y: (n * 53) % 3000 }, true, walls);
+    }
+    expect(Date.now() - started).toBeLessThan(400);
+  });
+});
+
+/**
+ * A little bridge where one road crosses another.
+ *
+ * Two roads meeting at a right angle draw an X, and an X cannot say which pair
+ * of arms belongs together — so a reader following an arrow loses it at the
+ * first crossing and picks up whichever line carries on. Every wiring diagram
+ * ever drawn solves this the same way.
+ */
+describe("hopping one road over another", () => {
+  const across = [
+    { x: 0, y: 100 },
+    { x: 300, y: 100 },
+  ];
+
+  it("arcs over the crossing and carries on", () => {
+    const path = roadOver(across, [{ x: 150, y: 100 }]);
+    expect(path).toContain(`A ${HOP} ${HOP}`);
+    expect(path.startsWith("M 0 100")).toBe(true);
+    expect(path.endsWith("L 300 100")).toBe(true);
+  });
+
+  it("leaves a road nobody crosses exactly as it was", () => {
+    expect(roadOver(across, [])).toBe(roadPath(across));
+  });
+
+  it("ignores a crossing that is not on the road", () => {
+    expect(roadOver(across, [{ x: 150, y: 900 }])).toBe(roadPath(across));
+  });
+
+  it("does not hop at the very ends, where there is no room", () => {
+    // A bridge in the first few pixels would be a bump on the card's own edge.
+    expect(roadOver(across, [{ x: 2, y: 100 }])).toBe(roadPath(across));
+  });
+
+  it("hops each crossing in the order the road meets them", () => {
+    const path = roadOver(across, [{ x: 220, y: 100 }, { x: 90, y: 100 }]);
+    expect(path.indexOf("83")).toBeLessThan(path.indexOf("213"));
+    expect((path.match(/ A /g) ?? [])).toHaveLength(2);
   });
 });
