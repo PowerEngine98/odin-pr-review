@@ -1,4 +1,12 @@
 import type { Query, SidebarModel } from "./model.js";
+import {
+  isOpen,
+  readShut,
+  SHUT_KEY,
+  toggled,
+  writeShut,
+  type Shut,
+} from "./shut.js";
 import { filesIn } from "./tree.js";
 
 /**
@@ -97,6 +105,32 @@ function setViewed(paths: string[], viewed: boolean): void {
   for (const file of filesIn(change.tree)) {
     if (wanted.has(file.path)) file.viewed = viewed;
   }
+}
+
+/**
+ * The shut folders, as one reactive value.
+ *
+ * The reading, the writing and the keying live in `shut.ts`, which is plain and
+ * can be exercised; this is the part that has to be reactive so that every
+ * folder in the tree redraws when one of them is pressed.
+ *
+ * An object rather than a `Set`: a plain Set inside reactive state is not
+ * watched from the inside, so adding to one changes nothing anybody can see —
+ * a fault this repository has already had once.
+ */
+export const folders = $state<{ shut: Shut }>({
+  shut: readShut(remembered(SHUT_KEY)),
+});
+
+/** Whether a folder is showing what is under it. */
+export function folderOpen(path: string): boolean {
+  return isOpen(folders.shut, path);
+}
+
+/** Opens a shut folder, or shuts an open one, and remembers which. */
+export function toggleFolder(path: string): void {
+  folders.shut = toggled(folders.shut, path);
+  remember(SHUT_KEY, writeShut(folders.shut));
 }
 
 /** Asks the host for a different set of pull requests. */

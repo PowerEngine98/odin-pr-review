@@ -16,11 +16,32 @@
   import File from "./File.svelte";
   import type { FolderView } from "./model.js";
   import Self from "./Folder.svelte";
-  import { ui } from "./state.svelte.js";
+  import { trailTo } from "./shut.js";
+  import { folderOpen, toggleFolder, ui } from "./state.svelte.js";
 
-  let { folder, depth }: { folder: FolderView; depth: number } = $props();
+  let {
+    folder,
+    depth,
+    /**
+     * The path from the root to this folder's parent.
+     *
+     * A folder is remembered by where it is rather than by what it is called: a
+     * change with `src/hooks` and `test/hooks` in it has two folders called
+     * `hooks`, and shutting one would shut both.
+     */
+    trail = "",
+  }: { folder: FolderView; depth: number; trail?: string } = $props();
 
-  let open = $state(true);
+  const path = $derived(trailTo(trail, folder.label));
+
+  /*
+   * Read from the sidebar's own memory rather than held here.
+   *
+   * The tree is rebuilt from scratch on every refresh — the host renders a new
+   * document and assigns it — so a state that lived in this component was
+   * thrown away each time and the whole tree sprang back open.
+   */
+  const open = $derived(folderOpen(path));
 
   const root = $derived(folder.label === "");
   const survives = $derived(folderSurvives(folder, ui.needle));
@@ -28,7 +49,7 @@
 
 {#snippet body()}
   {#each folder.folders as child (child.label)}
-    <Self folder={child} depth={depth + 1} />
+    <Self folder={child} depth={depth + 1} trail={path} />
   {/each}
   {#each folder.files as file (file.path)}
     <File {file} {depth} />
@@ -44,9 +65,9 @@
     style:padding-left="{8 + depth * 10}px"
     role="button"
     tabindex="0"
-    onclick={() => (open = !open)}
+    onclick={() => toggleFolder(path)}
     onkeydown={(event) => {
-      if (event.key === "Enter" || event.key === " ") open = !open;
+      if (event.key === "Enter" || event.key === " ") toggleFolder(path);
     }}
   >
     <Chevron {open} />
