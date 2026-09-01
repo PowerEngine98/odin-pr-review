@@ -179,6 +179,24 @@ Two things are easy to forget and cost half an hour each time:
   the next run connects to the *old* one and reads a stale page. `pkill -f
   "user-data-dir=/tmp/odin-"` before believing a surprising result.
 
+## The skills
+
+Odin carries four Claude skills in `.claude/skills` — setting it up, updating
+it, drawing a graph, sending a review. Being in the checkout means Claude only
+sees them while working on Odin, which is backwards for the two that exist to
+read somebody else's change:
+
+```sh
+./scripts/skills.sh            # → ~/.claude/skills
+./scripts/skills.sh --dry-run  # say what it would copy
+./scripts/skills.sh --to dir   # or CLAUDE_SKILLS_DIR
+```
+
+It replaces each `odin-*` skill whole and leaves everything else in there alone;
+it refuses to remove anything that is not a skill by that name. Run it *after*
+`odin update`, since it copies what is in the checkout — and remember Claude
+reads skills when a session starts, so the refreshed ones apply to the next one.
+
 ## What is where
 
 | Package | Role |

@@ -133,3 +133,6 @@ fi
 say "Done"
 note "Open a repository in VS Code and run: Odin: Review"
 note "Or from a checkout: odin view"
+# Not done for them: it writes into ~/.claude, which is the reader's own
+# configuration rather than this project's.
+note "For Claude in other repositories: ./scripts/skills.sh"

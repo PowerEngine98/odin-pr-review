@@ -58,7 +58,21 @@ built as it is rather than merged. Nothing to do builds nothing.
 
 So after editing Odin itself, `odin update` from the checkout is the whole loop.
 `--dry-run` says which case it is without doing it; `-C <dir>` names a checkout
-you are not standing in.
+you are not standing in. The **odin-update** skill is the longer account of it.
+
+## Make the skills work in other repositories
+
+These skills live in Odin's own checkout, so Claude only sees them while working
+on Odin — and odin-graph and odin-review exist to read *somebody else's* change.
+One copy fixes that:
+
+```bash
+./scripts/skills.sh          # → ~/.claude/skills, --dry-run to look first
+```
+
+Re-run it after every `odin update`, or the skills stay at the version they were
+installed at. Claude reads them at session start, so a new session is needed
+before they apply.
 
 ## Building it by hand
 
