@@ -466,7 +466,7 @@
     min-width: 260px;
     padding: 4px;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+    background: var(--panel);
     border: 1px solid var(--panel-edge);
     box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
   }

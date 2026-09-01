@@ -581,7 +581,7 @@
     overflow-y: auto;
     padding: 8px;
     border-radius: 6px;
-    background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+    background: var(--panel);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     font-size: 11px;
   }

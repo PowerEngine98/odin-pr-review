@@ -1146,7 +1146,7 @@
        Code showed through it — a log about code, over code, in the same
        monospace at nearly the same weight — and the two read as one column of
        nonsense. The composer sits on the same opaque mix for the same reason. */
-    background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+    background: var(--panel);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     overflow: hidden;
   }

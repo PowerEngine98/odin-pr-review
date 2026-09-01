@@ -298,18 +298,47 @@ describe("colouring a card the way the editor is coloured", () => {
      */
     const html = page();
     expect(html).toMatch(/--card-bg: var\(--vscode-editor-background, #[0-9a-f]{6}\)/);
-    expect(html).not.toContain("--vscode-editorWidget-background");
+    // The floating-panel colour is still named, but for panels — never for a
+    // card, which is a piece of a file.
+    expect(html).not.toMatch(/--card-bg:[^;]*editorWidget/);
   });
 
-  it("steps the page off the editor rather than picking a colour for it", () => {
-    // Mixed with the foreground, so it moves away in a light theme as well as
-    // a dark one.
-    expect(page()).toMatch(/--bg: color-mix\(in srgb, var\(--vscode-editor-background/);
+  it("gives a floating panel the colour the editor floats things on", () => {
+    /*
+     * Which is where `editorWidget.background` belongs — a find box, a hover,
+     * a panel. On the cards it was a tint that had nothing to do with the file;
+     * here it is the difference between a panel and the canvas behind it, and
+     * without it the reviewers were the background laid over the background
+     * with only a border to say they were there.
+     */
+    const html = page();
+    expect(html).toMatch(/--panel: var\(--vscode-editorWidget-background/);
+    expect(html).toMatch(/--panel-veil: color-mix\(in srgb, var\(--panel\) 92%, transparent\)/);
   });
 
-  it("takes the editor's own diff colours for a changed line", () => {
-    expect(page()).toMatch(/--add-bg: var\(--vscode-diffEditor-insertedLineBackground/);
-    expect(page()).toMatch(/--del-bg: var\(--vscode-diffEditor-removedLineBackground/);
+  it("keeps the three surfaces the editor already has", () => {
+    /*
+     * The code, the page it sits on, and the widgets over both. The canvas was
+     * briefly mixed with a little foreground to step it off the cards, and that
+     * moved it the same way every theme moves its panels — so the canvas became
+     * the colour of a panel and the panels disappeared into it.
+     */
+    const html = page();
+    expect(html).toMatch(/--bg: var\(--vscode-editor-background, #[0-9a-f]{6}\)/);
+    expect(html).not.toMatch(/--bg: color-mix/);
+  });
+
+  it("keeps the diff's own washes, which have to be solid", () => {
+    /*
+     * The editor's are translucent — a tint meant for one line at a time — and
+     * a run of twenty is twenty translucent layers with a seam at every
+     * boundary, which ruled a block of added code into lines like a
+     * spreadsheet. Solid, mixed against this background, a run is one block.
+     */
+    const html = page();
+    expect(html).toMatch(/--add-bg: #[0-9a-f]{6}/i);
+    expect(html).toMatch(/--del-bg: #[0-9a-f]{6}/i);
+    expect(html).not.toContain("--vscode-diffEditor");
   });
 
   it("keeps the vocabulary, which is the graph's rather than the theme's", () => {
@@ -324,5 +353,39 @@ describe("colouring a card the way the editor is coloured", () => {
     expect(html).toMatch(/--status-modified: #[0-9a-f]{6}/);
     expect(html).not.toMatch(/--status-added: var\(--vscode/);
     expect(html).not.toMatch(/--added: var\(--vscode/);
+  });
+});
+
+/**
+ * The seam between the two readings of a card.
+ *
+ * Split, a card is two files side by side and nothing said where one ended and
+ * the other began — the eye had to find the boundary from the line numbers, on
+ * every row.
+ */
+describe("dividing the two panes of a split card", () => {
+  const row = readFileSync(
+    new URL("../src/app/canvas/Row.svelte", import.meta.url),
+    "utf8",
+  );
+
+  it("draws a hairline down the join", () => {
+    expect(row).toMatch(/\.row\.split \.side \+ \.side \{[\s\S]{0,120}?inset 1px 0 0 0/);
+  });
+
+  it("takes no width from a pane the layout already sized", () => {
+    // A border would; an inset shadow does not.
+    const rule = row.slice(row.indexOf(".row.split .side + .side {"));
+    expect(rule.slice(0, 200)).not.toMatch(/border-left/);
+  });
+
+  it("keeps the seam that closes a run of changed lines", () => {
+    /*
+     * Two shadows on one element replace each other, so a row that both
+     * divides its panes and closes the gap to the row above has to say both.
+     */
+    expect(row).toMatch(
+      /\.side\.add \+ \.side\.add\) \{[\s\S]{0,200}?inset 1px[\s\S]{0,120}?var\(--add-bg\)/,
+    );
   });
 });

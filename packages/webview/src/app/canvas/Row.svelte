@@ -795,6 +795,40 @@
     min-width: 0;
     overflow: hidden;
   }
+  /*
+   * The seam between the two readings.
+   *
+   * Split, a card is two files side by side and nothing said where one ended
+   * and the other began — the eye had to find the boundary from the line
+   * numbers, on every row. A hairline down the pair, drawn on the right-hand
+   * pane so it lands exactly on the join, and quiet enough that it is a
+   * division rather than a rule: what is being separated is the same code
+   * twice, not two different things.
+   *
+   * Inset rather than a border, because a border would take a pixel of width
+   * from a pane whose width the layout engine has already decided.
+   */
+  .row.split .side + .side {
+    box-shadow: inset 1px 0 0 0 color-mix(in srgb, var(--text) 14%, transparent);
+  }
+  /* Except where a run has already painted its own seam downwards: two
+     shadows on one element replace each other, so the pair is written out. */
+  .row.split:has(.side.add) + :global(.row.split .side.add + .side.add) {
+    box-shadow:
+      inset 1px 0 0 0 color-mix(in srgb, var(--text) 14%, transparent),
+      0 var(--seam) 0 0 var(--add-bg);
+  }
+  .row.split:has(.side.del) + :global(.row.split .side.del + .side.del) {
+    box-shadow:
+      inset 1px 0 0 0 color-mix(in srgb, var(--text) 14%, transparent),
+      0 var(--seam) 0 0 var(--del-bg);
+  }
+  .row.split:has(.side.empty) + :global(.row.split .side.empty + .side.empty) {
+    box-shadow:
+      inset 1px 0 0 0 color-mix(in srgb, var(--text) 14%, transparent),
+      0 var(--seam) 0 0 var(--gap-bg);
+  }
+
   .row.split .side.add { background: var(--add-bg); color: var(--added); }
   .row.split .side.del { background: var(--del-bg); color: var(--removed); }
   .row.split .side.empty { background: var(--gap-bg); opacity: 0.35; }

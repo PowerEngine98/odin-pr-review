@@ -253,7 +253,7 @@
     /* The square and its padding, and nothing beyond it. */
     width: max-content;
     border-radius: 6px;
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    background: var(--panel-veil);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     padding: 4px;
   }

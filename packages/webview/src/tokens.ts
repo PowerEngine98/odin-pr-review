@@ -39,14 +39,17 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
    * line.
    */
   /*
-   * The page behind the cards: the editor's own background, moved a hair.
+   * The page behind the cards: the editor's background, as it is.
    *
-   * Mixed with the foreground rather than darkened, so it steps away from the
-   * editor in a light theme as well as a dark one. It is a shade, not a
-   * colour — the drawing should read as cards laid on the editor rather than
-   * on a surface of Odin's choosing.
+   * It was briefly mixed with a little foreground to step the canvas off the
+   * cards, and that moved it the same way every theme moves its floating
+   * panels — so the canvas ended up the colour of a panel, and the panels
+   * disappeared into it. The three surfaces here are the editor's own three:
+   * the code, the page it sits on, and the widgets that float over both. A card
+   * is told apart from the canvas by its border, which is coloured by what
+   * happened to the file and is the thing worth looking at anyway.
    */
-  --bg: color-mix(in srgb, var(--vscode-editor-background, ${theme.background}) 93%, var(--vscode-editor-foreground, var(--vscode-foreground, ${theme.text})));
+  --bg: var(--vscode-editor-background, ${theme.background});
   /*
    * And the card itself: exactly the background the file has two panes away.
    *
@@ -67,11 +70,19 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --removed: ${theme.change.removed};
   --unchanged: ${theme.change.unchanged};
   /*
-   * The wash behind a changed line, which the editor names for its own diff
-   * view — the same job, on the same code, a pane away.
+   * The wash behind a changed line, which is the drawing's own and stays that
+   * way.
+   *
+   * The editor names these for its diff view and they were briefly taken from
+   * there, on the reasoning that it is the same job on the same code. They are
+   * translucent — a tint meant to be laid over one line at a time — and a run
+   * of twenty of them is twenty translucent layers with a seam at every
+   * boundary, so a block of added code came out ruled into lines like a
+   * spreadsheet. These are solid, mixed against this background, and a run of
+   * them is one block of colour.
    */
-  --add-bg: var(--vscode-diffEditor-insertedLineBackground, var(--vscode-diffEditor-insertedTextBackground, ${theme.lineBackground.add}));
-  --del-bg: var(--vscode-diffEditor-removedLineBackground, var(--vscode-diffEditor-removedTextBackground, ${theme.lineBackground.del}));
+  --add-bg: ${theme.lineBackground.add};
+  --del-bg: ${theme.lineBackground.del};
 
   --status-added: ${theme.status.added};
   --status-modified: ${theme.status.modified};
@@ -79,9 +90,9 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --status-renamed: ${theme.status.renamed};
   --status-phantom: ${theme.status.phantom};
 
-  /* The band standing in for code nobody changed: the editor's own colour for
-     a stretch it is not asking you to read. */
-  --gap-bg: var(--vscode-editorGutter-background, ${theme.gapBackground});
+  /* The band standing in for code nobody changed. The drawing's own, for the
+     same reason the washes are: it sits behind runs of rows. */
+  --gap-bg: ${theme.gapBackground};
   --warning: ${theme.warning};
 
   /* The one colour in the page that means "do the thing". The editor's button
@@ -100,6 +111,23 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --box-set: var(--vscode-button-background, #0a84ff);
   --action: #007C36;
   --action-ink: #ffffff;
+
+  /*
+   * What a floating panel is made of.
+   *
+   * This is where the editor's floating-panel colour belongs — its find box,
+   * its hovers, its widgets — rather than on the cards, which are pieces of
+   * files and take the file's own background. A panel that shares the canvas's
+   * colour is a panel nobody can see the edges of: the reviewers and the faces
+   * were 88% of the background laid over the background, so only their border
+   * said they were there.
+   *
+   * Where a theme says nothing, a little foreground mixed in, which lifts the
+   * surface in a dark theme and settles it in a light one.
+   */
+  --panel: var(--vscode-editorWidget-background, color-mix(in srgb, var(--bg) 94%, var(--text) 6%));
+  /* The same surface where something behind it should still show through. */
+  --panel-veil: color-mix(in srgb, var(--panel) 92%, transparent);
 
   /* The edge of a floating panel: the same shade as the strip of tabs, so the
      chrome reads as surfaces meeting rather than as boxes drawn on a page. */

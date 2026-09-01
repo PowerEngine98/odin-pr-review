@@ -61,7 +61,7 @@
     border-radius: 6px;
     /* The map's own box, so the two corners read as one instrument panel
        rather than as two unrelated things that happen to be in corners. */
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    background: var(--panel-veil);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     color: var(--muted);
     font-size: 11px;

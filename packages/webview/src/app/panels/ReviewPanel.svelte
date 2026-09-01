@@ -181,7 +181,7 @@
     width: 430px;
     padding: 10px;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+    background: var(--panel);
     border: 1px solid var(--panel-edge);
     font-size: 12px;
   }

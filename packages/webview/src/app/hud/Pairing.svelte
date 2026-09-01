@@ -457,7 +457,7 @@
     border-radius: 6px;
     /* Solid, like the terminal and the composer: a panel of small text over
        code is unreadable the moment the code shows through it. */
-    background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+    background: var(--panel);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     font-size: 11px;
   }
