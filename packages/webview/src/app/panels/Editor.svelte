@@ -113,12 +113,34 @@
   const choices = $derived(typing ? matching(typing.query, agents) : []);
   let chosen = $state(0);
 
+  /**
+   * Where the line being written is, so the menu opens under it.
+   *
+   * A menu pinned to the foot of the box is a menu the eye has to go and find,
+   * and on a short comment it lands over the buttons. This follows the caret's
+   * line — measured by counting newlines rather than by mirroring the field,
+   * which is the usual trick and needs a second hidden copy of the box kept in
+   * step with the first. The column is left alone: a menu that also slid
+   * sideways with every keystroke would be harder to read than one that does
+   * not.
+   */
+  let under = $state(0);
+
   function look(): void {
     const box = field;
     if (!box) return;
-    const found = typingMention(box.value, box.selectionStart ?? box.value.length);
+    const caret = box.selectionStart ?? box.value.length;
+    const found = typingMention(box.value, caret);
     typing = found ?? null;
     chosen = 0;
+    if (!found) return;
+
+    const style = getComputedStyle(box);
+    const line = Number.parseFloat(style.lineHeight) || 18;
+    const lines = box.value.slice(0, caret).split("\n").length;
+    // Under the line, not over it, and never above the top of the field when
+    // the box has been scrolled.
+    under = Math.max(0, box.offsetTop + lines * line - box.scrollTop + 4);
   }
 
   async function take(who: Named): Promise<void> {
@@ -431,7 +453,7 @@
       ></textarea>
 
       {#if typing && choices.length > 0 && tab === "write"}
-        <ul class="mentions" role="listbox" aria-label="Agents">
+        <ul class="mentions" role="listbox" aria-label="Agents" style="top:{under}px">
           {#each choices as who, at (who.id)}
             {@const mark = markOf(who.id)}
             <li>
@@ -445,6 +467,14 @@
                   // Before the blur, or the menu is gone by the time the click
                   // would have arrived.
                   event.preventDefault();
+                  void take(who);
+                }}
+                onclick={(event) => {
+                  // A press that arrives as a click rather than as a
+                  // mousedown — a touch, a keyboard's own activation — means
+                  // the same thing and must not fall through to the field.
+                  event.preventDefault();
+                  event.stopPropagation();
                   void take(who);
                 }}
               >
@@ -686,8 +716,7 @@
      the right place is not worth that. */
   .mentions {
     position: absolute;
-    left: 8px;
-    bottom: 8px;
+    left: 12px;
     z-index: var(--z-menu, 45);
     margin: 0;
     padding: 4px;
