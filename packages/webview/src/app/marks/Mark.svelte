@@ -50,6 +50,15 @@
      * asking what it said.
      */
     onagent = () => {},
+    /**
+     * The file this is about has been read.
+     *
+     * The mark stays on the drawing — where a file was discussed is worth
+     * knowing, and people go back — but it stands back from the ones still
+     * waiting. The size comes in already reduced; what is left here is how much
+     * of it shows.
+     */
+    seen = false,
   }: {
     root: CommentView;
     count?: number;
@@ -60,6 +69,7 @@
     onopen?: () => void;
     working?: { agent?: string; task: string } | null;
     onagent?: () => void;
+    seen?: boolean;
   } = $props();
 
   /**
@@ -124,6 +134,7 @@
 <button
   class="mark"
   class:is-open={open}
+  class:seen={seen && !open}
   style="left:{left}px;top:{top}px;--mark-size:{size}px"
   title={hintOf(root)}
   aria-label="{count === 1 ? '1 remark' : count + ' remarks'} on {placeOf(root)}"
@@ -400,6 +411,24 @@
     border: 0;
     background: transparent;
     cursor: pointer;
+  }
+
+  /*
+   * A conversation on a file already read.
+   *
+   * Faint rather than gone: it is still where the file was discussed, and going
+   * back to one is a thing people do. Restored on hover and while its own
+   * thread is open, because the moment somebody reaches for it they are looking
+   * at it and not past it — a mark that stayed at two fifths under the pointer
+   * would read as one that could not be pressed.
+   */
+  .mark.seen {
+    opacity: 0.45;
+    transition: opacity 140ms ease;
+  }
+  .mark.seen:hover,
+  .mark.seen:focus-visible {
+    opacity: 1;
   }
 
   /* A pointer back to the line, so the mark belongs to something rather than

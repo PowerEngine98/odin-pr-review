@@ -25,7 +25,7 @@
   import { threadsOf, type Conversation } from "../panels/Thread.svelte";
   import { model, settings, ui, view } from "../state.svelte.js";
   import Mark from "./Mark.svelte";
-  import { markSize, placeMark, sideOf, type Side } from "./marks.js";
+  import { markSize, placeMark, seenSize, sideOf, type Side } from "./marks.js";
 
   /** A conversation and where on the screen its mark has ended up. */
   interface Placed {
@@ -35,6 +35,8 @@
     left: number;
     top: number;
     size: number;
+    /** Its file has been read, so it draws itself smaller and fainter. */
+    seen: boolean;
   }
 
   const threads = $derived(threadsOf(model.current.comments ?? []));
@@ -174,10 +176,20 @@
       if (!card) continue;
 
       const box = card.getBoundingClientRect();
-      const spot = placeMark(box, heightOf(card, root), size, room);
+      /*
+       * A conversation on a file already read stands back.
+       *
+       * Measured at the smaller size rather than drawn small afterwards: the
+       * mark is placed against the card's edge with room for its own tail, and
+       * a mark shrunk by a transform after that would sit with a gap where the
+       * tail used to reach.
+       */
+      const seen = ui.viewed.has(root.path);
+      const own = seenSize(size, seen);
+      const spot = placeMark(box, heightOf(card, root), own, room);
       if (!spot) continue;
 
-      out.push({ id: root.id, thread, left: spot.left, top: spot.top, size });
+      out.push({ id: root.id, thread, left: spot.left, top: spot.top, size: own, seen });
     }
     return out;
   }
@@ -373,6 +385,7 @@
       left={mark.left}
       top={mark.top}
       size={mark.size}
+      seen={mark.seen}
       open={ui.thread?.id === mark.id}
       onopen={() => open(mark)}
       working={going}

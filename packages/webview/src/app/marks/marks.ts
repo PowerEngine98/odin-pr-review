@@ -276,6 +276,36 @@ export function markSize(scale: number): number {
 }
 
 /**
+ * How much smaller a mark is drawn once its file has been read.
+ *
+ * A conversation on a file the reader has finished with is still worth having
+ * on the drawing — it is where the file was discussed, and going back to it is
+ * a thing people do — but it is not what they are looking for. At the zoom a
+ * whole change is taken in at there are more faces than files, and every one of
+ * them is drawn at full strength whether it still wants an answer or not.
+ *
+ * Smaller and fainter rather than gone. Gone is what `hideViewed` is for, and
+ * it takes the card with it; this is the same statement made without removing
+ * anything, so a reader who ticks a file as they go watches the drawing settle
+ * rather than watching it empty.
+ */
+export const SEEN_SIZE = 0.62;
+
+/** And how much of it is left showing. */
+export const SEEN_FADE = 0.45;
+
+/**
+ * A mark's size, given whether its file has been read.
+ *
+ * Floored, because the mark is a target as well as a picture: below about a
+ * fifth of an inch it is something a reader has to aim at rather than press,
+ * and a conversation they cannot reopen is worse than one drawn too large.
+ */
+export function seenSize(size: number, seen: boolean): number {
+  return seen ? Math.max(18, Math.round(size * SEEN_SIZE)) : size;
+}
+
+/**
  * How far a mark stands off the card it belongs to.
  *
  * Room for the tail and a gap after it, measured from the mark's own size: a

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { markSize, reachOf } from "../src/app/marks/marks.js";
+import { markSize, reachOf, SEEN_SIZE, seenSize } from "../src/app/marks/marks.js";
 import {
   besideFile,
   EDGE,
@@ -161,5 +161,38 @@ describe("where the reader is left standing", () => {
     expect(topOf(800, 420, CHROME + EDGE, VIEWPORT.height)).toBe(
       VIEWPORT.height - 420 - EDGE,
     );
+  });
+});
+
+/**
+ * A conversation on a file the reader has finished with.
+ *
+ * Still on the drawing — where a file was discussed is worth knowing, and going
+ * back to one is a thing people do — but standing back from the ones still
+ * waiting. At the zoom a whole change is taken in at there are more faces than
+ * files, and every one of them was drawn at full strength whether it wanted an
+ * answer or not.
+ */
+describe("a mark on a file already read", () => {
+  it("is drawn smaller than one still waiting", () => {
+    expect(seenSize(60, true)).toBeLessThan(seenSize(60, false));
+    expect(seenSize(60, true)).toBe(Math.round(60 * SEEN_SIZE));
+  });
+
+  it("leaves an unread one exactly as it was", () => {
+    expect(seenSize(markSize(2), false)).toBe(markSize(2));
+  });
+
+  it("never shrinks below something a reader can press", () => {
+    // The mark is a target as well as a picture. A conversation that cannot be
+    // reopened is worse than one drawn too large.
+    expect(seenSize(markSize(0.1), true)).toBeGreaterThanOrEqual(18);
+    expect(seenSize(4, true)).toBeGreaterThanOrEqual(18);
+  });
+
+  it("shrinks rather than vanishing", () => {
+    // Vanishing is what hiding read files is for, and that takes the card too.
+    expect(SEEN_SIZE).toBeGreaterThan(0.4);
+    expect(SEEN_SIZE).toBeLessThan(1);
   });
 });

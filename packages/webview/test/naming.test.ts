@@ -50,3 +50,40 @@ describe("a card's name at a distance", () => {
     expect(line).not.toMatch(/width|wider|fits|room/);
   });
 });
+
+/**
+ * And the conversations on a file already read.
+ *
+ * The same statement as the name going quiet, made about the other thing on the
+ * drawing that says "look here". Measured in a browser: two marks at 26px and
+ * full opacity; the host marks the file read; the same two marks at 18px and
+ * 0.45, with nothing on window.onerror.
+ */
+const mark = readFileSync(
+  new URL("../src/app/marks/Mark.svelte", import.meta.url),
+  "utf8",
+);
+const layer = readFileSync(
+  new URL("../src/app/marks/Marks.svelte", import.meta.url),
+  "utf8",
+);
+
+describe("a mark on a file at a distance", () => {
+  it("is measured at the smaller size rather than shrunk afterwards", () => {
+    // The mark is placed against the card's edge with room for its own tail. A
+    // mark shrunk by a transform after placement sits with a gap where the tail
+    // used to reach.
+    expect(layer).toContain("const own = seenSize(size, seen)");
+    expect(layer).toMatch(/placeMark\(box, heightOf\(card, root\), own, room\)/);
+  });
+
+  it("comes back to full strength when somebody reaches for it", () => {
+    // A mark that stayed faint under the pointer reads as one that cannot be
+    // pressed.
+    expect(mark).toMatch(/\.mark\.seen:hover[\s\S]{0,80}opacity: 1/);
+  });
+
+  it("does not stand back while its own conversation is open", () => {
+    expect(mark).toContain("class:seen={seen && !open}");
+  });
+});
