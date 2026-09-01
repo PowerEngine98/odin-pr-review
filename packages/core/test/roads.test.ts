@@ -218,6 +218,53 @@ describe("planning a road around the buildings", () => {
     expect(crosses(roadAround(level, across, true, [between]), between)).toBe(false);
   });
 
+  it("goes around a card standing outside the box between its two ends", () => {
+    /*
+     * The buildings worth planning around used to be only the ones inside that
+     * box, which is the box a road stays in when it never detours. A road that
+     * detours leaves it — it goes under the building in its way — and out there
+     * stands a card nobody put on the map. The road came back reported clean
+     * against everything it had been told about, and was drawn through it.
+     */
+    const across = { x: 200, y: -400, width: 100, height: 600 };
+    // Below both ends, so outside the box they make, and lying exactly on the
+    // detour under `across`.
+    const under = { x: 220, y: 205, width: 60, height: 115 };
+    const level = { x: 0, y: 0 };
+    const far = { x: 600, y: 0 };
+
+    // A road that is told only about the building in front of it goes under it
+    // and through this one, which is what makes the case worth asking about.
+    expect(crosses(roadAround(level, far, true, [across]), under)).toBe(true);
+
+    const road = roadAround(level, far, true, [across, under]);
+    expect(crosses(road, across)).toBe(false);
+    expect(crosses(road, under)).toBe(false);
+  });
+
+  it("keeps planning while each road is still finding buildings it did not know about", () => {
+    /*
+     * Three goes was a guess, and too low. Each go puts the buildings the last
+     * road walked into onto the map, so a road across a crowd learns a couple at
+     * a time; on a real change the worst of them needed eleven. The ones that
+     * ran out of goes were drawn straight through every card they had not yet
+     * been told about, which on that change was fourteen roads.
+     */
+    const crowd = [];
+    for (let column = 0; column < 8; column++) {
+      for (let row = 0; row < 6; row++) {
+        crowd.push({
+          x: 150 + column * 210,
+          y: -200 + row * 260 + (column % 2) * 130,
+          width: 150,
+          height: 200,
+        });
+      }
+    }
+    const road = roadAround({ x: 0, y: 0 }, { x: 3000, y: 1400 }, true, crowd);
+    expect(crowd.filter((wall) => crosses(road, wall))).toEqual([]);
+  });
+
   it("plans around the buildings it is about to hit when there are too many to map", () => {
     /*
      * The streets are the lines the buildings leave between them, so the map is

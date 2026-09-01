@@ -128,6 +128,20 @@ export const CLEAR = 12;
 const CROWD = 24;
 
 /**
+ * How many times a road will be planned again before it is drawn as it stands.
+ *
+ * Each go puts the buildings the last road walked into onto the map, so each is
+ * a road that knows something the one before it did not, and the loop stops of
+ * its own accord as soon as a road hits nothing. The cap is only for the road
+ * that never settles. It was three, which was a guess and too low: on a change
+ * of two hundred cards the worst road needed eleven, and the fourteen roads
+ * that ran out of goes were drawn straight through the cards they had not yet
+ * been told about. Twelve reaches every one of them, and costs nothing on the
+ * ones that never ask, since a road that hits nothing is planned once.
+ */
+const ATTEMPTS = 12;
+
+/**
  * The buildings a road is most likely to hit, when there are too many to map.
  *
  * Nearest to the straight line between the ends, which is where the road will
@@ -303,7 +317,7 @@ export function roadAround(
 
   /*
    * Planned against the buildings it is about to hit, and then checked against
-   * all of them.
+   * every building on the drawing.
    *
    * The map has to be small — it is the buildings squared — so on a crowded
    * drawing it holds the ones nearest the straight line and nothing else. A
@@ -311,20 +325,30 @@ export function roadAround(
    * that is worth another go rather than a shrug: the ones it hit are exactly
    * the ones the map was missing, so they go on it and it plans again.
    *
-   * Twice more at most. Nearly every road is right the first time, the rest are
-   * usually right the second, and a road that is still wrong after three is one
-   * where the space genuinely does not exist.
+   * Checked against everything and not merely against `near`, which is the
+   * cheap answer and was the wrong one. `near` is what stands in the box
+   * between the two ends, and a road that has to detour leaves that box — it
+   * goes over or under the building in its way, and out there stands a card
+   * nobody mentioned. Because that card was not on the list, the road came back
+   * reported clean and was drawn straight through it. Half the roads still
+   * crossing a card on a real change were this, every one of them with nothing
+   * against it on its own map.
    */
   let around = near.length > CROWD ? closest(near, from, to, CROWD) : near;
+  // What the map already holds, kept beside it because the check is made once
+  // per building per go and scanning the map for each was the second-largest
+  // cost in the loop.
+  const mapped = new Set(around);
   for (let go = 0; ; go++) {
     const road = search(from, to, goesRight, around, margin);
     if (!road) return plain;
-    if (go >= 2 || around.length >= near.length) return road;
 
-    const hit = near.filter(
-      (wall) => !around.includes(wall) && crossesAny(road, wall, margin),
+    const hit = walls.filter(
+      (wall) => !mapped.has(wall) && crossesAny(road, wall, margin),
     );
-    if (hit.length === 0) return road;
+    if (hit.length === 0 || go >= ATTEMPTS) return road;
+
+    for (const wall of hit) mapped.add(wall);
     around = [...around, ...hit].slice(0, CROWD * 3);
   }
 }
@@ -374,8 +398,59 @@ function search(
   const rows = [...ys].sort((a, b) => a - b);
 
   const wide = lanes.length;
-  const total = wide * rows.length;
+  const tall = rows.length;
+  const total = wide * tall;
   const at = (col: number, row: number) => row * wide + col;
+
+  /*
+   * Which runs between junctions are shut, worked out once rather than at each
+   * junction in turn.
+   *
+   * Every junction the search settles asks about the four runs off it, and each
+   * answer used to be a scan of every building on the map — so the search cost
+   * the junctions times the buildings, and planning a road around two dozen of
+   * them was expensive enough that the number had to be kept low and the
+   * retries few. Both of those were the reason roads were still being drawn
+   * through cards.
+   *
+   * Each building can instead shut its own runs in one pass, because the lanes
+   * and the rows are the buildings' own edges: the runs one building blocks are
+   * a rectangle of the grid, found by walking to its first and last lane and
+   * row, not a set that has to be searched for. The answers are the same ones —
+   * the comparisons below are `blocked` written out for a run that is level or
+   * upright, which every run here is.
+   */
+  const shutAcross = new Uint8Array(total);
+  const shutDown = new Uint8Array(total);
+  for (const wall of around) {
+    const lowX = wall.x - margin;
+    const highX = wall.x + wall.width + margin;
+    const lowY = wall.y - margin;
+    const highY = wall.y + wall.height + margin;
+
+    let firstRow = 0;
+    while (firstRow < tall && rows[firstRow]! <= lowY) firstRow++;
+    let lastRow = tall - 1;
+    while (lastRow >= 0 && rows[lastRow]! >= highY) lastRow--;
+    let firstLane = 0;
+    while (firstLane < wide && lanes[firstLane]! <= lowX) firstLane++;
+    let lastLane = wide - 1;
+    while (lastLane >= 0 && lanes[lastLane]! >= highX) lastLane--;
+
+    // A run reaches the building when its far end is past the near side, not
+    // only when it starts inside it, so each set of runs begins one lane or one
+    // row before the first that is inside.
+    for (let row = firstRow; row <= lastRow; row++) {
+      for (let col = Math.max(0, firstLane - 1); col <= lastLane && col < wide - 1; col++) {
+        shutAcross[row * wide + col] = 1;
+      }
+    }
+    for (let col = firstLane; col <= lastLane; col++) {
+      for (let row = Math.max(0, firstRow - 1); row <= lastRow && row < tall - 1; row++) {
+        shutDown[row * wide + col] = 1;
+      }
+    }
+  }
   const start = at(lanes.indexOf(leaves.x), rows.indexOf(leaves.y));
   const goal = at(lanes.indexOf(arrives.x), rows.indexOf(arrives.y));
 
@@ -403,24 +478,27 @@ function search(
     const before = cameFrom[here] ?? -1;
     const wasVertical = before >= 0 ? before % wide === col : null;
 
-    for (const [nextCol, nextRow] of [
-      [col - 1, row],
-      [col + 1, row],
-      [col, row - 1],
-      [col, row + 1],
-    ] as const) {
-      if (nextCol < 0 || nextRow < 0 || nextCol >= wide || nextRow >= rows.length) continue;
+    // The four ways off a junction, counted out rather than listed as pairs.
+    // This is the innermost thing the whole file does, and a literal here built
+    // five arrays for every junction the search settled.
+    for (let side = 0; side < 4; side++) {
+      const nextCol = side === 0 ? col - 1 : side === 1 ? col + 1 : col;
+      const nextRow = side === 2 ? row - 1 : side === 3 ? row + 1 : row;
+      if (nextCol < 0 || nextRow < 0 || nextCol >= wide || nextRow >= tall) continue;
       const next = at(nextCol, nextRow);
       if (settled[next]) continue;
 
-      const a = { x: lanes[col]!, y: rows[row]! };
-      const b = { x: lanes[nextCol]!, y: rows[nextRow]! };
-      if (blocked(a, b, around, margin)) continue;
+      const shut =
+        nextRow === row
+          ? shutAcross[row * wide + Math.min(col, nextCol)]!
+          : shutDown[Math.min(row, nextRow) * wide + col]!;
+      if (shut) continue;
 
-      const step = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+      const stepX = Math.abs(lanes[nextCol]! - lanes[col]!);
+      const stepY = Math.abs(rows[nextRow]! - rows[row]!);
       const nowVertical = nextCol === col;
       const turn = wasVertical !== null && wasVertical !== nowVertical ? margin : 0;
-      const cost = best[here]! + step + turn;
+      const cost = best[here]! + stepX + stepY + turn;
       if (cost >= best[next]!) continue;
 
       best[next] = cost;
@@ -428,7 +506,12 @@ function search(
       // The estimate is the distance left as the roads run, which never
       // overstates it — so the first time the goal comes off the queue is by
       // the cheapest road to it.
-      queue.push(next, cost + Math.abs(b.x - arrives.x) + Math.abs(b.y - arrives.y));
+      queue.push(
+        next,
+        cost +
+          Math.abs(lanes[nextCol]! - arrives.x) +
+          Math.abs(rows[nextRow]! - arrives.y),
+      );
     }
   }
   if (!reached) return null;
