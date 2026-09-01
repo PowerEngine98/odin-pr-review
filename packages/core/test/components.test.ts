@@ -234,3 +234,109 @@ describe("a file that is only ever imported", () => {
     expect(parts).toHaveLength(2);
   });
 });
+
+/**
+ * A file the change never touched, and what it may not do.
+ *
+ * Untouched files are on the canvas to answer "what does this change now lean
+ * on", which means they are the shared ones almost by definition: a button, a
+ * typography wrapper, an icon map. Read as connections they weld unrelated work
+ * together and then weld in everything that work touches — on a real pull
+ * request one existing helper made a hundred and twenty files into a single
+ * part, and the change's actual seams were nowhere to be seen.
+ */
+function untouched(path: string): FileNode {
+  return { ...file(path, 0), status: "phantom" };
+}
+
+describe("a file the change never touched", () => {
+  it("does not join two parts that both call it", () => {
+    // The fault, at its smallest. Two screens, one shared button; before this
+    // they came back as one part of five files.
+    const parts = components(
+      graph(
+        [
+          file("feed.tsx"),
+          file("feed-row.tsx"),
+          file("profile.tsx"),
+          file("profile-row.tsx"),
+          untouched("Button.tsx"),
+        ],
+        [
+          edge("feed.tsx", "feed-row.tsx"),
+          edge("profile.tsx", "profile-row.tsx"),
+          edge("feed-row.tsx", "Button.tsx"),
+          edge("profile-row.tsx", "Button.tsx"),
+        ],
+      ),
+    );
+
+    expect(parts).toHaveLength(2);
+    expect(parts.map((p) => p.files)).toEqual([2, 2]);
+  });
+
+  it("is drawn with every part that reaches it", () => {
+    // Passed over when the parts are worked out, joined back on afterwards: the
+    // arrow to it leaves a card and has to arrive somewhere.
+    const parts = components(
+      graph(
+        [file("feed.tsx"), file("profile.tsx"), untouched("Button.tsx")],
+        [edge("feed.tsx", "Button.tsx"), edge("profile.tsx", "Button.tsx")],
+      ),
+    );
+
+    for (const part of parts) expect(part.nodeIds).toContain("n:Button.tsx");
+  });
+
+  it("is not counted as a file of the part it is drawn in", () => {
+    // `78/120` is how much there is left to read. Nobody reviews a file the
+    // change did not touch, so it is drawn and not counted.
+    const parts = components(
+      graph(
+        [file("feed.tsx"), file("feed-row.tsx"), untouched("Button.tsx")],
+        [edge("feed.tsx", "feed-row.tsx"), edge("feed-row.tsx", "Button.tsx")],
+      ),
+    );
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.files).toBe(2);
+    expect(parts[0]!.nodeIds).toHaveLength(3);
+  });
+
+  it("is never a part of its own", () => {
+    // It is not a piece of the change; it is something the change leans on.
+    const parts = components(
+      graph([file("feed.tsx"), untouched("Button.tsx")], [edge("feed.tsx", "Button.tsx")]),
+    );
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.path).toBe("feed.tsx");
+  });
+
+  it("does not join two parts by import either", () => {
+    // The same file, named rather than called, with imports counting as links.
+    const parts = components(
+      graph(
+        [file("feed.tsx"), file("profile.tsx"), untouched("theme.ts")],
+        [edge("feed.tsx", "theme.ts", "import"), edge("profile.tsx", "theme.ts", "import")],
+        ),
+      { includeImports: true },
+    );
+
+    expect(parts).toHaveLength(2);
+  });
+
+  it("says nothing about two untouched files that only know each other", () => {
+    // Both ends outside the change: it belongs to no part, and no part draws it.
+    const parts = components(
+      graph(
+        [file("feed.tsx"), untouched("Button.tsx"), untouched("icons.ts")],
+        [edge("feed.tsx", "Button.tsx"), edge("Button.tsx", "icons.ts")],
+      ),
+    );
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]!.nodeIds).toContain("n:Button.tsx");
+    expect(parts[0]!.nodeIds).not.toContain("n:icons.ts");
+  });
+});

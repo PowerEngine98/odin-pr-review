@@ -473,7 +473,13 @@ function partOrder(graph: ChangeGraph): Map<string, number> {
   const alone = parts.filter((p) => p.files > 1).length;
   parts.forEach((part, index) => {
     const place = part.files > 1 ? index : alone;
-    for (const id of part.nodeIds) rank.set(id, place);
+    // The first part that claims a file keeps it, and the parts arrive largest
+    // first. Some files are in several — the schema is in all of them, and a
+    // file the change never touched is in every part that leans on it — and a
+    // card can only be in one place on the canvas. Letting the last claim win
+    // would file those with the smallest part that mentions them, which is the
+    // one a reader is least likely to be looking at when they matter.
+    for (const id of part.nodeIds) if (!rank.has(id)) rank.set(id, place);
   });
   return rank;
 }

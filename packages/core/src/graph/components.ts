@@ -48,11 +48,30 @@ export function components(
   const schema = new Set(
     graph.nodes.filter((n) => n.kind === "database").map((n) => n.id),
   );
+  // And a file the change never touched cannot join two parts either.
+  //
+  // Untouched files are in the picture to answer "what does this change now
+  // lean on", which means they are, almost by definition, the shared ones: a
+  // button, a typography wrapper, an icon. Two unrelated screens both calling
+  // the same `MuiIconButton` says nothing about the two screens — but read as
+  // a connection it welds them together, and then welds in everything they
+  // touch. That is not hypothetical: one existing helper fused a hundred and
+  // twenty files into a single part, and the change's real seams disappeared
+  // behind it.
+  //
+  // So they are passed over when the parts are worked out, and joined back on
+  // afterwards to every part that reaches them — present in each, and decisive
+  // in none.
+  const untouched = new Set(
+    graph.nodes.filter((n) => n.status === "phantom").map((n) => n.id),
+  );
+  const passive = (id: string) => schema.has(id) || untouched.has(id);
+
   const links = graph.edges.filter(
     (e) =>
       (options.includeImports === true || e.kind !== "import") &&
-      !schema.has(e.from.nodeId) &&
-      !schema.has(e.to.nodeId) &&
+      !passive(e.from.nodeId) &&
+      !passive(e.to.nodeId) &&
       byId.has(e.from.nodeId) &&
       byId.has(e.to.nodeId),
   );
@@ -95,22 +114,88 @@ export function components(
     groups.push(group);
   }
 
-  const kept = groups.filter((group) => group.some((n) => n.kind !== "database"));
+  // Nothing whose every member was passed over is a part in its own right. An
+  // untouched file on its own is not a piece of the change; it is something the
+  // change happens to lean on, and it is about to be filed under everything
+  // that leans on it.
+  const kept = groups.filter((group) => group.some((n) => !passive(n.id)));
   const carried = travellers(graph, kept, byId);
   // A file that now travels with a part is not also a part of its own: it would
   // be listed under "files nothing else in the change calls" while sitting in
   // the middle of a chain that plainly does use it.
   const travelling = new Set([...carried.values()].flat());
 
-  return kept
-    .filter((group) => group.length > 1 || !travelling.has(group[0]!.id))
-    .map((group) => describe(group, links, [...schema, ...(carried.get(group[0]!.id) ?? [])]))
+  const parts = kept.filter(
+    (group) => group.length > 1 || !travelling.has(group[0]!.id),
+  );
+  const leant = leaning(graph, parts, untouched, byId);
+
+  return parts
+    .map((group) =>
+      describe(group, links, [
+        ...schema,
+        ...(carried.get(group[0]!.id) ?? []),
+        ...(leant.get(group[0]!.id) ?? []),
+      ]),
+    )
     .sort(
       (a, b) =>
         b.files - a.files ||
         b.additions + b.deletions - (a.additions + a.deletions) ||
         a.path.localeCompare(b.path),
     );
+}
+
+/**
+ * The untouched files each part leans on.
+ *
+ * They were passed over while the parts were worked out, because a file the
+ * change never touched is nearly always a shared one and reading it as a
+ * connection welds unrelated work together. But a part that calls one still has
+ * to draw it: the arrow leaves a card and has to arrive somewhere, and an arrow
+ * to a file that is not on the canvas has nothing at its far end.
+ *
+ * So every part that reaches one gets its own copy, the way every part gets the
+ * schema. Unlike the schema, only the parts that actually reach it: an
+ * untouched file is not in every part of the change, merely in more than one.
+ */
+function leaning(
+  graph: ChangeGraph,
+  groups: FileNode[][],
+  untouched: ReadonlySet<string>,
+  byId: Map<string, FileNode>,
+): Map<string, string[]> {
+  if (untouched.size === 0) return new Map();
+
+  const home = new Map<string, string>();
+  for (const group of groups) {
+    for (const node of group) home.set(node.id, group[0]!.id);
+  }
+
+  const leant = new Map<string, string[]>();
+  const add = (groupId: string, nodeId: string) => {
+    const here = leant.get(groupId);
+    if (here) {
+      if (!here.includes(nodeId)) here.push(nodeId);
+    } else leant.set(groupId, [nodeId]);
+  };
+
+  for (const edge of graph.edges) {
+    const from = edge.from.nodeId;
+    const to = edge.to.nodeId;
+    if (!byId.has(from) || !byId.has(to)) continue;
+
+    // Whichever end the change never touched, filed with the part at the other.
+    // Both ends untouched is two files outside the change knowing each other,
+    // which belongs to no part and is drawn by none.
+    const near = untouched.has(to) ? home.get(from) : undefined;
+    if (untouched.has(to) && !untouched.has(from) && near) add(near, to);
+
+    const far = untouched.has(from) ? home.get(to) : undefined;
+    if (untouched.has(from) && !untouched.has(to) && far) add(far, from);
+  }
+
+  return leant;
 }
 
 /**
@@ -160,8 +245,16 @@ function travellers(
     // Whichever end is the lonely one, filed with the part at the other end.
     // Both ends alone means two files that only know each other, and moving
     // either into the other's part of one would say more than is true.
-    if (alone.has(to) && !alone.has(from)) add(home.get(from)!, to);
-    else if (alone.has(from) && !alone.has(to)) add(home.get(to)!, from);
+    //
+    // An end with no part at all is not somewhere to file anything: a file the
+    // change never touched is no longer in any group, and reading its absence
+    // as a group of its own filed every lonely file under one imaginary part
+    // and then dropped all of them from the answer.
+    const host = alone.has(to) && !alone.has(from) ? home.get(from) : undefined;
+    if (host) add(host, to);
+
+    const other = alone.has(from) && !alone.has(to) ? home.get(to) : undefined;
+    if (other) add(other, from);
   }
 
   return carried;
