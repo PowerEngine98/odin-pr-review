@@ -720,8 +720,9 @@ export class PairingSession {
     const said = run.answer !== undefined ? replyIn(run.answer) : replyIn(run.output);
     this.mark(Number(ask.id), run.code === 0 && !run.stopped ? "done" : "failed");
 
+    const finished = run.code === 0 && !run.stopped;
     if (said) {
-      this.reply(Number(ask.id), kind.name, agentId, said);
+      this.reply(Number(ask.id), kind.name, agentId, said, finished);
     } else if (run.code !== 0) {
       this.reply(
         Number(ask.id),
@@ -730,6 +731,7 @@ export class PairingSession {
         run.stopped
           ? "Stopped before finishing."
           : `Could not finish — ${kind.command} exited ${run.code}. The terminal has what it printed.`,
+        false,
       );
     }
 
@@ -1120,11 +1122,25 @@ export class PairingSession {
    * is taken out before the reader sees it: it is an instruction to Odin rather
    * than something said to them.
    */
-  private reply(to: number, name: string, agentId: string, body: string): void {
+  private reply(
+    to: number,
+    name: string,
+    agentId: string,
+    body: string,
+    /**
+     * Whether this answer is one.
+     *
+     * A tool that exited non-zero, or that was stopped part-way, still writes
+     * into the thread — that is how the reader finds out — but what it writes
+     * is an apology rather than an answer, and settling the conversation on one
+     * would file the question under "done" precisely when it is not.
+     */
+    answers = true,
+  ): void {
     const root = this.rootOf(to);
     if (!root) return;
 
-    const open = keepsOpen(body);
+    const open = !answers || keepsOpen(body);
     const said = open ? withoutMarker(body) : body;
     const id = this.next--;
     this.comments = [
