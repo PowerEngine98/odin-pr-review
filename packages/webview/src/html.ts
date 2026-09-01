@@ -1,10 +1,11 @@
 import {
   DARK_THEME,
   breathe,
-  roadEnd,
-  roadPath,
-  roadPoints,
-  shortenRoad,
+  bezier,
+  curveEnd,
+  curvePoints,
+  rim,
+  shorten,
   cardTitle,
   components,
   describeGaps,
@@ -1597,26 +1598,22 @@ function portLayer(layout: GraphLayout): string {
  */
 function wire(edge: PlacedEdge): { stem: string; head: string; full: string } {
   const away = edge.fromSide === "right" ? 1 : -1;
-  // Straight out of the dot, because that is the direction the road runs.
-  const start = {
-    x: edge.from.x + away * (PORT_GAP + PORT_RIM),
-    y: edge.from.y,
-  };
+  const into = edge.toSide === "left" ? 1 : -1;
+  const port = { x: edge.from.x + away * PORT_GAP, y: edge.from.y };
+  const start = rim(port, { x: edge.to.x, y: edge.to.y }, PORT_RIM);
 
-  const points = roadPoints(start, { x: edge.to.x, y: edge.to.y }, away > 0);
-  const cut = shortenRoad(points, HEAD);
-  const last = roadEnd(cut);
+  const points = curvePoints(edge.from, edge.to, away, into, start);
+  const cut = shorten(points, HEAD);
+  const last = curveEnd(cut);
 
   return {
-    full: roadPath(points),
-    stem: roadPath(cut),
+    full: bezier(points),
+    stem: bezier(cut),
     // The head rides its own segment so it can be oriented and placed without
     // anything drawn along it — the stroke is off, only the marker shows.
     head: `M ${last.x} ${last.y} L ${edge.to.x} ${edge.to.y}`,
   };
 }
-
-interface Point { x: number; y: number }
 
 /** How far the arrow head reaches back from the line's end. */
 const HEAD = 13;
@@ -1630,61 +1627,6 @@ const PORT_GAP = 9;
  * background between the two. This tucks the end under the ring instead.
  */
 const PORT_RIM = 4.5;
-
-function bezier(p: Point[]): string {
-  return `M ${p[0]!.x} ${p[0]!.y} C ${p[1]!.x} ${p[1]!.y}, ` +
-    `${p[2]!.x} ${p[2]!.y}, ${p[3]!.x} ${p[3]!.y}`;
-}
-
-/**
- * The same curve with its last `back` pixels taken off.
- *
- * Cut with de Casteljau rather than by stepping back along the end tangent: the
- * curve is at its most bent right where it arrives, so a straight backoff of a
- * head's length lands off the line and leaves a visible kink.
- */
-function shorten(p: Point[], back: number): Point[] {
-  const steps = 96;
-  const seen: Point[] = [];
-  for (let i = 0; i <= steps; i++) seen.push(pointAt(p, i / steps));
-
-  let travelled = 0;
-  let t = 0;
-  for (let i = steps; i > 0; i--) {
-    const step = Math.hypot(seen[i]!.x - seen[i - 1]!.x, seen[i]!.y - seen[i - 1]!.y);
-    if (travelled + step >= back) {
-      // Between two samples, not at one of them. On a long arrow a single step
-      // is tens of pixels, and stopping at the near end of it leaves the head
-      // floating that far off the end of the line.
-      t = (i - 1 + (travelled + step - back) / (step || 1)) / steps;
-      break;
-    }
-    travelled += step;
-  }
-
-  const a = mix(p[0]!, p[1]!, t);
-  const b = mix(p[1]!, p[2]!, t);
-  const c = mix(p[2]!, p[3]!, t);
-  const d = mix(a, b, t);
-  const e = mix(b, c, t);
-  return [p[0]!, a, d, mix(d, e, t)].map((q) => ({ x: round(q.x), y: round(q.y) }));
-}
-
-function pointAt(p: Point[], t: number): Point {
-  const a = mix(p[0]!, p[1]!, t);
-  const b = mix(p[1]!, p[2]!, t);
-  const c = mix(p[2]!, p[3]!, t);
-  return mix(mix(a, b, t), mix(b, c, t), t);
-}
-
-function mix(a: Point, b: Point, t: number): Point {
-  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
-}
-
-
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 function pathOf(layout: GraphLayout, nodeId: string): string {
   return layout.nodes.find((n) => n.id === nodeId)?.path ?? nodeId;

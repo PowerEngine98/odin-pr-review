@@ -153,7 +153,7 @@ describe("painting a drawing before it is written out", () => {
  * see — so the geometry is one function and this is what checks they all use it.
  */
 describe("arrows in the document the host writes", () => {
-  it("draws them as roads rather than curves", () => {
+  function lines(): string[] {
     const change = graph(3);
     change.edges = [
       {
@@ -168,12 +168,25 @@ describe("arrows in the document the host writes", () => {
     const html = renderHtml(change, layoutGraph(change), {});
     // The compiler scopes the class, so it is matched by its start rather than
     // whole — and both orders of the two attributes are written.
-    const arrows = [
-      ...html.matchAll(/class="(?:wire|hit|head)[^"]*"[^>]*?d="([^"]+)"/g),
-      ...html.matchAll(/d="([^"]+)"[^>]*?class="(?:wire|hit|head)[^"]*"/g),
+    return [
+      ...html.matchAll(/class="(?:wire|hit)[^"]*"[^>]*?d="([^"]+)"/g),
+      ...html.matchAll(/d="([^"]+)"[^>]*?class="(?:wire|hit)[^"]*"/g),
     ].map((found) => found[1]!);
+  }
 
-    expect(arrows.length).toBeGreaterThan(0);
-    for (const path of arrows) expect(path).not.toContain(" C ");
+  it("draws them as curves", () => {
+    const drawn = lines();
+    expect(drawn.length).toBeGreaterThan(0);
+    for (const path of drawn) expect(path).toContain(" C ");
+  });
+
+  it("gives each one a single cubic and nothing else", () => {
+    // One curve from card to card. A path with two of them in it would be the
+    // document drawing a shape the page does not, which is the whole reason
+    // this arithmetic is shared rather than written out per renderer.
+    for (const path of lines()) {
+      expect(path.match(/C/g)).toHaveLength(1);
+      expect(path).not.toContain("Q");
+    }
   });
 });

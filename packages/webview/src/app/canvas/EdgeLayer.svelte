@@ -16,12 +16,8 @@
   import type { EdgeView } from "../model.js";
   import { model, settings, ui } from "../state.svelte.js";
   import EdgeTip from "./EdgeTip.svelte";
-  import { afterTheFrame, bridgesAt, crossed } from "./bridges.svelte.js";
   import {
     arrows,
-    detours,
-    secondPass,
-    sharedRoads,
     HEAD,
     type Arrow,
     type Box,
@@ -64,73 +60,7 @@
     viewed: ui.viewed,
   });
 
-  /*
-   * The bridges are a stage of their own, after the frame the arrows go up in.
-   *
-   * Which roads cross which cannot be known until every road is planned, and
-   * planning them all is the last thing this pass does — so sweeping for
-   * crossings inside it would delay the thing the reader is waiting for in
-   * order to decorate it. The geometry hands the sweep back here to be
-   * scheduled, and reading the counter is what makes a finished sweep redraw
-   * these arrows with their hops on.
-   */
-  secondPass.run = afterTheFrame;
-  const drawn = $derived.by(() => {
-    void bridgesAt();
-    return arrows({ model: model.current, reading, boxes, lineAt });
-  });
-
-  /**
-   * The lanes several roads ended up sharing, drawn under all of them.
-   *
-   * Read after the arrows rather than worked out here: the roads are moved onto
-   * the lanes as part of laying them out, so the lanes are what that pass left
-   * behind. Deriving it from `drawn` is what keeps the two in step — a lane
-   * drawn from a placement the arrows are no longer using would be a grey line
-   * under nothing.
-   */
-  const shared = $derived.by(() => {
-    void drawn;
-    return sharedRoads();
-  });
-
-  /**
-   * The roads are planned around the cards once the cards have stopped moving.
-   *
-   * During the first build every card that measures itself moves the ones
-   * below it, and each move throws away every road planned against where they
-   * were. Planning through that is two and a half seconds of a large boot,
-   * measured, spent on arrangements that were replaced before they were drawn.
-   *
-   * So the drawing waits for a quiet moment and plans then. What the reader
-   * sees is arrows taking the plain way for the first second and then finding
-   * their way around the cards — the same shape the bridges appear in, and a
-   * beat the cover is usually still up for.
-   */
-  const QUIET = 250;
-  let settling: ReturnType<typeof setTimeout> | undefined;
-
-  $effect(() => {
-    /*
-     * The cards moving, and nothing else.
-     *
-     * Watching the arrows instead looks equivalent and is not: they are
-     * rebuilt for a hover, for a bridge sweep, for anything at all, so on a
-     * large change they never go quiet for a quarter of a second and the roads
-     * were never planned. Where the cards are is the only thing planning
-     * depends on, and it does settle.
-     */
-    void boxes;
-    void model.current;
-    if (detours.on) return;
-    settling = setTimeout(() => {
-      detours.set(true);
-      // The arrows are derived from this, so turning the roads on is what
-      // redraws them. Without it the plans exist and nothing asks for them.
-      crossed();
-    }, QUIET);
-    return () => clearTimeout(settling);
-  });
+  const drawn = $derived(arrows({ model: model.current, reading, boxes, lineAt }));
 
   /**
    * Whether the drawing is hushed so one thing can be read.
@@ -350,19 +280,14 @@
         }}
       />
       <!--
-        The whole road, always.
-
-        For a while a road that joined a lane drew only its ramps and let the
-        lane draw the stretch they shared. It halved the ink and it was wrong:
-        an arrow whose middle belongs to something else is an arrow that stops
-        at a junction and never comes out, and that is what readers found — a
-        red line into a grey lane, a green line beginning in mid-air. Roads of
-        the same colour running together look like one road, which is what a
-        shared lane is; the band underneath says how many, and nothing has to
-        disappear to say it.
+        The whole line an arrow draws for itself: the curve, on its own, when it
+        travels alone, and the short stem into a junction when it is one of a
+        gathered run. Never a piece of something else — an arrow whose middle
+        belongs to a shared line is an arrow that stops at a junction and never
+        comes out, and that is what readers found when the middles were shared.
       -->
       <path class="wire" d={arrow.stem} />
-      <!-- The road onwards, when this arrow is the one carrying a gathered run,
+      <!-- The line onwards, when this arrow is the one carrying a gathered run,
            and the wider invisible stroke that makes it pressable. Both empty on
            an arrow that travels alone, which is most of them. -->
       <path
@@ -438,23 +363,6 @@
   </defs>
 
   <!--
-    The lanes several roads share, laid down before any of them.
-    Wide and grey and behind everything: it is the road rather than a journey
-    along it, so it must never be mistaken for an arrow — no colour, no head,
-    nothing to press. Its width says how many go this way, up to a point past
-    which one more makes no difference to a reader.
-  -->
-  {#each shared as lane (`${lane.axis}:${lane.at}:${lane.from}`)}
-    <path
-      class="highway {lane.change ?? 'mixed'}"
-      style="stroke-width:{6 + Math.min((lane.users - 1) * 3, 18)}"
-      d={lane.axis === "vertical"
-        ? `M ${lane.at} ${lane.from} L ${lane.at} ${lane.to}`
-        : `M ${lane.from} ${lane.at} L ${lane.to} ${lane.at}`}
-    />
-  {/each}
-
-  <!--
     Every arrow, once, in one list that does not change when attention moves.
 
     Splitting them into "followed" and "the rest" reads better and measured
@@ -503,24 +411,6 @@
     opacity: 0.85;
     transition: stroke-width 160ms ease;
   }
-
-  /* The shared lane itself. Grey because it belongs to no arrow in particular,
-     rounded at the ends so it reads as a stretch of road rather than a bar, and
-     faint enough that the lines running along it are still the thing being
-     read. */
-  path.highway {
-    fill: none;
-    /* Grey only when the lane carries more than one kind of change; otherwise
-       it wears the colour of what travels it, faded, because it is the road
-       rather than a journey along it. */
-    stroke: color-mix(in srgb, var(--text) 26%, transparent);
-    stroke-linecap: round;
-    pointer-events: none;
-  }
-
-  path.highway.added { stroke: color-mix(in srgb, var(--added) 42%, transparent); }
-  path.highway.removed { stroke: color-mix(in srgb, var(--removed) 42%, transparent); }
-  path.highway.unchanged { stroke: color-mix(in srgb, var(--unchanged) 38%, transparent); }
 
   /* Carries the head and nothing else: the stem already stopped where it starts. */
   path.head {

@@ -1,7 +1,7 @@
 import type { GraphLayout, PlacedEdge, PlacedNode } from "../layout/layout.js";
 import { cardTitle, singlePane, type DisplayRow } from "../layout/display.js";
 import { fitText, rowOffset, textCapacity } from "../layout/layout.js";
-import { roadPath, roadPoints } from "../layout/roads.js";
+import { bezier, curvePoints } from "../layout/curves.js";
 import { DARK_THEME, type Theme } from "../layout/theme.js";
 import type { EdgeChange } from "../model/types.js";
 
@@ -251,11 +251,16 @@ function arrow(placed: PlacedEdge, theme: Theme): string {
   const colour = theme.change[placed.edge.change];
   const dash = placed.edge.kind === "import" ? ` stroke-dasharray="4 4"` : "";
 
-  // A road: straight out of the card, one turn into the gap between the
-  // columns, one turn to arrive. The same shape the page draws, from the same
-  // function, so a change looks like itself wherever it is rendered.
-  const d = roadPath(
-    roadPoints(placed.from, placed.to, placed.fromSide === "right"),
+  // A cubic with both control points level with the ends, so the arrow leaves
+  // and arrives square to the border. The same shape the page draws, from the
+  // same function, so a change looks like itself wherever it is rendered.
+  const d = bezier(
+    curvePoints(
+      placed.from,
+      placed.to,
+      placed.fromSide === "right" ? 1 : -1,
+      placed.toSide === "left" ? 1 : -1,
+    ),
   );
 
   return (

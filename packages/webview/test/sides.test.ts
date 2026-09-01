@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import type { EdgeView, NodeView, ViewModel } from "../src/app/model.js";
-import { arrows, secondPass, type Arrow, type Box, type Reading } from "../src/app/canvas/wire.js";
+import { arrows, type Box, type Reading } from "../src/app/canvas/wire.js";
 
 /**
- * Roads that go around the cards, on a drawing rather than in the geometry.
+ * Which border of each card an arrow joins, on a drawing rather than in the
+ * arithmetic.
  *
- * The arithmetic has its own tests. What this is about is the two ways a road
- * reached the drawing without having been planned at all — the case the router
- * was never asked about, and the case where the answer was thrown away — both
- * of which drew a line straight through the cards between its ends. The arrows
- * are under the cards, so what the reader saw was a line in pieces with no way
- * to tell which pieces belonged together, and no amount of correct pathfinding
- * fixed it because the pathfinding was not being run.
+ * The obvious answer is to compare the two middles, and it is wrong whenever
+ * two cards overlap in x — which on a drawing of files is common. The middle of
+ * a wide destination can sit to the left of a narrow source while its
+ * right-hand edge is far to the right, so the arrow left by the source's left
+ * side and then travelled right across the card it had just left to reach an
+ * edge on the far side of everything. What that draws is a hook, and it is the
+ * one thing about an arrow's shape a reader cannot read past.
  */
 
 function node(over: Partial<NodeView> = {}): NodeView {
@@ -53,10 +54,7 @@ function edge(over: Partial<EdgeView> = {}): EdgeView {
   };
 }
 
-/**
- * Three cards in a row: the two ends of every arrow here, and one standing
- * between them at exactly the height the road wants to run at.
- */
+/** Three cards in a row: the two ends of every arrow here, and one between. */
 const PLACED: Record<string, Box> = {
   "n:a": { x: 0, y: 0, width: 400, height: 300 },
   "n:middle": { x: 700, y: 0, width: 400, height: 300 },
@@ -110,34 +108,19 @@ const READING: Reading = {
   viewed: new Set<string>(),
 };
 
-/** Every row at the same height, so every road is level and wants to go straight. */
+/** Every row at the same height, so nothing about the answer is about heights. */
 const level = () => 150;
 
-/** Whether a path passes through a box, read from the path's own numbers. */
-function through(path: string, box: Box): boolean {
-  const numbers = (path.match(/-?[\d.]+/g) ?? []).map(Number);
-  const points: { x: number; y: number }[] = [];
-  for (let at = 0; at + 1 < numbers.length; at += 2) {
-    points.push({ x: numbers[at]!, y: numbers[at + 1]! });
-  }
-  return points.slice(1).some((point, at) => {
-    const before = points[at]!;
-    return !(
-      Math.max(before.x, point.x) <= box.x ||
-      Math.min(before.x, point.x) >= box.x + box.width ||
-      Math.max(before.y, point.y) <= box.y ||
-      Math.min(before.y, point.y) >= box.y + box.height
-    );
-  });
+/** The numbers a path is written from, in the order they were written. */
+function numbersIn(path: string): number[] {
+  return (path.match(/-?[\d.]+/g) ?? []).map(Number);
 }
 
-const drawnLines = (arrow: Arrow) => [arrow.stem, arrow.trunk].filter(Boolean);
-
-describe("which side of a card a road leaves by", () => {
+describe("which side of a card an arrow leaves by", () => {
   /*
    * A wide destination whose middle sits to the left of a narrow source, and
    * whose right-hand edge is far to the right of it. Middles said "go left";
-   * the road then had to travel right, across the card it had just left and
+   * the arrow then had to travel right, across the card it had just left and
    * past its own beginning, to reach an edge on the far side of everything.
    * What that draws is a hook.
    */
@@ -154,7 +137,7 @@ describe("which side of a card a road leaves by", () => {
       boxes,
       lineAt: level,
     });
-    const numbers = (arrow!.stem.match(/-?[\d.]+/g) ?? []).map(Number);
+    const numbers = numbersIn(arrow!.stem);
     return { arrow: arrow!, from: { x: numbers[0]!, y: numbers[1]! } };
   }
 
@@ -198,75 +181,65 @@ describe("which side of a card a road leaves by", () => {
   });
 });
 
-describe("a road on a drawing with a card in the way", () => {
-  it("goes around it", () => {
-    const [arrow] = arrows({
-      model: change([edge()]),
-      reading: READING,
-      boxes: PLACED,
-      lineAt: level,
-    });
-    for (const line of drawnLines(arrow!)) {
-      expect(through(line, PLACED["n:middle"]!)).toBe(false);
-    }
-  });
+/**
+ * Several references to one place, drawn as one line.
+ *
+ * A short stem from each row to a junction just clear of the card, and one
+ * curve from there onwards. The fault this keeps out is the trunk beginning
+ * somewhere the stems do not end — a line starting in mid-air, which readers
+ * reported over and over as an arrow that does not render.
+ */
+describe("a run of arrows gathered into one", () => {
+  const run = [
+    edge({ id: "e:1", fromLine: 10 }),
+    edge({ id: "e:2", fromLine: 20 }),
+    edge({ id: "e:3", fromLine: 30 }),
+  ];
 
-  it("goes around it for a gathered run too", () => {
-    /*
-     * The one that was missed. Several references to the same place are drawn
-     * as one road, and that road — the longest line on the drawing — was laid
-     * out straight while every single arrow around it was being planned. On a
-     * change of a hundred files it is most of the long lines.
-     */
-    const run = [
-      edge({ id: "e:1", fromLine: 10 }),
-      edge({ id: "e:2", fromLine: 20 }),
-      edge({ id: "e:3", fromLine: 30 }),
-    ];
-    const drawn = arrows({
+  const gathered = () =>
+    arrows({
       model: change(run),
       reading: READING,
       boxes: PLACED,
-      lineAt: level,
+      // Spread down the card, so the junction is somewhere none of them
+      // started and every stem has to reach it.
+      lineAt: (_id, _side, line) => 40 + line * 4,
     });
 
-    const carrier = drawn.find((one) => one.carrier);
-    expect(carrier).toBeDefined();
-    expect(carrier!.trunk).not.toBe("");
-    expect(through(carrier!.trunk, PLACED["n:middle"]!)).toBe(false);
+  it("gives one of them the trunk and the head, and the rest neither", () => {
+    const drawn = gathered();
+    expect(drawn.filter((one) => one.carrier)).toHaveLength(1);
+    expect(drawn.filter((one) => one.head !== "")).toHaveLength(1);
+    for (const arrow of drawn) expect(arrow.run).not.toBeNull();
   });
 
-  it("keeps a run's slip roads short rather than drawing the whole road again", () => {
-    /*
-     * The bridges replace the line an arrow draws, and every arrow was assumed
-     * to draw its own full road as its stem. A gathered arrow does not: its
-     * stem is a slip road into the junction, and handing it the full road drew
-     * a second copy of the trunk over the top of it.
-     */
-    const drawn = arrows({
-      model: change([edge({ id: "e:1", fromLine: 10 }), edge({ id: "e:2", fromLine: 20 })]),
-      reading: READING,
-      boxes: PLACED,
-      lineAt: level,
-    });
+  it("starts the trunk exactly where every stem ends", () => {
+    const drawn = gathered();
+    const carrier = drawn.find((one) => one.carrier)!;
+    const trunk = numbersIn(carrier.trunk);
+    const junction = { x: trunk[0]!, y: trunk[1]! };
 
-    // The sweep runs when the page schedules it, which here is at once.
-    secondPass.run = (go) => go();
-    try {
-      const again = arrows({
-        model: change([edge({ id: "e:1", fromLine: 10 }), edge({ id: "e:2", fromLine: 20 })]),
-        reading: READING,
-        boxes: PLACED,
-        lineAt: level,
-      });
-      for (const arrow of again) {
-        if (arrow.run === null) continue;
-        // A slip road ends at the junction, well short of the far card.
-        expect(through(arrow.stem, PLACED["n:b"]!)).toBe(false);
-      }
-    } finally {
-      secondPass.run = null;
+    for (const arrow of drawn) {
+      const stem = numbersIn(arrow.stem);
+      const ends = { x: stem[stem.length - 2]!, y: stem[stem.length - 1]! };
+      expect(Math.hypot(ends.x - junction.x, ends.y - junction.y)).toBeLessThan(1);
     }
-    expect(drawn.length).toBe(2);
+  });
+
+  it("draws every one of them as a curve", () => {
+    const drawn = gathered();
+    for (const arrow of drawn) expect(arrow.stem).toContain(" C ");
+    expect(drawn.find((one) => one.carrier)!.trunk).toContain(" C ");
+  });
+
+  it("leaves each stem on its own row's dot", () => {
+    // The dot says where an arrow sets off from. A stem that starts anywhere
+    // else leaves the dot marking nothing, which is the fault the dots being
+    // read from the line rather than remembered beside it exists to prevent.
+    for (const arrow of gathered()) {
+      const stem = numbersIn(arrow.stem);
+      const port = arrow.wire.port;
+      expect(Math.hypot(stem[0]! - port.x, stem[1]! - port.y)).toBeLessThan(8);
+    }
   });
 });
