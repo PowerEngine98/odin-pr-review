@@ -186,11 +186,19 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --z-name: 10;
   --z-canvas: 1;
   --z-marks: 22;
-  /* A comment being written belongs to the passage under it, so it sits with
-     the marks rather than with the panels: the map and the chrome are how you
-     leave this place, and a box that covered them would take that away while
-     you were mid-sentence. */
-  --z-compose: 23;
+  /* An agent's log is the most background thing on the page. It is left open
+     for minutes at a time while the reader does something else, so anything
+     they deliberately opened is over it — which is what the column had been
+     saying by sitting a step under the panels, and what it stopped saying the
+     moment a composer opened behind it. */
+  --z-terminals: 23;
+  /* A comment being written belongs to the passage under it, so it sits below
+     the panels: the map and the chrome are how you leave this place, and a box
+     that covered them would take that away while you were mid-sentence. Over
+     the logs, though — a reader who cannot reach the button that asks an agent,
+     because an agent is talking over it, has been stopped by the very thing
+     they were about to use. */
+  --z-compose: 24;
   --z-hud: 25;
   --z-chrome: 30;
   --z-panel: 40;

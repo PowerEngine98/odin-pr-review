@@ -198,8 +198,13 @@
      * page: it is left open for minutes while the reader does other things, and
      * anything they deliberately opened on top of it is the thing they are
      * looking at.
+     *
+     * Its own rank rather than a step under the panels', because a composer is
+     * one of the things it has to be under and a composer is not a panel. As a
+     * step under `--z-hud` this column landed above the composer, and an agent
+     * talking covered the `Ask agents` button of the remark about to ask it.
      */
-    z-index: calc(var(--z-hud, 25) - 1);
+    z-index: var(--z-terminals, 23);
     display: flex;
     flex-direction: column;
     align-items: flex-end;

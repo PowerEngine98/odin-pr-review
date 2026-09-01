@@ -468,7 +468,7 @@
        hidden behind the bar is a composer the reader cannot finish. It sits at
        the level a conversation sits at, which is what it is: the thread panel
        is already there for the same reason. */
-    z-index: var(--z-compose, 23);
+    z-index: var(--z-compose, 24);
     padding: 12px;
     border-radius: 8px;
     background: var(--panel);
