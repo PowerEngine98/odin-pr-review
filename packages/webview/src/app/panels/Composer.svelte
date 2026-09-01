@@ -121,9 +121,21 @@
 
     const body = card.querySelector<HTMLElement>(".card-body") ?? card;
     const attribute = sideOf(where.side) === "base" ? "data-old" : "data-new";
-    const row = body.querySelector<HTMLElement>(
-      `.row[${attribute}="${where.line}"]`,
-    );
+
+    /*
+     * A remark about the whole file hangs under the title instead.
+     *
+     * There is no line to hang it from — that is what makes it a remark about
+     * the file — and the row was looked up regardless, which asked the document
+     * for `.row[data-new="undefined"]`, found nothing, and returned null. The
+     * box then never rendered at all: the button pressed, the state changed,
+     * and nothing appeared. The title is what the remark is about, so it is
+     * what the box points at.
+     */
+    const row =
+      where.line === undefined
+        ? (card.querySelector<HTMLElement>(".card-title") ?? card)
+        : body.querySelector<HTMLElement>(`.row[${attribute}="${where.line}"]`);
     // Folded away, held back by the card's cap, or not drawn at this zoom.
     if (!row || row.offsetParent === null) return null;
 

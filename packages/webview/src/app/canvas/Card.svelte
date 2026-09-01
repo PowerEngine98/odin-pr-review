@@ -21,7 +21,15 @@
   import { legibleAt } from "./legible.js";
   import { near } from "./near.svelte.js";
   import { patchOf, railSide, spanOf, type Piece } from "./picking.js";
-  import { begin, drop, extendTo, gesture, grip, open } from "./picking.svelte.js";
+  import {
+    begin,
+    composeOnFile,
+    drop,
+    extendTo,
+    gesture,
+    grip,
+    open,
+  } from "./picking.svelte.js";
   import { marksFor } from "./marked.svelte.js";
   import { sideOf } from "../marks/marks.js";
   import { threadsOf } from "../panels/Thread.svelte";
@@ -1398,6 +1406,51 @@
               stroke-width="1.5"
               stroke-linecap="round"
               stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      {/if}
+
+      <!--
+        A remark about the file rather than about a line in it.
+
+        The gutter starts one about a passage, which covers nearly everything a
+        reviewer wants to say — but not "this file should not exist", and not
+        "this belongs in the other package". Those were reachable only by a
+        keyboard shortcut, which is to say reachable only by somebody who
+        already knew it was there.
+
+        Shown whenever there is a forge to send it to, including on a file the
+        reader has marked read: the gutter bows out of the way on those because
+        a drag across lines they have finished with is in the way, and a button
+        in the title bar is not. The keyboard shortcut has always allowed it.
+      -->
+      {#if model.current.canReview}
+        <button
+          class="remark-file"
+          data-hint="Comment on this file"
+          title="Comment on this file"
+          aria-label="Comment on this file"
+          onclick={(event) => {
+            event.stopPropagation();
+            ui.activeNode = node.id;
+            composeOnFile(node.id, node.path);
+          }}
+        >
+          <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+            <path
+              d="M2.5 3.4h11a1 1 0 0 1 1 1v5.6a1 1 0 0 1-1 1H8l-3.4 2.6V11H2.5a1 1 0 0 1-1-1V4.4a1 1 0 0 1 1-1Z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M8 5.6v3.6M6.2 7.4h3.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
             />
           </svg>
         </button>

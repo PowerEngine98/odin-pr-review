@@ -12,7 +12,7 @@ import {
   type Focused,
   type Spot,
 } from "./keys.js";
-import { drop } from "./picking.svelte.js";
+import { composeOnFile, drop } from "./picking.svelte.js";
 
 /**
  * Reading a change from the keyboard.
@@ -117,44 +117,6 @@ function travel(card: Spot): void {
  */
 const STRIDE = 180;
 let stepped = 0;
-
-/**
- * A remark about the file rather than about a line in it.
- *
- * Not everything worth saying is about a line: "this file should not exist"
- * belongs to the file, and pinning it to line one makes it read as a note about
- * an import. The composer is anchored under the card's title, which is what the
- * remark is about, and the pick that was open is dropped first — a lit range on
- * another file beside a box addressed to this one says two different things.
- */
-function composeOnFile(id: string, path: string): void {
-  const slot = [...document.querySelectorAll<HTMLElement>(".card-slot")].find(
-    (element) => element.dataset.id === id,
-  );
-  if (!slot) return;
-
-  const card = slot.getBoundingClientRect();
-  const row = (slot.querySelector(".card-title") ?? slot).getBoundingClientRect();
-
-  drop();
-
-  /*
-   * The same seam `picking.svelte.ts` documents, for the same reason. The state
-   * module describes a composer's anchor as one rectangle and its line as a
-   * number; the composer reads two boxes and treats a missing line as a remark
-   * about the whole file — which is exactly what this is. The shape below is
-   * what the composer wants; the declaration is what wants changing, and it is
-   * not the canvas's to change.
-   */
-  ui.composer = {
-    path,
-    side: "RIGHT",
-    anchor: Object.assign(new DOMRect(row.left, row.top, row.width, row.height), {
-      row,
-      card,
-    }),
-  };
-}
 
 /** Marking a file read, the way the checkbox on the card does it. */
 function markRead(path: string): void {
