@@ -105,8 +105,16 @@ export interface Standing {
   height: number;
 }
 
-/** How close a lane may sit to the card beside it. */
-const CLEAR = 12;
+/**
+ * How close a lane may sit to the card beside it.
+ *
+ * Far more than a single road keeps, and that is the point: a lane is a band
+ * several roads wide, drawn under all of them, and the traffic on it is fanned
+ * out to either side. Placed at a road's own clearance it ends up leaning on
+ * the card — the band's edge against the border, which looks like a mistake
+ * because it is one. This is the band at its widest, its fan, and a little air.
+ */
+const CLEAR = 34;
 
 /**
  * Puts the roads that travel together onto shared lanes.
@@ -206,6 +214,34 @@ function sideways(walls: readonly Standing[], axis: "vertical" | "horizontal"): 
 }
 
 /**
+ * Where a lane may sit between the cards it runs beside, or nothing.
+ *
+ * Nothing when it would have to pass through one, and nothing when the space
+ * between them is too narrow to hold a band with air either side — in both
+ * cases the roads are better off as they were.
+ */
+function clearOf(
+  at: number,
+  from: number,
+  to: number,
+  walls: readonly Standing[],
+): number | null {
+  let low = -Infinity;
+  let high = Infinity;
+  for (const wall of walls) {
+    if (wall.y + wall.height <= from || wall.y >= to) continue;
+    if (wall.x + wall.width <= at) low = Math.max(low, wall.x + wall.width);
+    else if (wall.x >= at) high = Math.min(high, wall.x);
+    else return null;
+  }
+
+  const least = low === -Infinity ? -Infinity : low + CLEAR;
+  const most = high === Infinity ? Infinity : high - CLEAR;
+  if (least > most) return null;
+  return Math.min(Math.max(at, least), most);
+}
+
+/**
  * The clear space a run has either side of it, up to the nearest card.
  *
  * Only cards that stand beside this run — ones it actually passes — can hem it
@@ -258,7 +294,7 @@ function gather(
   let band: Leg[] = [];
 
   const closeBand = () => {
-    if (band.length >= many) found.push(...merge(band, corners, axis, many));
+    if (band.length >= many) found.push(...merge(band, corners, axis, many, walls));
     band = [];
   };
   // Beside a run rather than at one end of it, which is what "between" means
@@ -343,6 +379,7 @@ function merge(
   corners: Point[][],
   axis: "vertical" | "horizontal",
   many: number,
+  walls: readonly Standing[],
 ): Highway[] {
   const along = [...band].sort((one, two) => one.from - two.from);
   const found: Highway[] = [];
@@ -412,9 +449,13 @@ function merge(
           if (run.length >= many) {
             const from = Math.min(...run.map((leg) => leg.from));
             const to = Math.max(...run.map((leg) => leg.to));
-            // A lane is drawn under the roads on it, and one too short to be
-            // worth that is a stub with nothing to say what it is.
-            if (to - from >= WORTH) found.push({ axis, at, from, to, users: run.length });
+            // Held off the cards it runs beside, and dropped where there is no
+            // room for a band between them: a lane leaning on a border reads as
+            // a mistake, and the roads are better off as they were.
+            const room = clearOf(at, from, to, walls);
+            if (room !== null && to - from >= WORTH) {
+              found.push({ axis, at: room, from, to, users: run.length });
+            }
           }
           run = [];
           reached = -Infinity;

@@ -1069,13 +1069,23 @@
       // and hanging the box there put it over the very range it was about —
       // including the two handles, so the range could be widened once and
       // never narrowed again.
+      /*
+       * Somewhere to hang the box, whatever happens.
+       *
+       * The last line of the passage, or the line the gesture began on — and
+       * failing both, the card itself. Both of the first two can come back with
+       * nothing: a line folded into a closed band has no rectangle, and neither
+       * has one held below the card's height cap. This gave up there, which
+       * meant a reader pressed the plus on a line and nothing happened at all —
+       * no box, no message, nothing to try differently. A box against the card
+       * rather than against the line is much better than that, and the remark
+       * it writes is about the right lines either way: they come from the pick,
+       * not from where the box was drawn.
+       */
       const row =
         rowFor(pick.side, spanOf(pick).end) ??
-        (anchorRow?.offsetParent ? anchorRow : null);
-      if (!row) {
-        drop();
-        return;
-      }
+        (anchorRow?.offsetParent ? anchorRow : null) ??
+        element;
       open(
         { row: row.getBoundingClientRect(), card: element.getBoundingClientRect() },
         picked(pick),
