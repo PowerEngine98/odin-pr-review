@@ -33,6 +33,75 @@
   /** The frame the picture is placed in, for zooming about the pointer. */
   let stage: HTMLDivElement | undefined = $state();
 
+  /**
+   * The picture at rest, and the room it is being shown in.
+   *
+   * Watched rather than asked for: the alternative is measuring inside a drag,
+   * which makes the browser lay the whole page out on every pointer move.
+   */
+  let frame: HTMLDivElement | undefined = $state();
+  let shot = $state({ width: 0, height: 0 });
+  let room = $state({ width: 0, height: 0 });
+
+  $effect(() => {
+    const element = frame;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const watching = new ResizeObserver((seen) => {
+      const rect = seen[0]?.contentRect;
+      if (rect) shot = { width: rect.width, height: rect.height };
+    });
+    watching.observe(element);
+    return () => watching.disconnect();
+  });
+
+  $effect(() => {
+    const measure = () => {
+      room = { width: window.innerWidth, height: window.innerHeight };
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  });
+
+  /**
+   * As far as the picture may be moved, which is not off the screen.
+   *
+   * A picture zoomed to four times the window can be walked across, and one
+   * that fits stays where it is put — but neither may be pushed out of sight.
+   * Dragging a screenshot off the edge and being left with an empty grey
+   * window, with nothing on it saying where the picture went, is a state a
+   * reader can reach in one flick and cannot undo without knowing about Fit.
+   */
+  function reined(value: number, picture: number, window: number): number {
+    const over = Math.max(0, (picture - window) / 2);
+    return Math.min(over, Math.max(-over, value));
+  }
+
+  function rein(): void {
+    x = reined(x, shot.width * scale, room.width);
+    y = reined(y, shot.height * scale, room.height);
+  }
+
+  /**
+   * Where the picture's own top-right corner is on the screen.
+   *
+   * The cross sits on it — that is what makes it the picture's cross rather
+   * than the window's — and it is worked out rather than measured so that it
+   * keeps up with a drag. Held inside the window at both ends: a picture zoomed
+   * past the edges has its corner off the screen, and a cross that went with it
+   * would be a dialog with no way out.
+   */
+  const corner = $derived.by(() => {
+    const midX = room.width / 2 + x;
+    const midY = room.height / 2 + y;
+    const right = midX + (shot.width * scale) / 2;
+    const top = midY - (shot.height * scale) / 2;
+    return {
+      x: Math.min(room.width - 22, Math.max(22, right)),
+      y: Math.min(room.height - 22, Math.max(22, top)),
+    };
+  });
+
   /*
    * A new picture starts fresh.
    *
@@ -60,6 +129,7 @@
     if (!wheelZooms(event)) {
       x -= event.deltaX;
       y -= event.deltaY;
+      rein();
       return;
     }
 
@@ -76,6 +146,7 @@
     x = px - ((px - x) * next) / scale;
     y = py - ((py - y) * next) / scale;
     scale = next;
+    rein();
   }
 
   /** Dragging moves the picture, which is the only thing to do with a pointer here. */
@@ -93,6 +164,7 @@
     if (!dragging || !held) return;
     x = event.clientX - held.x;
     y = event.clientY - held.y;
+    rein();
   }
 
   function drop(event: PointerEvent): void {
@@ -152,7 +224,7 @@
         off the screen: the picture moves under it and the cross stays where
         the reader last saw it.
       -->
-      <div class="frame">
+      <div class="frame" bind:this={frame}>
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <img
           class="shown"
@@ -167,19 +239,21 @@
           onpointercancel={drop}
           ondblclick={fit}
         />
-        <button
-          class="close"
-          type="button"
-          title="Close (Esc)"
-          aria-label="Close"
-          onclick={hidePicture}
-        >
-          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-            <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-          </svg>
-        </button>
       </div>
     </div>
+
+    <button
+      class="close"
+      type="button"
+      title="Close (Esc)"
+      aria-label="Close"
+      style="left:{corner.x}px; top:{corner.y}px"
+      onclick={hidePicture}
+    >
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+        <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+      </svg>
+    </button>
 
     <div class="said">
       <span class="what">{shown.alt || "Picture"}</span>
@@ -251,13 +325,14 @@
 
   .shown.dragging { cursor: grabbing; }
 
-  /* On the picture's own corner, half off it, so it reads as belonging to the
-     picture rather than to the window. Round and filled, because at this size
-     against a screenshot of anything a bordered square disappears. */
+  /* On the picture's own corner, wherever that has got to: the coordinates are
+     worked out from the zoom and the drag, and held inside the window at both
+     ends so a picture pushed past the edge never takes its own way out with
+     it. Round and filled, because at this size against a screenshot of
+     anything a bordered square disappears. */
   .close {
-    position: absolute;
-    top: -14px;
-    right: -14px;
+    position: fixed;
+    transform: translate(-50%, -50%);
     display: flex;
     align-items: center;
     justify-content: center;
