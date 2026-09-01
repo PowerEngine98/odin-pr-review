@@ -1143,6 +1143,24 @@ function keyOf(lineIs: "stem" | "trunk", line: readonly Point[]): string {
 }
 
 function bridge(drawn: Arrow[]): void {
+  /*
+   * No hops any more.
+   *
+   * They were borrowed from wiring diagrams, where an X of four straight arms
+   * cannot say which pair belongs together and a little bridge can. That was
+   * true of this drawing when every arrow took its own line across it. It is
+   * not true now: roads that go the same way share a lane, and the ones that
+   * cross it are fanned apart along it, so a crossing is already legible from
+   * the colours and the spacing. What the hops add on top of that is a rash of
+   * bumps down every long road — most of them over roads that are plainly not
+   * the same road anyway.
+   *
+   * Left in place rather than deleted: the sweep below is the only piece of
+   * this file that knows how to find which roads cross which, and it will be
+   * wanted the moment anything wants to say something about a crossing.
+   */
+  if (drawn.length >= 0) return;
+
   const roads = drawn.filter((arrow) => arrow.line.length > 1);
   if (roads.length < 2) return;
 

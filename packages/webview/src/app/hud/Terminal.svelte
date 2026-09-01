@@ -26,6 +26,7 @@
     id,
     name,
     cramped = false,
+    cap,
   }: {
     id: string;
     name: string;
