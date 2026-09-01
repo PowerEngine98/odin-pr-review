@@ -144,14 +144,31 @@ export function highways(
   for (const leg of flats) hem(leg, walls, "horizontal");
 
   const lanes = [
-    ...gather(uprights, corners, "vertical", reach, many),
-    ...gather(flats, corners, "horizontal", reach, many),
+    ...gather(uprights, corners, "vertical", reach, many, sideways(walls, "vertical")),
+    ...gather(flats, corners, "horizontal", reach, many, sideways(walls, "horizontal")),
   ];
 
   for (let at = 0; at < roads.length; at++) {
     moved.set(roads[at]!.id, straighten(corners[at]!));
   }
   return { roads: moved, highways: lanes };
+}
+
+/**
+ * The cards as the axis sees them, so one comparison serves both directions.
+ *
+ * A horizontal run's "between" is measured up and down; a vertical run's is
+ * measured left and right. Turning the cards once is cheaper and plainer than
+ * writing every comparison twice.
+ */
+function sideways(walls: readonly Standing[], axis: "vertical" | "horizontal"): Standing[] {
+  if (axis === "vertical") return walls as Standing[];
+  return walls.map((wall) => ({
+    x: wall.y,
+    y: wall.x,
+    width: wall.height,
+    height: wall.width,
+  }));
 }
 
 /**
@@ -198,6 +215,7 @@ function gather(
   axis: "vertical" | "horizontal",
   reach: number,
   many: number,
+  walls: readonly Standing[],
 ): Highway[] {
   if (legs.length === 0) return [];
   legs.sort((one, two) => one.at - two.at || one.from - two.from);
@@ -209,12 +227,15 @@ function gather(
     if (band.length >= many) found.push(...merge(band, corners, axis, many));
     band = [];
   };
+  // Beside a run rather than at one end of it, which is what "between" means
+  // for a road: the cards to compare against are the same for every pair here.
 
   for (const leg of legs) {
     const last = band[band.length - 1];
-    // Near enough to be the same lane, or in the same gap between cards, which
-    // is the same statement made about the drawing rather than about a number.
-    if (last && leg.at - last.at > reach && !sameGap(last, leg)) closeBand();
+    // Near enough to be the same lane, or with nothing standing between them,
+    // which is the same statement made about the drawing rather than about a
+    // number.
+    if (last && leg.at - last.at > reach && !nothingBetween(last, leg, walls)) closeBand();
     band.push(leg);
   }
   closeBand();
@@ -222,20 +243,57 @@ function gather(
 }
 
 /**
- * Whether two runs are travelling the same clear space.
+ * Whether two runs are hemmed in by the same pair of cards.
  *
- * Both hemmed by the same pair of cards, and nothing standing between them:
- * that is what makes two lines a hundred pixels apart one road drawn twice
- * rather than two roads. Unknown on either side means the cards were not given,
- * and then distance is all there is to go on.
+ * True of runs that never pass each other — one above, one below — which is
+ * why it is asked as well as, rather than instead of, what stands between them.
  */
-function sameGap(one: Leg, two: Leg): boolean {
+function sameCorridor(one: Leg, two: Leg): boolean {
   if (one.gapLow === undefined && one.gapHigh === undefined) return false;
   if (two.gapLow === undefined && two.gapHigh === undefined) return false;
   const low = Math.max(one.gapLow ?? -Infinity, two.gapLow ?? -Infinity);
   const high = Math.min(one.gapHigh ?? Infinity, two.gapHigh ?? Infinity);
-  // A shared gap wide enough to hold a road, and holding both of them already.
   return low <= high && one.at >= low && one.at <= high && two.at >= low && two.at <= high;
+}
+
+/**
+ * Whether two runs have nothing standing between them.
+ *
+ * The whole rule, said as plainly as it can be. Two lines a hundred pixels
+ * apart with clear space between them are one road drawn twice; two lines the
+ * same distance apart with a card between them are two roads, and joining them
+ * would draw one through the card.
+ *
+ * Asked about the stretch they share and no more. The first version compared
+ * each run's clearance along its whole length, which sounds like the same
+ * question and is much stricter: a run three thousand pixels long passes many
+ * cards, any one of which narrows its clearance, and two runs that are plainly
+ * side by side were kept apart by a card neither of them goes anywhere near.
+ * Measured on a change of two hundred files, that was eleven of the twelve
+ * pairs a reader would have merged by eye.
+ */
+function nothingBetween(one: Leg, two: Leg, walls: readonly Standing[]): boolean {
+  if (walls.length === 0) return false;
+  // Hemmed in by the same cards, which is the same question asked of two runs
+  // that never pass each other — they share a corridor without sharing a
+  // stretch of it, and a band is a chain, so dropping that link splits crowds
+  // that plainly belong together.
+  if (sameCorridor(one, two)) return true;
+
+  const low = Math.min(one.at, two.at);
+  const high = Math.max(one.at, two.at);
+  const from = Math.max(one.from, two.from);
+  const to = Math.min(one.to, two.to);
+  // No shared stretch at all: two runs in the same column at opposite ends of
+  // the drawing share a lane and nothing else.
+  if (from >= to) return false;
+
+  for (const wall of walls) {
+    if (wall.x + wall.width <= low || wall.x >= high) continue;
+    if (wall.y + wall.height <= from || wall.y >= to) continue;
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -260,39 +318,49 @@ function merge(
 
   const close = () => {
     if (together.length >= many) {
-      let middle = [...together].sort((one, two) => one.at - two.at)[
+      /*
+       * The lane they move to, and which of them can actually reach it.
+       *
+       * A run can only be moved to a lane that is clear along its own length,
+       * and in a crowd the members are hemmed in by different cards — so a
+       * group where no single lane suits everybody used to be abandoned
+       * whole, leaving five parallel lines because one of them could not join.
+       * The ones that can travel together do; the rest stay where they are and
+       * are no worse off than before.
+       */
+      const middle = [...together].sort((one, two) => one.at - two.at)[
         together.length >> 1
       ]!.at;
-      /*
-       * Inside the space all of them share.
-       *
-       * The middle lane is one of theirs and so is already clear of the cards
-       * it passes — but it is only clear of *its own*, and the others may be
-       * hemmed in more tightly. Moving a road onto a lane that runs through a
-       * card is the fault this whole file is meant to relieve.
-       */
-      const low = Math.max(...together.map((leg) => leg.gapLow ?? -Infinity));
-      const high = Math.min(...together.map((leg) => leg.gapHigh ?? Infinity));
-      if (low <= high) middle = Math.min(Math.max(middle, low), high);
-      for (const leg of together) {
-        const road = corners[leg.road]!;
-        const a = road[leg.corner]!;
-        const b = road[leg.corner + 1]!;
-        if (axis === "vertical") {
-          a.x = middle;
-          b.x = middle;
-        } else {
-          a.y = middle;
-          b.y = middle;
+      const lane = Math.min(
+        Math.max(middle, Math.max(...together.map((leg) => leg.gapLow ?? -Infinity))),
+        Math.min(...together.map((leg) => leg.gapHigh ?? Infinity)),
+      );
+      const at = Number.isFinite(lane) ? lane : middle;
+      const joining = together.filter(
+        (leg) => at >= (leg.gapLow ?? -Infinity) && at <= (leg.gapHigh ?? Infinity),
+      );
+
+      if (joining.length >= many) {
+        for (const leg of joining) {
+          const road = corners[leg.road]!;
+          const a = road[leg.corner]!;
+          const b = road[leg.corner + 1]!;
+          if (axis === "vertical") {
+            a.x = at;
+            b.x = at;
+          } else {
+            a.y = at;
+            b.y = at;
+          }
         }
+        found.push({
+          axis,
+          at,
+          from: Math.min(...joining.map((leg) => leg.from)),
+          to: Math.max(...joining.map((leg) => leg.to)),
+          users: joining.length,
+        });
       }
-      found.push({
-        axis,
-        at: middle,
-        from: Math.min(...together.map((leg) => leg.from)),
-        to: Math.max(...together.map((leg) => leg.to)),
-        users: together.length,
-      });
     }
     together = [];
     reachedTo = -Infinity;
