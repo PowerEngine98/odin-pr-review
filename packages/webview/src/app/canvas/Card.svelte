@@ -217,6 +217,9 @@
    */
   const flat = $derived(simplified || !nearby);
 
+  /** Whether the reader has marked this file read. */
+  const viewed = $derived(ui.viewed.has(node.path));
+
   /**
    * Every card past the cut wears its name, with nothing filtered.
    *
@@ -226,8 +229,13 @@
    * looking for a file, and a drawing where two thirds of the blocks are
    * anonymous cannot be searched at all. Names that collide are a smaller
    * problem than names that are not there.
+   *
+   * Except the ones already read. Names are for finding what is left, and a
+   * file marked read is not what anybody is looking for — at this distance a
+   * hundred of them overlap each other and the ones that matter, so the drawing
+   * empties as the review goes on and what remains is what remains to do.
    */
-  const named = $derived(simplified);
+  const named = $derived(simplified && !viewed);
 
   /**
    * Whether the block is drawn as two halves rather than one colour.
@@ -342,7 +350,6 @@
   const onlyAdded = $derived(head.deletions === "");
   const onlyRemoved = $derived(head.deletions !== "" && head.additions === "");
 
-  const viewed = $derived(ui.viewed.has(node.path));
   const remarks = $derived(
     model.current.comments.filter((comment) => comment.path === node.path).length,
   );
