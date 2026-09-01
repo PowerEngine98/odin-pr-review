@@ -287,6 +287,7 @@ export const detours = {
     planning.clear();
     bridging.clear();
     plannedFor = "";
+    rerouted();
   },
 };
 
@@ -304,6 +305,7 @@ export const detours = {
  */
 let counted: readonly Blocking[] | null = null;
 let count = "";
+
 
 function shapeOf(walls: readonly Blocking[]): string {
   if (walls === counted) return count;
@@ -334,11 +336,13 @@ function planned(
     planning.clear();
     bridging.clear();
     plannedFor = shape;
+    rerouted();
   }
 
   const key = `${from.x},${from.y},${to.x},${to.y},${goesRight ? 1 : 0}`;
   const known = planning.get(key);
   if (known) return known;
+
 
   /*
    * Its own two cards are not obstacles. A road has to leave one and reach the
@@ -535,7 +539,76 @@ export function wantedEdges(
  * actually visible, and a run of four whose other three are filtered out is not
  * a run at all — it is one arrow, and it should be drawn as one, head and all.
  */
+/*
+ * The last set of arrows, and what they were worked out from.
+ *
+ * Two layers ask for them — the roads under the cards and the dots over them —
+ * with the same question in the same tick, and each answer is six hundred
+ * routed roads. Answering it twice was half of what the drawing spent on
+ * arrows during a build.
+ *
+ * Compared by identity rather than by contents: everything here is either a
+ * reactive object the page replaces when it changes, or a primitive. Two
+ * different placements are two different objects, so a stale answer cannot be
+ * handed out.
+ */
+let asked: Scene | null = null;
+let answered: Arrow[] = [];
+
+/**
+ * Bumped by everything that changes an answer without changing the question.
+ *
+ * The scene is not the whole of what the roads depend on: turning the planning
+ * on, a finished sweep for crossings, a map that has stopped moving — each of
+ * those changes what these arrows should be while the model, the placement and
+ * the reading all stay exactly as they were. Without it the first cached answer
+ * was handed out for ever, and the roads never left the plain way through.
+ */
+let generation = 0;
+let asOf = -1;
+
+export function rerouted(): void {
+  generation += 1;
+}
+
 export function arrows(scene: Scene): Arrow[] {
+  /*
+   * The reading is compared by what it says rather than by which object says
+   * it: each layer builds its own, so two identical readings are two objects
+   * and an identity test never matches — which is how both layers came to be
+   * routing every road separately.
+   */
+  if (
+    asked &&
+    asked.model === scene.model &&
+    asked.boxes === scene.boxes &&
+    asked.lineAt === scene.lineAt &&
+    asOf === generation &&
+    sameReading(asked.reading, scene.reading)
+  ) {
+    return answered;
+  }
+  const drawn = routeAll(scene);
+  asked = scene;
+  answered = drawn;
+  asOf = generation;
+  return drawn;
+}
+
+function sameReading(one: Reading, two: Reading): boolean {
+  return (
+    one.unified === two.unified &&
+    one.showTests === two.showTests &&
+    one.showImports === two.showImports &&
+    one.showUnchanged === two.showUnchanged &&
+    one.showInfra === two.showInfra &&
+    one.hideViewed === two.hideViewed &&
+    one.part === two.part &&
+    one.viewed === two.viewed
+  );
+}
+
+function routeAll(scene: Scene): Arrow[] {
   const { model, reading, boxes, lineAt } = scene;
   const arrangement = arrangementFor(model, reading);
   const wanted = wantedEdges(model, reading);
@@ -634,6 +707,7 @@ export function arrows(scene: Scene): Arrow[] {
   for (const [key, run] of runs) gather(key, run, walls, boxOf);
   join(drawn, walls);
   bridge(drawn);
+
   return drawn;
 }
 
@@ -940,6 +1014,9 @@ function sweep(roads: readonly { arrow: Arrow; corners: Point[] }[]): void {
       note(over, { x: upright.at, y: flat.at });
     }
   }
+
+  // A finished sweep is a different set of arrows drawn from the same scene.
+  rerouted();
 
   for (const [arrow, met] of hops) {
     // Only the drawn line hops. What the pointer follows stays the plain road:
