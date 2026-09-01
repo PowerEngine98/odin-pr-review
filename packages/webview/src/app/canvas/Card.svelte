@@ -31,10 +31,12 @@
     anchorsFor,
     cardTitle,
     held,
+    numbered,
     pairKey,
     pairRows,
     rowKey,
     type CardTitle,
+    type RowPair,
     type RowView,
   } from "./rows.js";
 
@@ -287,12 +289,40 @@
     delta?.gone.reduce((n, run) => (run.before ? n : n + run.lines), 0) ?? 0,
   );
 
-  const pairs = $derived(pairRows(rows));
+  /**
+   * The rows as they are drawn, which is the rows with both gutters answered.
+   *
+   * Context fetched around an arrow arrives numbered on one side only, and a
+   * card read as two panes needs both. See `numbered`: it is the same list in
+   * the same order, and every row it had nothing to add to is the row itself.
+   */
+  const shown = $derived(numbered(rows));
+
+  const pairs = $derived(pairRows(shown));
   const splitLimit = $derived(splitCap ?? pairs.length);
-  const unifiedLimit = $derived(unifiedCap ?? rows.length);
+  const unifiedLimit = $derived(unifiedCap ?? shown.length);
   const behind = $derived(
-    settings.unified ? rows.length - unifiedLimit : pairs.length - splitLimit,
+    settings.unified ? shown.length - unifiedLimit : pairs.length - splitLimit,
   );
+
+  /**
+   * The same pairs, over the rows exactly as the host sent them.
+   *
+   * What a rebuild did is remembered against the row objects it compared, and a
+   * line whose empty gutter has since been filled in is a copy of one of those
+   * rather than the row itself — so asking about the copy finds nothing, and a
+   * line an agent had just rewritten stopped lighting up. Filling in a number
+   * changes no row's kind, so the two pairings have the same shape and the row
+   * the rebuild knows is the one at the same index. Built only while there is a
+   * rebuild to describe, which on a reading nobody is editing under is never.
+   */
+  const asGiven = $derived(delta ? pairRows(rows) : null);
+
+  /** The row behind a pair, as the rebuild knows it. */
+  function asSent(pair: RowPair, at: number): RowView | undefined {
+    const was = asGiven?.[at] ?? pair;
+    return was.right ?? was.left ?? was.band;
+  }
 
   /**
    * Which sides of the file actually changed.
@@ -437,9 +467,9 @@
     const head = titleHeight || 0;
     if (fileLevel) return head / 2;
 
-    const shown = settings.unified ? rows.slice(0, unifiedLimit) : null;
-    const at = shown
-      ? shown.findIndex((row) => (side === "base" ? row.oldLine : row.newLine) === line)
+    const capped = settings.unified ? shown.slice(0, unifiedLimit) : null;
+    const at = capped
+      ? capped.findIndex((row) => (side === "base" ? row.oldLine : row.newLine) === line)
       : pairs
           .slice(0, splitLimit)
           .findIndex((pair) =>
@@ -448,7 +478,7 @@
     if (at < 0) return null;
 
     const body = Math.max(0, (tall || 0) - head);
-    const count = shown ? shown.length : Math.min(pairs.length, splitLimit);
+    const count = capped ? capped.length : Math.min(pairs.length, splitLimit);
     if (body <= 0 || count <= 0) return null;
     return head + ((at + 0.5) * body) / count;
   }
@@ -1492,15 +1522,15 @@
          having put pairs of lines on one row, and the height every arrow is
          placed against has to be the height of the one on screen. -->
     <div class="card-body unified-view" bind:offsetHeight={bodyHeight}>
-      {#each rows as row, i (rowKey(row, i))}
-        {@render removed(goneAbove(row))}
+      {#each shown as row, i (rowKey(row, i))}
+        {@render removed(goneAbove(rows[i]))}
         <Row
           {row}
           single={oneSided}
           nodeId={node.id}
           {canComment}
           marks={symbols}
-          flash={flashOf(row)}
+          flash={flashOf(rows[i])}
           beyondCap={i >= unifiedLimit && !held(row, anchored)}
           revealed={expanded}
         />
@@ -1511,14 +1541,14 @@
   {:else}
     <div class="card-body split-view" bind:offsetHeight={bodyHeight}>
       {#each pairs as pair, i (pairKey(pair, i))}
-        {@render removed(goneAbove(pair.right ?? pair.left ?? pair.band))}
+        {@render removed(goneAbove(asSent(pair, i)))}
         <Row
           {pair}
           single={oneSided}
           nodeId={node.id}
           {canComment}
           marks={symbols}
-          flash={flashOf(pair.right ?? pair.left ?? pair.band)}
+          flash={flashOf(asSent(pair, i))}
           beyondCap={i >= splitLimit &&
             !held(pair.left, anchored) &&
             !held(pair.right, anchored)}

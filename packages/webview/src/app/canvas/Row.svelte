@@ -737,9 +737,18 @@
      side of the card. */
   .row.gap .text { flex: 0 0 auto; }
 
+  /* The hunk header, which says which declaration the hidden run came out of.
+     It gives way to the count beside it rather than pushing past the card: a
+     flex item will not shrink below its own contents unless it is told it may,
+     so the ellipsis asked for here could never happen and a header longer than
+     the room left ran off the end of a narrow card, cut mid-word by the card's
+     own clipping and pressed hard against the words it was supposed to be
+     apart from. Which of the two gives way is not a choice: the count is the
+     row's subject, and it is short. */
   .row.gap .header {
     color: var(--gutter);
     font-size: calc(var(--font-size) - 2px);
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
   }

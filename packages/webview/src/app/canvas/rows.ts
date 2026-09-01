@@ -217,6 +217,112 @@ export function bandRows(band: GapRow): RowView[] {
 }
 
 /**
+ * A line that only moves one of the two numberings on.
+ *
+ * An insertion advances the head and leaves the base where it was, a removal
+ * does the opposite, and a band whose lines were never read could be hiding
+ * either — so each of these is where the distance between the two numberings
+ * stops being the distance it was.
+ */
+function shifts(row: RowView): boolean {
+  if (row.kind === "add" || row.kind === "del") return true;
+  if (row.kind !== "gap") return false;
+  return row.rows ? row.rows.some(shifts) : true;
+}
+
+/** How far the head numbering runs ahead of the base, from a line carrying both. */
+function distance(row: RowView): number | undefined {
+  if (row.kind === "gap") {
+    for (const inner of row.rows ?? []) {
+      const found = distance(inner);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  }
+  if (row.kind !== "ctx") return undefined;
+  return row.oldLine !== undefined && row.newLine !== undefined
+    ? row.newLine - row.oldLine
+    : undefined;
+}
+
+/** One row with whichever of its two numbers was missing. */
+function fill(row: RowView, offset: number): RowView {
+  if (row.kind === "gap") {
+    return row.rows ? { ...row, rows: row.rows.map((inner) => fill(inner, offset)) } : row;
+  }
+  if (row.kind !== "ctx") return row;
+  if (row.oldLine === undefined && row.newLine !== undefined) {
+    return { ...row, oldLine: row.newLine - offset };
+  }
+  if (row.newLine === undefined && row.oldLine !== undefined) {
+    return { ...row, newLine: row.oldLine + offset };
+  }
+  return row;
+}
+
+/**
+ * The card's rows, with the number missing from an unchanged line filled in.
+ *
+ * Not every row on a card comes out of the patch. Context Odin went and read so
+ * that an arrow had somewhere to land is fetched from one side of the change —
+ * the head, for everything but a deleted file — and each of those lines arrives
+ * carrying that side's number and nothing else. That is enough for a single
+ * column of code and not enough for two: read as panes, `GoogleMap.tsx` opened
+ * with its first line numbered 1 on the right and blank on the left, for an
+ * import statement that has plainly been line 1 of both checkouts all along. A
+ * gutter left empty beside a numbered one reads as the two sides having lost
+ * step with each other, which is the one thing a pair of gutters is there to
+ * deny.
+ *
+ * The number is not a guess. An unchanged line's two numbers differ by however
+ * many lines were added above it less however many were removed, and nothing
+ * between two lines of the same run does either — so a stretch of the card with
+ * no insertion, no removal and no band of unread lines in it has a single
+ * distance between its two numberings, and any one line that carries both says
+ * what it is. Where no line in the stretch carries both, nothing is filled in
+ * and the gutter is as empty as it was.
+ *
+ * Taken from the card's own rows rather than from the ranges a band carries,
+ * which are worked out separately by the host and are wrong often enough to
+ * matter: on this same file the band standing for lines 4–23 was handed the
+ * base range 24–23, and every line revealed from it came up blank.
+ *
+ * A row that needs nothing is passed through as it stands, so anything holding
+ * rows by identity — what the last rebuild did to each of them, chiefly — still
+ * recognises all but the handful this actually changes.
+ */
+export function numbered(rows: readonly RowView[]): RowView[] {
+  const out = rows.slice();
+
+  let from = 0;
+  const settle = (until: number, failing?: number): void => {
+    let offset: number | undefined;
+    for (let i = from; i < until && offset === undefined; i++) offset = distance(out[i]!);
+    offset ??= failing;
+    if (offset === undefined) return;
+    for (let i = from; i < until; i++) out[i] = fill(out[i]!, offset);
+  };
+
+  let changed = false;
+  for (let i = 0; i < out.length; i++) {
+    if (!shifts(out[i]!)) continue;
+    changed = true;
+    settle(i);
+    from = i + 1;
+  }
+
+  // A card with nothing added to it, nothing taken from it and nothing unread
+  // on it is a picture of a file the change never touched — Odin draws one
+  // whenever an arrow has to land somewhere — and a file that is the same file
+  // on both sides is the same file line for line. That is the one distance
+  // worth assuming, and it is why a card made entirely of fetched context can
+  // number both its gutters when no line on it carries both numbers.
+  settle(out.length, changed ? undefined : 0);
+
+  return out;
+}
+
+/**
  * Which lines of a card an arrow touches, as `side:line`.
  *
  * Both ends of every edge, because a card is as much the thing pointed at as
