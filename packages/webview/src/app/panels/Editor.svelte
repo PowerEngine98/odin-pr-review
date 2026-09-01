@@ -60,6 +60,7 @@
   import { tick } from "svelte";
   import { notify, host } from "../state.svelte.js";
   import { showPicture } from "../hud/picture.svelte.js";
+  import { pictured } from "../pictured.svelte.js";
   import Diagram from "./Diagram.svelte";
 
   let {
@@ -103,30 +104,6 @@
    * like Kotlin in the file above it. So this is a round trip, and a page with
    * no host simply keeps the plain text it already has.
    */
-  /**
-   * A picture the host has read back for us, by the path it was written under.
-   *
-   * A webview cannot open a file on this machine — no `file://`, and the
-   * folder a pasted screenshot lands in is nowhere near the extension's own —
-   * so the bytes come back over the same channel everything else does. Asked
-   * for once per path and kept, because the same screenshot is usually in the
-   * thread and in the log and in the preview at the same time.
-   */
-  let pictures = $state<Record<string, string>>({});
-  const asking = new Set<string>();
-
-  function pictured(src: string): string | undefined {
-    // Already something a page can draw: a data URI, or the one kind of
-    // address a webview will actually fetch.
-    if (/^(data|blob|vscode-webview-resource|https):/i.test(src)) return src;
-    if (pictures[src]) return pictures[src];
-    if (host && !asking.has(src)) {
-      asking.add(src);
-      notify("showImage", { path: src });
-    }
-    return undefined;
-  }
-
   $effect(() => {
     if (!showing || !host) return;
     painted = {};
@@ -152,12 +129,6 @@
   $effect(() => {
     const answer = (event: MessageEvent) => {
       const message = event.data;
-      if (message?.type === "imageShown" && typeof message.path === "string") {
-        if (typeof message.data === "string" && message.data) {
-          pictures = { ...pictures, [message.path]: message.data };
-        }
-        return;
-      }
       if (!message || message.type !== "highlighted") return;
       if (!Array.isArray(message.lines) || message.lines.length === 0) return;
       painted = { ...painted, [message.id]: message.lines as Token[][] };

@@ -503,7 +503,9 @@ describe("pairing with an agent", () => {
      */
     expect(terminal).toMatch(/const conversation = threadsOf\(model\.current\.comments \?\? \[\]\)/);
     expect(terminal).toMatch(/ui\.thread = \{ id: root\.id, anchor: null \}/);
-    expect(terminal).toMatch(/onclick=\{\(event\) => \{[\s\S]{0,700}?event\.stopPropagation\(\);\s*\n\s*if \(block\.thread !== undefined\) goTo\(block\.thread\)/);
+    // The stop and the flight, with room between them for the guard that lets a
+    // picture inside the quote have its own press.
+    expect(terminal).toMatch(/onclick=\{\(event\) => \{[\s\S]{0,900}?event\.stopPropagation\(\);[\s\S]{0,400}?if \(block\.thread !== undefined\) goTo\(block\.thread\)/);
 
     const camera = source("canvas/camera.svelte.ts");
     expect(camera).toMatch(/if \(!card && ui\.part && model\.current\.nodes\.some\(\(node\) => node\.path === path\)\)/);
@@ -1142,6 +1144,10 @@ describe("a question quoted in the console", () => {
  * A webview cannot open a file on this machine — no `file://`, and the folder a
  * pasted screenshot lands in is nowhere near the extension's own — so the page
  * asks for the bytes and the host decides whether to hand them over.
+ *
+ * The asking itself moved out of this component and into the page's one cache,
+ * and is checked in `pictures.test.ts` beside it; what is left here is what the
+ * renderer does with the answer.
  */
 describe("a picture named in a conversation", () => {
   const editor = source("panels/Editor.svelte");
@@ -1149,17 +1155,6 @@ describe("a picture named in a conversation", () => {
   it("draws it rather than printing where it is", () => {
     expect(editor).toMatch(/part\.kind === "image"/);
     expect(editor).toMatch(/<img class="pictured" src=\{pictured\(part\.src\)\}/);
-  });
-
-  it("asks the host once per picture", () => {
-    expect(editor).toMatch(/notify\("showImage", \{ path: src \}\)/);
-    expect(editor).toMatch(/asking\.add\(src\)/);
-  });
-
-  it("leaves alone the addresses a page can already draw", () => {
-    // A data URI is one the composer made a moment ago, before anything was
-    // written to disk.
-    expect(editor).toMatch(/\^\(data\|blob\|vscode-webview-resource\|https\):/);
   });
 
   it("says what is coming while it is coming", () => {

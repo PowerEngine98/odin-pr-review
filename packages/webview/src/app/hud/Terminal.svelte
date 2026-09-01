@@ -17,6 +17,8 @@
   import { sideOf } from "../marks/marks.js";
   import Editor from "../panels/Editor.svelte";
   import { initialsOf, threadsOf } from "../panels/Thread.svelte";
+  import { nameOf, picturesNamed, saidOf } from "../pictures.js";
+  import { pictured } from "../pictured.svelte.js";
   import { model, notify, settings, ui } from "../state.svelte.js";
   import { showPicture } from "./picture.svelte.js";
 
@@ -85,9 +87,18 @@
     ui.queued.filter((ask) => ask.addressee === undefined || ask.addressee === id),
   );
 
-  /** The first line of an ask, which is what a queued row has room for. */
+  /**
+   * The first line of an ask, which is what a queued row has room for.
+   *
+   * Said rather than spelled out: a question that is nothing but a pasted
+   * screenshot is written `![pasted image](/var/folders/…)`, and a row of
+   * temporary directory told the reader nothing about what was waiting. The
+   * picture itself is drawn beside this where the host will serve it, and this
+   * still has to read on its own for the times it will not.
+   */
   function gist(body: string): string {
-    const line = body.split("\n").find((one) => one.trim() !== "") ?? "";
+    const said = saidOf(body);
+    const line = said.split("\n").find((one) => one.trim() !== "") ?? "";
     return line.trim();
   }
 
@@ -464,6 +475,22 @@
     };
   }
 
+  /**
+   * Whether a press landed on something inside the quote that presses itself.
+   *
+   * The same question the bar asks when it is folded, and for the same reason:
+   * a block that is a button all over cannot also hold buttons unless it lets
+   * theirs go first. What made it necessary here is the picture — a screenshot
+   * in a quoted question is drawn as a button that opens the viewer, and
+   * without this it opened the viewer *and* went to the conversation.
+   */
+  function its(event: Event): boolean {
+    // Falsy when there is no `closest` to ask — a target that is not an element
+    // is not a control, and a quote that answered "yes" to that would stop
+    // responding to presses altogether.
+    return Boolean((event.target as Element).closest?.("button, input"));
+  }
+
   /** The remark a block is quoting, if the page still holds it. */
   function remarkOf(thread: number | undefined) {
     return (model.current.comments ?? []).find(
@@ -812,6 +839,33 @@
           <div class="work">
             {#each block.text.split("\n") as line, n (n)}
               <p class="step">{line.replace(/^\s*/, "")}</p>
+              <!--
+                The picture a step names, under the step that names it.
+
+                A tool that has been handed a screenshot writes down what it
+                opened — `Read(/var/folders/qz/T/odin-pasted-3f/pasted-1.png)`
+                — and that path is the one thing in the log a reader cannot
+                act on: it is a temporary directory they never chose, holding
+                the picture they pasted a minute ago and can no longer see.
+
+                Under it rather than instead of it, because the line is the
+                record of what actually ran and is worth keeping. Nothing at
+                all when the host will not serve the file, since the line
+                already says what it is and a placeholder would be the same
+                filename twice.
+              -->
+              {#each picturesNamed(line) as path (path)}
+                {#if pictured(path)}
+                  <button
+                    class="step-shot"
+                    type="button"
+                    title="{path} — press to see it full size"
+                    onclick={() => showPicture(pictured(path)!, nameOf(path))}
+                  >
+                    <img src={pictured(path)} alt={nameOf(path)} />
+                  </button>
+                {/if}
+              {/each}
             {/each}
           </div>
         {:else if block.kind === "asked"}
@@ -851,6 +905,7 @@
             title="Go to this conversation"
             onkeydown={(event) => {
               if (event.key !== "Enter" && event.key !== " ") return;
+              if (its(event)) return;
               event.preventDefault();
               if (block.thread !== undefined) goTo(block.thread);
             }}
@@ -863,8 +918,18 @@
                * this the panel appeared and vanished inside one gesture, and
                * pressing a question in the log looked like a button that flew
                * the camera somewhere and did nothing else.
+               *
+               * Stopped for every press on the quote, including the ones this
+               * block does not act on: a picture inside it opens a viewer over
+               * the whole window, and a thread quietly closing behind that is a
+               * thread the reader loses on the way back.
                */
               event.stopPropagation();
+              // A control inside the quote is its own press. The renderer draws
+              // a picture as a button, and pressing one to read it also flew
+              // the camera across the drawing and opened a thread behind the
+              // viewer — so closing the picture left the reader somewhere else.
+              if (its(event)) return;
               if (block.thread !== undefined) goTo(block.thread);
             }}
           >
@@ -1114,7 +1179,31 @@
               <path d={mark.path} fill="var(--bg)" />
             {/if}
           </svg>
-          <span class="queued-what" title={ask.body}>{gist(ask.body)}</span>
+          <!--
+            What is waiting, when what is waiting is a picture.
+
+            A question can be a screenshot and nothing else — "look at this" is
+            usually the whole of what somebody means by pasting one — and such a
+            row had a path in it where its summary should have been. Small,
+            because a queued row is one line high and the picture is here to say
+            which screenshot rather than to be read.
+          -->
+          {#each picturesNamed(ask.body) as path (path)}
+            {#if pictured(path)}
+              <button
+                class="queued-shot"
+                type="button"
+                title="{nameOf(path)} — press to see it full size"
+                onclick={() => showPicture(pictured(path)!, nameOf(path))}
+              >
+                <img src={pictured(path)} alt={nameOf(path)} />
+              </button>
+            {/if}
+          {/each}
+          <!-- The whole question on hover, since the row has one line of it —
+               and said the same way, because a tooltip cannot draw a picture
+               either. -->
+          <span class="queued-what" title={saidOf(ask.body)}>{gist(ask.body)}</span>
           <button
             class="queued-drop"
             title="Take this back. Nothing has run, and it can be asked again."
@@ -1768,6 +1857,33 @@
        not started. */
     opacity: 0.9;
   }
+  /* Smaller than the one under a step, because this sits in a row one line
+     high: the row must stay the height of its text, or the queue grows a
+     ragged edge every time somebody pastes something. */
+  .queued-shot {
+    flex: 0 0 auto;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    line-height: 0;
+    cursor: zoom-in;
+  }
+  .queued-shot img {
+    width: 26px;
+    height: 18px;
+    border-radius: 3px;
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    object-fit: cover;
+  }
+  .queued-shot:hover img {
+    border-color: color-mix(in srgb, var(--text) 45%, transparent);
+  }
+  .queued-shot:focus-visible {
+    outline: 2px solid var(--action, #007C36);
+    outline-offset: 2px;
+  }
   .queued-what {
     flex: 1 1 auto;
     min-width: 0;
@@ -1870,6 +1986,40 @@
      did to the checkout. */
   .step:first-letter {
     color: color-mix(in srgb, var(--text) 55%, transparent);
+  }
+
+  /* A picture a step names, drawn small against the rail the step is set
+     against — it belongs to the working-out and should not out-shout the
+     answer beside it. The same size as the row of attachments above the ask
+     box, because it is usually the very same screenshot. */
+  .step-shot {
+    display: block;
+    margin: 2px 0 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    line-height: 0;
+    cursor: zoom-in;
+  }
+
+  .step-shot img {
+    max-width: 96px;
+    max-height: 64px;
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+    /* A screenshot of a dark window on a dark panel needs an edge to be a
+       thing rather than a hole. */
+    background: color-mix(in srgb, var(--text) 6%, transparent);
+    object-fit: cover;
+  }
+
+  .step-shot:hover img {
+    border-color: color-mix(in srgb, var(--text) 45%, transparent);
+  }
+
+  .step-shot:focus-visible {
+    outline: 2px solid var(--action, #007C36);
+    outline-offset: 2px;
   }
 
   /*

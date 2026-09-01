@@ -1,3 +1,5 @@
+import { saidOf } from "../pictures.js";
+
 import type { CommentView } from "../model.js";
 
 /**
@@ -189,7 +191,7 @@ export function commentedRows(
     const where = span.start === span.end ? String(span.end) : `${span.start}–${span.end}`;
     const passage = passages.get(key) ?? { span, drafted: false, said: [] };
     passage.drafted = passage.drafted || draft;
-    passage.said.push(`${author} (${where}): ${remark.body}`);
+    passage.said.push(`${author} (${where}): ${saidOf(remark.body)}`);
     passages.set(key, passage);
   };
 
@@ -284,9 +286,15 @@ export function reachOf(size: number): number {
   return Math.round(size * 0.31) + 10;
 }
 
-/** What the mark says on hover: who spoke, and the beginning of what they said. */
+/**
+ * What the mark says on hover: who spoke, and the beginning of what they said.
+ *
+ * A tooltip is text and cannot draw a picture, so a remark that carries one has
+ * it said rather than spelled out — the alternative was a hundred and twenty
+ * characters of temporary directory hanging off a face in the margin.
+ */
 export function hintOf(root: CommentView): string {
-  return `${root.author || "?"}: ${(root.body || "").slice(0, 120)}`;
+  return `${root.author || "?"}: ${saidOf(root.body || "").slice(0, 120)}`;
 }
 
 /** The screen, as far as a mark is concerned. */

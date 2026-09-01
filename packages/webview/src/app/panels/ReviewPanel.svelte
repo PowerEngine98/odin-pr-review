@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
   import type { CommentView } from "../model.js";
+  import { saidOf } from "../pictures.js";
   import { model, notify } from "../state.svelte.js";
   import type { Draft } from "./drafts.js";
   import {
@@ -141,7 +142,10 @@
       {#each drafts as draft, at}
         <div class="review-item">
           <span class="where">{draft.path.split("/").pop()}:{whereOf(draft)}</span>
-          <span class="what">{draft.body.slice(0, 90)}</span>
+          <!-- The first ninety characters of what was written, with any
+               picture in it said rather than spelled out as the path it will
+               be posted as. -->
+          <span class="what">{saidOf(draft.body).slice(0, 90)}</span>
           <button class="drop" onclick={() => drop(at)}>remove</button>
         </div>
       {/each}

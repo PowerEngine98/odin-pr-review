@@ -10,6 +10,7 @@
 <script lang="ts">
   import { showRemark } from "../canvas/camera.svelte.js";
   import { sideOf } from "../marks/marks.js";
+  import { saidOf } from "../pictures.js";
   import { model, settings } from "../state.svelte.js";
   import type { Conversation } from "./Thread.svelte";
   import { faceOf, initialsOf, placeOf, threadsOf } from "./Thread.svelte";
@@ -306,7 +307,11 @@
                     (thread.comments.length - 1 === 1 ? " reply" : " replies")
                   : ""}
               </span>
-              <span class="said">{thread.root.body.replace(/\s+/g, " ").slice(0, 90)}</span>
+              <!-- The picture a remark carries is said rather than spelled
+                   out: a thread begun by a pasted screenshot had ninety
+                   characters of temporary directory here, which named the
+                   thread after a path nobody chose. -->
+              <span class="said">{saidOf(thread.root.body).replace(/\s+/g, " ").slice(0, 90)}</span>
             </span>
           </button>
         {/each}
