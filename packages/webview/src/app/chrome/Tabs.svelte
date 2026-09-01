@@ -11,7 +11,7 @@
   import { arriving } from "../hud/arriving.js";
   import { landed } from "../hud/boot.svelte.js";
   import { partPaths } from "../parts.js";
-  import { model, notify, ui, view } from "../state.svelte.js";
+  import { keep, model, notify, ui, view } from "../state.svelte.js";
   import { TICK } from "./icons.js";
 
   let { onFit }: { onFit?: () => void } = $props();
@@ -80,6 +80,19 @@
   function openPart(id: string | null) {
     wasAt.set(ui.part ?? "", { x: view.x, y: view.y, scale: view.scale });
     ui.part = id;
+    /*
+     * Remembered across a reload.
+     *
+     * A reader who has narrowed a change of two hundred files to the five they
+     * are reviewing, and then reloads the window, was put back in front of all
+     * two hundred — the place they had chosen gone, and the whole drawing built
+     * again to show them something they had already stepped out of.
+     *
+     * Written here rather than watched, because this is the only place a reader
+     * changes it: everything else that moves `ui.part` is the page correcting
+     * itself when a part stops existing, and that is not a choice to remember.
+     */
+    keep({ part: id });
 
     // The list beside the canvas follows the canvas: a part is a smaller
     // review, and a file list showing forty files while the drawing shows five

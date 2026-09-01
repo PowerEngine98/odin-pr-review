@@ -471,6 +471,31 @@ export const travel: {
  * A part that is gone — its files deleted, or its chain broken up — takes the
  * reader back to the whole change rather than to a tab that no longer exists.
  */
+/**
+ * The tab the reader had open, put back after a reload.
+ *
+ * A reader who has narrowed a change of two hundred files to the five they are
+ * reviewing, and then reloads the window, was dropped back in front of all two
+ * hundred: the place they had chosen gone, and — since a part is a smaller
+ * drawing — the whole change built again to show them what they had stepped
+ * out of.
+ *
+ * Only a part that still exists. A rebuilt change can have lost the chain a tab
+ * stood for, and opening a tab that is not there would be a drawing of nothing
+ * with no way back to the whole.
+ */
+export function restorePart(): void {
+  const wanted = held<string | null>("part");
+  if (wanted === undefined || wanted === null) return;
+  if (ui.part === wanted) return;
+  const parts = model.current.parts ?? [];
+  if (!parts.some((part) => part.id === wanted)) return;
+  ui.part = wanted;
+  // The list beside the canvas is the host's, and it does not know a part was
+  // reopened unless it is told — the same message pressing the tab sends.
+  notify("part", { paths: partPaths(model.current, wanted) });
+}
+
 function samePart(): void {
   const paths = partPaths(model.current, ui.part);
   if (ui.part && paths === null) ui.part = null;

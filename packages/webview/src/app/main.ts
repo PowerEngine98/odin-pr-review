@@ -3,7 +3,7 @@ import { hydrate } from "svelte";
 import App from "./App.svelte";
 import { detours } from "./canvas/wire.js";
 import { bootStart } from "./hud/boot.svelte.js";
-import { listen } from "./state.svelte.js";
+import { listen, restorePart } from "./state.svelte.js";
 
 /**
  * Wakes the page up.
@@ -45,6 +45,15 @@ detours.set(false);
 bootStart("reading the change");
 
 listen();
+
+/*
+ * Back where the reader was.
+ *
+ * After the channel is open, so the file list beside the drawing is told at the
+ * same moment the drawing narrows, and before the page is drawn, so the part is
+ * the first thing built rather than a change of mind a beat later.
+ */
+restorePart();
 
 const target = document.getElementById("app");
 if (target) hydrate(App, { target });
