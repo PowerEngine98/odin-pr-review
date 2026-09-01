@@ -569,7 +569,17 @@
    * what it may do, and what its conversation is called. A reader reading the
    * code an agent is changing wants all of that and none of the log.
    */
-  const folded = $derived((settings.terminalsFolded ?? []).includes(id));
+  /*
+   * Folded while the drawing is still being built, whatever the setting says.
+   *
+   * A console opens to whatever height its log needs, and during the first
+   * build that meant a wall of text growing over a page the reader has been
+   * told is not ready — under a cover that is there to say exactly that. The
+   * setting is not touched: this is about when the log unfolds, not about
+   * whether the reader wants it folded, so it opens by itself the moment the
+   * cover lifts.
+   */
+  const folded = $derived(ui.settling || (settings.terminalsFolded ?? []).includes(id));
 
   function fold(): void {
     const held = [...(settings.terminalsFolded ?? [])];

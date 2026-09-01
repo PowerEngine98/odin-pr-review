@@ -196,6 +196,10 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --z-panel: 40;
   --z-thread: 41;
   --z-menu: 45;
+  /* The cover shown while the first build finishes is over all of it. It is
+     there to say "none of this is ready", and a console or a thread sitting on
+     top of a statement like that is the page contradicting itself. */
+  --z-settling: 50;
   /* A picture opened full size is over all of it. It was opened from one of
      those layers, so being under any of them would mean digging it back out
      from under the thing that produced it. */

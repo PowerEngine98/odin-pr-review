@@ -138,27 +138,47 @@
       if (event.target === event.currentTarget) hidePicture();
     }}
   >
-    <button class="close" type="button" title="Close (Esc)" aria-label="Close" onclick={hidePicture}>
-      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
-        <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-      </svg>
-    </button>
-
     <div class="stage" bind:this={stage}>
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-      <img
-        class="shown"
-        class:dragging
-        src={shown.src}
-        alt={shown.alt}
-        draggable="false"
-        style="transform: translate({x}px, {y}px) scale({scale})"
-        onpointerdown={grab}
-        onpointermove={move}
-        onpointerup={drop}
-        onpointercancel={drop}
-        ondblclick={fit}
-      />
+      <!--
+        The picture and its own cross, which travel together.
+
+        The cross used to sit in the window's top corner, where it landed on
+        top of the editor's own controls: two crosses and a gear within a few
+        pixels of each other, and the one that closes the picture indis-
+        tinguishable from the one that closes the review. Here it belongs to
+        the thing it closes and is nowhere near anything else.
+
+        On the frame rather than on the picture, so zooming does not carry it
+        off the screen: the picture moves under it and the cross stays where
+        the reader last saw it.
+      -->
+      <div class="frame">
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <img
+          class="shown"
+          class:dragging
+          src={shown.src}
+          alt={shown.alt}
+          draggable="false"
+          style="transform: translate({x}px, {y}px) scale({scale})"
+          onpointerdown={grab}
+          onpointermove={move}
+          onpointerup={drop}
+          onpointercancel={drop}
+          ondblclick={fit}
+        />
+        <button
+          class="close"
+          type="button"
+          title="Close (Esc)"
+          aria-label="Close"
+          onclick={hidePicture}
+        >
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+            <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <div class="said">
@@ -208,6 +228,14 @@
     overflow: hidden;
   }
 
+  /* Shrink-wrapped around the picture at rest, which is what gives the cross a
+     corner to sit on. It does not follow the zoom — the picture is transformed
+     inside it — so the cross stays put while the picture moves under it. */
+  .frame {
+    position: relative;
+    display: inline-flex;
+  }
+
   .shown {
     max-width: 92vw;
     max-height: 88vh;
@@ -223,24 +251,35 @@
 
   .shown.dragging { cursor: grabbing; }
 
+  /* On the picture's own corner, half off it, so it reads as belonging to the
+     picture rather than to the window. Round and filled, because at this size
+     against a screenshot of anything a bordered square disappears. */
   .close {
     position: absolute;
-    top: 14px;
-    right: 16px;
+    top: -14px;
+    right: -14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 26px;
-    height: 26px;
+    width: 30px;
+    height: 30px;
     padding: 0;
     border: 1px solid var(--panel-edge);
-    border-radius: 6px;
+    border-radius: 50%;
     background: var(--panel);
     color: var(--text);
+    box-shadow: 0 2px 10px color-mix(in srgb, #000 55%, transparent);
     cursor: pointer;
   }
 
-  .close:hover { background: color-mix(in srgb, var(--panel) 70%, var(--text) 12%); }
+  .close:hover {
+    background: color-mix(in srgb, var(--panel) 62%, var(--text) 18%);
+  }
+
+  .close:focus-visible {
+    outline: 2px solid var(--action, #007C36);
+    outline-offset: 2px;
+  }
 
   /* What it is and how far in, low on the screen where the settling cover puts
      its own line — the one place on this page that is always free. */

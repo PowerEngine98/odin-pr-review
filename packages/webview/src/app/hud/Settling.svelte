@@ -91,7 +91,10 @@
   .settling {
     position: fixed;
     inset: 0;
-    z-index: var(--z-compose, 23);
+    /* Above every panel, including the agent consoles: the cover says the
+       drawing is not ready yet, and a log expanding over the top of it is the
+       one piece of furniture that used to argue with it. */
+    z-index: var(--z-settling, 50);
     display: flex;
     align-items: flex-end;
     justify-content: center;
