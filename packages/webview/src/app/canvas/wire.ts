@@ -847,6 +847,81 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
     lane.to = seen.to;
     return lane.to - lane.from >= WORTH;
   });
+
+  /*
+   * And the traffic on a lane is spread across it rather than stacked in it.
+   *
+   * Roads that share a lane were put on exactly the same line, which is fine
+   * while they are the same colour and a lie as soon as they are not: a
+   * deletion travelling with four additions is drawn underneath them and simply
+   * cannot be seen. Reported three times as "the red line is not rendering",
+   * and each time the geometry was perfect — the road was there, under another
+   * one.
+   *
+   * They are fanned out by a couple of pixels each instead, inside the width of
+   * the band that carries them, which is what a road with several lines on it
+   * looks like. Ordered by what kind of change each is, so the fan is the same
+   * every time the drawing is built and a reader's memory of it holds.
+   */
+  spread(drawn, lanes);
+
+}
+
+/** How far apart two roads sharing a lane are drawn. */
+const APART = 3;
+
+/** And the furthest any of them strays from the lane's own line. */
+const WIDEST = 9;
+
+function spread(drawn: Arrow[], within: readonly Highway[]): void {
+  const onLane = new Map<Highway, { arrow: Arrow; at: number }[]>();
+  for (const arrow of drawn) {
+    if (arrow.line.length < 2) continue;
+    for (let at = 1; at < arrow.line.length; at++) {
+      const lane = laneUnder(arrow.line[at - 1]!, arrow.line[at]!, within);
+      if (!lane) continue;
+      const held = onLane.get(lane) ?? [];
+      held.push({ arrow, at });
+      onLane.set(lane, held);
+    }
+  }
+
+  const moved = new Set<Arrow>();
+  for (const [lane, riders] of onLane) {
+    if (riders.length < 2) continue;
+    // Deletions to one side, additions to the other, and a stable order inside
+    // each: the same change must draw the same picture twice running.
+    const order = ["removed", "unchanged", "added"];
+    riders.sort((one, two) => {
+      const kinds = order.indexOf(one.arrow.edge.change) - order.indexOf(two.arrow.edge.change);
+      return kinds !== 0 ? kinds : one.arrow.edge.id.localeCompare(two.arrow.edge.id);
+    });
+
+    /*
+     * Held to the width of the band. A lane with twenty roads on it would
+     * otherwise fan out sixty pixels and lean on the cards it was routed to
+     * pass — the clearance a road keeps from a card is twelve.
+     */
+    const middle = (riders.length - 1) / 2;
+    for (let n = 0; n < riders.length; n++) {
+      const off = Math.max(-WIDEST, Math.min(WIDEST, (n - middle) * APART));
+      if (off === 0) continue;
+      const { arrow, at } = riders[n]!;
+      const a = arrow.line[at - 1]!;
+      const b = arrow.line[at]!;
+      if (lane.axis === "vertical") {
+        a.x += off;
+        b.x += off;
+      } else {
+        a.y += off;
+        b.y += off;
+      }
+      moved.add(arrow);
+    }
+  }
+
+  for (const arrow of moved) redraw(arrow, arrow.line);
+
 }
 
 /** The lanes the last set of arrows ended up sharing. */

@@ -447,7 +447,7 @@
   {#each shared as lane (`${lane.axis}:${lane.at}:${lane.from}`)}
     <path
       class="highway {lane.change ?? 'mixed'}"
-      style="stroke-width:{3 + Math.min(lane.users, 10) * 0.55}"
+      style="stroke-width:{6 + Math.min((lane.users - 1) * 3, 18)}"
       d={lane.axis === "vertical"
         ? `M ${lane.at} ${lane.from} L ${lane.at} ${lane.to}`
         : `M ${lane.from} ${lane.at} L ${lane.to} ${lane.at}`}
