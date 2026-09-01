@@ -1109,6 +1109,30 @@
   });
 
   /**
+   * The gesture also ends wherever the hand happens to let go.
+   *
+   * The card listens for the release on itself, which is right until the press
+   * ends on something that handles its own pointer events — a handle on the
+   * rail, a control on the bar, a box that has just appeared under the cursor.
+   * Then the card never hears it: the passage stays lit, the drag stays open,
+   * and no composer appears. What the reader sees is a selection they made and
+   * nothing to write in, which is exactly what has been reported.
+   *
+   * So the window is asked as well, while this card's own pick is in progress.
+   * `release` is safe to call twice — it does nothing once the gesture is over.
+   */
+  $effect(() => {
+    if (!gesture.dragging || gesture.pick?.nodeId !== node.id) return;
+    const finish = (event: PointerEvent) => release(event);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return () => {
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  });
+
+  /**
    * Puts the path on the clipboard, or as close as the host allows.
    *
    * Webviews do not always grant the clipboard API, and saying nothing at all
