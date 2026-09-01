@@ -446,7 +446,7 @@
   -->
   {#each shared as lane (`${lane.axis}:${lane.at}:${lane.from}`)}
     <path
-      class="highway"
+      class="highway {lane.change ?? 'mixed'}"
       style="stroke-width:{3 + Math.min(lane.users, 10) * 0.55}"
       d={lane.axis === "vertical"
         ? `M ${lane.at} ${lane.from} L ${lane.at} ${lane.to}`
@@ -517,10 +517,17 @@
      read. */
   path.highway {
     fill: none;
+    /* Grey only when the lane carries more than one kind of change; otherwise
+       it wears the colour of what travels it, faded, because it is the road
+       rather than a journey along it. */
     stroke: color-mix(in srgb, var(--text) 26%, transparent);
     stroke-linecap: round;
     pointer-events: none;
   }
+
+  path.highway.added { stroke: color-mix(in srgb, var(--added) 42%, transparent); }
+  path.highway.removed { stroke: color-mix(in srgb, var(--removed) 42%, transparent); }
+  path.highway.unchanged { stroke: color-mix(in srgb, var(--unchanged) 38%, transparent); }
 
   /* Carries the head and nothing else: the stem already stopped where it starts. */
   path.head {

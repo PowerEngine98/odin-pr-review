@@ -41,6 +41,16 @@ export interface Highway {
   to: number;
   /** How many roads travel it, which is what its width says. */
   users: number;
+  /**
+   * What kind of change travels it, filled in by whoever knows the arrows.
+   *
+   * A lane is the only thing drawn along the stretch it carries, so drawing it
+   * grey while everything on it is an addition says the wrong thing about that
+   * stretch: the reader sees a green stub, a long grey line and a green head,
+   * and has to guess whether the middle is the same road. Grey is for a lane
+   * that genuinely carries more than one kind.
+   */
+  change?: string;
 }
 
 /**

@@ -705,10 +705,34 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
     if (moved && moved.length > 1) redraw(arrow, moved);
   }
 
-  // Worked out after every road has been moved, because a road's ramps are
-  // where it meets the lanes and the lanes are not settled until then.
+  /*
+   * Worked out after every road has been moved, because a road's ramps are
+   * where it meets the lanes and the lanes are not settled until then.
+   *
+   * What travels each lane is counted on the way past. A lane is the only thing
+   * drawn along the stretch it carries, so a lane drawn grey while everything
+   * on it is an addition says the wrong thing about that stretch — the reader
+   * sees a green stub, a long grey line, and a green head, and has to guess
+   * whether the grey part is the same road.
+   */
+  const carrying = new Map<Highway, Set<string>>();
   for (const arrow of drawn) {
-    arrow.ramps = arrow.line.length > 1 ? ramping(shortenRoad(arrow.line, HEAD), lanes) : "";
+    if (arrow.line.length < 2) {
+      arrow.ramps = "";
+      continue;
+    }
+    const used: Highway[] = [];
+    arrow.ramps = ramping(shortenRoad(arrow.line, HEAD), lanes, used);
+    for (const lane of used) {
+      const kinds = carrying.get(lane) ?? new Set<string>();
+      kinds.add(arrow.edge.change);
+      carrying.set(lane, kinds);
+    }
+  }
+
+  for (const lane of lanes) {
+    const kinds = carrying.get(lane);
+    lane.change = kinds && kinds.size === 1 ? [...kinds][0]! : "mixed";
   }
 }
 
@@ -723,7 +747,11 @@ const RAMP = 16;
  * an arrow joined and where it came off. What is dropped is the long middle,
  * which is the lane — drawn once, wide and grey, under all of them.
  */
-function ramping(corners: readonly Point[], lanes: readonly Highway[]): string {
+function ramping(
+  corners: readonly Point[],
+  lanes: readonly Highway[],
+  used: Highway[],
+): string {
   if (lanes.length === 0 || corners.length < 2) return "";
 
   const kept: Point[][] = [];
@@ -764,6 +792,7 @@ function ramping(corners: readonly Point[], lanes: readonly Highway[]): string {
     kept.push(run);
     run = [off, b];
     shared = true;
+    if (!used.includes(lane)) used.push(lane);
   }
 
   kept.push(run);
