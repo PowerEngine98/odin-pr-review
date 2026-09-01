@@ -390,23 +390,6 @@ export interface Arrow {
   line: Point[];
   /** Which of the two paths `line` is drawn into. */
   lineIs: "stem" | "trunk";
-  /**
-   * The same road with the stretches it shares with a lane left off.
-   *
-   * Everything that joins a lane used to go on drawing its own line along it,
-   * so a lane carrying forty roads was forty coloured lines in exactly the same
-   * place: one visible line, thirty-nine hidden under it, and no way to follow
-   * any of them. Measured on a change of two hundred files, eleven thousand
-   * pairs of legs were drawn one on top of another, the worst pair sharing
-   * twenty-three thousand pixels.
-   *
-   * So a road draws what is its own — the ramp on and the ramp off — and the
-   * lane draws the part they all share. Empty for a road that shares nothing,
-   * which is most of them, and ignored while an arrow is being followed: then
-   * the whole of it is drawn, over the lane, because following it is the one
-   * time the shared stretch belongs to one arrow.
-   */
-  ramps: string;
 }
 
 /**
@@ -639,7 +622,6 @@ export function arrows(scene: Scene): Arrow[] {
       road: "",
       line: wire.corners,
       lineIs: "stem",
-      ramps: "",
     };
     drawn.push(arrow);
 
@@ -706,19 +688,12 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
   }
 
   /*
-   * Worked out after every road has been moved, because a road's ramps are
-   * where it meets the lanes and the lanes are not settled until then.
+   * What colour each lane is, from what travels it.
    *
-   * Two passes, and the second depends on the first. What travels a lane
-   * decides what colour it is drawn in, and what colour it is drawn in decides
-   * which roads may hand it their middle: a road cedes the shared stretch only
-   * when the lane is already its own colour, because two roads of one colour on
-   * one line are indistinguishable anyway and hiding one loses nothing.
-   *
-   * A road of another colour keeps drawing itself the whole way. It has to: a
-   * single deletion travelling a lane full of additions had its middle handed
-   * to a green line and simply stopped — a road that goes into a junction and
-   * never comes out, which is exactly what somebody looking at it reported.
+   * A lane is a band under the roads rather than a thing in its own right, and
+   * a grey band under a run of green arrows says there is something else there.
+   * It takes the colour of the traffic most of it is, and stays grey only where
+   * the traffic genuinely is of more than one kind.
    */
   const carrying = new Map<Highway, Map<string, number>>();
   for (const arrow of drawn) {
@@ -730,16 +705,12 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
     }
   }
 
-  for (const lane of lanes) {
-    lane.change = commonest(carrying.get(lane));
-  }
+  for (const lane of lanes) lane.change = commonest(carrying.get(lane));
+}
 
-  for (const arrow of drawn) {
-    arrow.ramps =
-      arrow.line.length > 1
-        ? ramping(shortenRoad(arrow.line, HEAD), lanes, arrow.edge.change)
-        : "";
-  }
+/** The lanes the last set of arrows ended up sharing. */
+export function sharedRoads(): Highway[] {
+  return lanes;
 }
 
 /** The kind of change most of a lane's traffic is, or nothing for an empty one. */
@@ -759,107 +730,30 @@ function commonest(kinds: Map<string, number> | undefined): string | undefined {
   return best;
 }
 
-/** Every lane a road runs along, without building anything. */
-function travelled(corners: readonly Point[], lanes: readonly Highway[]): Highway[] {
+/** Every lane a road runs along. */
+function travelled(corners: readonly Point[], within: readonly Highway[]): Highway[] {
   const found: Highway[] = [];
   for (let at = 1; at < corners.length; at++) {
-    const lane = laneUnder(corners[at - 1]!, corners[at]!, lanes);
+    const lane = laneUnder(corners[at - 1]!, corners[at]!, within);
     if (lane && !found.includes(lane)) found.push(lane);
   }
   return found;
 }
 
 /** The lane a leg is running along, if it is running along one. */
-function laneUnder(a: Point, b: Point, lanes: readonly Highway[]): Highway | undefined {
+function laneUnder(a: Point, b: Point, within: readonly Highway[]): Highway | undefined {
   const upright = a.x === b.x;
   const at = upright ? a.x : a.y;
   const from = upright ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
   const to = upright ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
-  /*
-   * Long enough that handing it over is worth the handover.
-   *
-   * A road cedes a stretch and draws a ramp at each end of it, so on a short
-   * one the ramps are most of what was ceded and what is left is a stub of
-   * lane between two arrowheads — which is what a reader found in the middle of
-   * one subgraph and could make nothing of.
-   */
-  if (to - from <= RAMP * 6) return undefined;
 
-  return lanes.find(
+  return within.find(
     (one) =>
       (one.axis === "vertical") === upright &&
       Math.abs(one.at - at) < 1 &&
       from >= one.from - 1 &&
       to <= one.to + 1,
   );
-}
-
-/** How much of a shared stretch a road keeps for itself at either end. */
-const RAMP = 16;
-
-/**
- * The road, with the stretches a lane already draws left to the lane.
- *
- * What is kept is what is the road's own: everything off the lane, and a short
- * ramp at each end of every stretch on it, so that a reader can see which lane
- * an arrow joined and where it came off. What is dropped is the long middle,
- * which is the lane — drawn once, wide and grey, under all of them.
- */
-function ramping(
-  corners: readonly Point[],
-  lanes: readonly Highway[],
-  change: string,
-): string {
-  if (lanes.length === 0 || corners.length < 2) return "";
-
-  const kept: Point[][] = [];
-  let run: Point[] = [corners[0]!];
-  let shared = false;
-
-  for (let at = 1; at < corners.length; at++) {
-    const a = corners[at - 1]!;
-    const b = corners[at]!;
-    const upright = a.x === b.x;
-
-    const lane = laneUnder(a, b, lanes);
-    // Only to a lane of its own colour. Anything else stays visible for its
-    // whole length, or it disappears into a junction it never comes out of.
-    if (lane && lane.change !== change) {
-      run.push(b);
-      continue;
-    }
-
-    if (!lane) {
-      run.push(b);
-      continue;
-    }
-
-    // On a lane: keep the ramp on, break, and start again at the ramp off.
-    const towards = upright ? Math.sign(b.y - a.y) : Math.sign(b.x - a.x);
-    const on = upright
-      ? { x: a.x, y: a.y + towards * RAMP }
-      : { x: a.x + towards * RAMP, y: a.y };
-    const off = upright
-      ? { x: b.x, y: b.y - towards * RAMP }
-      : { x: b.x - towards * RAMP, y: b.y };
-
-    run.push(on);
-    kept.push(run);
-    run = [off, b];
-    shared = true;
-  }
-
-  kept.push(run);
-  if (!shared) return "";
-  return kept
-    .filter((one) => one.length > 1)
-    .map((one) => roadPath(one))
-    .join(" ");
-}
-
-/** The lanes the last set of arrows ended up sharing. */
-export function sharedRoads(): Highway[] {
-  return lanes;
 }
 
 /**
@@ -871,9 +765,6 @@ export function sharedRoads(): Highway[] {
  */
 function redraw(arrow: Arrow, corners: Point[]): void {
   arrow.line = corners;
-  // Worked out again once the lanes are settled; anything cached from the road
-  // as it was before it moved describes a road that is no longer there.
-  arrow.ramps = "";
   const cut = shortenRoad(corners, HEAD);
   const last = roadEnd(cut);
   const end = corners[corners.length - 1]!;

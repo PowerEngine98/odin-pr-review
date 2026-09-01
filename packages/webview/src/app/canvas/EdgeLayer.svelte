@@ -350,18 +350,18 @@
         }}
       />
       <!--
-        What is this arrow's own, and what the whole of it is.
+        The whole road, always.
 
-        A road that joins a lane draws its ramps and lets the lane draw the
-        stretch they all share; a road that shares nothing has no ramps and
-        draws itself. Following one puts the whole of it back, over the lane —
-        that is the one time the shared stretch belongs to a single arrow, and
-        it is exactly when the reader is trying to see where it goes.
+        For a while a road that joined a lane drew only its ramps and let the
+        lane draw the stretch they shared. It halved the ink and it was wrong:
+        an arrow whose middle belongs to something else is an arrow that stops
+        at a junction and never comes out, and that is what readers found — a
+        red line into a grey lane, a green line beginning in mid-air. Roads of
+        the same colour running together look like one road, which is what a
+        shared lane is; the band underneath says how many, and nothing has to
+        disappear to say it.
       -->
-      <path class="wire ramps" class:only={arrow.ramps !== ""} d={arrow.ramps || arrow.stem} />
-      {#if arrow.ramps !== ""}
-        <path class="wire whole" d={arrow.stem} />
-      {/if}
+      <path class="wire" d={arrow.stem} />
       <!-- The road onwards, when this arrow is the one carrying a gathered run,
            and the wider invisible stroke that makes it pressable. Both empty on
            an arrow that travels alone, which is most of them. -->
@@ -492,13 +492,6 @@
        would swallow every click meant for a card underneath. */
     pointer-events: none;
   }
-
-  /* The whole road is drawn only while it is being followed; the rest of the
-     time the lane has the middle of it and this would be a second copy over
-     the top of forty others. */
-  path.wire.whole { display: none; }
-  g.edge.active path.wire.whole { display: inline; }
-  g.edge.active path.wire.ramps.only { display: none; }
 
   /* No transition on `opacity` here. Fading is the group's job now, and two
      thousand paths each animating their own opacity is precisely the flicker
