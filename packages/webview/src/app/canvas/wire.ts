@@ -582,7 +582,7 @@ export function arrows(scene: Scene): Arrow[] {
   }
 
   for (const [key, run] of runs) gather(key, run, walls, boxOf);
-  join(drawn);
+  join(drawn, walls);
   bridge(drawn);
   return drawn;
 }
@@ -606,7 +606,7 @@ export function arrows(scene: Scene): Arrow[] {
  */
 let lanes: Highway[] = [];
 
-function join(drawn: Arrow[]): void {
+function join(drawn: Arrow[], walls: readonly Blocking[]): void {
   /*
    * Only once the roads have been planned around the cards.
    *
@@ -627,7 +627,9 @@ function join(drawn: Arrow[]): void {
     return;
   }
 
-  const gathered = highways(travelling);
+  // The cards go in as well as the roads: what makes two lines one road is that
+  // nothing stands between them, and only the cards can say that.
+  const gathered = highways(travelling, { walls });
   lanes = gathered.highways;
 
   for (const arrow of drawn) {

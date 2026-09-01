@@ -148,6 +148,49 @@ describe("gathering roads that travel together", () => {
     }
   });
 
+  it("gathers lanes that share a gap, however far apart they are", () => {
+    /*
+     * Three lines a hundred pixels apart in one empty channel between two
+     * columns are one road drawn three times, and the reader sees that at a
+     * glance — distance is the wrong measure of "the same road" and this is the
+     * case that shows it. What makes them one is that nothing stands between
+     * them.
+     */
+    const columns = [
+      { x: -400, y: -200, width: 380, height: 2000 },
+      { x: 700, y: -200, width: 380, height: 2000 },
+    ];
+    const wide = parallel(3, REACH * 4);
+
+    expect(going(highways(wide).highways, "vertical")).toHaveLength(0);
+
+    const withCards = highways(wide, { walls: columns });
+    const down = going(withCards.highways, "vertical");
+    expect(down).toHaveLength(1);
+    expect(down[0]!.users).toBe(3);
+    // And the lane it chose is in the gap rather than inside either column.
+    expect(down[0]!.at).toBeGreaterThan(-20);
+    expect(down[0]!.at).toBeLessThan(700);
+  });
+
+  it("keeps lanes with a card between them apart", () => {
+    // The other half of the same rule, and the reason it is not simply a bigger
+    // reach: a road moved onto a lane on the far side of a card is a road drawn
+    // through the card.
+    const between = [
+      { x: -400, y: -200, width: 380, height: 2000 },
+      { x: 480, y: -200, width: 60, height: 2000 },
+      { x: 900, y: -200, width: 380, height: 2000 },
+    ];
+    const wide = parallel(3, 300);
+    const down = going(highways(wide, { walls: between }).highways, "vertical");
+    for (const lane of down) {
+      for (const wall of between) {
+        expect(lane.at > wall.x && lane.at < wall.x + wall.width).toBe(false);
+      }
+    }
+  });
+
   it("says how many travel each highway, which is what its width means", () => {
     const { highways: found } = highways(parallel(9));
     expect(going(found, "vertical")[0]!.users).toBe(9);

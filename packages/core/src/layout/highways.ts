@@ -72,7 +72,21 @@ interface Leg {
   at: number;
   from: number;
   to: number;
+  /** The clear space this run has to move within, if it is known. */
+  gapLow?: number;
+  gapHigh?: number;
 }
+
+/** A card, for working out which gap a run is travelling down. */
+export interface Standing {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** How close a lane may sit to the card beside it. */
+const CLEAR = 12;
 
 /**
  * Puts the roads that travel together onto shared lanes.
@@ -83,7 +97,7 @@ interface Leg {
  */
 export function highways(
   roads: readonly Travelling[],
-  { reach = REACH, run = RUN, many = MANY } = {},
+  { reach = REACH, run = RUN, many = MANY, walls = [] as readonly Standing[] } = {},
 ): { roads: Map<string, Point[]>; highways: Highway[] } {
   const moved = new Map<string, Point[]>();
   const corners = roads.map((road) => road.corners.map((point) => ({ ...point })));
@@ -115,6 +129,20 @@ export function highways(
     }
   }
 
+  /*
+   * The gap each run is travelling down, when the cards are known.
+   *
+   * Distance alone is the wrong measure of "the same road". Three lines a
+   * hundred pixels apart in one empty channel between two columns are plainly
+   * one road that has been drawn three times, and three lines the same distance
+   * apart with a card between them are three roads. What makes them the same is
+   * that nothing stands between them — so the space a run has to itself is
+   * worked out first, and runs sharing a space share a lane however far apart
+   * they started.
+   */
+  for (const leg of uprights) hem(leg, walls, "vertical");
+  for (const leg of flats) hem(leg, walls, "horizontal");
+
   const lanes = [
     ...gather(uprights, corners, "vertical", reach, many),
     ...gather(flats, corners, "horizontal", reach, many),
@@ -124,6 +152,34 @@ export function highways(
     moved.set(roads[at]!.id, straighten(corners[at]!));
   }
   return { roads: moved, highways: lanes };
+}
+
+/**
+ * The clear space a run has either side of it, up to the nearest card.
+ *
+ * Only cards that stand beside this run — ones it actually passes — can hem it
+ * in. A card above or below a vertical run is not in its way and has no opinion
+ * about which lane it should take.
+ */
+function hem(leg: Leg, walls: readonly Standing[], axis: "vertical" | "horizontal"): void {
+  if (walls.length === 0) return;
+  let low = -Infinity;
+  let high = Infinity;
+
+  for (const wall of walls) {
+    const acrossLow = axis === "vertical" ? wall.y : wall.x;
+    const acrossHigh = axis === "vertical" ? wall.y + wall.height : wall.x + wall.width;
+    // Beside the run rather than at one end of it.
+    if (acrossHigh <= leg.from || acrossLow >= leg.to) continue;
+
+    const nearLow = axis === "vertical" ? wall.x : wall.y;
+    const nearHigh = axis === "vertical" ? wall.x + wall.width : wall.y + wall.height;
+    if (nearHigh <= leg.at && nearHigh > low) low = nearHigh;
+    else if (nearLow >= leg.at && nearLow < high) high = nearLow;
+  }
+
+  leg.gapLow = low === -Infinity ? undefined : low + CLEAR;
+  leg.gapHigh = high === Infinity ? undefined : high - CLEAR;
 }
 
 /**
@@ -156,11 +212,30 @@ function gather(
 
   for (const leg of legs) {
     const last = band[band.length - 1];
-    if (last && leg.at - last.at > reach) closeBand();
+    // Near enough to be the same lane, or in the same gap between cards, which
+    // is the same statement made about the drawing rather than about a number.
+    if (last && leg.at - last.at > reach && !sameGap(last, leg)) closeBand();
     band.push(leg);
   }
   closeBand();
   return found;
+}
+
+/**
+ * Whether two runs are travelling the same clear space.
+ *
+ * Both hemmed by the same pair of cards, and nothing standing between them:
+ * that is what makes two lines a hundred pixels apart one road drawn twice
+ * rather than two roads. Unknown on either side means the cards were not given,
+ * and then distance is all there is to go on.
+ */
+function sameGap(one: Leg, two: Leg): boolean {
+  if (one.gapLow === undefined && one.gapHigh === undefined) return false;
+  if (two.gapLow === undefined && two.gapHigh === undefined) return false;
+  const low = Math.max(one.gapLow ?? -Infinity, two.gapLow ?? -Infinity);
+  const high = Math.min(one.gapHigh ?? Infinity, two.gapHigh ?? Infinity);
+  // A shared gap wide enough to hold a road, and holding both of them already.
+  return low <= high && one.at >= low && one.at <= high && two.at >= low && two.at <= high;
 }
 
 /**
@@ -185,9 +260,20 @@ function merge(
 
   const close = () => {
     if (together.length >= many) {
-      const middle = [...together].sort((one, two) => one.at - two.at)[
+      let middle = [...together].sort((one, two) => one.at - two.at)[
         together.length >> 1
       ]!.at;
+      /*
+       * Inside the space all of them share.
+       *
+       * The middle lane is one of theirs and so is already clear of the cards
+       * it passes — but it is only clear of *its own*, and the others may be
+       * hemmed in more tightly. Moving a road onto a lane that runs through a
+       * card is the fault this whole file is meant to relieve.
+       */
+      const low = Math.max(...together.map((leg) => leg.gapLow ?? -Infinity));
+      const high = Math.min(...together.map((leg) => leg.gapHigh ?? Infinity));
+      if (low <= high) middle = Math.min(Math.max(middle, low), high);
       for (const leg of together) {
         const road = corners[leg.road]!;
         const a = road[leg.corner]!;
