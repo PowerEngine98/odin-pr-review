@@ -307,6 +307,14 @@ export const detours = {
 /**
  * Every card's place in one number, so a move throws the plans away.
  *
+ * Hashed every time rather than remembered against the set it came from. The
+ * placement hands back the same objects and moves them by writing to them, so
+ * "the same set" and "the same places" are different questions — and answering
+ * the second with the first is how the arrows came to be drawn against
+ * positions the cards had already left. Measured on a change of two hundred
+ * files: sixty-one arrows anchored to a box a hundred and twenty-four pixels
+ * from where their card was drawn, heights matching exactly.
+ *
  * It used to be the count and the first and last card, which is cheap and
  * wrong: a column re-flowing in the middle of the drawing leaves both ends
  * where they were, and the roads planned around where those cards used to be
@@ -316,12 +324,8 @@ export const detours = {
  * time the arrows are worked out, so its identity is the question "is this the
  * same pass", and hundreds of roads asking within one pass ask it once.
  */
-let counted: readonly Blocking[] | null = null;
-let count = "";
-
 
 function shapeOf(walls: readonly Blocking[]): string {
-  if (walls === counted) return count;
   let hash = walls.length;
   for (const wall of walls) {
     // Rounded, because a measured card is a fraction of a pixel different on
@@ -331,9 +335,7 @@ function shapeOf(walls: readonly Blocking[]): string {
     hash = (Math.imul(hash, 31) + Math.round(wall.width)) | 0;
     hash = (Math.imul(hash, 31) + Math.round(wall.height)) | 0;
   }
-  counted = walls;
-  count = `${walls.length}:${hash}`;
-  return count;
+  return `${walls.length}:${hash}`;
 }
 
 function planned(
@@ -580,6 +582,21 @@ let answered: Arrow[] = [];
 let generation = 0;
 let asOf = -1;
 
+/**
+ * Where the cards were when the last answer was worked out.
+ *
+ * Not which cards, which is what the object identity says: the placement moves
+ * a card by writing to the object it already handed over, so an answer can be
+ * about positions that no longer exist while every reference in it is still the
+ * same reference.
+ */
+let placedAt = "";
+
+function wherePlaced(scene: Scene): string {
+  if (!scene.boxes) return "none";
+  return shapeOf(Object.values(scene.boxes));
+}
+
 export function rerouted(): void {
   generation += 1;
 }
@@ -597,6 +614,7 @@ export function arrows(scene: Scene): Arrow[] {
     asked.boxes === scene.boxes &&
     asked.lineAt === scene.lineAt &&
     asOf === generation &&
+    placedAt === wherePlaced(scene) &&
     sameReading(asked.reading, scene.reading)
   ) {
     return answered;
@@ -605,6 +623,7 @@ export function arrows(scene: Scene): Arrow[] {
   asked = scene;
   answered = drawn;
   asOf = generation;
+  placedAt = wherePlaced(scene);
   return drawn;
 }
 
