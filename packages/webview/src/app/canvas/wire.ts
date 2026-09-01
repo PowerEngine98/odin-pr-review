@@ -15,7 +15,7 @@
  * recomputed when the camera moves.
  */
 
-import { highways, type Highway } from "@odin/core/layout/highways.js";
+import { highways, WORTH, type Highway } from "@odin/core/layout/highways.js";
 import {
   roadAround,
   roadEnd,
@@ -780,6 +780,44 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
   }
 
   for (const lane of lanes) lane.change = commonest(carrying.get(lane));
+
+  /*
+   * And trimmed to what actually runs on it.
+   *
+   * A lane's ends come from the runs it was built out of, and those runs are
+   * not quite what ends up drawn: a road is shortened to make room for its
+   * head, its corners are cut back to be rounded, and moving it onto the lane
+   * can merge two of its legs into one. Each of those takes a little off an
+   * end, and what is left over is lane drawn past its own traffic — measured at
+   * up to six hundred pixels, which at the distance a whole change is read from
+   * is a line that visibly begins in mid-air with nothing on it.
+   */
+  const reach = new Map<Highway, { from: number; to: number }>();
+  for (const arrow of drawn) {
+    if (arrow.line.length < 2) continue;
+    const cut = shortenRoad(arrow.line, HEAD);
+    for (let at = 1; at < cut.length; at++) {
+      const a = cut[at - 1]!;
+      const b = cut[at]!;
+      const lane = laneUnder(a, b, lanes);
+      if (!lane) continue;
+      const upright = lane.axis === "vertical";
+      const from = upright ? Math.min(a.y, b.y) : Math.min(a.x, b.x);
+      const to = upright ? Math.max(a.y, b.y) : Math.max(a.x, b.x);
+      const seen = reach.get(lane);
+      reach.set(lane, seen
+        ? { from: Math.min(seen.from, from), to: Math.max(seen.to, to) }
+        : { from, to });
+    }
+  }
+
+  lanes = lanes.filter((lane) => {
+    const seen = reach.get(lane);
+    if (!seen) return false;
+    lane.from = seen.from;
+    lane.to = seen.to;
+    return lane.to - lane.from >= WORTH;
+  });
 }
 
 /** The lanes the last set of arrows ended up sharing. */
