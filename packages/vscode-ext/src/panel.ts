@@ -11,14 +11,15 @@ import {
   deleteComment,
   editComment,
   listReviewComments,
+  listReviewThreads,
   readPullRequest,
   readMergeStatus,
   updateBranch,
   mergePullRequest,
   type Agency,
   type MergeMethod,
-  listReviewThreads,
   resolveThread,
+  stampThreads,
   replyToComment,
   setDraft,
   toggleReaction,
@@ -1003,6 +1004,43 @@ export class GraphPanel {
    * gone past — says so in as many words. This is the only action in the whole
    * tool that cannot be taken back from here.
    */
+  /**
+   * The pull request's comments again, with its conversations on them.
+   *
+   * Two requests rather than one, because the forge answers them separately:
+   * the list of comments knows nothing about which of them are one thread or
+   * whether anybody has settled it, and the query that does knows nothing about
+   * bodies. Every place that reloads comments goes through here, so a tick
+   * cannot be right on one path and missing on another.
+   */
+  private async reloadComments(): Promise<void> {
+    const pull = this.graph.meta.pullRequest;
+    if (!pull) return;
+
+    const posted = await listReviewComments(pull.number, { cwd: this.repo });
+    const threads = await listReviewThreads(pull.number, { cwd: this.repo }).catch(
+      () => new Map<number, { threadId: string; resolved: boolean }>(),
+    );
+    const joined = stampThreads(posted, threads);
+    this.comments = await inlineAvatars(joined).catch(() => joined);
+    void this.panel.webview.postMessage({
+      type: "comments",
+      comments: this.comments,
+    });
+  }
+
+  /**
+   * Settling a conversation, or opening it again, because the reader said so.
+   *
+   * Thin on purpose. The store is the one place that records it and the one
+   * place that tells the forge, so that a conversation settled by an agent's
+   * answer and one settled by somebody pressing a button go the same way and
+   * cannot disagree.
+   */
+  private async resolve(what: { id: number; resolved: boolean }): Promise<void> {
+    this.pairing().settle(what.id, what.resolved);
+  }
+
   private async merge(how: { method?: MergeMethod; admin?: boolean }): Promise<void> {
     const pull = this.graph.meta.pullRequest;
     if (!pull) return;
@@ -1086,6 +1124,38 @@ export class GraphPanel {
         this.repo,
         () => this.sendComments(),
       );
+      /*
+       * A conversation the store has settled, settled on the forge as well.
+       *
+       * An agent answering closes the thread, and asking again opens it — both
+       * happen inside the store, which knows nothing about pull requests. This
+       * carries the same decision outward for the threads that have somewhere
+       * outward to go, so a reader on the forge sees what a reader here sees.
+       */
+      this.paired.onSettle = (rootId, resolved) => {
+        // Local ids are negative and name no thread the forge has heard of. The
+        // store is the whole of the answer for those.
+        if (rootId < 0) return;
+        const comment = this.comments.find((one) => Number(one.id) === rootId);
+        if (!comment?.threadId) return;
+        void resolveThread(comment.threadId, resolved, { cwd: this.repo }).then(
+          (took) => {
+            if (took) {
+              void this.reloadComments();
+              return;
+            }
+            // Put back, rather than left showing a state the pull request does
+            // not agree with. Written straight into the store so that undoing
+            // it does not try to tell the forge again.
+            this.paired?.unsettle(rootId, !resolved);
+            vscode.window.showErrorMessage(
+              resolved
+                ? "Odin: the forge would not mark that conversation resolved."
+                : "Odin: the forge would not reopen that conversation.",
+            );
+          },
+        );
+      };
       this.paired.printed = (agent, chunk) => {
         void this.panel.webview.postMessage({
           type: "agentOutput",
@@ -1138,8 +1208,21 @@ export class GraphPanel {
      * conversation gone.
      */
     const local = this.pairing().local();
-    if (local.length === 0) return this.comments;
-    return [...this.comments, ...local].sort((a, b) =>
+    /*
+     * What the store knows about a conversation beats what the forge last said.
+     *
+     * An agent answering settles the thread here and tells the forge after, and
+     * the forge's answer only comes back on the next fetch. Between the two the
+     * comments in hand still say the conversation is open — so the tick would
+     * appear, vanish, and come back a second later once the round trip landed.
+     */
+    const settled = this.pairing().settledThreads();
+    const posted = this.comments.map((comment) => {
+      const known = settled[String(comment.id)];
+      return known === undefined ? comment : { ...comment, resolved: known };
+    });
+    if (local.length === 0) return posted;
+    return [...posted, ...local].sort((a, b) =>
       String(a.createdAt).localeCompare(String(b.createdAt)),
     );
   }
@@ -1632,7 +1715,11 @@ export class GraphPanel {
 
     vscode.window.showInformationMessage(`Odin: review posted on #${pull.number}.`);
     const posted = await listReviewComments(pull.number, { cwd: this.repo });
-    this.comments = await inlineAvatars(posted).catch(() => posted);
+    const threads = await listReviewThreads(pull.number, { cwd: this.repo }).catch(
+      () => new Map<number, { threadId: string; resolved: boolean }>(),
+    );
+    const joined = stampThreads(posted, threads);
+    this.comments = await inlineAvatars(joined).catch(() => joined);
     void this.panel.webview.postMessage({
       type: "reviewSubmitted",
       comments: this.comments,
@@ -1742,12 +1829,7 @@ export class GraphPanel {
       return;
     }
 
-    const posted = await listReviewComments(pull.number, { cwd: this.repo });
-    this.comments = await inlineAvatars(posted).catch(() => posted);
-    void this.panel.webview.postMessage({
-      type: "comments",
-      comments: this.comments,
-    });
+    await this.reloadComments();
   }
 
   /**

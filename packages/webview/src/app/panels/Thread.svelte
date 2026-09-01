@@ -591,6 +591,43 @@
           {#if claimed.working}<span class="claimed-state">working</span>{/if}
         </span>
       {/if}
+      <!--
+        Settled, or still waiting.
+
+        A button rather than a badge, because the two things a reader does with
+        a conversation's state are read it and change it, and a badge beside a
+        button that changes it would be the same fact twice. An agent's answer
+        moves this on its own; this is for the times the agent was wrong about
+        being finished, and for the threads no agent was ever in.
+      -->
+      <button
+        class="thread-state"
+        class:settled={thread.root.resolved === true}
+        title={thread.root.resolved
+          ? "Resolved. Press to open it again."
+          : "Not resolved. Press to mark it settled."}
+        aria-label={thread.root.resolved ? "Resolved" : "Not resolved"}
+        aria-pressed={thread.root.resolved === true}
+        onclick={() =>
+          notify("resolveThread", {
+            // A number, because that is what the host keys conversations by:
+            // the forge's ids are positive and this machine's are negative, and
+            // a string of one would miss both.
+            id: Number(thread.root.id),
+            resolved: thread.root.resolved !== true,
+          })}
+      >
+        {#if thread.root.resolved}
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path d="M3.5 8.4 6.4 11.3 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        {:else}
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4" />
+            <path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        {/if}
+      </button>
       <button class="thread-close" title="Close" aria-label="Close" onclick={onclose}>
         <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
           <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -934,6 +971,26 @@
     box-shadow: 0 10px 30px color-mix(in srgb, #000 45%, transparent);
     font-size: 12px;
   }
+
+  /* Grey while it waits and green once it is settled: the same two marks the
+     list of threads wears, so one glance answers the same question in both. */
+  .thread-state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 120ms ease, background-color 120ms ease;
+  }
+  .thread-state:hover { background: color-mix(in srgb, var(--text) 14%, transparent); }
+  .thread-state.settled { color: var(--added); }
 
   .thread-head {
     flex: 0 0 auto;

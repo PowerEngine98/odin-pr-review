@@ -9,6 +9,8 @@ import {
   inlineAvatar,
   inlineAvatars,
   listReviewComments,
+  listReviewThreads,
+  stampThreads,
   localBranches,
   readableCheckout,
   worktreeFor,
@@ -1264,7 +1266,16 @@ async function present(
   // waiting on the forge before showing it would be the wrong order.
   if (pull) panel.watchChecks(graph.meta.headRef, repo);
   if (pull) {
-    void listReviewComments(pull.number, { cwd: repo })
+    // The comments and their conversations, which the forge answers apart: one
+    // request knows the bodies and the other knows which of them are one thread
+    // and whether anybody has settled it.
+    void Promise.all([
+      listReviewComments(pull.number, { cwd: repo }),
+      listReviewThreads(pull.number, { cwd: repo }).catch(
+        () => new Map<number, { threadId: string; resolved: boolean }>(),
+      ),
+    ])
+      .then(([found, threads]) => stampThreads(found, threads))
       .then((found) => inlineAvatars(found).catch(() => found))
       .then((comments) => {
         if (comments.length > 0) panel.setComments(comments);

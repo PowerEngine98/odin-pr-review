@@ -8,8 +8,10 @@ import {
   ownerOf,
   discoverAgents,
   forgeEnv,
+  keepsOpen,
   promptFor,
   runAgent,
+  withoutMarker,
   type Agency,
   type AgentKind,
   type AgentState,
@@ -113,6 +115,17 @@ interface Stored {
    * already over, and the far end of it is the cheapest thing here to lose.
    */
   logs?: Record<string, string>;
+  /**
+   * Which conversations have been settled, by the id of the message that began
+   * them.
+   *
+   * Kept beside the comments rather than on them because a thread's root may be
+   * a comment on the forge, which this store does not own and cannot write to.
+   * The forge has its own answer for those and it is the one that counts; this
+   * is what is known here, which for a conversation that exists only on this
+   * machine is all there is.
+   */
+  settled?: Record<string, boolean>;
 }
 
 /**
@@ -178,6 +191,8 @@ export class PairingSession {
 
   /** What the reader calls each conversation, where they have named one. */
   private labels: Record<string, string> = {};
+  /** Which conversations have been settled, by the id that began them. */
+  private settled: Record<string, boolean> = {};
 
   /** The agents installed here, once anybody has looked. */
   private installed: AgentKind[] = [];
@@ -210,6 +225,8 @@ export class PairingSession {
       held?.sessions && typeof held.sessions === "object" ? { ...held.sessions } : {};
     this.labels =
       held?.labels && typeof held.labels === "object" ? { ...held.labels } : {};
+    this.settled =
+      held?.settled && typeof held.settled === "object" ? { ...held.settled } : {};
     /*
      * A turn that was running when the window went away.
      *
@@ -250,6 +267,7 @@ export class PairingSession {
         next: this.next,
         sessions: this.sessions,
         labels: this.labels,
+        settled: this.settled,
         logs: Object.fromEntries(
           [...this.transcripts].map(([agent, text]) => [agent, keepable(text)]),
         ),
@@ -262,8 +280,52 @@ export class PairingSession {
 
   /** Everything written here, for the page to draw beside the forge's own. */
   local(): LocalComment[] {
-    return this.comments;
+    // The state is carried by the message that began the conversation, which is
+    // where every reader of it — the list, the panel, the mark — already looks
+    // for what the conversation is.
+    return this.comments.map((comment) => {
+      const settled = this.settled[String(comment.id)];
+      return settled === undefined ? comment : { ...comment, resolved: settled };
+    });
   }
+
+  /** What is known here about each conversation, by the id that began it. */
+  settledThreads(): Record<string, boolean> {
+    return { ...this.settled };
+  }
+
+  /**
+   * Settling a conversation, or opening it again.
+   *
+   * Recorded here whatever the thread is, and told to whoever is listening so
+   * that a thread rooted on the forge can be settled there too. Both, rather
+   * than one or the other: the forge is the answer that outlives this window,
+   * and this is the answer the page can draw before a round trip has finished.
+   */
+  settle(rootId: number, resolved: boolean): void {
+    const key = String(rootId);
+    if (this.settled[key] === resolved) return;
+    this.settled[key] = resolved;
+    this.save();
+    this.onSettle?.(rootId, resolved);
+    this.changed();
+  }
+
+  /**
+   * The same, without telling anybody.
+   *
+   * For putting back a state the forge refused. Announcing that would send the
+   * refusal straight back to the forge as a fresh instruction, which is a loop
+   * rather than an undo.
+   */
+  unsettle(rootId: number, resolved: boolean): void {
+    this.settled[String(rootId)] = resolved;
+    this.save();
+    this.changed();
+  }
+
+  /** Told when a conversation is settled or opened, so the forge can hear of it. */
+  onSettle: ((rootId: number, resolved: boolean) => void) | undefined;
 
   /** What this machine can run, as the panel and the queue both need it. */
   agents(): AgentKind[] {
@@ -430,6 +492,18 @@ export class PairingSession {
 
     this.comments = [...this.comments, comment];
     this.save();
+
+    /*
+     * Asking again opens the conversation again.
+     *
+     * A settled thread the reader has just written into is not settled — that
+     * is what writing into it means — and leaving it closed would file the new
+     * question under the answers already given, where nobody is looking.
+     */
+    if (where.inReplyTo !== undefined) {
+      const root = this.rootOf(where.inReplyTo);
+      if (root) this.settle(root.id, false);
+    }
 
     const named = addressedTo(
       where.body,
@@ -1035,11 +1109,23 @@ export class PairingSession {
   /** Told when an agent prints, for a terminal that is following along. */
   printed: ((agent: string, chunk: string) => void) | undefined;
 
-  /** An agent's message, in the thread the ask belongs to. */
+  /**
+   * An agent's message, in the thread the ask belongs to.
+   *
+   * An answer ends the conversation unless the answer says otherwise. That is
+   * what an answer usually is — the reader asked, the agent did the work and
+   * said what it did — and a thread left open after every one of them turns a
+   * list of a hundred and eighty-five into a list nobody reads. An agent whose
+   * answer is really a question writes `keep-open` on a line of its own, which
+   * is taken out before the reader sees it: it is an instruction to Odin rather
+   * than something said to them.
+   */
   private reply(to: number, name: string, agentId: string, body: string): void {
     const root = this.rootOf(to);
     if (!root) return;
 
+    const open = keepsOpen(body);
+    const said = open ? withoutMarker(body) : body;
     const id = this.next--;
     this.comments = [
       ...this.comments,
@@ -1049,7 +1135,7 @@ export class PairingSession {
         line: root.line,
         ...(root.startLine !== undefined ? { startLine: root.startLine } : {}),
         side: root.side,
-        body,
+        body: said,
         author: name,
         // Drawn rather than fetched: a webview will not load a remote image,
         // and everybody else in the thread already has a face.
@@ -1063,6 +1149,8 @@ export class PairingSession {
       },
     ];
     this.save();
+    if (!open) this.settle(root.id, true);
+    else this.changed();
   }
 
   /** Moves a message's badge, which is the only thing on it that changes. */

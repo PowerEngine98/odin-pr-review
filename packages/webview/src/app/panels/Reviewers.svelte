@@ -300,6 +300,28 @@
             onclick={(event) => { event.stopPropagation(); listing = false; goTo(thread); }}
           >
             {@render face(thread.root, "who-face")}
+            <!--
+              Whether the conversation is finished with.
+
+              A clock rather than an empty space: a hundred and eighty-five rows
+              of which some carry a tick says nothing about the rest — they
+              could be open, or they could be rows the tick has not been drawn
+              on. Two marks, and every row wears one.
+            -->
+            {#if thread.root.resolved}
+              <span class="settled" title="Resolved" aria-label="Resolved">
+                <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+                  <path d="M3.5 8.4 6.4 11.3 12.5 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            {:else}
+              <span class="waiting" title="Not resolved" aria-label="Not resolved">
+                <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+                  <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.4" />
+                  <path d="M8 4.6V8l2.4 1.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            {/if}
             <span class="about">
               <span class="where">
                 {placeOf(thread.root)}{thread.comments.length > 1
@@ -330,6 +352,25 @@
     align-items: flex-end;
     gap: 8px;
   }
+
+  /*
+   * The two states a conversation can be in, said in the same place either way.
+   *
+   * Grey for the one that is waiting, because it is not a warning — most
+   * threads on a large review are open and a row of amber would make an
+   * ordinary review look like a failing one. The tick takes the colour
+   * everything settled on this page takes.
+   */
+  .settled,
+  .waiting {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+  }
+  .settled { color: var(--added); }
+  .waiting { color: var(--muted); opacity: 0.75; }
 
   .review-list {
     width: 220px;

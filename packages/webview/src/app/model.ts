@@ -220,6 +220,16 @@ export interface CommentView {
    * question and leaves nothing behind.
    */
   approval?: { id: string; what: string; state: "waiting" | "allowed" | "denied" };
+  /**
+   * Whether the conversation this begins has been settled.
+   *
+   * Only ever on the message that began one — a reply does not have a state of
+   * its own — and absent on a conversation nobody has settled or reopened,
+   * which is the ordinary case and reads as still open.
+   */
+  resolved?: boolean;
+  /** The forge's own name for the conversation, when the forge knows of it. */
+  threadId?: string;
 }
 
 /**

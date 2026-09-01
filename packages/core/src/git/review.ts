@@ -788,6 +788,33 @@ export async function listReviewThreads(
 }
 
 /**
+ * Comments with what the forge knows about their conversations on them.
+ *
+ * The two are fetched apart because the forge answers them apart: the REST list
+ * knows comments and a reply pointer, and only the GraphQL knows that a run of
+ * them is one thread and whether anybody has settled it. Joined here so that
+ * every reader of a comment gets the same answer, and so that the join can be
+ * exercised without a network.
+ *
+ * A comment the thread query did not mention keeps whatever it had. That is the
+ * ordinary case for a pull request with more conversations than the shallow
+ * query asks for, and a comment that lost its thread because the second request
+ * was truncated would be worse than one that never had it.
+ */
+export function stampThreads(
+  comments: readonly ReviewComment[],
+  threads: ReadonlyMap<number, { threadId: string; resolved: boolean }>,
+): ReviewComment[] {
+  if (threads.size === 0) return [...comments];
+  return comments.map((comment) => {
+    const found = threads.get(Number(comment.id));
+    return found
+      ? { ...comment, threadId: found.threadId, resolved: found.resolved }
+      : comment;
+  });
+}
+
+/**
  * The forge's answer, read into a lookup by comment.
  *
  * Exported for its own sake: the shape is nested four deep and every level of
