@@ -408,11 +408,68 @@
    * over a new function each time is what makes an arrow layer redraw — it is
    * reading this, so it is asked again.
    */
+  /**
+   * Where each line was found while the card was drawing them.
+   *
+   * A card too small to read does not build its rows — a few hundred elements
+   * per card for a picture in which not one character resolves — and the arrows
+   * then had nowhere to land, so they fell back to the middle of the card. What
+   * that produced was a second drawing at a distance: twenty arrows converging
+   * on one point, none of them where they would be if the reader moved closer.
+   * The reader zoomed out to see the shape of the change and was shown a shape
+   * the change does not have.
+   *
+   * So the positions outlive the rows. They are in the card's own coordinates
+   * and the card does not change size with the zoom, so what was true up close
+   * is still true from across the room.
+   */
+  const remembered = new Map<string, number>();
+
+  /**
+   * And where a row would be on a card nobody has read yet.
+   *
+   * Rows are one height, so the arithmetic is the layout engine's own: the body
+   * divided by the rows in it. It is an estimate, and it is the same estimate
+   * the engine sized the card with — near enough that an arrow lands on the
+   * right row, which is the whole question being asked.
+   */
+  function guessAt(side: "base" | "head", line: number, fileLevel: boolean): number | null {
+    const head = titleHeight || 0;
+    if (fileLevel) return head / 2;
+
+    const shown = settings.unified ? rows.slice(0, unifiedLimit) : null;
+    const at = shown
+      ? shown.findIndex((row) => (side === "base" ? row.oldLine : row.newLine) === line)
+      : pairs
+          .slice(0, splitLimit)
+          .findIndex((pair) =>
+            side === "base" ? pair.left?.oldLine === line : pair.right?.newLine === line,
+          );
+    if (at < 0) return null;
+
+    const body = Math.max(0, (tall || 0) - head);
+    const count = shown ? shown.length : Math.min(pairs.length, splitLimit);
+    if (body <= 0 || count <= 0) return null;
+    return head + ((at + 0.5) * body) / count;
+  }
+
   const rowsAt = $derived.by(() => {
     const drawn = bodyHeight;
     const blocked = flat;
-    return (side: "base" | "head", line: number, fileLevel: boolean) =>
-      !blocked && drawn > 0 ? lineIn(element, side, line, fileLevel) : null;
+    // Read so that a card which has just folded, unfolded or changed reading
+    // hands over a new function: the positions below change with all three.
+    void tall;
+    void settings.unified;
+
+    return (side: "base" | "head", line: number, fileLevel: boolean) => {
+      const key = `${side}|${line}|${fileLevel ? 1 : 0}`;
+      if (!blocked && drawn > 0) {
+        const found = lineIn(element, side, line, fileLevel);
+        if (found !== null) remembered.set(key, found);
+        return found;
+      }
+      return remembered.get(key) ?? guessAt(side, line, fileLevel);
+    };
   });
 
   $effect(() => {
