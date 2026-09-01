@@ -762,6 +762,35 @@ function join(drawn: Arrow[], walls: readonly Blocking[]): void {
   }
 
   /*
+   * A run's slip roads follow its trunk onto the lane.
+   *
+   * Several references to one place are drawn as one road: a short slip road
+   * from each row to a junction, and one trunk from there onwards. Moving the
+   * trunk onto a shared lane moves where it begins — and the slip roads went on
+   * pointing at the junction it used to begin at, so the trunk started in mid
+   * air with its feeders ending a few hundred pixels away. That is the line
+   * beginning in nothing that keeps being reported.
+   */
+  const runs = new Map<string, Arrow[]>();
+  for (const arrow of drawn) {
+    if (arrow.run === null) continue;
+    const run = runs.get(arrow.run);
+    if (run) run.push(arrow);
+    else runs.set(arrow.run, [arrow]);
+  }
+
+  for (const run of runs.values()) {
+    const carrier = run.find((arrow) => arrow.carrier);
+    if (!carrier || carrier.line.length < 2) continue;
+    const junction = carrier.line[0]!;
+    for (const arrow of run) {
+      const slip = roadPath(roadPoints(arrow.wire.start, junction, arrow.wire.goesRight));
+      arrow.stem = slip;
+      arrow.hit = slip;
+    }
+  }
+
+  /*
    * What colour each lane is, from what travels it.
    *
    * A lane is a band under the roads rather than a thing in its own right, and
