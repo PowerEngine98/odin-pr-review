@@ -103,10 +103,14 @@ export function layoutGraph(
 
   const parts = partOrder(graph);
   assignRanks(placed, byId, edges);
-  orderWithinRanks(placed, byId, edges, parts);
-  assignCoordinates(placed, byId, edges, metrics);
 
-  const routed = routeEdges(edges, byId, metrics);
+  const anchored = anchorEdges(edges, byId, metrics);
+  const ranks = groupByRank(placed);
+  assignColumns(ranks, metrics);
+  orderWithinRanks(placed, ranks, anchored, parts, metrics);
+  liftToTop(placed, metrics);
+
+  const routed = routeEdges(anchored);
   const bounds = measureBounds(placed, metrics);
 
   return { unified: options.unified === true, nodes: placed, edges: routed, ...bounds, metrics };
@@ -448,11 +452,6 @@ function assignRanks(
 // ------------------------------------------------------------------- ordering
 
 /**
- * Barycentre ordering: a node sits near the average position of its neighbours.
- * Four sweeps in each direction, which is well past the point of diminishing
- * returns for the graph sizes a pull request produces.
- */
-/**
  * Which part of the change each file belongs to, in the order the parts are
  * offered.
  *
@@ -479,79 +478,179 @@ function partOrder(graph: ChangeGraph): Map<string, number> {
   return rank;
 }
 
+/**
+ * One end of an arrow, as the card at the other end feels it.
+ *
+ * `at` is how far down the neighbour the arrow leaves, `own` how far down this
+ * card it arrives; so the height that would draw it flat is `other.y + at -
+ * own`, and that subtraction is the only thing either pass ever asks of an
+ * arrow.
+ */
+interface Pull {
+  other: PlacedNode;
+  at: number;
+  own: number;
+}
+
+/**
+ * Sweeps in each direction. Four was already past the point of diminishing
+ * returns for the graph sizes a pull request produces, and the best-of rule
+ * below means a wasted sweep costs time and never the picture.
+ */
+const ORDER_PASSES = 4;
+
+/**
+ * Orders the cards within each column so the arrows between columns are short.
+ *
+ * Two things separate this from the textbook sweep. The first is that the key
+ * is a height in pixels and not a neighbour's index: cards differ in height by
+ * two orders of magnitude here, so the fifth card in a column and the sixth can
+ * be twenty thousand pixels apart, and an ordering built from indices was
+ * answering a question about a drawing nobody was looking at. The second is the
+ * median rather than the mean, because the thing being minimised is a sum of
+ * absolute distances and the median is what minimises one.
+ *
+ * Sorting a column by where its arrows want it is also the best that ordering
+ * alone can do, given that the cards are then packed downwards without
+ * overlapping: two cards in the wrong relative order can only push each other
+ * further from where they were aiming.
+ */
 function orderWithinRanks(
   nodes: PlacedNode[],
-  byId: Map<string, PlacedNode>,
-  edges: Edge[],
+  ranks: PlacedNode[][],
+  anchored: Anchored[],
   part: Map<string, number>,
+  metrics: LayoutMetrics,
 ): void {
   // Files whose part is unknown sort after every known one rather than at the
   // front, which is where an absent number would otherwise put them.
   const partOf = (node: PlacedNode) => part.get(node.id) ?? part.size;
+  const byPath = (a: PlacedNode, b: PlacedNode) =>
+    a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
 
-  const ranks = groupByRank(nodes);
+  const above = new Map<string, Pull[]>();
+  const below = new Map<string, Pull[]>();
+  for (const node of nodes) {
+    above.set(node.id, []);
+    below.set(node.id, []);
+  }
+  // Only arrows that cross columns pull, and only forwards. An arrow inside a
+  // column has no height it prefers, and one that runs backwards would pull a
+  // card towards a column that has not been placed yet.
+  for (const link of anchored) {
+    if (link.source.rank >= link.target.rank) continue;
+    above.get(link.target.id)!.push({
+      other: link.source, at: link.fromOffset, own: link.toOffset,
+    });
+    below.get(link.source.id)!.push({
+      other: link.target, at: link.toOffset, own: link.fromOffset,
+    });
+  }
+
   for (const group of ranks) {
-    group.sort(
-      (a, b) =>
-        partOf(a) - partOf(b) ||
-        (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
-    );
+    group.sort((a, b) => partOf(a) - partOf(b) || byPath(a, b));
     group.forEach((node, i) => { node.order = i; });
   }
 
-  const predecessors = new Map<string, string[]>();
-  const successors = new Map<string, string[]>();
-  for (const node of nodes) {
-    predecessors.set(node.id, []);
-    successors.set(node.id, []);
-  }
-  for (const edge of edges) {
-    if (edge.from.nodeId === edge.to.nodeId) continue;
-    successors.get(edge.from.nodeId)!.push(edge.to.nodeId);
-    predecessors.get(edge.to.nodeId)!.push(edge.from.nodeId);
-  }
+  const stack = () => {
+    for (const group of ranks) stackColumn(group, above, metrics);
+  };
 
-  const sweep = (group: PlacedNode[], neighbours: Map<string, string[]>) => {
-    const key = new Map<string, number>();
+  const sweep = (group: PlacedNode[], links: Map<string, Pull[]>) => {
+    const wanted = new Map<string, number>();
     for (const node of group) {
-      const linked = (neighbours.get(node.id) ?? [])
-        .map((id) => byId.get(id))
-        .filter((n): n is PlacedNode => n !== undefined);
-      key.set(
-        node.id,
-        linked.length === 0
-          ? node.order
-          : linked.reduce((sum, n) => sum + n.order, 0) / linked.length,
-      );
+      const pulls = links.get(node.id)!;
+      // A card nothing pulls on keeps the height it already has, so a sweep
+      // moves it only when the cards around it have moved past it.
+      wanted.set(node.id, pulls.length === 0 ? node.y : median(heights(pulls)));
     }
-    // The part comes first and the barycentre second: a sweep may tidy a file's
-    // place among its own part, never move it out of one.
+    // The part comes first and the pull second: a sweep may tidy a file's place
+    // among its own part, never move it out of one.
     group.sort(
       (a, b) =>
         partOf(a) - partOf(b) ||
-        key.get(a.id)! - key.get(b.id)! ||
+        wanted.get(a.id)! - wanted.get(b.id)! ||
         a.order - b.order ||
-        (a.path < b.path ? -1 : 1),
+        byPath(a, b),
     );
     group.forEach((node, i) => { node.order = i; });
   };
 
-  for (let pass = 0; pass < 4; pass++) {
-    for (let r = 1; r < ranks.length; r++) sweep(ranks[r]!, predecessors);
-    for (let r = ranks.length - 2; r >= 0; r--) sweep(ranks[r]!, successors);
+  stack();
+  let shortest = roadLength(anchored);
+  let best = nodes.map((node) => node.order);
+  // A sweep is a heuristic and can lengthen the drawing as easily as shorten
+  // it, and the last sweep is not the best one often enough to matter. Keeping
+  // the shortest order seen means the pass can never leave the drawing longer
+  // than the plain path ordering it started from. Strictly shorter, so an order
+  // that merely ties never displaces one the reader may already be looking at.
+  const consider = () => {
+    stack();
+    const length = roadLength(anchored);
+    if (length < shortest) {
+      shortest = length;
+      best = nodes.map((node) => node.order);
+    }
+  };
+
+  for (let pass = 0; pass < ORDER_PASSES; pass++) {
+    // Downwards, placing each column as it is settled so that the next one is
+    // reading heights and not the ones from the pass before.
+    for (let r = 1; r < ranks.length; r++) {
+      sweep(ranks[r]!, above);
+      stackColumn(ranks[r]!, above, metrics);
+    }
+    consider();
+    for (let r = ranks.length - 2; r >= 0; r--) sweep(ranks[r]!, below);
+    consider();
   }
+
+  nodes.forEach((node, i) => { node.order = best[i]!; });
+  stack();
+}
+
+/** Where the arrows would put a card, one height each. */
+function heights(pulls: Pull[]): number[] {
+  return pulls.map((pull) => pull.other.y + pull.at - pull.own);
+}
+
+/**
+ * The middle of a list of heights.
+ *
+ * The median and not the mean, because a card is being placed to make a sum of
+ * absolute distances small and that is the number a median minimises. One
+ * outlying reference — a constants file called from the far end of the change —
+ * used to drag a card halfway down the canvas away from the neighbours it
+ * actually shares its arrows with.
+ */
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1
+    ? sorted[mid]!
+    : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+/**
+ * Total vertical travel of every arrow.
+ *
+ * The whole of what ordering can change: how far apart the columns are is the
+ * ranking's business and the widths', and ordering touches neither, so two
+ * orders of the same graph differ in this and in nothing else.
+ */
+function roadLength(anchored: Anchored[]): number {
+  let total = 0;
+  for (const link of anchored) {
+    total += Math.abs(
+      link.source.y + link.fromOffset - (link.target.y + link.toOffset),
+    );
+  }
+  return total;
 }
 
 // ---------------------------------------------------------------- coordinates
 
-function assignCoordinates(
-  nodes: PlacedNode[],
-  byId: Map<string, PlacedNode>,
-  edges: Edge[],
-  metrics: LayoutMetrics,
-): void {
-  const ranks = groupByRank(nodes);
-
+function assignColumns(ranks: PlacedNode[][], metrics: LayoutMetrics): void {
   let x = metrics.margin;
   for (const group of ranks) {
     const columnWidth = group.reduce((max, n) => Math.max(max, n.width), 0);
@@ -561,67 +660,64 @@ function assignCoordinates(
     }
     x += columnWidth + metrics.columnGap;
   }
+}
 
-  const incoming = new Map<string, Edge[]>();
-  for (const node of nodes) incoming.set(node.id, []);
-  for (const edge of edges) incoming.get(edge.to.nodeId)?.push(edge);
+/**
+ * Puts one column's cards down the page.
+ *
+ * Each aims at the height that would make the arrows arriving from the left
+ * horizontal; overlaps are then resolved by pushing downwards in the order the
+ * column was given, which is the order the pass above chose for exactly this.
+ */
+function stackColumn(
+  group: PlacedNode[],
+  above: Map<string, Pull[]>,
+  metrics: LayoutMetrics,
+): void {
+  group.sort((a, b) => a.order - b.order);
 
-  for (let r = 0; r < ranks.length; r++) {
-    const group = [...ranks[r]!].sort((a, b) => a.order - b.order);
-
-    // Aim each card at the height that would make its arrows horizontal, then
-    // resolve overlaps by pushing downwards in the established order.
-    const desired = group.map((node) => {
-      if (r === 0) return undefined;
-      const links = (incoming.get(node.id) ?? []).filter((e) => {
-        const source = byId.get(e.from.nodeId);
-        return source !== undefined && source.rank < node.rank;
-      });
-      if (links.length === 0) return undefined;
-
-      const sum = links.reduce((total, edge) => {
-        const source = byId.get(edge.from.nodeId)!;
-        const sourceRow = anchorRowForLine(
-          sideOf(source.pairs, edge.from.side), edge.from.side, edge.from.line, source.visibleRows,
-        );
-        const sourceY =
-          source.y +
-          (sourceRow === undefined
-            ? source.height / 2
-            : rowOffset(sourceRow, metrics));
-        const fileLevel = edge.kind === "import";
-        const targetRow = fileLevel
-          ? undefined
-          : anchorRowForLine(sideOf(node.pairs, edge.to.side), edge.to.side, edge.to.line, node.visibleRows);
-        const offset = anchorOffset(node, targetRow, fileLevel, metrics);
-        return total + (sourceY - offset);
-      }, 0);
-      return sum / links.length;
-    });
-
-    let cursor = metrics.margin;
-    group.forEach((node, i) => {
-      const target = desired[i];
-      node.y = Math.round(Math.max(cursor, target ?? cursor));
-      cursor = node.y + node.height + metrics.rowGap;
-    });
+  let cursor = metrics.margin;
+  for (const node of group) {
+    const pulls = above.get(node.id)!;
+    const target = pulls.length === 0 ? cursor : median(heights(pulls));
+    node.y = Math.round(Math.max(cursor, target));
+    cursor = node.y + node.height + metrics.rowGap;
   }
+}
 
-  // Pull the drawing back to the top-left without changing relative positions.
+/** Pulls the drawing back to the top without changing relative positions. */
+function liftToTop(nodes: PlacedNode[], metrics: LayoutMetrics): void {
   const minY = nodes.reduce((min, n) => Math.min(min, n.y), Infinity);
-  if (Number.isFinite(minY)) {
-    const shift = metrics.margin - minY;
-    for (const node of nodes) node.y += shift;
-  }
+  if (!Number.isFinite(minY)) return;
+  const shift = metrics.margin - minY;
+  for (const node of nodes) node.y += shift;
 }
 
 // -------------------------------------------------------------------- routing
 
-function routeEdges(
+/**
+ * An arrow together with the two things about it that do not move: which row of
+ * each card it touches, and how far down that card the row sits.
+ *
+ * Both are read off a card's own rows, so neither depends on where the card
+ * ends up on the canvas. Working them out once is what lets the ordering pass
+ * place the drawing repeatedly without paying for the anchors again.
+ */
+interface Anchored {
+  edge: Edge;
+  source: PlacedNode;
+  target: PlacedNode;
+  fromOffset: number;
+  toOffset: number;
+  fromRow: number | undefined;
+  toRow: number | undefined;
+}
+
+function anchorEdges(
   edges: Edge[],
   byId: Map<string, PlacedNode>,
   metrics: LayoutMetrics,
-): PlacedEdge[] {
+): Anchored[] {
   return edges.map((edge) => {
     const source = byId.get(edge.from.nodeId)!;
     const target = byId.get(edge.to.nodeId)!;
@@ -635,9 +731,20 @@ function routeEdges(
       ? undefined
       : anchorRowForLine(sideOf(target.pairs, edge.to.side), edge.to.side, edge.to.line, target.visibleRows);
 
-    const fromY = source.y + anchorOffset(source, fromRow, false, metrics);
-    const toY = target.y + anchorOffset(target, toRow, fileLevel, metrics);
+    return {
+      edge,
+      source,
+      target,
+      fromOffset: anchorOffset(source, fromRow, false, metrics),
+      toOffset: anchorOffset(target, toRow, fileLevel, metrics),
+      fromRow,
+      toRow,
+    };
+  });
+}
 
+function routeEdges(anchored: Anchored[]): PlacedEdge[] {
+  return anchored.map(({ edge, source, target, fromOffset, toOffset, fromRow, toRow }) => {
     // Leave and enter by whichever borders face each other.
     const goesRight = target.x + target.width / 2 >= source.x + source.width / 2;
     const fromSide = goesRight ? "right" : "left";
@@ -646,8 +753,14 @@ function routeEdges(
     const placed: PlacedEdge = {
       id: edge.id,
       edge,
-      from: { x: fromSide === "right" ? source.x + source.width : source.x, y: fromY },
-      to: { x: toSide === "left" ? target.x : target.x + target.width, y: toY },
+      from: {
+        x: fromSide === "right" ? source.x + source.width : source.x,
+        y: source.y + fromOffset,
+      },
+      to: {
+        x: toSide === "left" ? target.x : target.x + target.width,
+        y: target.y + toOffset,
+      },
       fromSide,
       toSide,
     };

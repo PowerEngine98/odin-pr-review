@@ -509,6 +509,139 @@ describe("cards never overlap", () => {
   });
 });
 
+/**
+ * Where a card sits in its column decides how long its roads are.
+ *
+ * Two files that call each other constantly used to sit at opposite ends of
+ * their columns, because the order within a column was the order the paths sort
+ * in and nothing about a file's references was consulted at all. The road
+ * between them then ran the height of the drawing.
+ */
+describe("the order within a column", () => {
+  /** A change of this many files, every one of them the same size. */
+  function evenFiles(names: string[]): ChangeGraph {
+    const patch = names
+      .flatMap((name) => [
+        `diff --git a/src/${name}.ts b/src/${name}.ts`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/src/${name}.ts`,
+        "@@ -0,0 +1,3 @@",
+        "+const one = 1;",
+        "+const two = 2;",
+        "+const three = 3;",
+      ])
+      .join("\n");
+    return buildGraph(parseUnifiedDiff(patch), { meta: META });
+  }
+
+  /** Joins named files, every arrow leaving and arriving on the same line. */
+  function link(base: ChangeGraph, pairs: [string, string][]): ChangeGraph {
+    const idOf = (name: string) =>
+      base.nodes.find((n) => n.path === `src/${name}.ts`)!.id;
+    return sortGraph({
+      ...base,
+      edges: pairs.map(([from, to]) =>
+        edge(
+          { nodeId: idOf(from), side: "head", line: 2 },
+          { nodeId: idOf(to), side: "head", line: 2, symbolName: to },
+          "added",
+        ),
+      ),
+    });
+  }
+
+  /**
+   * A fan of three files whose targets are named in the opposite order.
+   *
+   * The root is only there to hold the three sources in one part and one
+   * column; the arrows that matter are the three that cross. Sorting the last
+   * column by path puts every one of those arrows across the whole drawing, and
+   * the only order that does not is the reverse of it.
+   */
+  const CROSSED: [string, string][] = [
+    ["root", "s1"], ["root", "s2"], ["root", "s3"],
+    ["s1", "t3"], ["s2", "t2"], ["s3", "t1"],
+  ];
+  const STRAIGHT: [string, string][] = [
+    ["root", "s1"], ["root", "s2"], ["root", "s3"],
+    ["s1", "t1"], ["s2", "t2"], ["s3", "t3"],
+  ];
+
+  const fan = (pairs: [string, string][]) =>
+    link(evenFiles(["root", "s1", "s2", "s3", "t1", "t2", "t3"]), pairs);
+
+  function heights(layout: ReturnType<typeof layoutGraph>) {
+    const at = (name: string) =>
+      layout.nodes.find((n) => n.path === `src/${name}.ts`)!.y;
+    return { at };
+  }
+
+  it("turns a column round when that is what its arrows ask for", () => {
+    const layout = layoutGraph(fan(CROSSED));
+    const { at } = heights(layout);
+
+    expect(at("t3")).toBeLessThan(at("t2"));
+    expect(at("t2")).toBeLessThan(at("t1"));
+
+    // Every card is the same size and every arrow leaves and arrives on the
+    // same line, so the right order is the one that draws all three flat.
+    const crossing = layout.edges.filter((e) =>
+      e.edge.to.symbolName!.startsWith("t"),
+    );
+    expect(crossing).toHaveLength(3);
+    for (const road of crossing) expect(road.to.y).toBe(road.from.y);
+  });
+
+  it("leaves an order alone when the paths already agree with the arrows", () => {
+    // The guard against a sweep that improves nothing and rearranges anyway: a
+    // reader who has already learnt this picture must not be handed a new one.
+    const layout = layoutGraph(fan(STRAIGHT));
+    const { at } = heights(layout);
+
+    expect(at("t1")).toBeLessThan(at("t2"));
+    expect(at("t2")).toBeLessThan(at("t3"));
+    for (const road of layout.edges.filter((e) =>
+      e.edge.to.symbolName!.startsWith("t"),
+    )) {
+      expect(road.to.y).toBe(road.from.y);
+    }
+  });
+
+  it("draws the same picture twice, whatever order the files arrive in", () => {
+    const original = fan(CROSSED);
+    const reversed: ChangeGraph = {
+      ...original,
+      nodes: [...original.nodes].reverse(),
+      edges: [...original.edges].reverse(),
+    };
+
+    const once = JSON.stringify(positions(layoutGraph(original)));
+    expect(JSON.stringify(positions(layoutGraph(original)))).toBe(once);
+    expect(JSON.stringify(positions(layoutGraph(reversed)))).toBe(once);
+  });
+
+  it("finishes on a change far larger and knottier than a real one", () => {
+    // The ordering pass lays the whole drawing out again for every sweep it
+    // tries, so its cost is the graph's and not one card's. This one is denser
+    // than any pull request and cycles all the way through, which is where a
+    // pass that kept sweeping until nothing moved would never return.
+    const names = Array.from({ length: 220 }, (_, i) => `f${String(i).padStart(3, "0")}`);
+    const pairs = names.flatMap((name, i): [string, string][] =>
+      [1, 7, 53].map((step) => [name, names[(i + step) % names.length]!]),
+    );
+
+    const started = Date.now();
+    const layout = layoutGraph(link(evenFiles(names), pairs));
+    const took = Date.now() - started;
+
+    expect(layout.nodes).toHaveLength(220);
+    expect(layout.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
+    expect(layout.edges.every((e) => Number.isFinite(e.from.y) && Number.isFinite(e.to.y))).toBe(true);
+    expect(took).toBeLessThan(5000);
+  });
+});
+
 describe("row offsets", () => {
   it("measures a row from the top of the card, title included", () => {
     const m = DEFAULT_METRICS;
