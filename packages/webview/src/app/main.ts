@@ -2,6 +2,7 @@ import { hydrate } from "svelte";
 
 import App from "./App.svelte";
 import { detours } from "./canvas/wire.js";
+import { bootStart } from "./hud/boot.svelte.js";
 import { listen } from "./state.svelte.js";
 
 /**
@@ -32,6 +33,16 @@ import { listen } from "./state.svelte.js";
  * belong, and plan from the first line.
  */
 detours.set(false);
+
+/*
+ * The build is watched rather than waited for.
+ *
+ * Said here, before anything is drawn, so that the first card to be placed is
+ * already part of the sequence. Whatever is ready before the page wakes up
+ * lands immediately, which is the honest picture of a small change: there was
+ * nothing to watch.
+ */
+bootStart("reading the change");
 
 listen();
 

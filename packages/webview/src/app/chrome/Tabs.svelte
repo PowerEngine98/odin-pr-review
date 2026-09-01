@@ -8,6 +8,8 @@
   take up room to say so.
 -->
 <script lang="ts">
+  import { arriving } from "../hud/arriving.js";
+  import { landed } from "../hud/boot.svelte.js";
   import { partPaths } from "../parts.js";
   import { model, notify, ui, view } from "../state.svelte.js";
   import { TICK } from "./icons.js";
@@ -152,11 +154,18 @@
       )}
         {@const count = tally(ids)}
         {@const complete = count.total > 0 && count.done === count.total}
+        <!--
+          A tab arrives the same way a card does, and slower: there are a
+          handful of them, they are the shape of the change rather than a file
+          in it, and each one is worth reading as it lands.
+        -->
         <button
           class="part-tab"
           class:on={ui.part === id}
           class:finished={complete}
+          class:coming={!landed(`tab:${id ?? "all"}`)}
           {title}
+          use:arriving={{ id: `tab:${id ?? "all"}`, kind: "tab", tone: "var(--action, #007C36)" }}
           onclick={() => openPart(id)}
         >
           {label}
@@ -239,6 +248,13 @@
     -webkit-mask-image: linear-gradient(to right, transparent 0, #000 44px,
                                         #000 calc(100% - 44px), transparent 100%);
   }
+  /* On its way in, during a build: the square carrying it is still in the air.
+     Invisible rather than absent, so the strip is already its own width and
+     nothing shuffles sideways as the tabs land. */
+  .part-tab.coming {
+    opacity: 0;
+  }
+
   .part-tab {
     display: inline-flex;
     align-items: center;

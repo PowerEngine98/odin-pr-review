@@ -9,6 +9,8 @@
 -->
 <script lang="ts">
   import { untrack, type Snippet } from "svelte";
+  import { arriving } from "../hud/arriving.js";
+  import { landed } from "../hud/boot.svelte.js";
   import { travel, ui, view } from "../state.svelte.js";
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
@@ -201,6 +203,19 @@
    * and moves the camera feeds itself. Svelte stopped it after a hundred passes
    * and took the whole page down with it: no wheel, no messages, nothing.
    */
+
+  /**
+   * What happened to a file, as the colour its arrival is drawn in.
+   *
+   * The same four colours the cards themselves wear, so the square that lands
+   * on a spot and the card that appears there are plainly the same thing.
+   */
+  function toneOf(status: string): string {
+    if (status === "added") return "var(--status-added, #2ea043)";
+    if (status === "removed") return "var(--removed, #f85149)";
+    if (status === "renamed") return "var(--status-renamed, #58a6ff)";
+    return "var(--status-modified, #d29922)";
+  }
 </script>
 
 <div
@@ -261,15 +276,27 @@
       reader's scroll inside an open one is worth more than the reordering.
     -->
     {#each cards as placed (placed.node.id)}
+      <!--
+        Each card says it is here, and stays out of sight until the square
+        carrying it has landed. During a build that is the drawing assembling
+        itself; at any other time `landed` is true the moment it is asked, and
+        this is a class that is never on.
+      -->
       <div
         class="card-slot"
         class:empty={!card}
+        class:coming={!landed(placed.node.id)}
         data-id={placed.node.id}
         data-path={placed.node.path}
         style:left="{placed.x}px"
         style:top="{placed.y}px"
         style:width="{placed.width}px"
         style:height="{placed.height}px"
+        use:arriving={{
+          id: placed.node.id,
+          kind: "node",
+          tone: toneOf(placed.node.status),
+        }}
       >
         {@render card?.(placed)}
       </div>
@@ -337,6 +364,14 @@
      is here to fill it. */
   .card-slot {
     position: absolute;
+  }
+
+  /* On its way, during a build. The square carrying it is in the air, and two
+     copies of the same card — the one flying and the one already sitting where
+     it lands — would be one copy too many. It is invisible rather than absent
+     so that everything measuring the drawing measures the real thing. */
+  .card-slot.coming {
+    opacity: 0;
   }
 
   /* Drawn only while there is nothing in it. An outline around a card that has

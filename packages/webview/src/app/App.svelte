@@ -31,6 +31,7 @@
   import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
   import Rebuilding from "./hud/Rebuilding.svelte";
+  import Booting from "./hud/Booting.svelte";
   import Picture from "./hud/Picture.svelte";
   import Settling from "./hud/Settling.svelte";
   import Marks from "./marks/Marks.svelte";
@@ -398,6 +399,10 @@
   <!-- The other corner: where the reader is, saying whether what is under them
        is still current. -->
   <Rebuilding />
+  <!-- The drawing assembling itself: each card and each tab flying out from
+       the middle to where it belongs, as it becomes ready. -->
+  <Booting />
+
   <!-- Over the drawing and over the panels: while the first build is finishing
        there is nothing on this page worth pressing. -->
   <Settling />
