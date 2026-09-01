@@ -63,6 +63,7 @@
   import { markOf } from "@odin/core/agents/marks.js";
   import {
     matching,
+    mentioned,
     splitMentions,
     typingMention,
     withMention,
@@ -126,6 +127,20 @@
    */
   let under = $state(0);
 
+  /**
+   * Who the remark as it stands will reach, drawn under the field.
+   *
+   * A `<textarea>` is one colour of text all the way through — it will not
+   * paint part of what it holds, and the only ways round that are to put a
+   * mirrored copy of the box behind it or to give up the textarea for a
+   * `contenteditable`, both of which buy a coloured name at the price of the
+   * caret, the undo stack and the selection arithmetic the toolbar above does.
+   * So the name in the field stays plain and the answer goes beside it: the
+   * agents this remark names, each in its own colour, which is the question the
+   * colour was being asked to answer.
+   */
+  const reaching = $derived(mentioned(value, agents));
+
   function look(): void {
     const box = field;
     if (!box) return;
@@ -141,6 +156,33 @@
     // Under the line, not over it, and never above the top of the field when
     // the box has been scrolled.
     under = Math.max(0, box.offsetTop + lines * line - box.scrollTop + 4);
+  }
+
+  /**
+   * New text in the field, and the caret put where it belongs afterwards.
+   *
+   * Shared by the toolbar and by the mention menu rather than written twice,
+   * and at the top level rather than inside the one that happened to need it
+   * first. It used to be a local of `apply`, so `take` — which is not inside
+   * `apply` — referred to a name that did not exist there: choosing a name
+   * from the menu threw `place is not defined` before it could rewrite
+   * anything, and because the handlers call `take` through `void` the throw
+   * never reached `window.onerror` either. The menu closed, the remark was
+   * untouched, and nothing anywhere said why.
+   *
+   * The text goes through the binding rather than onto the element, so the
+   * draft filed on the next keystroke is the text that was actually written;
+   * and the caret is set after a `tick`, because a selection set on a textarea
+   * Svelte has not re-rendered yet is thrown away along with the old value.
+   */
+  async function place(next: string, from: number, to: number): Promise<void> {
+    const box = field;
+    if (!box) return;
+    value = next;
+    await tick();
+    box.focus();
+    box.selectionStart = from;
+    box.selectionEnd = to;
   }
 
   async function take(who: Named): Promise<void> {
@@ -241,9 +283,8 @@
    *
    * Wrapping styles keep the selection selected afterwards, and prefixing ones
    * apply to every line the selection touches, because that is what somebody
-   * who has selected three lines and pressed the list button means. The text
-   * goes through the binding rather than onto the element, so the draft that is
-   * filed on the next keystroke is the text the button actually produced.
+   * who has selected three lines and pressed the list button means. The writing
+   * itself is `place`, which the mention menu uses too.
    */
   async function apply(kind: string): Promise<void> {
     const box = field;
@@ -253,14 +294,6 @@
     const end = box.selectionEnd;
     const text = value;
     const selected = text.slice(start, end);
-
-    const place = async (next: string, from: number, to: number) => {
-      value = next;
-      await tick();
-      box.focus();
-      box.selectionStart = from;
-      box.selectionEnd = to;
-    };
 
     const wrap = (before: string, after: string) =>
       place(
@@ -500,6 +533,18 @@
         <span class="empty">Nothing to preview</span>
       {/if}
     </div>
+    <!-- Under both tabs, because who a remark reaches is a fact about the
+         remark rather than about which way it is being looked at — and under
+         the field rather than in it, since a textarea cannot colour part of
+         its own text. -->
+    {#if reaching.length > 0}
+      <div class="reaching">
+        <span class="reaching-what">Reaches</span>
+        {#each reaching as who (who.id)}
+          <span class="reaching-who" style="--who:{markOf(who.id).color}">{who.name}</span>
+        {/each}
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -702,6 +747,38 @@
     background: color-mix(in srgb, var(--who, var(--action)) 16%, transparent);
     border-radius: 4px;
     padding: 0 3px;
+    font-weight: 600;
+  }
+
+  /*
+   * Who the remark reaches, said in each agent's own colour.
+   *
+   * The same colour and the same tint as `.mention` above, deliberately: the
+   * name highlighted in the preview and the name listed here are one fact told
+   * twice, and two different-looking answers to "who is that" would be worse
+   * than one. It sits on the tab bar's fill so that it reads as part of the
+   * frame rather than as the first line of somebody's reply.
+   */
+  .reaching {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-top: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    background: color-mix(in srgb, var(--bg) 95%, var(--text) 5%);
+    font-size: 11px;
+  }
+
+  .reaching-what {
+    color: var(--muted);
+  }
+
+  .reaching-who {
+    color: var(--who, var(--action));
+    background: color-mix(in srgb, var(--who, var(--action)) 16%, transparent);
+    border-radius: 4px;
+    padding: 0 5px;
     font-weight: 600;
   }
 

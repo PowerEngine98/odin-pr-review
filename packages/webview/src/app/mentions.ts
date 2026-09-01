@@ -92,6 +92,29 @@ export function splitMentions(text: string, agents: readonly Named[]): Piece[] {
   return pieces;
 }
 
+/**
+ * Everybody a remark names, once each, in the order they are first named.
+ *
+ * The question a writer has while typing is "did that land on somebody", and a
+ * textarea cannot answer it: it holds one colour of text and will not paint
+ * part of it, so the name the reader has just finished typing looks exactly
+ * like the word before it. What the composer can do is say underneath who the
+ * remark reaches, and this is that list — the same reading of the same text
+ * the preview and the host use, so the three cannot disagree.
+ *
+ * Once each because naming somebody twice is emphasis, not a second reader.
+ */
+export function mentioned(text: string, agents: readonly Named[]): Named[] {
+  const seen = new Set<string>();
+  const out: Named[] = [];
+  for (const piece of splitMentions(text, agents)) {
+    if (!piece.who || seen.has(piece.who.id)) continue;
+    seen.add(piece.who.id);
+    out.push(piece.who);
+  }
+  return out;
+}
+
 /** The name being typed at the caret, if one is. */
 export interface Typing {
   /** What has been typed after the `@`, which may be nothing. */

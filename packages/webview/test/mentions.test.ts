@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   matching,
+  mentioned,
   splitMentions,
   typingMention,
   withMention,
@@ -117,5 +118,51 @@ describe("naming an agent while typing", () => {
     const text = "@cl about the empty list";
     const typing = typingMention(text, 3)!;
     expect(withMention(text, typing, AGENTS[0]!).text).toBe("@Claude  about the empty list");
+  });
+});
+
+/**
+ * Who a remark reaches, which is what the composer says underneath the field.
+ *
+ * A `<textarea>` is one colour of text all the way through, so the name a
+ * writer has just finished typing looks exactly like the word before it and the
+ * only way to find out whether it landed was to send it. This is the list drawn
+ * under the box instead, and it is the same reading of the same text the
+ * preview and the host use — three answers to "who is that" that disagree would
+ * be worse than none.
+ */
+describe("who a remark reaches", () => {
+  const reaching = (text: string) => mentioned(text, AGENTS).map((one) => one.id);
+
+  it("names nobody when nobody is named", () => {
+    expect(reaching("does this hold when the list is empty?")).toEqual([]);
+  });
+
+  it("names each agent the remark names", () => {
+    expect(reaching("@claude and @codex, both of you")).toEqual(["claude", "codex"]);
+  });
+
+  it("names somebody once however often they are named", () => {
+    // Naming somebody twice is emphasis, not a second reader, and a line that
+    // said "Claude, Claude" would read as a bug in the page.
+    expect(reaching("@claude — and @Claude again")).toEqual(["claude"]);
+  });
+
+  it("keeps the order they were first named in", () => {
+    // The order on the line is the order in the remark, so the reader can look
+    // from one to the other.
+    expect(reaching("@codex first, then @claude")).toEqual(["codex", "claude"]);
+  });
+
+  it("does not name somebody out of an email address", () => {
+    // The same rule as the highlighting: what is listed here is exactly what
+    // will be answered there.
+    expect(reaching("write to ada@claude.example")).toEqual([]);
+  });
+
+  it("hands back the agent, so the line can be drawn in its colour", () => {
+    // The id is what `markOf` is asked for, and the name is what is shown, so
+    // the pieces have to come back whole rather than as text.
+    expect(mentioned("ask @Claude", AGENTS)).toEqual([{ id: "claude", name: "Claude" }]);
   });
 });
