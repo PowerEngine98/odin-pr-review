@@ -50,6 +50,28 @@
   /** Nothing worth calling a log. Below this the column stops shrinking. */
   const LEAST = 160;
 
+  /** What a folded console costs: its bar, and nothing else. */
+  const BAR = 38;
+
+  /**
+   * How many logs can be open at once without any of them being a sliver.
+   *
+   * A second agent used to be given whatever was left after the first, which on
+   * a short window is eleven pixels of log under a title nobody can read — a
+   * console that is present, unreadable, and easy to mistake for a rendering
+   * fault. A folded console says the same thing in a bar: this agent is here,
+   * press to read it.
+   *
+   * The first stays open whatever happens. A column of nothing but bars would
+   * be a page with no log on it at all, which is not what anybody opened.
+   */
+  const fits = $derived.by(() => {
+    if (open.length < 2) return open.length;
+    const spare = room - open.length * BAR;
+    const many = Math.floor(spare / Math.max(1, LEAST - BAR));
+    return Math.min(open.length, Math.max(1, many));
+  });
+
   let dock = $state<HTMLElement | null>(null);
   let room = $state(0);
 
@@ -140,8 +162,8 @@
     bind:this={dock}
     style={room ? `max-height:${room}px` : undefined}
   >
-    {#each open as agent (agent.id)}
-      <Terminal id={agent.id} name={agent.name} />
+    {#each open as agent, at (agent.id)}
+      <Terminal id={agent.id} name={agent.name} cramped={at >= fits} />
     {/each}
   </div>
 {/if}

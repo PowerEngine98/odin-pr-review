@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readClaude, type Said } from "./stream.js";
+import { readClaude, readOpencode, type Said } from "./stream.js";
 
 const run = promisify(execFile);
 
@@ -211,6 +211,17 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
      */
     once: ["run"],
     version: ["--version"],
+    /*
+     * No streaming mode to ask for, so nothing is added to the command line:
+     * this is the tool's ordinary output, read rather than requested. What it
+     * prints is written for a terminal — colour codes around every tool name,
+     * and tool calls run together with the prose because the codes, not the
+     * newlines, were separating them.
+     */
+    streams: {
+      args: [],
+      read: readOpencode,
+    },
     /*
      * Its rungs are agents rather than flags. `plan` is the one that looks and
      * does not touch, `build` is the primary one that writes — and how much

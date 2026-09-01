@@ -22,7 +22,24 @@
   import { model, notify, settings, ui } from "../state.svelte.js";
   import { showPicture } from "./picture.svelte.js";
 
-  let { id, name }: { id: string; name: string } = $props();
+  let {
+    id,
+    name,
+    cramped = false,
+  }: {
+    id: string;
+    name: string;
+    /**
+     * There is not enough of the column left to give this one a readable log.
+     *
+     * Folded rather than squeezed: a second agent used to be handed whatever
+     * the first had not taken, which on a short window is eleven pixels of log
+     * under a title nobody can read. A bar says the same thing honestly — this
+     * agent is here, press to read it — and the reader's own folding setting is
+     * left alone, so the log opens by itself when there is room again.
+     */
+    cramped?: boolean;
+  } = $props();
 
   const mark = markOf(id);
 
@@ -579,9 +596,28 @@
    * whether the reader wants it folded, so it opens by itself the moment the
    * cover lifts.
    */
-  const folded = $derived(ui.settling || (settings.terminalsFolded ?? []).includes(id));
+  const folded = $derived(
+    ui.settling || cramped || (settings.terminalsFolded ?? []).includes(id),
+  );
 
   function fold(): void {
+    /*
+     * A console folded because there is no room for it opens by taking the
+     * room, rather than by arguing with the arithmetic.
+     *
+     * The column keeps as many logs open as it can show properly and folds the
+     * rest, so toggling this one's own setting would do nothing visible and
+     * read as a dead bar. Moving it to the front of the column makes it one of
+     * the ones that fit, and whichever was last folds in its place — which is
+     * what a reader pressing it is asking for.
+     */
+    if (cramped) {
+      const held = settings.terminals ?? [];
+      settings.terminals = [id, ...held.filter((one) => one !== id)];
+      settings.terminalsFolded = (settings.terminalsFolded ?? []).filter((one) => one !== id);
+      return;
+    }
+
     const held = [...(settings.terminalsFolded ?? [])];
     const at = held.indexOf(id);
     if (at >= 0) held.splice(at, 1);
