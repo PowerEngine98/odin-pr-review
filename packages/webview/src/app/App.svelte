@@ -31,6 +31,7 @@
   import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
   import Rebuilding from "./hud/Rebuilding.svelte";
+  import Picture from "./hud/Picture.svelte";
   import Settling from "./hud/Settling.svelte";
   import Marks from "./marks/Marks.svelte";
   import type { ViewModel } from "./model.js";
@@ -400,6 +401,11 @@
   <!-- Over the drawing and over the panels: while the first build is finishing
        there is nothing on this page worth pressing. -->
   <Settling />
+
+  <!-- A picture at its own size, over everything, when one is pressed. Mounted
+       here rather than in the console it usually comes from: it covers the
+       window, and a component inside a panel cannot cover the panel. -->
+  <Picture />
 
   <!-- Bound, not merely rendered.
        Both of these are `$bindable`, and neither was tied to anything: the

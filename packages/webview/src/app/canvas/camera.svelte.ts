@@ -10,6 +10,7 @@ import {
   ui,
   view,
 } from "../state.svelte.js";
+import { onApple } from "./apple.js";
 import { aimFor, type Spot } from "./keys.js";
 import { heightOf, lineAt } from "./measured.svelte.js";
 import { pinHere, pinnedHere } from "./pins.js";
@@ -134,31 +135,6 @@ export function endPan(event: PointerEvent, viewport: HTMLElement): void {
   } catch {
     /* nothing was captured */
   }
-}
-
-/**
- * Whether this is a machine whose pointing device already zooms.
- *
- * Asked of the platform rather than of the event, because there is no honest
- * way to ask the event: a trackpad and a wheel arrive as the same kind of
- * message, and the folklore for telling them apart — fractional deltas,
- * multiples of a hundred and twenty — is wrong often enough to be worse than
- * choosing by platform, where it is right nearly always.
- *
- * Answered once. The hardware does not change under a window, and a page
- * rendered where there is no navigator at all is a page nobody is scrolling.
- */
-let apple: boolean | undefined;
-
-function onApple(): boolean {
-  if (apple === undefined) {
-    const said =
-      typeof navigator === "undefined"
-        ? ""
-        : `${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`;
-    apple = /Mac|iPad|iPhone|iPod/.test(said);
-  }
-  return apple;
 }
 
 export function wheel(event: WheelEvent, viewport: HTMLElement): void {

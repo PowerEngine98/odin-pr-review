@@ -260,10 +260,30 @@ describe("the wheel over the canvas", () => {
      * folklore for telling them apart — fractional deltas, multiples of a
      * hundred and twenty — is wrong often enough to be worse than choosing by
      * platform, where it is right nearly always.
+     *
+     * The test itself is where the rule lives now: the canvas and the picture
+     * viewer both zoom on a wheel, and a reader who has learned the gesture on
+     * one should not find the other doing something else.
      */
-    expect(camera).toMatch(/function onApple\(\)/);
-    expect(camera).toMatch(/Mac\|iPad\|iPhone\|iPod/);
+    const apple = readFileSync(
+      new URL("../src/app/canvas/apple.ts", import.meta.url),
+      "utf8",
+    );
+    expect(camera).toMatch(/import \{ onApple \} from "\.\/apple\.js"/);
+    expect(apple).toMatch(/export function onApple\(\)/);
+    expect(apple).toMatch(/Mac\|iPad\|iPhone\|iPod/);
     // Answered once: the hardware does not change under a window.
-    expect(camera).toMatch(/let apple: boolean \| undefined/);
+    expect(apple).toMatch(/let apple: boolean \| undefined/);
+  });
+
+  it("is the same rule wherever a wheel zooms", () => {
+    // The picture viewer covers the window and zooms on the same gesture, from
+    // the same answer, rather than repeating the platform test in its own words.
+    const picture = readFileSync(
+      new URL("../src/app/hud/Picture.svelte", import.meta.url),
+      "utf8",
+    );
+    expect(picture).toMatch(/import \{ wheelZooms \} from "\.\.\/canvas\/apple\.js"/);
+    expect(picture).toMatch(/if \(!wheelZooms\(event\)\)/);
   });
 });

@@ -59,6 +59,7 @@
 <script lang="ts">
   import { tick } from "svelte";
   import { notify, host } from "../state.svelte.js";
+  import { showPicture } from "../hud/picture.svelte.js";
   import Diagram from "./Diagram.svelte";
 
   let {
@@ -246,7 +247,7 @@
   }
 </script>
 
-{#snippet inline(parts: Inline[])}{#each parts as part}{#if part.kind === "code"}<code>{part.text}</code>{:else if part.kind === "strong"}<strong>{part.text}</strong>{:else if part.kind === "em"}<em>{part.text}</em>{:else if part.kind === "del"}<del>{part.text}</del>{:else if part.kind === "image"}{#if pictured(part.src)}<img class="pictured" src={pictured(part.src)} alt={part.alt} title={part.src} />{:else}<span class="pictured-waiting" title={part.src}>{part.alt || "picture"}</span>{/if}{:else}{part.text}{/if}{/each}{/snippet}
+{#snippet inline(parts: Inline[])}{#each parts as part}{#if part.kind === "code"}<code>{part.text}</code>{:else if part.kind === "strong"}<strong>{part.text}</strong>{:else if part.kind === "em"}<em>{part.text}</em>{:else if part.kind === "del"}<del>{part.text}</del>{:else if part.kind === "image"}{#if pictured(part.src)}<button class="pictured-open" type="button" title="{part.src} — press to see it full size" onclick={() => showPicture(pictured(part.src)!, part.alt || part.src)}><img class="pictured" src={pictured(part.src)} alt={part.alt} /></button>{:else}<span class="pictured-waiting" title={part.src}>{part.alt || "picture"}</span>{/if}{:else}{part.text}{/if}{/each}{/snippet}
 
 {#snippet code(id: number, plain: string)}{#if painted[id]}{#each painted[id] as line, at}{#if at > 0}{"\n"}{/if}{#each line as token}<span style="color:{safeColour(token.color)}">{token.text}</span>{/each}{/each}{:else}{plain}{/if}{/snippet}
 
@@ -563,6 +564,27 @@
        thing rather than a hole. */
     background: color-mix(in srgb, var(--text) 6%, transparent);
     object-fit: contain;
+  }
+
+  /* The picture is the button. A screenshot in a panel is unreadable at panel
+     size, so pressing it is the obvious thing to try — and it has to be a
+     button rather than a picture with a handler, or it cannot be reached from
+     a keyboard and says nothing to anything reading the page aloud. */
+  .pictured-open {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: zoom-in;
+  }
+
+  .pictured-open:hover .pictured {
+    border-color: color-mix(in srgb, var(--text) 45%, transparent);
+  }
+
+  .pictured-open:focus-visible {
+    outline: 2px solid var(--action, #007C36);
+    outline-offset: 2px;
   }
 
   /* Named while the bytes are on their way, and if they never come. The path

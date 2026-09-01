@@ -18,6 +18,7 @@
   import Editor from "../panels/Editor.svelte";
   import { initialsOf, threadsOf } from "../panels/Thread.svelte";
   import { model, notify, settings, ui } from "../state.svelte.js";
+  import { showPicture } from "./picture.svelte.js";
 
   let { id, name }: { id: string; name: string } = $props();
 
@@ -1011,7 +1012,17 @@
       <ul class="pasted">
         {#each pasted as image (image.id)}
           <li>
-            <img src={image.url} alt={image.name} />
+            <!-- The thumbnail is a button: it is a hundred pixels of a
+                 screenshot, and checking that the right thing is on its way is
+                 exactly what it is for. -->
+            <button
+              class="pasted-open"
+              type="button"
+              title="See this picture full size"
+              onclick={() => showPicture(image.url, image.name)}
+            >
+              <img src={image.url} alt={image.name} />
+            </button>
             <button
               class="pasted-drop"
               type="button"
@@ -1438,6 +1449,21 @@
        thing rather than a hole. */
     background: color-mix(in srgb, var(--text) 6%, transparent);
     object-fit: cover;
+  }
+  .pasted-open {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: none;
+    line-height: 0;
+    cursor: zoom-in;
+  }
+  .pasted-open:hover img {
+    border-color: color-mix(in srgb, var(--text) 45%, transparent);
+  }
+  .pasted-open:focus-visible {
+    outline: 2px solid var(--action, #007C36);
+    outline-offset: 2px;
   }
   .pasted-drop {
     position: absolute;
