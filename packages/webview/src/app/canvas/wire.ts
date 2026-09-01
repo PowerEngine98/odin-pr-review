@@ -950,7 +950,9 @@ function spread(drawn: Arrow[], within: readonly Highway[]): void {
   const onLane = new Map<Highway, { arrow: Arrow; at: number }[]>();
   for (const arrow of drawn) {
     if (arrow.line.length < 2) continue;
-    for (let at = 1; at < arrow.line.length; at++) {
+    // Never the first or last leg: those are how the road meets its cards, and
+    // moving one takes the road off the card it belongs to.
+    for (let at = 2; at < arrow.line.length - 1; at++) {
       const lane = laneUnder(arrow.line[at - 1]!, arrow.line[at]!, within);
       if (!lane) continue;
       const held = onLane.get(lane) ?? [];

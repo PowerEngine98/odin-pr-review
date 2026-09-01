@@ -126,7 +126,21 @@ export function highways(
   const flats: Leg[] = [];
   for (let at = 0; at < corners.length; at++) {
     const road = corners[at]!;
-    for (let i = 1; i < road.length; i++) {
+    /*
+     * The first and last legs are never gathered.
+     *
+     * They are how a road leaves its own card and arrives at the other, and a
+     * lane sits wherever the traffic on it sits — so moving one of them onto a
+     * lane moves the point where the road meets the card. What that draws is a
+     * road that begins a few hundred pixels away from the card it belongs to,
+     * with its dot left behind: measured at forty-one roads starting above
+     * their card and eight below, the worst of them two thousand seven hundred
+     * pixels out, and reported over and over as a link that will not render.
+     *
+     * Everything between them is fair game, which is the part worth gathering
+     * anyway: the long middle where they all go the same way.
+     */
+    for (let i = 2; i < road.length - 1; i++) {
       const a = road[i - 1]!;
       const b = road[i]!;
       if (a.x === b.x && Math.abs(b.y - a.y) >= run) {
