@@ -389,3 +389,73 @@ describe("dividing the two panes of a split card", () => {
     );
   });
 });
+
+/**
+ * The first build, with the reader held off the drawing.
+ *
+ * The cards go up as soon as the diff is read and everything else arrives
+ * after — the arrows when the references resolve, the parts when the arrows
+ * decide them, the colours a file at a time. For those seconds there is a
+ * picture that looks finished and is not, and a corner badge is far too quiet
+ * for it: somebody who starts reviewing is reading a drawing about to move
+ * under them.
+ *
+ * Driven in a browser: the cover comes up over a graph, the element under the
+ * middle of the window is the cover itself, it stops taking presses the moment
+ * it begins to lift, and a rebuild gets the badge instead.
+ */
+describe("covering the drawing while the first build finishes", () => {
+  const settling = readFileSync(
+    new URL("../src/app/hud/Settling.svelte", import.meta.url),
+    "utf8",
+  );
+  const rebuilding = readFileSync(
+    new URL("../src/app/hud/Rebuilding.svelte", import.meta.url),
+    "utf8",
+  );
+  const state = readFileSync(
+    new URL("../src/app/state.svelte.ts", import.meta.url),
+    "utf8",
+  );
+
+  it("covers the window rather than a corner of it", () => {
+    expect(settling).toMatch(/position: fixed;\s*\n\s*inset: 0/);
+  });
+
+  it("can be seen through, because that is what is happening behind it", () => {
+    expect(settling).toMatch(/background: color-mix\(in srgb, var\(--bg\) 62%, transparent\)/);
+  });
+
+  it("takes every press until it is going", () => {
+    // A cover that could be clicked through would be a picture of an interlock
+    // rather than one.
+    expect(settling).toMatch(/\.settling\.leaving \{[\s\S]{0,240}?pointer-events: none/);
+    const before = settling.slice(0, settling.indexOf(".settling.leaving"));
+    expect(before).not.toMatch(/\.settling \{[\s\S]{0,400}?pointer-events: none/);
+  });
+
+  it("lifts rather than vanishing, and stays mounted while it does", () => {
+    expect(settling).toMatch(/@keyframes settling-out/);
+    expect(settling).toMatch(/setTimeout\(\(\) => \{[\s\S]{0,120}?covering = false/);
+  });
+
+  it("is only for the first build, never for a save", () => {
+    /*
+     * A rebuild after a save has a picture that was already right and mostly
+     * still is. Covering the window every time somebody saves would be the tool
+     * interrupting them to say it is keeping up.
+     */
+    expect(state).toMatch(/ui\.settling = ui\.refreshing && message\.settling === true/);
+    expect(rebuilding).toMatch(/\{#if ui\.refreshing && !ui\.settling\}/);
+  });
+
+  it("says what is happening and how far along it is", () => {
+    expect(settling).toMatch(/\{ui\.note\}/);
+    expect(settling).toMatch(/width:\{Math\.max\(0, Math\.min\(100, ui\.at\)\)\}%/);
+  });
+
+  it("still covers for a reader who asked for less movement", () => {
+    // What they lose is the animation, not the interlock.
+    expect(settling).toMatch(/prefers-reduced-motion[\s\S]{0,200}?animation: none/);
+  });
+});

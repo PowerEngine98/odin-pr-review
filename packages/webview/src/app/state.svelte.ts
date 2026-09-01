@@ -282,6 +282,10 @@ export const ui = $state({
    * it.
    */
   queued: [] as { id: number; body: string; addressee?: string }[],
+  /** The first build is still finishing, so the drawing is not to be trusted. */
+  settling: false,
+  /** How far through that build, for the cover that says so. */
+  at: 0,
   /** The part of the change on screen, or null for all of it. */
   part: null as string | null,
   /**
@@ -489,6 +493,18 @@ export function listen(): void {
       case "refreshing":
         ui.refreshing = message.value === true;
         if (message.note) ui.note = message.note;
+        /*
+         * Whether this is the first build still finishing, rather than a
+         * redraw of a picture that was already right.
+         *
+         * The two want opposite things from the page. A rebuild says so in a
+         * corner and leaves the reader alone; a first build has a drawing that
+         * looks finished and is not — no arrows yet, parts about to be named,
+         * colours on their way — and somebody who starts reading it is reading
+         * something that is about to move under them.
+         */
+        ui.settling = ui.refreshing && message.settling === true;
+        if (typeof message.percent === "number") ui.at = message.percent;
         return;
 
       // The host taking the file list over for this reading, and asking which

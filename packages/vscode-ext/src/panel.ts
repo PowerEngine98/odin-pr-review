@@ -1240,11 +1240,28 @@ export class GraphPanel {
    * spinner in the corner of the bar, and everything underneath goes on
    * working while it is there.
    */
-  static setRefreshing(on: boolean, note?: string): void {
+  static setRefreshing(
+    on: boolean,
+    note?: string,
+    /**
+     * The first build of this reading, still finishing.
+     *
+     * The cards go up as soon as the diff is read and the arrows arrive when
+     * they are known — so for the seconds in between there is a picture that
+     * looks finished and is not. A corner badge is the right size for a
+     * rebuild nobody asked for; it is far too quiet for a drawing whose
+     * arrows, parts and colours are all still on their way, and a reader who
+     * starts reviewing during it is reading something that is about to move.
+     */
+    settling?: { percent?: number },
+  ): void {
     void GraphPanel.active?.panel.webview.postMessage({
       type: "refreshing",
       value: on,
       ...(note ? { note } : {}),
+      ...(settling
+        ? { settling: true, ...(settling.percent === undefined ? {} : { percent: settling.percent }) }
+        : { settling: false }),
     });
   }
 

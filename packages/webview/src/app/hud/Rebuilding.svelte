@@ -18,7 +18,9 @@
   import { ui } from "../state.svelte.js";
 </script>
 
-{#if ui.refreshing}
+<!-- Not while the cover is up: it says the same thing, larger, and a corner
+     badge repeating it is a second voice for one fact. -->
+{#if ui.refreshing && !ui.settling}
   <div class="rebuilding" role="status" aria-live="polite">
     <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
       <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.25" />

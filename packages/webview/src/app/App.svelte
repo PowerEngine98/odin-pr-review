@@ -31,6 +31,7 @@
   import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
   import Rebuilding from "./hud/Rebuilding.svelte";
+  import Settling from "./hud/Settling.svelte";
   import Marks from "./marks/Marks.svelte";
   import type { ViewModel } from "./model.js";
   import Composer from "./panels/Composer.svelte";
@@ -396,6 +397,9 @@
   <!-- The other corner: where the reader is, saying whether what is under them
        is still current. -->
   <Rebuilding />
+  <!-- Over the drawing and over the panels: while the first build is finishing
+       there is nothing on this page worth pressing. -->
+  <Settling />
 
   <!-- Bound, not merely rendered.
        Both of these are `$bindable`, and neither was tied to anything: the

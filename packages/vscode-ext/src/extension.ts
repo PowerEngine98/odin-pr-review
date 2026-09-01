@@ -1072,7 +1072,9 @@ async function review(
         const step = new Progress(({ note, percent }) => {
           const said = `${note}… ${percent}%`;
           progress.report({ message: said, increment: undefined });
-          if (drawn) GraphPanel.setRefreshing(true, said);
+          // Drawn but not finished is the first build's second half, which the
+          // page covers over rather than mentioning in a corner.
+          if (drawn) GraphPanel.setRefreshing(true, said, { percent });
           else GraphPanel.note(said, percent);
         });
         const request = {
