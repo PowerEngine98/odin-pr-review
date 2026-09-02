@@ -122,3 +122,57 @@ describe("keeping several readings apart", () => {
     expect(panel).toMatch(/void this\.panel\.webview\.postMessage\(\{ type: "agents"[\s\S]{0,600}?this\.sendComments\(\)/);
   });
 });
+
+/**
+ * One change, one tab.
+ *
+ * A change is drawn in two passes: the cards as soon as the diff is read, the
+ * arrows when they have been resolved. Both go through `GraphPanel.show`, which
+ * finds the tab a reading is already in by a key made of the repository and the
+ * branch names — so the two passes agree about which tab they belong in only
+ * for as long as those names stay the same.
+ *
+ * They did not. Each stage of the build worked out the head ref for itself, and
+ * with nobody having said what it is, the way it works it out is to ask the
+ * checkout what branch it is on. Opening a remote pull request fetches, and may
+ * add a worktree or check the branch out, between the two passes — so the
+ * second pass computed a different key, found no tab under it, and opened
+ * another. The reader asked for one change and got two tabs, one of them
+ * showing the half-built picture from the first pass.
+ */
+describe("opening a change once", () => {
+  const extension = source("extension.ts");
+  const graph = source("graph.ts");
+  const panel = source("panel.ts");
+
+  it("settles what is being read before the build starts", () => {
+    const at = extension.indexOf("const head = worktree");
+    expect(at).toBeGreaterThan(-1);
+    // And into the request, so no stage of the build has to guess again.
+    const request = extension.slice(at, extension.indexOf("};", at));
+    expect(request).toContain("headRef: head");
+  });
+
+  it("settles it before the first pass draws anything", () => {
+    // After the first `present` it would be too late: that pass is the one that
+    // makes the tab, and the key it makes it under is the one that has to last.
+    expect(extension.indexOf("const head = worktree")).toBeLessThan(
+      extension.indexOf("await present("),
+    );
+  });
+
+  it("leaves the build's own fallback for callers that say nothing", () => {
+    /*
+     * The fallback stays: `graph.ts` is used by the command line too, where
+     * nobody has resolved anything. What matters is that the editor no longer
+     * reaches it twice for one reading.
+     */
+    expect(graph).toMatch(/request\.headRef \?\? \(await currentBranch/);
+  });
+
+  it("keys a tab on the reading rather than on the moment", () => {
+    // The key is still the reading; what changed is that the reading now says
+    // the same thing both times it is asked.
+    expect(panel).toMatch(/graph\.meta\.headRef \? \{ headRef: graph\.meta\.headRef \}/);
+  });
+});

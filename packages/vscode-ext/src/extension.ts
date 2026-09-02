@@ -1079,11 +1079,31 @@ async function review(
           if (drawn) GraphPanel.setRefreshing(true, said, { percent });
           else GraphPanel.note(said, percent);
         });
+        /*
+         * What is being read, settled once and for the whole build.
+         *
+         * Each stage of the build worked this out for itself, and the way it
+         * works it out when nobody has said is to ask the checkout what branch
+         * it is on. A change is drawn in two passes — the cards as soon as the
+         * diff is read, the arrows when they are resolved — and the panel a
+         * pass lands in is found by a key made of the branch names. So a
+         * checkout that moved between the two passes gave two different keys,
+         * the second pass found no panel under its own, and opened another.
+         *
+         * Which is every remote pull request. Opening one fetches, and may add
+         * a worktree or check the branch out, in between. The reader asked for
+         * one change and got two tabs, one of them showing the half-built
+         * picture the first pass had drawn.
+         */
+        const head = worktree
+          ? "HEAD"
+          : headRef ?? (await currentBranch({ cwd: repo })) ?? "HEAD";
+
         const request = {
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
           ...(fallback ? { fallbackBaseRef: fallback } : {}),
-          ...(headRef ? { headRef } : {}),
+          headRef: head,
           ...(worktree ? { worktree: true } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
