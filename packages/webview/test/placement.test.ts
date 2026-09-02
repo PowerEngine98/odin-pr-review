@@ -80,6 +80,7 @@ const OPEN: Standing = {
   showInfra: true,
   hideViewed: false,
   viewed: new Set(),
+  stranded: new Set(),
   measured: () => undefined,
 };
 
@@ -231,5 +232,60 @@ describe("a part of the change, laid out for itself", () => {
     const layout = place(data, whole, { ...OPEN, inPart: new Set(["n:a", "n:b"]) });
     expect(layout.cards.map((c) => c.node.id)).toEqual(["n:a", "n:b"]);
     expect(layout.width).toBe(48 + 400 + 140 + 600 + 48);
+  });
+});
+
+/**
+ * An untouched file nothing points at any more.
+ *
+ * A file the change never touched is on the canvas only because something
+ * pointed at it. Turn that something off — unchanged references, imports, the
+ * part on screen — and what is left is a card marked `untouched`, carrying no
+ * diff and joined to nothing: a file from the repository sitting in a picture
+ * of a change for no reason the reader can see.
+ */
+describe("a card nothing points at any more", () => {
+  it("leaves the drawing", () => {
+    const data = change([
+      node({ id: "n:one", path: "src/one.ts" }),
+      node({ id: "n:lib", path: "src/lib.ts", untouched: true }),
+    ]);
+    const where = spread([
+      { id: "n:one", x: 0, y: 0, width: 100, height: 40, column: 0 },
+      { id: "n:lib", x: 0, y: 60, width: 100, height: 40, column: 0 },
+    ]);
+    const laid = place(data, where, { ...OPEN, stranded: new Set(["n:lib"]) });
+    expect(laid.cards.map((card) => card.node.id)).toEqual(["n:one"]);
+  });
+
+  it("closes the column up behind it", () => {
+    // The same closing the read-file switch does. A card that simply vanished
+    // would leave the rest of its column sitting around a hole.
+    const data = change([
+      node({ id: "n:lib", path: "src/lib.ts", untouched: true }),
+      node({ id: "n:two", path: "src/two.ts" }),
+    ]);
+    const where = spread([
+      { id: "n:lib", x: 0, y: 0, width: 100, height: 40, column: 0 },
+      { id: "n:two", x: 0, y: 60, width: 100, height: 40, column: 0 },
+    ]);
+    const open = place(data, where, OPEN);
+    const shut = place(data, where, { ...OPEN, stranded: new Set(["n:lib"]) });
+
+    const at = (laid: ReturnType<typeof place>, id: string) =>
+      laid.cards.find((card) => card.node.id === id)?.y ?? -1;
+    expect(at(shut, "n:two")).toBeLessThan(at(open, "n:two"));
+  });
+
+  it("keeps a file the change did touch, whatever points at it", () => {
+    // The picture is of this change. A changed file with no arrow left is still
+    // part of what was changed; an untouched one with no arrow left is not part
+    // of anything.
+    const data = change([node({ id: "n:one", path: "src/one.ts" })]);
+    const where = spread([
+      { id: "n:one", x: 0, y: 0, width: 100, height: 40, column: 0 },
+    ]);
+    const laid = place(data, where, { ...OPEN, stranded: new Set(["n:one"]) });
+    expect(laid.cards).toHaveLength(1);
   });
 });

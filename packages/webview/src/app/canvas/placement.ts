@@ -38,6 +38,20 @@ export interface Standing {
   showInfra: boolean;
   hideViewed: boolean;
   viewed: ReadonlySet<string>;
+  /**
+   * Untouched files with no arrow left to them.
+   *
+   * A file the change never touched is on the canvas only because something
+   * pointed at it. Turn that something off — unchanged references, imports, the
+   * part on screen — and what is left is a card that says `untouched`, carries
+   * no diff, and is joined to nothing: a file from the repository sitting in a
+   * picture of a change for no reason the reader can see.
+   *
+   * Worked out by the caller rather than here, from the same filter the arrows
+   * obey. Asked twice in two spellings the two drift, and the way that shows is
+   * a card surviving a filter its own arrow did not.
+   */
+  stranded: ReadonlySet<string>;
   /** What a card turned out to be, where a browser has drawn one. */
   measured: (id: string) => number | undefined;
 }
@@ -231,6 +245,17 @@ export function place(
       // is the untouched files, which are only here because something pointed at
       // them, and which have nothing left to say once that has been read.
       if (standing.hideViewed && node.untouched && standing.viewed.has(node.path)) {
+        shift -= estimate + data.rowGap;
+        continue;
+      }
+
+      // And the same for one nothing points at any more. Its column closes up
+      // behind it exactly as above, so the rest of the drawing does not sit
+      // around a hole where a card used to be.
+      // Untouched, and only untouched. A file the change did touch is part of
+      // what was changed whether or not anything still points at it, and the
+      // picture is of the change.
+      if (node.untouched && standing.stranded.has(node.id)) {
         shift -= estimate + data.rowGap;
         continue;
       }

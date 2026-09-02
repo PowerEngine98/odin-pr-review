@@ -15,7 +15,14 @@ import { aimFor, type Spot } from "./keys.js";
 import { heightOf, lineAt } from "./measured.svelte.js";
 import { pinHere, pinnedHere } from "./pins.js";
 import { place, type Layout, type Placed } from "./placement.js";
-import { arrangementFor, arrows, pathOf, type Box, type Reading } from "./wire.js";
+import {
+  arrangementFor,
+  arrows,
+  pathOf,
+  wantedEdges,
+  type Box,
+  type Reading,
+} from "./wire.js";
 
 // Re-exported because the canvas asks this module where its cards are and has
 // no reason to know the arithmetic moved house.
@@ -225,11 +232,34 @@ function reading(): Reading {
 function laid(): Layout {
   const data = model.current;
   const part = ui.part ? data.parts.find((p) => p.id === ui.part) : null;
-  return place(data, arrangementFor(data, reading()), {
+  const how = reading();
+
+  /*
+   * Untouched files nothing points at any more.
+   *
+   * Read from the same filter the arrows obey rather than worked out again
+   * here: a card that survived a filter its own arrow did not is the exact
+   * shape of a drawing that disagrees with itself.
+   */
+  const wanted = wantedEdges(data, how);
+  const reached = new Set<string>();
+  for (const edge of data.edges) {
+    if (!wanted(edge)) continue;
+    reached.add(edge.from);
+    reached.add(edge.to);
+  }
+  const stranded = new Set(
+    data.nodes
+      .filter((node) => node.untouched && !reached.has(node.id))
+      .map((node) => node.id),
+  );
+
+  return place(data, arrangementFor(data, how), {
     inPart: part ? new Set(part.nodes) : null,
     showInfra: settings.showInfra,
     hideViewed: settings.hideViewed,
     viewed: ui.viewed,
+    stranded,
     measured: heightOf,
   });
 }
