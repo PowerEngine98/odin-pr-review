@@ -167,7 +167,11 @@
   what the agent said is.
 -->
 {#if working}
-  <div class="doing {working.task}" style="left:{left}px;top:{top}px;--mark-size:{size}px">
+  <div
+    class="doing {working.task}"
+    class:seen={seen && !open}
+    style="left:{left}px;top:{top}px;--mark-size:{size}px;--seen-fade:{SEEN_FADE}"
+  >
     <!--
       A turn in progress says so by turning, not by saying "working".
 
@@ -249,6 +253,29 @@
     transform: translate(calc(-100% - 5px), calc(var(--mark-size) * 0.2));
     pointer-events: none;
     color: var(--warning, #e2b341);
+  }
+
+  /*
+   * And it stands back with the face it belongs to.
+   *
+   * This is drawn beside the mark rather than inside it — the mark says whose
+   * conversation this is and the badge says who is acting in it, and stacking
+   * one on the other loses the first — so it is a separate element, and the
+   * mark's own fading never reached it. What the reader saw was a portrait at a
+   * fifth strength with a bright green pill beside it, which is louder than
+   * either of them was before.
+   *
+   * The badge carries the colour of a state, so it is the noisier half of the
+   * pair: green for done, amber for working. Restored on hover for the same
+   * reason the face is — the two are one thing to look at, even where they are
+   * two elements to draw.
+   */
+  .doing.seen {
+    opacity: var(--seen-fade, 0.22);
+    transition: opacity 140ms ease;
+  }
+  .doing.seen:hover {
+    opacity: 1;
   }
 
   /* The one part of the badge that takes a click. The row is transparent to

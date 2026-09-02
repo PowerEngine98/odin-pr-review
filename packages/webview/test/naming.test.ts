@@ -107,3 +107,25 @@ describe("how faint a mark on a read file is", () => {
     expect(SEEN_FADE).toBeGreaterThan(0.1);
   });
 });
+
+describe("the agent badge beside a mark", () => {
+  it("stands back with the face it belongs to", () => {
+    /*
+     * It is drawn beside the mark rather than inside it — the mark says whose
+     * conversation this is and the badge says who is acting in it, and stacking
+     * one on the other loses the first. Being a separate element, the mark's
+     * own fading never reached it: a portrait at a fifth strength with a bright
+     * green pill beside it, which is louder than either was before.
+     */
+    expect(mark).toMatch(/class="doing[\s\S]{0,120}class:seen=\{seen && !open\}/);
+    expect(mark).toMatch(/\.doing\.seen\s*\{[^}]*var\(--seen-fade/);
+  });
+
+  it("comes back when somebody reaches for it", () => {
+    expect(mark).toMatch(/\.doing\.seen:hover[\s\S]{0,60}opacity: 1/);
+  });
+
+  it("is handed the number rather than carrying its own copy", () => {
+    expect(mark).toMatch(/class="doing[\s\S]{0,200}--seen-fade:\{SEEN_FADE\}/);
+  });
+});
