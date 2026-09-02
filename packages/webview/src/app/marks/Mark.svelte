@@ -15,7 +15,7 @@
 <script lang="ts">
   import type { CommentView } from "../model.js";
   import { faceOf, initialsOf, placeOf } from "../panels/Thread.svelte";
-  import { hintOf } from "./marks.js";
+  import { hintOf, SEEN_FADE } from "./marks.js";
   // The exact module, not the package: `@odin/core` reaches git and spawns
   // processes, none of which exists in a browser.
   import { avatarFor } from "@odin/core/agents/marks.js";
@@ -135,7 +135,7 @@
   class="mark"
   class:is-open={open}
   class:seen={seen && !open}
-  style="left:{left}px;top:{top}px;--mark-size:{size}px"
+  style="left:{left}px;top:{top}px;--mark-size:{size}px;--seen-fade:{SEEN_FADE}"
   title={hintOf(root)}
   aria-label="{count === 1 ? '1 remark' : count + ' remarks'} on {placeOf(root)}"
   onclick={press}
@@ -423,7 +423,7 @@
    * would read as one that could not be pressed.
    */
   .mark.seen {
-    opacity: 0.45;
+    opacity: var(--seen-fade, 0.22);
     transition: opacity 140ms ease;
   }
   .mark.seen:hover,

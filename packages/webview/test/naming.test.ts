@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { SEEN_FADE } from "../src/app/marks/marks.js";
+
 /**
  * The names cards wear when the reader pulls back.
  *
@@ -85,5 +87,23 @@ describe("a mark on a file at a distance", () => {
 
   it("does not stand back while its own conversation is open", () => {
     expect(mark).toContain("class:seen={seen && !open}");
+  });
+});
+
+describe("how faint a mark on a read file is", () => {
+  it("is driven by one number rather than two that must agree", () => {
+    // It was written into the stylesheet as a literal beside the constant that
+    // named it, which is two answers to one question and a change that only
+    // half lands.
+    expect(mark).toContain("--seen-fade:{SEEN_FADE}");
+    expect(mark).toContain("opacity: var(--seen-fade");
+  });
+
+  it("is a trace rather than a dimmed portrait", () => {
+    // Half strength was the first attempt, and on a dark canvas a round
+    // portrait in full colour reads as something to look at whatever its
+    // opacity says. Nothing is lost at this: it comes back under the pointer.
+    expect(SEEN_FADE).toBeLessThan(0.3);
+    expect(SEEN_FADE).toBeGreaterThan(0.1);
   });
 });

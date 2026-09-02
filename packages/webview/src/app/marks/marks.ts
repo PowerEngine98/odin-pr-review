@@ -291,8 +291,20 @@ export function markSize(scale: number): number {
  */
 export const SEEN_SIZE = 0.62;
 
-/** And how much of it is left showing. */
-export const SEEN_FADE = 0.45;
+/**
+ * And how much of it is left showing.
+ *
+ * Low. The first attempt at this left them at nearly half strength, and on a
+ * dark canvas that is not standing back — a round portrait in full colour reads
+ * as something to look at whatever its opacity says, and a screen of them still
+ * read as a screen of them. What is wanted is a trace: enough that a reader
+ * scanning for where a conversation was can find it, not enough to compete with
+ * the files that still want an answer.
+ *
+ * It comes back to full strength under the pointer, on keyboard focus, and
+ * while its own thread is open, so nothing is actually lost at this.
+ */
+export const SEEN_FADE = 0.22;
 
 /**
  * A mark's size, given whether its file has been read.
