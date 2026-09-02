@@ -310,8 +310,26 @@ export class GraphPanel {
     viewed?: ViewedStore,
     highlight?: Highlighter,
     alternate?: { layout: GraphLayout; withTests?: GraphLayout },
+    /**
+     * Which reading this is, as the caller asked for it.
+     *
+     * A change is drawn in two passes — the cards as soon as the diff is read,
+     * the arrows once they are resolved — and both come here. Which tab a pass
+     * lands in was worked out from the graph it carries, and a graph says what
+     * its refs turned out to be rather than what was asked for. Those are not
+     * the same thing while a build is happening: opening a remote pull request
+     * fetches, and may check the branch out or add a worktree, in between the
+     * two passes, so the second pass named the reading differently, found no
+     * tab under that name, and opened another.
+     *
+     * The caller holds the one name that does not move — it made the request
+     * both passes are built from — so it says, and the graph is only asked when
+     * nobody has. That is the whole of the fix, and it is a fix for the class
+     * rather than for a field: head, base, and whatever is re-derived next.
+     */
+    where?: string,
   ): GraphPanel {
-    const key = readingKey(graph, repo);
+    const key = where ?? readingKey(graph, repo);
     const already = GraphPanel.open.get(key);
     if (already) {
       // Kept when none is offered. A hot reload does not reload the grammars —

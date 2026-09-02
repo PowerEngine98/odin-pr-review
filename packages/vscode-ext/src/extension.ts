@@ -1042,15 +1042,39 @@ async function review(
        * finished loading — and left it there, because the graph that would have
        * replaced it belonged to a different tab.
        */
-      await GraphPanel.showLoading(
-        "Reading the change",
-        keyOf({
-          repo,
-          ...(base ? { baseRef: base } : {}),
-          ...(headRef ? { headRef } : {}),
-          ...(worktree ? { worktree: true } : {}),
-        }),
-      );
+      /*
+       * What is being read, and what to call it, settled once for the whole
+       * build.
+       *
+       * Every stage of the build used to work the head ref out for itself, and
+       * the way it does that when nobody has said is to ask the checkout what
+       * branch it is on. A change is drawn in two passes — the cards as soon as
+       * the diff is read, the arrows once they are resolved — and the tab a
+       * pass lands in was found by a name made from the graph it carried. A
+       * graph says what its refs turned out to be, which is not what was asked
+       * for while a build is still fetching and checking out.
+       *
+       * So opening a remote pull request named the reading one thing on the
+       * first pass and another on the second, found no tab under the second
+       * name, and opened a second tab: one change, two tabs, the spare one
+       * holding the half-built picture.
+       *
+       * Settled here, above everything that could move it, and carried from
+       * here to the loader, the request and both passes. One name, made from
+       * what the reader asked for, which nothing downstream can re-derive
+       * differently.
+       */
+      const head = worktree
+        ? "HEAD"
+        : headRef ?? (await currentBranch({ cwd: repo })) ?? "HEAD";
+      const where = keyOf({
+        repo,
+        ...(base ? { baseRef: base } : {}),
+        headRef: head,
+        ...(worktree ? { worktree: true } : {}),
+      });
+
+      await GraphPanel.showLoading("Reading the change", where);
       try {
         /*
          * Which surface the progress belongs on.
@@ -1079,26 +1103,6 @@ async function review(
           if (drawn) GraphPanel.setRefreshing(true, said, { percent });
           else GraphPanel.note(said, percent);
         });
-        /*
-         * What is being read, settled once and for the whole build.
-         *
-         * Each stage of the build worked this out for itself, and the way it
-         * works it out when nobody has said is to ask the checkout what branch
-         * it is on. A change is drawn in two passes — the cards as soon as the
-         * diff is read, the arrows when they are resolved — and the panel a
-         * pass lands in is found by a key made of the branch names. So a
-         * checkout that moved between the two passes gave two different keys,
-         * the second pass found no panel under its own, and opened another.
-         *
-         * Which is every remote pull request. Opening one fetches, and may add
-         * a worktree or check the branch out, in between. The reader asked for
-         * one change and got two tabs, one of them showing the half-built
-         * picture the first pass had drawn.
-         */
-        const head = worktree
-          ? "HEAD"
-          : headRef ?? (await currentBranch({ cwd: repo })) ?? "HEAD";
-
         const request = {
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
@@ -1134,7 +1138,7 @@ async function review(
         const graph = built.graph;
 
         progress.report({ message: "colouring" });
-        const reading = await present(built, repo, base, headRef, false, step);
+        const reading = await present(built, repo, base, headRef, false, step, where);
         drawn = true;
 
         // The expensive half, over the picture the reader already has. The
@@ -1145,7 +1149,7 @@ async function review(
           GraphPanel.setRefreshing(true, "Resolving references…");
           try {
             final = await staged.rest();
-            await present(final, repo, base, headRef, false, step);
+            await present(final, repo, base, headRef, false, step, where);
           } finally {
             GraphPanel.setRefreshing(false);
           }
@@ -1280,6 +1284,7 @@ async function present(
   const panel = GraphPanel.show(
     shown, layout, repo, layoutWithTests, viewed, highlight,
     { layout: unifiedLayout, withTests: unifiedWithTests },
+    where,
   );
 
   // Fetched after the graph is on screen: the picture is the point, and

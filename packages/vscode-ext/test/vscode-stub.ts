@@ -18,6 +18,17 @@ export const commands = {
 export const window = {
   activeColorTheme: { kind: 2 },
   registerWebviewViewProvider: () => disposable,
+  createWebviewPanel: (viewType: string, title: string) => {
+    const panel = makePanel(viewType, title);
+    frames.push(panel);
+    return panel;
+  },
+  showErrorMessage: () => Promise.resolve(undefined),
+  showWarningMessage: () => Promise.resolve(undefined),
+  showInformationMessage: () => Promise.resolve(undefined),
+  setStatusBarMessage: () => disposable,
+  onDidChangeActiveColorTheme: () => disposable,
+  tabGroups: { all: [], onDidChangeTabs: () => disposable },
 };
 
 export const ColorThemeKind = { Light: 1, Dark: 2, HighContrast: 3 };
@@ -61,3 +72,76 @@ export class Disposable {
   constructor(readonly fn?: () => void) {}
   dispose(): void {}
 }
+
+/**
+ * Every webview frame something has asked the editor for.
+ *
+ * How many tabs a change opens is the whole of one class of fault, and it is
+ * not a question the source can answer: it is a count of what the editor was
+ * asked to make while one review was being drawn. So the stub records the
+ * asking, and a test can drive a build and count.
+ */
+export const frames: StubPanel[] = [];
+
+export interface StubPanel {
+  title: string;
+  viewType: string;
+  disposed: boolean;
+  webview: {
+    html: string;
+    cspSource: string;
+    options: unknown;
+    asWebviewUri: (uri: unknown) => unknown;
+    onDidReceiveMessage: (fn: (message: unknown) => void) => { dispose(): void };
+    postMessage: (message: unknown) => Promise<boolean>;
+  };
+  reveal: (column?: number) => void;
+  dispose: () => void;
+  onDidDispose: (fn: () => void) => { dispose(): void };
+  onDidChangeViewState: (fn: (event: unknown) => void) => { dispose(): void };
+  visible: boolean;
+  active: boolean;
+}
+
+export function makePanel(viewType: string, title: string): StubPanel {
+  const closing: (() => void)[] = [];
+  const panel: StubPanel = {
+    title,
+    viewType,
+    disposed: false,
+    webview: {
+      html: "",
+      cspSource: "vscode-test:",
+      options: {},
+      asWebviewUri: (uri: unknown) => uri,
+      onDidReceiveMessage: () => disposable,
+      postMessage: () => Promise.resolve(true),
+    },
+    reveal: () => {},
+    dispose: () => {
+      panel.disposed = true;
+      for (const fn of closing) fn();
+    },
+    onDidDispose: (fn: () => void) => {
+      closing.push(fn);
+      return disposable;
+    },
+    onDidChangeViewState: () => disposable,
+    visible: true,
+    active: true,
+  };
+  return panel;
+}
+
+/** Everything the stub has been asked for, forgotten. */
+export function forgetFrames(): void {
+  frames.length = 0;
+}
+
+export const ViewColumn = { One: 1, Two: 2, Beside: -2 };
+
+export const Uri = {
+  file: (path: string) => ({ fsPath: path, scheme: "file", path, toString: () => path }),
+  joinPath: (base: { fsPath: string }, ...rest: string[]) =>
+    Uri.file([base.fsPath, ...rest].join("/")),
+};
