@@ -700,11 +700,37 @@ async function checkout(number: number): Promise<void> {
 
   const dirty = (await git(["status", "--porcelain"], { cwd: repo })).trim();
   if (dirty) {
-    const count = dirty.split("\n").length;
-    vscode.window.showWarningMessage(
-      `Odin: ${count} uncommitted change${count === 1 ? "" : "s"} in this ` +
-        `worktree. Commit or stash before switching to #${number}.`,
+    /*
+     * Which worktree, and which files.
+     *
+     * "This worktree" is only a useful phrase where there is one. Odin makes
+     * them, and a reader who has been through a few is looking at a window
+     * whose folder may be `.worktrees/a/.worktrees/b` — three levels down, on a
+     * branch named after a change they read last week. Told only that something
+     * is uncommitted somewhere, they check the repository they think they are
+     * in, find it clean, and conclude the warning is wrong.
+     *
+     * So it says where, and it names what: one modified file is a thing anybody
+     * can deal with in a second once they know which file it is.
+     */
+    const lines = dirty.split("\n");
+    const count = lines.length;
+    const named = lines
+      .slice(0, 3)
+      .map((line) => line.slice(3).trim())
+      .filter(Boolean);
+    const listed = named.length > 0
+      ? ` (${named.join(", ")}${count > named.length ? ", …" : ""})`
+      : "";
+
+    const choice = await vscode.window.showWarningMessage(
+      `Odin: ${count} uncommitted change${count === 1 ? "" : "s"} in ` +
+        `${repo}${listed}. Commit or stash before switching to #${number}.`,
+      "Show it",
     );
+    if (choice === "Show it") {
+      await vscode.commands.executeCommand("workbench.view.scm");
+    }
     return;
   }
 
