@@ -562,6 +562,22 @@
     gap: 6px;
     justify-content: flex-end;
     margin-top: 8px;
+    /*
+     * And onto a second line rather than out of the box.
+     *
+     * The words in these buttons do not wrap — that rule is right, and it is
+     * what keeps three buttons of different lengths at one height. But a row
+     * that cannot wrap and cannot shrink has nowhere to go when the box is
+     * narrower than its contents, so it went outside it: `Cancel` sitting past
+     * the composer's own left edge, over the code, with the panel's border
+     * running behind it.
+     *
+     * The composer is as wide as the card it hangs off, and cards are as narrow
+     * as their longest line — so this is not an edge case, it is every narrow
+     * file.
+     */
+    flex-wrap: wrap;
+    row-gap: 6px;
   }
 
   /*
