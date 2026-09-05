@@ -1039,11 +1039,39 @@ describe("pasting a picture into the console", () => {
   });
 
   it("still pastes text when the clipboard carries both", () => {
-    // Copying from a browser gives you text as well as an image. Swallowing
-    // the paste outright would have quietly eaten what was typed.
-    expect(terminal).toMatch(
-      /if \(items\.length === 0\) return;[\s\S]{0,240}event\.preventDefault\(\)/,
+    /*
+     * Copying from a browser gives you text as well as an image, and this test
+     * used to assert the very thing that stopped the text arriving.
+     *
+     * It checked that `preventDefault` was called once an image was found, on
+     * the reasoning that the paste had to be taken over — but taking it over is
+     * exactly what drops the words. The box takes the text the way it always
+     * does, and the pictures are lifted out alongside it, so nothing is
+     * prevented at all.
+     */
+    const handler = terminal.slice(
+      terminal.indexOf("function paste(event: ClipboardEvent)"),
+      terminal.indexOf("async function pasteByHand"),
     );
+    // The call, not the word: the handler explains in a comment what it no
+    // longer does, and a test that cannot tell those apart fails for the wrong
+    // reason.
+    expect(handler).not.toMatch(/event\.preventDefault\(\)/);
+    expect(handler).toMatch(/const file = item\.getAsFile\(\);\s*\n\s*if \(file\) keep\(file\);/);
+  });
+
+  it("takes control-V as a paste as well", () => {
+    /*
+     * Not the paste key on this machine, and used as one anyway: a reader who
+     * has spent the afternoon in a terminal reaches for it out of habit, and
+     * everything else they talk to takes it. macOS fires no paste event for it
+     * at all, so the box did nothing and said nothing about why.
+     */
+    expect(terminal).toMatch(/event\.ctrlKey && !event\.metaKey && event\.key\.toLowerCase\(\) === "v"/);
+    // Read straight off the clipboard, since no event carries it — and both
+    // halves of it, because nothing else is going to put the text in.
+    expect(terminal).toContain("navigator.clipboard.read()");
+    expect(terminal).toMatch(/item\.types\.includes\("text\/plain"\)/);
   });
 
   it("shows the picture itself rather than its name", () => {

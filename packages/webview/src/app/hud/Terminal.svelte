@@ -12,6 +12,8 @@
   it printed on the way past.
 -->
 <script lang="ts">
+  import { tick } from "svelte";
+
   import { markOf } from "@odin/core/agents/marks.js";
   import { showRemark } from "../canvas/camera.svelte.js";
   import { sideOf } from "../marks/marks.js";
@@ -307,27 +309,97 @@
   let pasted = $state<{ id: number; url: string; name: string }[]>([]);
   let nextImage = 0;
 
+  /** One picture, read into something the page can draw. */
+  function keep(file: File): void {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result ?? "");
+      if (!url.startsWith("data:image/")) return;
+      pasted = [...pasted, { id: ++nextImage, url, name: file.name || "pasted" }];
+    };
+    reader.readAsDataURL(file);
+  }
+
   function paste(event: ClipboardEvent): void {
     const items = [...(event.clipboardData?.items ?? [])].filter((item) =>
       item.type.startsWith("image/"),
     );
     if (items.length === 0) return;
-    // Only when there is actually an image: a paste carrying text as well —
-    // which is what copying from a browser gives you — must still paste the
-    // text.
-    event.preventDefault();
 
+    /*
+     * The pictures are taken and the text is left alone.
+     *
+     * Copying from a browser puts both on the clipboard, and this used to call
+     * `preventDefault` the moment it saw a picture — which stopped the box
+     * receiving the words that came with it. The comment beside it said the
+     * text must still be pasted; the line under the comment stopped it. So
+     * nothing is prevented: the box takes the text the way it always does, and
+     * the pictures are lifted out alongside.
+     */
     for (const item of items) {
       const file = item.getAsFile();
-      if (!file) continue;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const url = String(reader.result ?? "");
-        if (!url.startsWith("data:image/")) return;
-        pasted = [...pasted, { id: ++nextImage, url, name: file.name || "pasted" }];
-      };
-      reader.readAsDataURL(file);
+      if (file) keep(file);
     }
+  }
+
+  /**
+   * Control-V, which on this machine is not the paste key and is used as one
+   * anyway.
+   *
+   * A reader who has spent the afternoon in a terminal reaches for control-V
+   * out of habit, and everything else they talk to takes it. macOS does not:
+   * the key is command-V, and control-V produces no paste event at all, so the
+   * box did nothing and there was nothing on screen to say why.
+   *
+   * Read from the clipboard directly, since there is no event carrying it.
+   * Both the pictures and the text, because nothing else is going to put them
+   * in — this is the whole of the paste rather than a supplement to one.
+   */
+  async function pasteByHand(): Promise<void> {
+    try {
+      const items = await navigator.clipboard.read();
+      let said = "";
+      for (const item of items) {
+        const picture = item.types.find((type) => type.startsWith("image/"));
+        if (picture) {
+          const blob = await item.getType(picture);
+          keep(new File([blob], "pasted", { type: picture }));
+          continue;
+        }
+        if (item.types.includes("text/plain")) {
+          said += await (await item.getType("text/plain")).text();
+        }
+      }
+      if (said) insert(said);
+    } catch {
+      /*
+       * Refused, or nothing on it.
+       *
+       * A webview may be denied the clipboard outright, and there is nothing to
+       * be done about that from here — command-V still works, because that one
+       * the browser handles itself.
+       */
+    }
+  }
+
+  /** Text put in at the caret, the way a paste would have put it. */
+  function insert(said: string): void {
+    const box = askBox;
+    if (!box) {
+      prompt += said;
+      return;
+    }
+    const from = box.selectionStart ?? prompt.length;
+    const to = box.selectionEnd ?? from;
+    prompt = prompt.slice(0, from) + said + prompt.slice(to);
+    const caret = from + said.length;
+    // After the value has been written back, or the selection is set on a box
+    // that is about to be re-rendered with the old text and thrown away.
+    void tick().then(() => {
+      box.focus();
+      box.selectionStart = caret;
+      box.selectionEnd = caret;
+    });
   }
 
   /** Named for what it does to the picture, not the pointer: `drop` is taken
@@ -1180,6 +1252,12 @@
         if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           send();
+          return;
+        }
+        // Control-V means paste here too, whatever the platform says.
+        if (event.ctrlKey && !event.metaKey && event.key.toLowerCase() === "v") {
+          event.preventDefault();
+          void pasteByHand();
         }
       }}
     ></textarea>
