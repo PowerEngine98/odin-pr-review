@@ -222,9 +222,23 @@
         -->
         This tool does not say what it is doing as it works, so there is nothing
         to list. What it changed is in its answer, in the thread.
+      {:else if !ui.carrying.has(agent) && !ui.transcripts[agent]}
+        <!--
+          Nothing has been asked of this agent in this reading, so of course it
+          has written nothing. Said apart from the case below because they look
+          identical and mean opposite things — and because a reader who has been
+          editing all afternoon and finds this list empty is owed the reason.
+
+          It lists what agents change *through Odin*. Edits made in another
+          window, by hand, or by a tool Odin did not start are not on any stream
+          this can read, and will never appear here.
+        -->
+        This agent has not been asked anything in this reading yet. What it
+        changes from here will be listed, newest first, with what it replaced.
       {:else}
-        Nothing written yet. What this agent changes will be listed here, newest
-        first, with what it replaced.
+        Nothing written yet in this reading. Only edits made by this agent,
+        after being asked from here, are listed — changes made in another window
+        or by hand are not on a stream Odin can read.
       {/if}
     </p>
   {:else}

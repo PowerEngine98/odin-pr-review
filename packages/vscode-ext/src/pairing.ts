@@ -31,7 +31,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
 
 /**
@@ -574,11 +574,7 @@ export class PairingSession {
 
   /** A file of this checkout, or nothing when it cannot be read. */
   private fileAt(path: string): string | undefined {
-    try {
-      return readFileSync(join(this.repo, path), "utf8");
-    } catch {
-      return undefined;
-    }
+    return this.contentOf(path);
   }
 
   /* ------------------------------------------------------------ the ledger */
@@ -638,13 +634,9 @@ export class PairingSession {
     const read = new Map<string, string | null>();
     const content = (path: string): string | null => {
       if (!read.has(path)) {
-        try {
-          read.set(path, readFileSync(join(this.repo, path), "utf8"));
-        } catch {
-          // Gone, or never in this checkout. Either way there is nothing left
-          // for the entry to match, which is exactly what outdated means.
-          read.set(path, null);
-        }
+        // Gone, or never in this checkout. Either way there is nothing left for
+        // the entry to match, which is exactly what outdated means.
+        read.set(path, this.contentOf(path) ?? null);
       }
       return read.get(path) ?? null;
     };
@@ -667,19 +659,48 @@ export class PairingSession {
   /** Told when an edit lands, so the page's ledger can follow the turn. */
   wrote: ((deltas: Delta[]) => void) | undefined;
 
-  /** Where a tool's path sits inside this checkout, as a card would name it. */
+  /**
+   * Where a tool's path sits inside this checkout, as a card would name it.
+   *
+   * Both spellings of the checkout, because on macOS a tool and this process
+   * routinely disagree about which one they are in: `/tmp` and `/var` are
+   * symlinks into `/private`, and a tool that resolves its own working
+   * directory reports `/private/var/…` for the very path this was handed as
+   * `/var/…`. Measured rather than reasoned about — a real turn against a real
+   * tool produced an entry whose path was the whole of `/private/var/folders/…`
+   * because the prefix did not match by one word.
+   *
+   * A path that still does not sit under this checkout is left as it is. An
+   * agent may genuinely write outside the repository, and an entry naming
+   * where that happened is worth more than one pretending it was in here.
+   */
   private inRepo(path: string): string {
-    const root = this.repo.endsWith("/") ? this.repo : `${this.repo}/`;
-    return path.startsWith(root) ? path.slice(root.length) : path;
+    for (const root of roots(this.repo)) {
+      if (path.startsWith(root)) return path.slice(root.length);
+    }
+    return path;
+  }
+
+  /**
+   * A file of this reading, whether it is named from the root or absolutely.
+   *
+   * `join` does not treat an absolute second part as absolute — it glues them,
+   * so a path this could not make relative became `<repo>/private/var/…`, which
+   * exists nowhere. Every entry built that way read as outdated, with no line
+   * to go to, and the two failures looked exactly like an honest answer.
+   */
+  private contentOf(path: string): string | undefined {
+    try {
+      return readFileSync(isAbsolute(path) ? path : join(this.repo, path), "utf8");
+    } catch {
+      return undefined;
+    }
   }
 
   /** Which line a passage starts on, or nothing when it is not there. */
   private lineIn(path: string, passage: string): number | undefined {
-    try {
-      return lineOf(readFileSync(join(this.repo, path), "utf8"), passage);
-    } catch {
-      return undefined;
-    }
+    const held = this.contentOf(path);
+    return held === undefined ? undefined : lineOf(held, passage);
   }
 
   /**
@@ -906,6 +927,18 @@ export class PairingSession {
     if (!kind) return;
 
     /*
+     * Claimed before anything is awaited, and that ordering is load-bearing.
+     *
+     * This agent is spoken for from the moment its message is taken — not from
+     * the moment the process starts. The two used to be the same instant; then
+     * a decision the reader might have to make was put in between, and for as
+     * long as that decision is open the agent looked idle to everything that
+     * asks: the queue would hand it a second message, and the page would draw
+     * it as free while a dialogue about its first one was on screen.
+     */
+    this.state.set(agentId, "working");
+
+    /*
      * The code this message is about may have gone while it was queued.
      *
      * Which is a decision, not a detail. Sending it anyway hands an agent a
@@ -923,8 +956,6 @@ export class PairingSession {
       this.pump();
       return;
     }
-
-    this.state.set(agentId, "working");
     /*
      * Who is on this conversation, from the moment it is taken.
      *
@@ -1848,6 +1879,21 @@ function quoted(passage: string): string {
 /** The head of a span, as a place in a document. */
 function spot(span: { line: number; startLine?: number }): vscode.Position {
   return new vscode.Position(Math.max(0, (span.startLine ?? span.line) - 1), 0);
+}
+
+/**
+ * Every way this checkout is spelled, longest first.
+ *
+ * `/tmp` and `/var` are symlinks into `/private` on macOS, and which of the two
+ * spellings a path arrives in depends on whether whoever produced it resolved
+ * its working directory. A tool spawned in `/var/folders/…/repo` reports the
+ * files it edited under `/private/var/folders/…/repo`, and a prefix test
+ * against the one this process was handed misses every one of them.
+ */
+function roots(repo: string): string[] {
+  const one = repo.endsWith("/") ? repo : `${repo}/`;
+  const other = one.startsWith("/private/") ? one.slice("/private".length) : `/private${one}`;
+  return [one, other].sort((a, b) => b.length - a.length);
 }
 
 function tail(text: string): string {

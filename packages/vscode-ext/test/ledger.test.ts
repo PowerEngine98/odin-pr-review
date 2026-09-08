@@ -78,7 +78,17 @@ describe("what an agent wrote, kept as a list", () => {
               type: "tool_use",
               name: "Edit",
               input: {
-                file_path: `${repo}/src/one.ts`,
+                /*
+                 * The path as a tool actually reports it, which is not always
+                 * the path this process was handed. On macOS `/tmp` and `/var`
+                 * are symlinks into `/private`, and a tool that has resolved
+                 * its own working directory announces the resolved spelling —
+                 * so an entry recorded by a real turn carried the whole of
+                 * `/private/var/folders/…` where a card says `src/one.ts`, and
+                 * every read of it afterwards looked for a file that is not
+                 * anywhere.
+                 */
+                file_path: `/private${repo}/src/one.ts`,
                 old_string: "const total = add(items);",
                 new_string: "const total = sum(items);",
               },

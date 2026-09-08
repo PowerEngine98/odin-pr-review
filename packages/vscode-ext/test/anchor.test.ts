@@ -253,6 +253,20 @@ describe("a remark whose code has gone", () => {
     expect(paired.transcript("claude")).not.toContain("PROMPT:");
   }, 30_000);
 
+  it("holds the agent while the reader is deciding", async () => {
+    /*
+     * The agent is spoken for from the moment its message is taken, not from
+     * the moment a process starts. Those were the same instant until a decision
+     * the reader might have to make was put between them — and for as long as
+     * that dialogue is open the agent would otherwise read as idle, so the
+     * queue hands it a second message and the page draws it as free while a
+     * question about its first one is on screen.
+     */
+    readerSays(undefined);
+    const paired = await askedThenRewritten();
+    expect(paired.busy()).toContain("claude");
+  }, 30_000);
+
   it("says so in the thread when the reader closes the dialogue", async () => {
     // A warning that appeared once in the corner and vanished is not a record.
     // The conversation is where the record of this whole thing lives.
