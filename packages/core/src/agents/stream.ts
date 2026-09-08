@@ -12,12 +12,22 @@
  * final answer out of the same stream.
  */
 
+import { changesIn, type Change } from "./deltas.js";
+
 /** What one event is worth showing, and whether it was the answer. */
 export interface Said {
   /** A line for the log, already readable. Absent for events worth no words. */
   show?: string;
   /** The turn's answer, on the event that carries it. */
   answer?: string;
+  /**
+   * What it wrote, when the event was a tool call that writes.
+   *
+   * Beside `show` rather than inside it. The log line says an edit happened and
+   * is all a reader watching a turn wants; the change itself is a record kept
+   * for afterwards, and the two want different shapes and different lifetimes.
+   */
+  did?: Change[];
 }
 
 /**
@@ -68,7 +78,12 @@ export function readClaude(line: string): Said | undefined {
         said.push(`→ ${describeTool(part)}`);
       }
     }
-    return said.length ? { show: said.join("\n") } : undefined;
+    const did = changesIn(event);
+    if (said.length === 0 && did.length === 0) return undefined;
+    return {
+      ...(said.length ? { show: said.join("\n") } : {}),
+      ...(did.length ? { did } : {}),
+    };
   }
 
   /*

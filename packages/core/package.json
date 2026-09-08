@@ -10,6 +10,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./agents/deltas.js": {
+      "types": "./dist/agents/deltas.d.ts",
+      "default": "./dist/agents/deltas.js"
+    },
     "./agents/marks.js": {
       "types": "./dist/agents/marks.d.ts",
       "default": "./dist/agents/marks.js"

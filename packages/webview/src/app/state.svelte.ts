@@ -1,3 +1,8 @@
+// Two things called a delta, and they are not the same thing. This one is a
+// rebuild's difference from the last drawing; the ledger's is one edit an agent
+// made. Aliased at the door rather than renamed, so each stays what it is
+// called in the file it lives in.
+import type { Delta as LedgerEntry } from "@odin/core/agents/deltas.js";
 import { deltaOf, type Delta } from "./canvas/deltas.js";
 import { partPaths } from "./parts.js";
 
@@ -238,6 +243,28 @@ export const ui = $state({
   busyAgents: new Set<string>(),
   /** What each agent has printed this session, by agent id. */
   transcripts: {} as Record<string, string>,
+  /**
+   * Every edit the agents have made in this reading, oldest first.
+   *
+   * One list rather than one per agent: each entry says who made it, and the
+   * terminals filter it down to their own. Kept whole because the order that
+   * matters is the order things happened in — two agents editing the same file
+   * within a minute of each other is the situation a ledger exists to make
+   * visible, and splitting the list by agent hides exactly that.
+   *
+   * Not `deltas`, which is taken by the rebuild's own — a map of what moved on
+   * each card since the last drawing. Two unrelated things wearing one name in
+   * one object is a field that silently replaces the other.
+   */
+  written: [] as LedgerEntry[],
+  /**
+   * Which tools say what they are doing while they do it.
+   *
+   * The ledger is read off those announcements, so a tool without them has an
+   * empty one however much it changed. That is a different fact from having
+   * written nothing, and the list has to be able to say which.
+   */
+  narrating: new Set<string>(),
   /**
    * Which agent has claimed which conversation, by the thread's root comment.
    *
@@ -812,6 +839,9 @@ export function listen(): void {
         if (message.sessions && typeof message.sessions === "object") {
           ui.sessions = message.sessions as Record<string, string>;
         }
+        if (Array.isArray(message.narrating)) {
+          ui.narrating = new Set(message.narrating as string[]);
+        }
         if (Array.isArray(message.pending)) {
           ui.pending = message.pending as { id: string; what: string }[];
         }
@@ -840,6 +870,20 @@ export function listen(): void {
         const who = message.payload?.agent;
         if (typeof who !== "string") return;
         ui.transcripts[who] = String(message.payload.text ?? "");
+        return;
+      }
+
+      /*
+       * What the agents have written, as a list of changes.
+       *
+       * Replaces rather than appends: the host sends the whole ledger each
+       * time, because every entry carries whether it still matches the file on
+       * disk and an edit to one file can make an older entry about the same
+       * file untrue. Patching in only the new one would leave the pills behind.
+       */
+      case "deltas": {
+        const held = message.payload?.deltas;
+        if (Array.isArray(held)) ui.written = held as LedgerEntry[];
         return;
       }
 

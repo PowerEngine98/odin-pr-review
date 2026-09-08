@@ -9,18 +9,22 @@ import {
   discoverAgents,
   forgeEnv,
   keepsOpen,
+  lineOf,
   promptFor,
   runAgent,
   withoutMarker,
+  within,
   type Agency,
   type AgentKind,
   type AgentState,
   type Ask,
+  type Change,
+  type Delta,
   type ReviewComment,
   type RunHandle,
 } from "@odin/core";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -126,6 +130,16 @@ interface Stored {
    * machine is all there is.
    */
   settled?: Record<string, boolean>;
+  /**
+   * Every edit the agents made in this reading, oldest first.
+   *
+   * Kept with the reading rather than with the tool. Each of these tools has a
+   * conversation on disk somewhere and none of them keep a record of what they
+   * changed that anything else can read; and the question the ledger answers —
+   * what happened to this branch while I was reviewing it — is a question about
+   * the reading, which is the thing this store already is.
+   */
+  deltas?: Delta[];
 }
 
 /**
@@ -138,6 +152,9 @@ interface Stored {
  * are already impossible from the forge, so nothing needs to be taught anything.
  */
 const FIRST_LOCAL = -1;
+
+/** How many edits the ledger keeps before the far end starts falling off. */
+const KEEP_DELTAS = 400;
 
 /**
  * What a remark is signed with before the forge has said who is reading.
@@ -194,6 +211,9 @@ export class PairingSession {
   /** Which conversations have been settled, by the id that began them. */
   private settled: Record<string, boolean> = {};
 
+  /** Every edit the agents have made here, oldest first. */
+  private deltas: Delta[] = [];
+
   /** The agents installed here, once anybody has looked. */
   private installed: AgentKind[] = [];
 
@@ -227,6 +247,7 @@ export class PairingSession {
       held?.labels && typeof held.labels === "object" ? { ...held.labels } : {};
     this.settled =
       held?.settled && typeof held.settled === "object" ? { ...held.settled } : {};
+    this.deltas = Array.isArray(held?.deltas) ? held.deltas : [];
     /*
      * A turn that was running when the window went away.
      *
@@ -268,6 +289,7 @@ export class PairingSession {
         sessions: this.sessions,
         labels: this.labels,
         settled: this.settled,
+        deltas: this.deltas,
         logs: Object.fromEntries(
           [...this.transcripts].map(([agent, text]) => [agent, keepable(text)]),
         ),
@@ -335,6 +357,107 @@ export class PairingSession {
   /** Whatever the named agent has printed this session. */
   transcript(id: string): string {
     return this.transcripts.get(id) ?? "";
+  }
+
+  /* ------------------------------------------------------------ the ledger */
+
+  /**
+   * An edit, as it goes past.
+   *
+   * The line is looked for now rather than when the ledger is drawn, because
+   * now is when it is right: the tool has just written the passage, so it is in
+   * the file, at the place this records. Ten minutes and four edits later the
+   * same search may find it somewhere else or not at all — which is a different
+   * and equally useful fact, and the one the outdated mark is about.
+   */
+  private record(agent: string, change: Change): void {
+    const path = this.inRepo(change.path);
+    const delta: Delta = {
+      id: `${agent}:${this.deltas.length}:${Date.now()}`,
+      agent,
+      at: Date.now(),
+      path,
+      before: within(change.before),
+      after: within(change.after),
+      whole: change.whole,
+      ...(this.working !== undefined ? { ask: this.working } : {}),
+    };
+
+    const line = this.lineIn(path, change.after);
+    if (line !== undefined) delta.line = line;
+
+    this.deltas.push(delta);
+    /*
+     * Bounded, oldest first.
+     *
+     * A long session with an agent on the top rung writes hundreds of these,
+     * and all of them are held in the editor's own storage next to every
+     * comment in the reading. The far end is the cheapest to lose for the same
+     * reason as the transcript: nobody scrolls to the bottom of a ledger to
+     * find out what is happening now.
+     */
+    if (this.deltas.length > KEEP_DELTAS) {
+      this.deltas = this.deltas.slice(-KEEP_DELTAS);
+    }
+    this.save();
+    this.wrote?.(this.ledger());
+  }
+
+  /**
+   * The ledger, with each entry checked against the file as it stands.
+   *
+   * Stamped here rather than stored, because whether an entry is still true is
+   * a fact about the working tree and not about the entry. A reader who comes
+   * back tomorrow, or who has had an agent rewrite the same passage twice,
+   * wants to know which of these rows still describe the file in front of them
+   * — and the row itself cannot know.
+   */
+  ledger(): Delta[] {
+    const read = new Map<string, string | null>();
+    const content = (path: string): string | null => {
+      if (!read.has(path)) {
+        try {
+          read.set(path, readFileSync(join(this.repo, path), "utf8"));
+        } catch {
+          // Gone, or never in this checkout. Either way there is nothing left
+          // for the entry to match, which is exactly what outdated means.
+          read.set(path, null);
+        }
+      }
+      return read.get(path) ?? null;
+    };
+
+    return this.deltas.map((delta) => {
+      const held = content(delta.path);
+      if (held === null) return { ...delta, stale: true };
+      const at = lineOf(held, delta.after);
+      return {
+        ...delta,
+        stale: at === undefined,
+        // Followed, so an entry whose passage has since been pushed down the
+        // file still flies to it. The line is where the code is now, which is
+        // the only line a reader can be taken to.
+        ...(at === undefined ? {} : { line: at }),
+      };
+    });
+  }
+
+  /** Told when an edit lands, so the page's ledger can follow the turn. */
+  wrote: ((deltas: Delta[]) => void) | undefined;
+
+  /** Where a tool's path sits inside this checkout, as a card would name it. */
+  private inRepo(path: string): string {
+    const root = this.repo.endsWith("/") ? this.repo : `${this.repo}/`;
+    return path.startsWith(root) ? path.slice(root.length) : path;
+  }
+
+  /** Which line a passage starts on, or nothing when it is not there. */
+  private lineIn(path: string, passage: string): number | undefined {
+    try {
+      return lineOf(readFileSync(join(this.repo, path), "utf8"), passage);
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -616,6 +739,7 @@ export class PairingSession {
         env: forgeEnv(),
         ...(args ? { args } : {}),
         onOutput: say,
+        onEdit: (change) => this.record(agentId, change),
       });
       this.running.set(agentId, handle);
       return handle;
@@ -828,6 +952,23 @@ export class PairingSession {
       out[kind.id] = ["ask", ...(Object.keys(kind.agency ?? {}) as Agency[])];
     }
     return out;
+  }
+
+  /**
+   * Which tools say what they are doing as they do it.
+   *
+   * The ledger is read off a narrated turn — the tool announces each call it
+   * makes, and the edits are lifted out of those announcements. A tool with no
+   * streaming mode prints its answer and nothing else, so there is nothing to
+   * lift, and its ledger is empty however much it changed.
+   *
+   * Which the page has to be told, because an empty list means two completely
+   * different things: this agent has not written anything, or this agent
+   * cannot say. Told rather than inferred from an empty list, since the first
+   * of those is also what a fresh session looks like.
+   */
+  narrating(): string[] {
+    return this.installed.filter((kind) => kind.streams).map((kind) => kind.id);
   }
 
   /** Which conversation an agent is carrying here, for whoever asks. */

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 
+import type { Change } from "./deltas.js";
 import type { AgentKind } from "./discover.js";
 
 /**
@@ -60,6 +61,16 @@ export interface RunRequest {
   timeoutMs?: number;
   /** Called with each chunk as it arrives, for the terminal to show. */
   onOutput?: (chunk: string) => void;
+  /**
+   * Called as each edit goes past, for the ledger to keep.
+   *
+   * As it happens rather than at the end of the turn, and for the same reason
+   * the output streams: a turn is minutes, and a record of what it changed that
+   * only exists once it has finished is missing for the whole of the time
+   * somebody is watching it work. It is also the record that survives a turn
+   * which never finishes.
+   */
+  onEdit?: (change: Change) => void;
 }
 
 /** A turn in progress, and the one thing that can be done to it from outside. */
@@ -142,6 +153,7 @@ export function runAgent(request: RunRequest): RunHandle {
       const said = narrated.read(line);
       if (said?.answer !== undefined) answer = said.answer;
       if (said?.show) take(`${said.show}\n`);
+      for (const change of said?.did ?? []) request.onEdit?.(change);
     }
   });
   // Kept, and kept in order with the rest. What a tool prints here is usually

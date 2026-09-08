@@ -225,7 +225,18 @@ interface PartMessage {
   payload: { paths: string[] | null };
 }
 
+/**
+ * Asking for the ledger of what the agents have written.
+ *
+ * Carries nothing: the whole of it comes back, because the answer is short and
+ * because every entry in it has to be checked against the file on disk anyway.
+ */
+interface DeltasMessage {
+  type: "deltas";
+}
+
 type Message =
+  | DeltasMessage
   | ApprovalMessage
   | LocalRemarkMessage
   | ConversationMessage
@@ -1180,6 +1191,16 @@ export class GraphPanel {
           payload: { agent, chunk },
         });
       };
+      /*
+       * The ledger, whenever it grows.
+       *
+       * Its own channel, like the transcript and for the same reason: these
+       * arrive mid-turn, and folding the record of what an agent wrote into the
+       * model would redraw every card in the change each time it saved a file.
+       */
+      this.paired.wrote = (deltas) => {
+        void this.panel.webview.postMessage({ type: "deltas", payload: { deltas } });
+      };
     }
     return this.paired;
   }
@@ -1272,6 +1293,10 @@ export class GraphPanel {
       // that silently does nothing.
       labels: this.paired?.labelled() ?? {},
       rungs: this.paired?.rungs() ?? {},
+      // And which of them narrate a turn, since that is what the ledger is
+      // read from. An empty ledger under a tool that cannot say is not the
+      // same fact as an empty ledger under one that has written nothing.
+      narrating: this.paired?.narrating() ?? [],
       sessions: Object.fromEntries(
         (this.paired?.carrying() ?? []).map((id) => [id, this.paired!.session(id) ?? ""]),
       ),
@@ -2441,6 +2466,22 @@ export class GraphPanel {
             agent: message.payload.agent,
             text: this.paired?.transcript(message.payload.agent) ?? "",
           },
+        });
+        return;
+      }
+      /*
+       * The ledger, asked for rather than pushed.
+       *
+       * Asked for when the tab opens and again whenever the reader looks at it,
+       * because the answer includes whether each entry still matches the file
+       * on disk — and that changes without anything happening in Odin at all.
+       * Somebody who edits the file themselves, or checks out another branch,
+       * should see the pills change the next time they look.
+       */
+      if (message.type === "deltas") {
+        void this.panel.webview.postMessage({
+          type: "deltas",
+          payload: { deltas: this.pairing().ledger() },
         });
         return;
       }

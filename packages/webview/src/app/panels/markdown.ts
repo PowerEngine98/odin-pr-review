@@ -79,6 +79,18 @@ export interface Token {
 let counter = 0;
 
 /**
+ * A name for a block that is not markdown but wants the same colouring.
+ *
+ * The ledger draws code the host has to tokenise, and it does not go through
+ * this parser to get it. Given a counter of its own it would mint 1, 2, 3 —
+ * and so would the first comment anybody opened, and each would paint the
+ * other's code. The counter is the shared thing, so it is what is shared.
+ */
+export function nameBlock(): number {
+  return ++counter;
+}
+
+/**
  * Inline marks, found in one pass.
  *
  * Deliberately flat: a bold sentence with code inside it renders as bold and

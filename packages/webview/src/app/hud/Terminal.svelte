@@ -22,6 +22,7 @@
   import { nameOf, picturesNamed, saidOf } from "../pictures.js";
   import { pictured } from "../pictured.svelte.js";
   import { model, notify, settings, ui } from "../state.svelte.js";
+  import Ledger from "./Ledger.svelte";
   import { showPicture } from "./picture.svelte.js";
 
   let {
@@ -198,6 +199,19 @@
   /** Only the rungs this tool has a word for. */
   const rungs = $derived(new Set(ui.rungs[id] ?? ["ask"]));
   const wanted = $derived(settings.agency?.[id] ?? "edits");
+
+  /**
+   * Which of this agent's two records is showing.
+   *
+   * Not a setting. Which of these a reader wants is a question about the minute
+   * they are in — watching a turn, or checking what came out of one — and a
+   * choice that survived a reload would put them back on a ledger when what
+   * they opened the window for was to see whether anything is happening.
+   */
+  let tab = $state<"log" | "ledger">("log");
+
+  /** What this agent has written, which is what the second tab counts. */
+  const wrote = $derived(ui.written.filter((delta) => delta.agent === id));
 
   /**
    * What this agent is actually on, which is not always what was asked for.
@@ -872,6 +886,32 @@
       {/each}
     </span>
 
+    <!--
+      The two records this agent leaves, as two tabs.
+
+      Beside the rungs rather than above the log, because they are the same kind
+      of control — what this agent is doing, and what it has done. The count is
+      on the tab because it is the whole reason to look: a turn that says it
+      changed three files and left nine entries is the discrepancy this list
+      exists to show, and it should be visible without opening it.
+    -->
+    <span class="records" role="group" aria-label="What to show for {name}">
+      <button
+        class="record"
+        class:set={tab === "log"}
+        aria-pressed={tab === "log"}
+        title="What it printed as it worked"
+        onclick={() => (tab = "log")}
+      >Log</button>
+      <button
+        class="record"
+        class:set={tab === "ledger"}
+        aria-pressed={tab === "ledger"}
+        title="Every edit it has made in this reading, with what it replaced"
+        onclick={() => (tab = "ledger")}
+      >Changes{#if wrote.length > 0}<span class="record-count">{wrote.length}</span>{/if}</button>
+    </span>
+
     {#if conversation}
       <!-- Odin's name for the conversation, not the tool's: a tool that lets a
            session be named takes that name when the session is made and cannot
@@ -946,6 +986,12 @@
     tokenised by the grammars the cards are drawn with, so SQL an agent quotes
     at you looks like the SQL in the file beside it.
   -->
+  {#if tab === "ledger"}
+    <!-- The other record, in the same box. Mounted only while it is showing:
+         it asks the host for the ledger when it appears, and a component kept
+         alive behind a tab nobody is looking at would ask on every rebuild. -->
+    <Ledger agent={id} />
+  {:else}
   <div class="terminal-body" bind:this={pane} onscroll={scrolled}>
     {#if shown}
       {#each blocks as block, at (at)}
@@ -1172,6 +1218,7 @@
       </p>
     {/if}
   </div>
+  {/if}
 
   <!--
     A question about the change rather than about a line.
@@ -1523,10 +1570,49 @@
 
   .rungs {
     display: inline-flex;
-    margin-right: auto;
     border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
     border-radius: 4px;
     overflow: hidden;
+  }
+
+  /* The gap that used to hang off the rungs. It belongs to whatever is last on
+     the left, and that is now the tabs. */
+  .records {
+    display: inline-flex;
+    margin-right: auto;
+    margin-left: 6px;
+    border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .record {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .record:hover { color: var(--text); }
+
+  .record.set {
+    background: color-mix(in srgb, var(--text) 14%, transparent);
+    color: var(--text);
+  }
+
+  .record-count {
+    padding: 0 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text) 16%, transparent);
+    font-size: 9px;
+    line-height: 13px;
+    font-variant-numeric: tabular-nums;
   }
 
   .rung {
