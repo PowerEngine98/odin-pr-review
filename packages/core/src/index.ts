@@ -32,6 +32,7 @@ export * from "./export/svg.js";
 export * from "./export/mermaid.js";
 export * from "./export/dot.js";
 export * from "./agents/discover.js";
+export * from "./agents/anchor.js";
 export * from "./agents/deltas.js";
 export * from "./agents/run.js";
 export * from "./agents/stream.js";

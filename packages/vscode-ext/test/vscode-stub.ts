@@ -24,14 +24,50 @@ export const window = {
     return panel;
   },
   showErrorMessage: () => Promise.resolve(undefined),
-  showWarningMessage: () => Promise.resolve(undefined),
+  /**
+   * A question put to the reader, recorded and answerable.
+   *
+   * Some decisions genuinely belong to them — whether to send a message whose
+   * code has been rewritten out from under it, for one — and a test of that has
+   * to be able to be both readers: the one who says go on and the one who does
+   * not. Returns nothing by default, which is a dialogue dismissed.
+   */
+  showWarningMessage: (message: string, ...rest: unknown[]) => {
+    asked.push({ message, choices: rest.filter((one) => typeof one === "string") });
+    return Promise.resolve(answers.shift());
+  },
   showInformationMessage: () => Promise.resolve(undefined),
+  showTextDocument: () => Promise.resolve(undefined),
   setStatusBarMessage: () => disposable,
   onDidChangeActiveColorTheme: () => disposable,
   tabGroups: { all: [], onDidChangeTabs: () => disposable },
 };
 
 export const ColorThemeKind = { Light: 1, Dark: 2, HighContrast: 3 };
+
+/** Every question the editor has been asked to put to the reader. */
+export const asked: { message: string; choices: unknown[] }[] = [];
+
+/** What the reader will answer, in order. Empty means every dialogue is closed. */
+const answers: (string | undefined)[] = [];
+
+export function readerSays(...said: (string | undefined)[]): void {
+  answers.length = 0;
+  answers.push(...said);
+}
+
+export function forgetAsked(): void {
+  asked.length = 0;
+  answers.length = 0;
+}
+
+export class Position {
+  constructor(readonly line: number, readonly character: number) {}
+}
+
+export class Range {
+  constructor(readonly start: Position, readonly end: Position) {}
+}
 
 /**
  * The last watcher something asked for, so a test can make it fire.

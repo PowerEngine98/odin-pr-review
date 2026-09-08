@@ -600,6 +600,21 @@
         moves this on its own; this is for the times the agent was wrong about
         being finished, and for the threads no agent was ever in.
       -->
+      {#if thread.root.adrift}
+        <!--
+          The code this was written about is not in the file any more.
+
+          Said here rather than left to be noticed, because everything else
+          about the conversation still looks ordinary: it has a file, it has a
+          line, and the line now belongs to something else entirely. The remark
+          is still worth keeping — somebody rewrote what it was about, which is
+          often the interesting part — but its number has stopped being a place.
+        -->
+        <span
+          class="thread-adrift"
+          title="The lines this was written about have been rewritten or removed. The line number is where they used to be."
+        >adrift</span>
+      {/if}
       <button
         class="thread-state"
         class:settled={thread.root.resolved === true}
@@ -974,6 +989,22 @@
 
   /* Grey while it waits and green once it is settled: the same two marks the
      list of threads wears, so one glance answers the same question in both. */
+  /* Words rather than a glyph. There is no icon that means "the code this was
+     about has been rewritten", and a reader guessing at one would guess wrong
+     in the direction of ignoring it. */
+  .thread-adrift {
+    flex: 0 0 auto;
+    padding: 0 6px;
+    border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--warning) 16%, transparent);
+    color: var(--warning);
+    font-size: 9.5px;
+    line-height: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   .thread-state {
     display: inline-flex;
     align-items: center;

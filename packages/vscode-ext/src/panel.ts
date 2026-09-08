@@ -1152,6 +1152,10 @@ export class GraphPanel {
         this.key || readingKey(this.graph, this.repo),
         this.repo,
         () => this.sendComments(),
+        // Whether the working tree is what is being read. Only then can a
+        // remark be anchored to the code it is about, because only then is the
+        // file on disk the file the reader was looking at.
+        this.graph.meta.worktree === true,
       );
       /*
        * A conversation the store has settled, settled on the forge as well.

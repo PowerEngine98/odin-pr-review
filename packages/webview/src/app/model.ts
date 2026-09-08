@@ -228,6 +228,17 @@ export interface CommentView {
    * which is the ordinary case and reads as still open.
    */
   resolved?: boolean;
+  /**
+   * The code this remark was written against is no longer in the file.
+   *
+   * Only in a live reading, where the file moves under a remark while it is
+   * still open. A remark whose passage has merely moved is quietly renumbered
+   * before it ever reaches the page — the mark follows the code, which is the
+   * point. This is the other case: the passage was rewritten or deleted, there
+   * is nowhere honest to move the remark to, and its line has stopped being a
+   * place and become a note about where it used to be.
+   */
+  adrift?: boolean;
   /** The forge's own name for the conversation, when the forge knows of it. */
   threadId?: string;
 }

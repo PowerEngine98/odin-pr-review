@@ -10,7 +10,10 @@ import {
   forgeEnv,
   keepsOpen,
   lineOf,
+  passageAt,
   promptFor,
+  spanText,
+  standingOf,
   runAgent,
   withoutMarker,
   within,
@@ -20,6 +23,7 @@ import {
   type Ask,
   type Change,
   type Delta,
+  type Standing,
   type ReviewComment,
   type RunHandle,
 } from "@odin/core";
@@ -66,6 +70,36 @@ export interface LocalComment extends ReviewComment {
     what: string;
     state: "waiting" | "allowed" | "denied";
   };
+  /**
+   * The code this remark was written against, so it can be found again.
+   *
+   * Only in a live reading, where the file underneath a remark changes while
+   * the remark is still open — an agent takes an earlier message, inserts nine
+   * lines, and every line number below the insertion is now pointing at
+   * something else. A number is a position; this is an identity, and it is what
+   * lets the position be worked out afresh whenever it is needed.
+   *
+   * Absent for a reading of committed code, where nothing moves under a remark
+   * and the number is the whole truth, and for a remark on the base side, whose
+   * lines are not in the working tree to be found.
+   */
+  anchor?: {
+    /** The lines themselves, exactly as they read when the remark was written. */
+    text: string;
+    /** Where they were then, which is what decides between repeated passages. */
+    line: number;
+    startLine?: number;
+  };
+  /**
+   * The code this remark was written against is no longer in the file.
+   *
+   * Not an error and not a reason to hide it: somebody rewrote the passage, or
+   * deleted it, and that is often the most interesting thing that has happened
+   * to the remark. It keeps the line it had, because there is nowhere honest to
+   * move it to, and this says that the line is now a historical fact rather
+   * than a place.
+   */
+  adrift?: boolean;
 }
 
 /**
@@ -226,6 +260,18 @@ export class PairingSession {
     private readonly repo: string,
     /** Called whenever anything the page draws has changed. */
     private readonly changed: () => void,
+    /**
+     * Whether this reading is of the files on disk.
+     *
+     * Which decides whether a remark can be anchored to the code it is about.
+     * In a live reading the working tree *is* what is being reviewed, so the
+     * lines a reader picked are lines of a file an agent will open, and both
+     * move together. In a reading of committed code the working tree is
+     * somebody else's branch or an older state of this one, and looking a
+     * remark's passage up in it would anchor the remark to whatever that file
+     * happens to contain — which is worse than not anchoring at all.
+     */
+    private readonly live = false,
   ) {
     this.load();
   }
@@ -305,9 +351,54 @@ export class PairingSession {
     // The state is carried by the message that began the conversation, which is
     // where every reader of it — the list, the panel, the mark — already looks
     // for what the conversation is.
+    /*
+     * Each file read once for the whole list, rather than once per remark.
+     *
+     * A thread on a busy file is a dozen remarks, and this runs on every change
+     * anything makes to the conversation.
+     */
+    const read = new Map<string, string | undefined>();
+    const held = (path: string): string | undefined => {
+      if (!read.has(path)) read.set(path, this.fileAt(path));
+      return read.get(path);
+    };
+
     return this.comments.map((comment) => {
       const settled = this.settled[String(comment.id)];
-      return settled === undefined ? comment : { ...comment, resolved: settled };
+      const shown =
+        settled === undefined ? comment : { ...comment, resolved: settled };
+
+      /*
+       * And where its code has got to, if it has moved.
+       *
+       * So the mark in the margin, the conversation panel and the composer all
+       * follow the passage rather than staying on a number that now points at
+       * something else. A remark whose passage has gone keeps its old number
+       * and is marked as adrift: there is nowhere honest to move it to, and
+       * quietly leaving it where it was — with nothing saying so — is what this
+       * exists to stop.
+       */
+      if (!this.live || !comment.anchor) return shown;
+      const file = held(comment.path);
+      if (file === undefined) return shown;
+
+      const now = standingOf(file, comment.anchor.text, {
+        line: comment.anchor.line,
+        ...(comment.anchor.startLine !== undefined
+          ? { startLine: comment.anchor.startLine }
+          : {}),
+      });
+      if (now.state === "here") return shown;
+      if (now.state === "gone") return { ...shown, adrift: true };
+
+      // Rebuilt rather than spread over, so a remark that has shrunk to one
+      // line does not keep the `startLine` of the span it used to be.
+      const { startLine: _was, ...rest } = shown;
+      return {
+        ...rest,
+        line: now.span.line,
+        ...(now.span.startLine !== undefined ? { startLine: now.span.startLine } : {}),
+      };
     });
   }
 
@@ -357,6 +448,137 @@ export class PairingSession {
   /** Whatever the named agent has printed this session. */
   transcript(id: string): string {
     return this.transcripts.get(id) ?? "";
+  }
+
+  /* ----------------------------------------------------------- the anchors */
+
+  /**
+   * The passage a remark is about, read out of the file it is in.
+   *
+   * Nothing at all outside a live reading, for a remark about the change as a
+   * whole, or for one on the base side — the base is what the file used to say,
+   * it is not in the working tree, and it cannot move.
+   */
+  private anchorFor(
+    comment: LocalComment,
+  ): { text: string; line: number; startLine?: number } | undefined {
+    if (!this.live) return undefined;
+    if (!comment.path || !comment.line || comment.side === "LEFT") return undefined;
+
+    const held = this.fileAt(comment.path);
+    if (held === undefined) return undefined;
+
+    const span = {
+      line: comment.line,
+      ...(comment.startLine !== undefined ? { startLine: comment.startLine } : {}),
+    };
+    const text = passageAt(held, span);
+    if (text === undefined) return undefined;
+    return { text, ...span };
+  }
+
+  /**
+   * Where a remark's code is now, when the remark has any to look for.
+   *
+   * The one question everything else here asks. Answered against the file each
+   * time rather than written down, because the answer is a fact about the file
+   * — it changes when an agent saves, and nothing tells this store that it has.
+   */
+  private standing(comment: LocalComment): Standing | undefined {
+    if (!this.live || !comment.anchor) return undefined;
+    const held = this.fileAt(comment.path);
+    if (held === undefined) return undefined;
+    return standingOf(held, comment.anchor.text, {
+      line: comment.anchor.line,
+      ...(comment.anchor.startLine !== undefined
+        ? { startLine: comment.anchor.startLine }
+        : {}),
+    });
+  }
+
+  /**
+   * Whether a message is still about code that exists, and what to do if not.
+   *
+   * Asked at the moment a turn would start rather than when the message was
+   * written, because that is when it matters and when it can be true: a message
+   * can wait minutes in the queue behind another agent that is editing the very
+   * file it is about.
+   *
+   * The reader decides. There are only bad defaults here — sending it anyway
+   * points an agent at a line naming code nobody has seen, and dropping it
+   * loses a question somebody wrote — and neither is a decision this store is
+   * entitled to make quietly on their behalf.
+   */
+  private async stillStands(ask: Ask): Promise<boolean> {
+    const root = this.rootOf(Number(ask.id));
+    if (!root) return true;
+    const now = this.standing(root);
+    if (now?.state !== "gone") return true;
+
+    const anyway = "Ask anyway";
+    const look = "Show me";
+    const answer = await vscode.window.showWarningMessage(
+      `Odin: the lines this message was written about are no longer in ${root.path}.`,
+      {
+        modal: true,
+        detail:
+          `It was written against ${root.path}:${spanText(now.from)}, which read:\n\n` +
+          `${quoted(root.anchor?.text ?? "")}\n\n` +
+          "Something has rewritten or removed that passage since. Sending the " +
+          "message on would point an agent at a line number that now names " +
+          "different code.",
+      },
+      anyway,
+      look,
+    );
+
+    if (answer === anyway) {
+      /*
+       * Sent, and sent honestly. The prompt says the passage has gone and
+       * quotes it, so the agent is looking for the code the reader meant rather
+       * than trusting a line number that no longer names it.
+       */
+      this.adrift(root.id);
+      return true;
+    }
+
+    if (answer === look) {
+      // Where it was, which is the only place there is to look. The message is
+      // still in the thread and can be asked again from there.
+      void vscode.window.showTextDocument(
+        vscode.Uri.file(join(this.repo, root.path)),
+        { selection: new vscode.Range(spot(now.from), spot(now.from)) },
+      );
+    }
+
+    /*
+     * Dismissed, or the reader went to look. Either way the message stays in
+     * the conversation — it is a question they wrote, and throwing it away
+     * would be a second decision they did not make.
+     */
+    this.note(
+      root.id,
+      "Not sent: the lines this was written about are no longer in the file. " +
+        "Ask again when you have decided what it should say now.",
+    );
+    return false;
+  }
+
+  /** Marks a remark as no longer standing on the code it was written about. */
+  private adrift(id: number): void {
+    this.comments = this.comments.map((comment) =>
+      comment.id === id ? { ...comment, adrift: true } : comment,
+    );
+    this.save();
+  }
+
+  /** A file of this checkout, or nothing when it cannot be read. */
+  private fileAt(path: string): string | undefined {
+    try {
+      return readFileSync(join(this.repo, path), "utf8");
+    } catch {
+      return undefined;
+    }
   }
 
   /* ------------------------------------------------------------ the ledger */
@@ -613,6 +835,17 @@ export class PairingSession {
       task: "queued",
     };
 
+    /*
+     * What it is about, alongside where it is.
+     *
+     * Captured now, while the numbers the reader picked are certainly right —
+     * they picked them against a drawing built from this file. A minute later
+     * an agent may have moved the whole passage, and then there is no way back
+     * to what they meant from a number alone.
+     */
+    const anchored = this.anchorFor(comment);
+    if (anchored) comment.anchor = anchored;
+
     this.comments = [...this.comments, comment];
     this.save();
 
@@ -671,6 +904,25 @@ export class PairingSession {
   private async work(ask: Ask, agentId: string): Promise<void> {
     const kind = this.installed.find((one) => one.id === agentId);
     if (!kind) return;
+
+    /*
+     * The code this message is about may have gone while it was queued.
+     *
+     * Which is a decision, not a detail. Sending it anyway hands an agent a
+     * line number naming code the reader never saw, and the reader finds out
+     * when something they did not ask for has been edited. Dropping it
+     * silently loses a question they took the trouble to write. Neither is
+     * ours to make on their behalf, so they are asked — and the turn does not
+     * start until they answer.
+     */
+    if (!(await this.stillStands(ask))) {
+      this.waiting = this.waiting.filter((one) => one.id !== ask.id);
+      this.state.set(agentId, "idle");
+      this.mark(Number(ask.id), "stopped");
+      this.changed();
+      this.pump();
+      return;
+    }
 
     this.state.set(agentId, "working");
     /*
@@ -1310,6 +1562,38 @@ export class PairingSession {
     else this.changed();
   }
 
+  /**
+   * Something Odin has to say in a thread, signed by Odin.
+   *
+   * Not an agent and not the reader. A message that was not sent because its
+   * code had gone is a fact about the conversation, and the conversation is
+   * where the record of this whole thing lives — a warning that appeared once
+   * in the corner of the editor and then vanished is not a record of anything.
+   */
+  private note(to: number, body: string): void {
+    const root = this.rootOf(to);
+    if (!root) return;
+    this.comments = [
+      ...this.comments,
+      {
+        id: this.next--,
+        path: root.path,
+        line: root.line,
+        ...(root.startLine !== undefined ? { startLine: root.startLine } : {}),
+        side: root.side,
+        body,
+        author: "Odin",
+        createdAt: new Date().toISOString(),
+        url: "",
+        outdated: false,
+        inReplyTo: root.id,
+        local: true,
+      },
+    ];
+    this.save();
+    this.changed();
+  }
+
   /** Moves a message's badge, which is the only thing on it that changes. */
   private mark(id: number, task: LocalComment["task"]): void {
     let touched = false;
@@ -1408,11 +1692,45 @@ export class PairingSession {
      * — a file called nothing, at a line that does not exist.
      */
     if (!root.path) return "the change as a whole, not one line of it";
-    const span =
-      root.startLine !== undefined && root.startLine < root.line
-        ? `${root.startLine}-${root.line}`
-        : String(root.line);
-    return `${root.path}:${span}`;
+
+    /*
+     * The lines as they are now, not as they were when the remark was written.
+     *
+     * This is the whole point of anchoring. A message can sit in the queue for
+     * minutes while another agent works, and the file it is about is the file
+     * that agent is editing — so by the time this prompt is built, the numbers
+     * the reader picked may name entirely different code. Handing those over is
+     * how an agent ends up confidently editing the wrong place.
+     */
+    const now = this.standing(root);
+    if (now?.state === "moved") {
+      return `${root.path}:${spanText(now.span)} — the passage this was written about, which has moved since (it was at ${spanText(now.from)})`;
+    }
+
+    /*
+     * The reader has been asked and said send it anyway.
+     *
+     * So the prompt says what is true: the line number names something else
+     * now, and here is the code the remark was actually about. An agent given
+     * that looks for the code; an agent given the bare number edits whatever is
+     * sitting on it, which is the failure this whole mechanism exists to stop.
+     */
+    if (now?.state === "gone") {
+      return [
+        `${root.path}, around line ${spanText(now.from)} — but the code this was written about is no longer there.`,
+        "It read:",
+        root.anchor?.text ?? "",
+        "Find where that has gone before changing anything. Do not assume the line numbers above still name it.",
+      ].join("\n");
+    }
+
+    const span = {
+      line: root.line,
+      ...(root.startLine !== undefined && root.startLine < root.line
+        ? { startLine: root.startLine }
+        : {}),
+    };
+    return `${root.path}:${spanText(span)}`;
   }
 
   /**
@@ -1510,6 +1828,26 @@ function keepable(text: string): string {
   return text.length <= KEEP_STORED
     ? text
     : `[odin] …earlier output dropped\n${text.slice(text.length - KEEP_STORED)}`;
+}
+
+/**
+ * A passage as it reads inside a dialogue, which has no room for a file.
+ *
+ * Shown at all because the numbers are exactly what has stopped being true: a
+ * reader asked to decide about `src/a.ts:212-219` cannot decide anything from
+ * that, and the code is the only thing left that says what the remark was
+ * about.
+ */
+function quoted(passage: string): string {
+  const lines = passage.split("\n");
+  const shown = lines.slice(0, 8).map((line) => `    ${line}`);
+  if (lines.length > 8) shown.push(`    … ${lines.length - 8} more lines`);
+  return shown.join("\n");
+}
+
+/** The head of a span, as a place in a document. */
+function spot(span: { line: number; startLine?: number }): vscode.Position {
+  return new vscode.Position(Math.max(0, (span.startLine ?? span.line) - 1), 0);
 }
 
 function tail(text: string): string {
