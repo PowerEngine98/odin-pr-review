@@ -1,22 +1,32 @@
 <!--
-  What one agent has actually written, as a list of changes.
+  Everything that has changed in this checkout, as a list.
 
-  The log beside this is a record of a turn: what it thought, what it ran, what
-  it said. It is the right shape for watching and the wrong one for auditing —
-  an edit appears in it as `Edit(src/media/VideoPreview.tsx)`, which says a file
-  was touched and nothing at all about what happened to it, and a turn that
+  The log beside this is a record of a turn: what one tool thought, what it ran,
+  what it said. It is the right shape for watching and the wrong one for
+  auditing — an edit appears in it as `Edit(src/media/VideoPreview.tsx)`, which
+  says a file was touched and nothing about what happened to it, and a turn that
   edited nine files buries those nine lines under four hundred others.
 
-  So the edits are lifted out and kept as what they are: a passage that was
-  replaced, at a time, in a file. Each one is drawn as the change it is, and
-  pressing it takes the drawing to the line — which is the question a reviewer
-  has when they read one of these rows, every time.
+  This is built from the file watcher instead, which is the only thing in Odin
+  that sees every change to a checkout whoever made it. Lifting the entries out
+  of the agents' own announcements was the obvious way and the wrong one: only
+  some tools narrate their work, none of them narrate a formatter running on
+  save, and nothing at all narrates the reader editing a file themselves. A
+  record of what happened to this branch that quietly omits most of what
+  happened to this branch is worse than none.
 
-  Each row also says whether it is still true. An agent that edited a passage,
-  then edited it again, leaves a first entry describing code that is no longer
-  anywhere; so does a reviewer who reverted it by hand. The entry is worth
-  keeping either way — it is what happened — but it has to say so, and it cannot
-  know by itself: the host checks each one against the file on disk.
+  So every change is a row: before, after, when, and the file. Pressing one
+  takes the drawing to the line, which is the question a reviewer has about one
+  of these rows every time. A row is attributed when a tool announced the same
+  file a moment earlier, and left unattributed when nothing did — because that
+  is the truth about it, and a guess here would be a guess about who changed
+  somebody's code.
+
+  Each row also says whether it is still true. A passage edited and then edited
+  again leaves a first entry describing code that is nowhere; so does one the
+  reviewer reverted by hand. The entry is worth keeping either way — it is what
+  happened — but it cannot know by itself, so the host checks each one against
+  the file on disk.
 -->
 <script lang="ts">
   import { clockOf, linesOf, type Delta } from "@odin/core/agents/deltas.js";
@@ -28,16 +38,24 @@
   let { agent }: { agent: string } = $props();
 
   /**
-   * This agent's entries, newest first.
+   * Every change to this checkout, newest first.
    *
-   * Newest first, unlike the log under it. A log is read downwards because it
-   * is a narrative; a ledger is read to find out what just happened, and the
-   * thing that just happened is at the bottom of a list that is four hundred
-   * rows long by the end of an afternoon.
+   * Every one, not this agent's. The list is built from what the file watcher
+   * saw, and the watcher does not know or care who was typing: an agent that
+   * narrates its work, one that does not, a formatter on save, and the reader's
+   * own hands all reach it the same way. A list that showed only the changes
+   * one tool admitted to would be a list that is quietly missing most of what
+   * happened to the branch — which is the opposite of what a ledger is for.
+   *
+   * So the console it is opened from decides nothing about what is in it. What
+   * the console adds is which rows are its own, and those are marked.
+   *
+   * Newest first, unlike the log beside it. A log is read downwards because it
+   * is a narrative; a ledger is read to find out what just happened, and that
+   * is at the bottom of a list four hundred rows long by the end of an
+   * afternoon.
    */
-  const mine = $derived(
-    ui.written.filter((delta) => delta.agent === agent).slice().reverse(),
-  );
+  const mine = $derived(ui.written.slice().reverse());
 
   /** The file this entry is in, when the change has a card for it. */
   function nodeOf(path: string): { language?: string } | undefined {
@@ -211,35 +229,18 @@
 
 <div class="ledger">
   {#if mine.length === 0}
-    <p class="ledger-empty">
-      {#if !ui.narrating.has(agent)}
-        <!--
-          Said rather than left as an empty list. This tool has no streaming
-          mode to ask for: it prints its answer when it is finished and nothing
-          before that, so there are no tool calls to read edits out of. A blank
-          panel here would read as "it changed nothing", which may be the
-          opposite of the truth.
-        -->
-        This tool does not say what it is doing as it works, so there is nothing
-        to list. What it changed is in its answer, in the thread.
-      {:else if !ui.carrying.has(agent) && !ui.transcripts[agent]}
-        <!--
-          Nothing has been asked of this agent in this reading, so of course it
-          has written nothing. Said apart from the case below because they look
-          identical and mean opposite things — and because a reader who has been
-          editing all afternoon and finds this list empty is owed the reason.
+    <!--
+      An empty list means one thing now, and it is a true thing.
 
-          It lists what agents change *through Odin*. Edits made in another
-          window, by hand, or by a tool Odin did not start are not on any stream
-          this can read, and will never appear here.
-        -->
-        This agent has not been asked anything in this reading yet. What it
-        changes from here will be listed, newest first, with what it replaced.
-      {:else}
-        Nothing written yet in this reading. Only edits made by this agent,
-        after being asked from here, are listed — changes made in another window
-        or by hand are not on a stream Odin can read.
-      {/if}
+      It used to mean several: this tool does not narrate, or nobody has asked
+      it anything, or it has been asked and wrote nothing — and the reader had
+      to guess which. Built from the watcher there is only one answer left:
+      nothing in this checkout has changed since the reading opened.
+    -->
+    <p class="ledger-empty">
+      Nothing has changed in this checkout yet. Every edit — by an agent, by a
+      tool, or by hand — will be listed here as it happens, newest first, with
+      what it replaced.
     </p>
   {:else}
     {#each mine as delta (delta.id)}
@@ -268,7 +269,23 @@
             {fileOf(delta.path)}{#if delta.line !== undefined}<span class="entry-line">:{delta.line}</span>{/if}
           </button>
           {#if delta.whole}
-            <span class="entry-kind" title="The whole file was written">new</span>
+            <span class="entry-kind" title="The whole file was written or removed">whole</span>
+          {/if}
+          <!--
+            Who did it, where that can be said at all.
+            
+            A tool that narrates its work announces the files it writes, and an
+            announcement a moment before the watcher saw the same file change is
+            what makes a row attributable. Most rows are not: nothing announces
+            a formatter, and nothing announces a reader typing. Those are shown
+            as what they are rather than guessed at or hidden.
+          -->
+          {#if delta.agent}
+            <span
+              class="entry-who"
+              class:is-mine={delta.agent === agent}
+              title="{ui.labels[delta.agent] || delta.agent} said it was writing this file"
+            >{ui.labels[delta.agent] || delta.agent}</span>
           {/if}
           <span class="entry-gap"></span>
           {#if delta.stale}
@@ -387,6 +404,25 @@
   .entry-kind {
     border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
     color: var(--muted);
+  }
+
+  /* Whose it was, where anything can say. Quiet by default and lit for the
+     console it is being read from, because "which of these are mine" is the
+     one thing a per-agent view of a shared list is for. */
+  .entry-who {
+    flex: 0 0 auto;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+    color: var(--muted);
+    font-size: 9.5px;
+    line-height: 15px;
+    white-space: nowrap;
+  }
+
+  .entry-who.is-mine {
+    background: color-mix(in srgb, var(--box-set) 22%, transparent);
+    color: var(--text);
   }
 
   .pill {

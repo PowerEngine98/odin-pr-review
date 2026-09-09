@@ -39,13 +39,16 @@ describe("the ledger inside an agent's console", () => {
     expect(source(TERMINAL)).toContain('let tab = $state<"log" | "ledger">("log")');
   });
 
-  it("counts what this agent wrote on the tab itself", () => {
-    // The whole reason to look: a turn that says it changed three files and
-    // left nine entries is the discrepancy the list exists to show, and that
-    // should be visible without opening it.
-    expect(source(TERMINAL)).toContain(
-      'const wrote = $derived(ui.written.filter((delta) => delta.agent === id))',
-    );
+  it("counts every change on the tab, not this agent's share of them", () => {
+    /*
+     * The list is built from the file watcher and holds every change to the
+     * checkout. A count of one tool's admitted edits above a list of every edit
+     * would be two different facts wearing one number — and the smaller one is
+     * always the wrong answer to "how much has moved".
+     */
+    const terminal = source(TERMINAL);
+    expect(terminal).toContain("const wrote = $derived(ui.written)");
+    expect(terminal).not.toContain("ui.written.filter");
   });
 });
 
@@ -64,7 +67,7 @@ describe("which field the ledger reads", () => {
     expect(state).toContain("deltas: new Map<string, Delta>()");
 
     const ledger = source(LEDGER);
-    expect(ledger).toContain("ui.written.filter");
+    expect(ledger).toContain("ui.written.slice()");
     expect(ledger).not.toMatch(/ui\.deltas\b/);
   });
 

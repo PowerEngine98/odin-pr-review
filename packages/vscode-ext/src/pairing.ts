@@ -8,6 +8,7 @@ import {
   ownerOf,
   discoverAgents,
   forgeEnv,
+  git,
   keepsOpen,
   lineOf,
   passageAt,
@@ -580,45 +581,108 @@ export class PairingSession {
   /* ------------------------------------------------------------ the ledger */
 
   /**
-   * An edit, as it goes past.
+   * An edit a tool announced, kept as evidence of who did what.
    *
-   * The line is looked for now rather than when the ledger is drawn, because
-   * now is when it is right: the tool has just written the passage, so it is in
-   * the file, at the place this records. Ten minutes and four edits later the
-   * same search may find it somewhere else or not at all — which is a different
-   * and equally useful fact, and the one the outdated mark is about.
+   * Not an entry. The ledger is built from what the watcher saw, because the
+   * watcher sees every change to this checkout whoever made it — a tool that
+   * narrates, a tool that does not, and the reader's own hands are all the same
+   * to it, and a record of what happened to this branch that only knows about
+   * one of the three is not a record of what happened to this branch.
+   *
+   * What a narrated turn adds is the one thing the watcher cannot know: whose
+   * change it was. So an announced edit is remembered as a claim on a file for
+   * a short while, and the entry the watcher produces a moment later picks it
+   * up.
    */
   private record(agent: string, change: Change): void {
-    const path = this.inRepo(change.path);
-    const delta: Delta = {
-      id: `${agent}:${this.deltas.length}:${Date.now()}`,
-      agent,
-      at: Date.now(),
-      path,
-      before: within(change.before),
-      after: within(change.after),
-      whole: change.whole,
-      ...(this.working !== undefined ? { ask: this.working } : {}),
-    };
+    this.claims.set(this.inRepo(change.path), { agent, at: Date.now() });
+  }
 
-    const line = this.lineIn(path, change.after);
-    if (line !== undefined) delta.line = line;
+  /**
+   * How long a tool's announcement stands as a claim on a file.
+   *
+   * Long enough to cover the settling delay and the write landing after the
+   * announcement; short enough that an edit somebody makes by hand two minutes
+   * later is not filed under the agent that last touched that file.
+   */
+  private static readonly CLAIM_HOLDS = 30_000;
 
-    this.deltas.push(delta);
+  /** Which agent last said it was writing which file, and when. */
+  private readonly claims = new Map<string, { agent: string; at: number }>();
+
+  /**
+   * Files the watcher saw change, turned into entries.
+   *
+   * The before is whatever this last knew the file to say, and the first time a
+   * file is seen that is what it says at HEAD — so an entry made in the first
+   * minute of a reading is "what has happened to this file since the last
+   * commit", which is what a reviewer means by the question. Every entry after
+   * that is the step from one state to the next.
+   */
+  async observed(paths: readonly string[]): Promise<void> {
+    let added = false;
+    for (const path of paths) {
+      const after = this.contentOf(path) ?? "";
+      const before = this.snapshots.has(path)
+        ? this.snapshots.get(path)!
+        : await this.committed(path);
+
+      this.snapshots.set(path, after);
+      // A file the editor announced and nothing in it moved — a touch, a
+      // formatter that decided against it, a save with no edit.
+      if (before === after) continue;
+
+      const claim = this.claims.get(path);
+      const mine =
+        claim && Date.now() - claim.at < PairingSession.CLAIM_HOLDS
+          ? claim.agent
+          : undefined;
+
+      const delta: Delta = {
+        id: `${this.deltas.length}:${Date.now()}:${path}`,
+        ...(mine ? { agent: mine } : {}),
+        at: Date.now(),
+        path,
+        before: within(before),
+        after: within(after),
+        whole: before === "" || after === "",
+        ...(mine && this.working !== undefined ? { ask: this.working } : {}),
+      };
+      const line = this.lineIn(path, after);
+      if (line !== undefined) delta.line = line;
+
+      this.deltas.push(delta);
+      added = true;
+    }
+    if (!added) return;
+
     /*
      * Bounded, oldest first.
      *
-     * A long session with an agent on the top rung writes hundreds of these,
-     * and all of them are held in the editor's own storage next to every
-     * comment in the reading. The far end is the cheapest to lose for the same
-     * reason as the transcript: nobody scrolls to the bottom of a ledger to
-     * find out what is happening now.
+     * An afternoon of work on a busy branch is hundreds of these, and all of
+     * them are held in the editor's own storage next to every comment in the
+     * reading. The far end is the cheapest to lose for the same reason as the
+     * transcript: nobody scrolls to the bottom of a ledger to find out what is
+     * happening now.
      */
     if (this.deltas.length > KEEP_DELTAS) {
       this.deltas = this.deltas.slice(-KEEP_DELTAS);
     }
     this.save();
     this.wrote?.(this.ledger());
+  }
+
+  /** What this last knew each watched file to say. */
+  private readonly snapshots = new Map<string, string>();
+
+  /**
+   * The file as the last commit has it, which is where a reading starts from.
+   *
+   * Empty for a file that is not in the commit at all, which is the honest
+   * answer for one that has just been created: there was nothing there before.
+   */
+  private async committed(path: string): Promise<string> {
+    return await git(["show", `HEAD:${path}`], { cwd: this.repo }).catch(() => "");
   }
 
   /**

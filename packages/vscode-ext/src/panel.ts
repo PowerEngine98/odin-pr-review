@@ -1145,7 +1145,13 @@ export class GraphPanel {
    * Made on first use rather than in the constructor: most readings never ask
    * for one, and building it reads the editor's storage.
    */
-  private pairing(): PairingSession {
+  /**
+   * This reading's conversation with the agents, made on first use.
+   *
+   * Not private any more: the file watcher belongs to the reading rather than
+   * to the panel, and what it saw has to reach this.
+   */
+  pairing(): PairingSession {
     if (!this.paired) {
       this.paired = new PairingSession(
         GraphPanel.store!,
@@ -1476,6 +1482,19 @@ export class GraphPanel {
       value: on,
       ...(note ? { note } : {}),
     });
+  }
+
+  /**
+   * Files the watcher saw change, given to the reading they belong to.
+   *
+   * By reading rather than to whichever frame is in front, on the same grounds
+   * as the rebuild notices: a watcher belongs to one checkout, and its news is
+   * about that checkout whatever the reader is looking at now.
+   */
+  static observedIn(graph: ChangeGraph, repo: string, paths: string[]): void {
+    if (paths.length === 0) return;
+    const panel = GraphPanel.open.get(readingKey(graph, repo));
+    void panel?.pairing().observed(paths);
   }
 
   /** Brings the existing graph back to the front, if there is one. */

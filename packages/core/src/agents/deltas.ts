@@ -30,8 +30,20 @@ export interface Change {
 export interface Delta extends Change {
   /** Stable, and stable across a reload: the ledger is written down. */
   id: string;
-  /** Which agent made it, by the id the terminals are keyed on. */
-  agent: string;
+  /**
+   * Which agent made it, when that can be said.
+   *
+   * Absent more often than not, and that is the honest state rather than a
+   * gap. The ledger is built from what the file watcher saw, because the
+   * watcher is the only thing that sees every change to a checkout whoever
+   * made it — an agent, a formatter, the reader's own hands. Attribution comes
+   * from a tool having announced the same file a moment earlier, which only
+   * the tools that narrate their work ever do.
+   *
+   * A change nobody can be blamed for is still a change to the branch under
+   * review, and leaving it out would make the list quietly untrue.
+   */
+  agent?: string;
   /** Repo-relative, so it can be matched against a card. */
   path: string;
   /** When, in epoch milliseconds. Formatted for reading by `clockOf`. */

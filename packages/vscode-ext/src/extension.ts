@@ -1580,6 +1580,15 @@ function armLive(
     // worth redrawing. A spinner left running says the tool is still working
     // when it has finished and decided there was nothing to do.
     onSettled: () => GraphPanel.setRefreshingIn(shown, repo, false),
+    /*
+     * Written into the ledger before anything is redrawn.
+     *
+     * The watcher is the only thing that sees every change to this checkout,
+     * whoever made it — so it is what the record of the session is built from,
+     * rather than the announcements of the tools that happen to narrate their
+     * work. Told to the reading it belongs to, like everything else here.
+     */
+    onTouched: (paths) => GraphPanel.observedIn(shown, repo, paths),
     onChange: async (_graph, delta) => {
       if (!fresh) return;
       await present(fresh, repo, base, headRef, true, undefined, key);

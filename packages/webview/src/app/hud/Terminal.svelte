@@ -210,8 +210,15 @@
    */
   let tab = $state<"log" | "ledger">("log");
 
-  /** What this agent has written, which is what the second tab counts. */
-  const wrote = $derived(ui.written.filter((delta) => delta.agent === id));
+  /**
+   * Everything that has changed in this checkout, which is what the tab counts.
+   *
+   * Every change rather than this agent's, because that is what the list holds:
+   * it is built from the file watcher, which sees an agent, a formatter and the
+   * reader's own hands identically. A count of one tool's admitted edits beside
+   * a list of every edit would be two different facts under one number.
+   */
+  const wrote = $derived(ui.written);
 
   /**
    * What this agent is actually on, which is not always what was asked for.
@@ -907,7 +914,7 @@
         class="record"
         class:set={tab === "ledger"}
         aria-pressed={tab === "ledger"}
-        title="Every edit it has made in this reading, with what it replaced"
+        title="Every change to this checkout since the reading opened, with what it replaced"
         onclick={() => (tab = "ledger")}
       >Changes{#if wrote.length > 0}<span class="record-count">{wrote.length}</span>{/if}</button>
     </span>

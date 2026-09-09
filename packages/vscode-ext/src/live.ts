@@ -117,6 +117,19 @@ export interface LiveOptions {
   onChange: (graph: ChangeGraph, delta: GraphDelta) => void | Promise<void>;
   /** Called when a rebuild throws, so the reader is not left guessing. */
   onError?: (error: unknown) => void;
+  /**
+   * Files that have actually changed, before anything is rebuilt.
+   *
+   * The watcher is the only thing in Odin that sees every change to this
+   * checkout, whoever made it. A tool that narrates its work announces the
+   * edits it makes; a tool that does not, announces nothing; a reader editing
+   * by hand announces nothing either — and the ledger of what has happened to
+   * this branch should not depend on which of those it was.
+   *
+   * Given the paths that survived the ignore rules, which is the same list the
+   * rebuild is about to be run for.
+   */
+  onTouched?: (paths: string[]) => void | Promise<void>;
   /** How long after the last edit to wait before rebuilding. */
   settle?: number;
   /**
@@ -292,6 +305,23 @@ export class LiveGraph implements vscode.Disposable {
     this.touched.clear();
     this.since = 0;
     if (!(await this.worthRebuilding(arrived))) return;
+
+    /*
+     * What changed, told before the rebuild rather than after it.
+     *
+     * The rebuild may find nothing worth redrawing — most edits do not move an
+     * arrow — and `onChange` is deliberately silent then. A change that moved
+     * no arrow is still a change, and the record of what happened to this
+     * branch is exactly the thing that must not be filtered by whether the
+     * picture moved.
+     */
+    const interesting = arrived.filter((path) => this.known.get(path) === false);
+    try {
+      await this.options.onTouched?.(interesting);
+    } catch {
+      // A ledger that cannot write itself down is not worth losing a rebuild
+      // over: the picture is what the reader is waiting for.
+    }
 
     this.running = true;
     const mine = ++this.run;
