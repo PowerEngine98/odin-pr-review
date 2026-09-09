@@ -1700,7 +1700,27 @@ export class GraphPanel {
     // Remarks written before the forge answered are still this reader's. They
     // are signed properly rather than left as the placeholder for ever.
     if (this.paired?.identify(me.login, me.face)) this.sendComments();
-    this.render(this.layout);
+
+    /*
+     * Told to the page rather than rebuilt into it.
+     *
+     * Who is reading is written into the document when it is first built, so
+     * learning it later used to mean building the document again — and building
+     * it again replaces the whole page. On a freshly opened tab that is
+     * precisely what happened on the reader's first question and on no other:
+     * the forge had not been asked who they were yet, so the first ask went and
+     * found out, and the answer redrew everything. The loader came back, every
+     * card was made afresh, and the reader watched the change they were reading
+     * reload underneath the question they had just written.
+     *
+     * It is two strings. They go over the channel every other piece of news
+     * goes over, and nothing else about the drawing is touched.
+     */
+    void this.panel.webview.postMessage({
+      type: "viewer",
+      login: me.login,
+      face: me.face,
+    });
     return me;
   }
 

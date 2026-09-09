@@ -123,6 +123,16 @@ export interface StubPanel {
   title: string;
   viewType: string;
   disposed: boolean;
+  /**
+   * How many times the whole document has been replaced.
+   *
+   * Which is a question the source cannot answer and the reader feels sharply:
+   * assigning `html` throws the page away and builds it again, so the loader
+   * returns, every card is made afresh, and wherever they were reading is gone.
+   * A count is the only way to tell a panel that told the page something from
+   * one that rebuilt it to say the same thing.
+   */
+  writes: number;
   webview: {
     html: string;
     cspSource: string;
@@ -131,6 +141,10 @@ export interface StubPanel {
     onDidReceiveMessage: (fn: (message: unknown) => void) => { dispose(): void };
     postMessage: (message: unknown) => Promise<boolean>;
   };
+  /** What the panel has told the page, so a test can read the news. */
+  sent: { type?: string }[];
+  /** Sends the panel a message, as the page would. */
+  say: (message: unknown) => void;
   reveal: (column?: number) => void;
   dispose: () => void;
   onDidDispose: (fn: () => void) => { dispose(): void };
@@ -141,17 +155,38 @@ export interface StubPanel {
 
 export function makePanel(viewType: string, title: string): StubPanel {
   const closing: (() => void)[] = [];
+  const heard: ((message: unknown) => void)[] = [];
+  let written = "";
   const panel: StubPanel = {
     title,
     viewType,
     disposed: false,
+    writes: 0,
     webview: {
-      html: "",
+      // A property with a counter behind it, because what matters is the
+      // assignment happening rather than what was assigned.
+      get html(): string {
+        return written;
+      },
+      set html(page: string) {
+        written = page;
+        panel.writes += 1;
+      },
       cspSource: "vscode-test:",
       options: {},
       asWebviewUri: (uri: unknown) => uri,
-      onDidReceiveMessage: () => disposable,
-      postMessage: () => Promise.resolve(true),
+      onDidReceiveMessage: (fn: (message: unknown) => void) => {
+        heard.push(fn);
+        return disposable;
+      },
+      postMessage: (message: unknown) => {
+        panel.sent.push(message as { type?: string });
+        return Promise.resolve(true);
+      },
+    },
+    sent: [],
+    say: (message: unknown) => {
+      for (const fn of heard) fn(message);
     },
     reveal: () => {},
     dispose: () => {

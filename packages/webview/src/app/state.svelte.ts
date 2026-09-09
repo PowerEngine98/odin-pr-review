@@ -559,6 +559,21 @@ export function listen(): void {
         if (typeof message.percent === "number") ui.at = message.percent;
         return;
 
+      /*
+       * Who is reading, once the forge has said.
+       *
+       * The document is built before that answer arrives, so the name and the
+       * face turn up a beat later — on the reader's first question, which is
+       * what sends Odin to ask. It used to arrive by rebuilding the document,
+       * and rebuilding the document replaces the page: the loader returned and
+       * every card was made again, on the first question of a session and no
+       * other. Two strings do not need a new page.
+       */
+      case "viewer":
+        if (typeof message.login === "string") model.current.viewer = message.login;
+        if (typeof message.face === "string") model.current.viewerFace = message.face;
+        return;
+
       // The host taking the file list over for this reading, and asking which
       // part of it to show. Only the page knows: a part is where the reader is,
       // and nothing outside this page has been told they moved.
