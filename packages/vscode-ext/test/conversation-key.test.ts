@@ -90,11 +90,11 @@ describe("a second branch read live in one checkout", () => {
   });
 });
 
-describe("conversations written before the distinction existed", () => {
+describe("conversations written before a conversation had a name of its own", () => {
   let repo: string;
 
   beforeAll(() => {
-    repo = mkdtempSync(join(tmpdir(), "odin-adopt-"));
+    repo = mkdtempSync(join(tmpdir(), "odin-old-"));
   });
   afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
@@ -107,24 +107,18 @@ describe("conversations written before the distinction existed", () => {
     worktree: true,
   });
 
-  it("are taken over by the branch that is checked out", () => {
-    // Losing a reviewer's notes to a rename of a storage key is not a fix.
-    const store = memento();
-    new PairingSession(store as never, old, repo, () => {}, true).ask({
-      ...where,
-      body: "written before the fix",
-    });
-
-    const after = new PairingSession(store as never, now, repo, () => {}, true, old);
-    expect(after.local()).toHaveLength(1);
-    expect(after.local()[0]?.body).toBe("written before the fix");
-  });
-
-  it("are taken over once, and not by every branch after it", () => {
+  it("are left where they are rather than handed to whichever branch is open", () => {
     /*
-     * The adoption has to consume what it adopted. Left in place, the next
-     * branch read live in this checkout finds it too and inherits the same
-     * notes — which is the original fault wearing a migration's clothes.
+     * The first attempt at this took them over, on the reasoning that a
+     * reviewer's notes should not be lost to a rename. It was wrong, and wrong
+     * in exactly the way being fixed: the old record was filed under a name
+     * with no branch in it, so nothing in it says which branch it was about,
+     * and giving it to the branch that happens to be checked out is the same
+     * guess that put one change's conversation onto another in the first place.
+     *
+     * Nothing is deleted. There is a command for a reading that has ended up
+     * holding somebody else's conversation, which is the only honest remedy
+     * once one has.
      */
     const store = memento();
     new PairingSession(store as never, old, repo, () => {}, true).ask({
@@ -132,31 +126,25 @@ describe("conversations written before the distinction existed", () => {
       body: "written before the fix",
     });
 
-    new PairingSession(store as never, now, repo, () => {}, true, old);
-
-    const other = conversationKey({
-      repo: "/repo",
-      baseRef: "development",
-      headRef: "two",
-      worktree: true,
-    });
-    const next = new PairingSession(store as never, other, repo, () => {}, true, old);
-    expect(next.local()).toEqual([]);
+    const after = new PairingSession(store as never, now, repo, () => {}, true);
+    expect(after.local()).toEqual([]);
   });
 
-  it("do not displace a branch that already has one of its own", () => {
+  it("can be thrown away when a reading is holding the wrong one", () => {
     const store = memento();
-    new PairingSession(store as never, old, repo, () => {}, true).ask({
-      ...where,
-      body: "the older conversation",
-    });
-    new PairingSession(store as never, now, repo, () => {}, true).ask({
-      ...where,
-      body: "this branch's own",
-    });
+    const paired = new PairingSession(store as never, now, repo, () => {}, true);
+    paired.ask({ ...where, body: "about some other branch entirely" });
+    paired.rename("claude", "Upload labor media onboarding");
+    expect(paired.weight().remarks).toBe(1);
 
-    const back = new PairingSession(store as never, now, repo, () => {}, true, old);
-    expect(back.local()).toHaveLength(1);
-    expect(back.local()[0]?.body).toBe("this branch's own");
+    paired.forgetEverything();
+
+    expect(paired.local()).toEqual([]);
+    expect(paired.label("claude")).toBe("");
+    // And it stays gone across a reload, rather than coming back with the
+    // window.
+    const back = new PairingSession(store as never, now, repo, () => {}, true);
+    expect(back.local()).toEqual([]);
+    expect(back.label("claude")).toBe("");
   });
 });

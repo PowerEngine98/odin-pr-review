@@ -1178,16 +1178,6 @@ export class GraphPanel {
         // remark be anchored to the code it is about, because only then is the
         // file on disk the file the reader was looking at.
         this.graph.meta.worktree === true,
-        /*
-         * Where this reading's conversation used to be kept.
-         *
-         * Everything written before this distinction existed is filed under the
-         * tab's name. It is taken over once, by the branch that is checked out
-         * now — which is the branch it was actually written against, since that
-         * is what the reader was looking at when they wrote it. Losing a
-         * reviewer's notes to a rename of a storage key is not a fix.
-         */
-        this.key || readingKey(this.graph, this.repo),
       );
       /*
        * A conversation the store has settled, settled on the forge as well.
@@ -1521,6 +1511,49 @@ export class GraphPanel {
     if (paths.length === 0) return;
     const panel = GraphPanel.open.get(readingKey(graph, repo));
     void panel?.pairing().observed(paths);
+  }
+
+  /**
+   * Throws away the conversation held against the reading in front.
+   *
+   * There for the readings that inherited somebody else's. A live reading used
+   * to be filed under its checkout with no branch in the name, so every branch
+   * read live in one working tree opened onto the last one's remarks, threads
+   * and agent sessions — and once a reader is looking at that, there is nothing
+   * in the record that says which branch it came from, so nothing can sort it
+   * out but throwing it away.
+   */
+  static async forgetConversation(): Promise<void> {
+    const panel = GraphPanel.active;
+    if (!panel) {
+      vscode.window.showInformationMessage("Odin: no reading is open.");
+      return;
+    }
+
+    const held = panel.pairing().weight();
+    if (held.remarks === 0 && held.agents === 0) {
+      vscode.window.showInformationMessage(
+        "Odin: this reading is not holding a conversation.",
+      );
+      return;
+    }
+
+    const drop = "Forget it";
+    const answer = await vscode.window.showWarningMessage(
+      "Odin: forget this reading's conversation?",
+      {
+        modal: true,
+        detail:
+          `${held.remarks} remark${held.remarks === 1 ? "" : "s"} written here, ` +
+          `and ${held.agents} agent conversation${held.agents === 1 ? "" : "s"}, ` +
+          "will be removed from this machine. Comments already posted to the " +
+          "pull request are not touched.",
+      },
+      drop,
+    );
+    if (answer !== drop) return;
+
+    panel.pairing().forgetEverything();
   }
 
   /** Brings the existing graph back to the front, if there is one. */

@@ -135,6 +135,11 @@
         "category": "Odin"
       },
       {
+        "command": "odin.forgetConversation",
+        "title": "Forget This Reading's Conversation",
+        "category": "Odin"
+      },
+      {
         "command": "odin.openAtLine",
         "title": "Odin: Open File at This Line"
       }

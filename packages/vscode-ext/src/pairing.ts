@@ -273,18 +273,6 @@ export class PairingSession {
      * happens to contain — which is worse than not anchoring at all.
      */
     private readonly live = false,
-    /**
-     * Where this reading's conversation used to be filed, if anywhere.
-     *
-     * A conversation is about a change, and it used to be filed under the name
-     * of the tab showing it — which for a live reading has no branch in it, so
-     * every branch read live in one checkout inherited the last one's remarks.
-     * Fixing that moves where things are kept, and a reviewer's notes must not
-     * be lost to a rename. Whatever is under the old name is taken over once,
-     * by the branch checked out now, which is the branch it was written
-     * against.
-     */
-    private readonly wasAt?: string,
   ) {
     this.load();
   }
@@ -294,22 +282,21 @@ export class PairingSession {
   private load(): void {
     let held: Stored | undefined;
     try {
-      const all = this.memento.get<Record<string, Stored>>(KEY, {});
-      held = all[this.key];
-
       /*
-       * Nothing here, but something under the name this used to be kept by.
+       * Only what is filed under this reading's own name.
        *
-       * Taken over rather than left where it is, and taken over only when there
-       * is nothing to take it over — a branch that already has a conversation
-       * of its own keeps it. The old record is removed as it is adopted, so the
-       * next branch read live in this checkout starts empty instead of
-       * inheriting the same notes a second time, which is the whole fault.
+       * Conversations written before a conversation had a name of its own are
+       * left where they are, deliberately. They were filed under the tab's
+       * name, which for a live reading carries no branch — so there is nothing
+       * in them that says which branch they were about, and handing them to
+       * whichever branch happens to be checked out is a guess that puts one
+       * change's review conversation onto another. That is the fault being
+       * fixed here, and a migration is not a licence to commit it once more.
+       *
+       * Nothing is deleted. `Odin: Forget This Reading's Conversation` is there
+       * for a reading that has ended up holding somebody else's.
        */
-      if (!held && this.wasAt && this.wasAt !== this.key && all[this.wasAt]) {
-        held = all[this.wasAt];
-        this.adopted = true;
-      }
+      held = this.memento.get<Record<string, Stored>>(KEY, {})[this.key];
     } catch {
       held = undefined;
     }
@@ -352,15 +339,7 @@ export class PairingSession {
         if (typeof text === "string") this.transcripts.set(agent, withoutInvocations(text));
       }
     }
-
-    // Written under this reading's own name straight away, and the old one
-    // dropped — an adoption that is not saved is one that happens again on the
-    // next branch, which is the fault rather than the fix.
-    if (this.adopted) this.save();
   }
-
-  /** Whether this took over a conversation filed under the older name. */
-  private adopted = false;
 
   private save(): void {
     try {
@@ -376,11 +355,6 @@ export class PairingSession {
           [...this.transcripts].map(([agent, text]) => [agent, keepable(text)]),
         ),
       };
-      // The record this took over, once it is safely under its own name.
-      if (this.adopted && this.wasAt && this.wasAt !== this.key) {
-        delete all[this.wasAt];
-        this.adopted = false;
-      }
       void this.memento.update(KEY, all);
     } catch {
       /* a conversation that will not persist is not worth an error mid-turn */
@@ -1472,6 +1446,40 @@ export class PairingSession {
   forgetSessions(): void {
     this.sessions = {};
     this.save();
+  }
+
+  /**
+   * Everything this reading holds, thrown away.
+   *
+   * For a reading that has ended up holding a conversation about some other
+   * change — which is what a live reading of a second branch in one checkout
+   * used to inherit, and what a reader is left with once it has. There is no
+   * way to sort one branch's remarks from another's after the fact: the record
+   * was kept under a name with no branch in it, so nothing in it says which
+   * branch it was about.
+   *
+   * Deliberately whole. A partial clear would leave threads whose roots had
+   * gone and agents carrying conversations about remarks that no longer exist,
+   * which is a worse state than either.
+   */
+  forgetEverything(): void {
+    this.comments = [];
+    this.sessions = {};
+    this.labels = {};
+    this.settled = {};
+    this.deltas = [];
+    this.transcripts.clear();
+    this.next = FIRST_LOCAL;
+    this.save();
+    this.changed();
+  }
+
+  /** What this reading is holding, for a warning that has to name it. */
+  weight(): { remarks: number; agents: number } {
+    return {
+      remarks: this.comments.length,
+      agents: Object.keys(this.sessions).length,
+    };
   }
 
   /** What an agent is called, which is what a prompt and a thread both use. */
