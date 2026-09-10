@@ -15,7 +15,7 @@
   import { tick } from "svelte";
 
   import { markOf } from "@odin/core/agents/marks.js";
-  import { stepOf } from "./steps.js";
+  import { stepOf, tidy } from "./steps.js";
   import { showRemark } from "../canvas/camera.svelte.js";
   import { sideOf } from "../marks/marks.js";
   import Editor from "../panels/Editor.svelte";
@@ -1054,7 +1054,7 @@
                         <path d="M4.6 6.2 6.7 8l-2.1 1.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
                         <path d="M8.4 10.2h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
                       </svg>
-                    {/if}<span class="act-name">{act.tool}</span></span>{act.rest}
+                    {/if}<span class="act-name">{act.tool}</span></span>{tidy(act.rest)}
                 </p>
               {:else}
                 <p class="step">{line.replace(/^\s*/, "")}</p>

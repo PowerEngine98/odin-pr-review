@@ -79,6 +79,50 @@ export function stepOf(line: string): Step | null {
   return { tool, kind: kindOf(tool), rest };
 }
 
+/**
+ * How many segments a path has to have before it is worth cutting down.
+ *
+ * Three, and only for the paths that start somewhere absolute. A path written
+ * relative to the project is already saying what a reader needs — `src/app/hud`
+ * is where the file is — and cutting it would throw information away for
+ * nothing. The unreadable ones are unreadable because they begin at somebody's
+ * home directory and walk down through a worktree, and every line of the turn
+ * repeats the same walk.
+ */
+const DEEP = 3;
+
+/**
+ * The same line with its paths said the way a person would say them.
+ *
+ * Done here as well as where the line is written, and that is not belt and
+ * braces. A log is text and it is kept: what an agent printed this afternoon is
+ * on disk and comes back after a reload, so a change to how lines are written
+ * improves the lines written after it and leaves every earlier line exactly as
+ * unreadable as it was. Doing it as the line is drawn fixes the history too —
+ * and it is the only thing that can, since the history is all that is left of
+ * those turns.
+ *
+ * It also covers the tools Odin did not format. Not everything that reaches
+ * this box came through `describeTool`; a tool that prints its own progress
+ * prints its own paths.
+ */
+export function tidy(text: string): string {
+  // `=` ends a token as surely as a space does: a command reads
+  // `JAVA_HOME=~/.sdkman/…`, and the path is the part after the name of the
+  // variable rather than the whole assignment.
+  return text.replace(/[^\s()"'`=]*\/[^\s()"'`=]*/g, (token) => {
+    // A URL is not a path: cutting the host off the front of one leaves
+    // something that names nothing at all.
+    if (token.includes("://")) return token;
+    // Only what starts somewhere absolute. See `DEEP`.
+    if (!token.startsWith("/") && !token.startsWith("~/")) return token;
+
+    const parts = token.split("/").filter(Boolean);
+    if (parts.length < DEEP) return token;
+    return `…/${parts.slice(-2).join("/")}`;
+  });
+}
+
 export function kindOf(tool: string): Kind {
   if (READS.has(tool)) return "read";
   if (WRITES.has(tool)) return "write";

@@ -182,8 +182,63 @@
    * hundred round trips otherwise, each one a grammar being run over a passage
    * nobody is looking at.
    */
+  /**
+   * Which entries are close enough to the view to be worth drawing.
+   *
+   * A session leaves hundreds of these, and each one is a diff to compute, a
+   * table to build and a round trip to the host for its colours. Doing that for
+   * four hundred entries so the reader can look at six is most of a second of
+   * the page doing nothing useful, every time the list is opened or another
+   * edit lands.
+   *
+   * Kept as a set of ids rather than a window of indexes, because the list
+   * grows at the end while the reader is looking at it and an index means
+   * something different a moment later.
+   */
+  let near = $state(new Set<string>());
+
+  /**
+   * Watches one entry, and says when it is worth drawing.
+   *
+   * Generously — a screen and a half either side — so scrolling meets rows that
+   * are already there rather than a hole that fills in behind the scrollbar.
+   */
+  function watch(node: HTMLElement, id: string) {
+    if (typeof IntersectionObserver === "undefined") {
+      // No observer to ask: draw everything, which is what this did before.
+      near = new Set([...near, id]);
+      return {};
+    }
+    const eye = new IntersectionObserver(
+      ([seen]) => {
+        if (!seen) return;
+        const held = new Set(near);
+        if (seen.isIntersecting) held.add(id);
+        else held.delete(id);
+        near = held;
+      },
+      { root: pane, rootMargin: "600px 0px" },
+    );
+    eye.observe(node);
+    return {
+      destroy(): void {
+        eye.disconnect();
+        const held = new Set(near);
+        held.delete(id);
+        near = held;
+      },
+    };
+  }
+
+  /** Roughly how tall an entry will be, for the space it holds while away. */
+  function roomFor(delta: Delta): number {
+    const rows = Math.min(delta.after.split("\n").length + 2, 20);
+    return rows * 15;
+  }
+
   $effect(() => {
     for (const delta of mine) {
+      if (!near.has(delta.id)) continue;
       const lang = langOf(delta.path);
       if (!lang) continue;
       const at = numberOf(delta.id);
@@ -268,10 +323,8 @@
     </p>
   {:else}
     {#each mine as delta (delta.id)}
-      {@const lines = drawn(delta)}
       {@const at = numberOf(delta.id)}
-      {@const texts = lines.map((line) => line.text)}
-      <article class="entry" class:stale={delta.stale}>
+      <article class="entry" class:stale={delta.stale} use:watch={delta.id}>
         <div class="entry-head">
           <span class="entry-time">{clockOf(delta.at)}</span>
           <!--
@@ -325,18 +378,32 @@
             >Outdated</span>
           {/if}
         </div>
-        <table class="entry-code">
-          <tbody>
-            {#each lines as line, row (row)}
-              <tr class={line.kind}>
-                <td class="n">{line.was ?? ""}</td>
-                <td class="n">{line.now ?? ""}</td>
-                <td class="m">{line.kind === "del" ? "−" : line.kind === "add" ? "+" : ""}</td>
-                <td class="t">{@render code(at, texts, row)}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+        <!--
+          The change itself, drawn only while it is somewhere near the view.
+
+          Away from it the entry keeps roughly the height it will have, so the
+          scrollbar means what it says and rows do not jump under the reader as
+          they arrive. The head stays whatever happens: what a row is *about*
+          is the part somebody skims, and it costs nothing.
+        -->
+        {#if near.has(delta.id)}
+          {@const lines = drawn(delta)}
+          {@const texts = lines.map((line) => line.text)}
+          <table class="entry-code">
+            <tbody>
+              {#each lines as line, row (row)}
+                <tr class={line.kind}>
+                  <td class="n">{line.was ?? ""}</td>
+                  <td class="n">{line.now ?? ""}</td>
+                  <td class="m">{line.kind === "del" ? "−" : line.kind === "add" ? "+" : ""}</td>
+                  <td class="t">{@render code(at, texts, row)}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        {:else}
+          <div class="entry-room" style="height:{roomFor(delta)}px"></div>
+        {/if}
       </article>
     {/each}
   {/if}
@@ -378,9 +445,20 @@
     flex: 0 0 auto;
     border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
     border-radius: 6px;
-    overflow: hidden;
+    /*
+     * Not clipped, because clipping is what a sticky head cannot survive.
+     *
+     * `overflow: hidden` makes this box the nearest scrollport, and a scrollport
+     * that never scrolls is one nothing can stick inside — so the head simply
+     * did not move. The corners are rounded on the head and the code instead,
+     * which is what the clipping was for.
+     */
     background: color-mix(in srgb, var(--text) 4%, transparent);
   }
+
+  /* Room kept for a change that is not drawn yet, so the scrollbar means what
+     it says while the reader is moving. */
+  .entry-room { width: 100%; }
 
   /* An entry that no longer matches the file is still the record of what
      happened, so it keeps its colours; only the frame says it has been
@@ -389,12 +467,27 @@
     border-style: dashed;
   }
 
+  /*
+   * Which file, kept in view while its change scrolls past.
+   *
+   * An entry can be twenty rows of diff, and halfway down one the reader has
+   * lost the two things that make it mean anything: which file it is and when
+   * it happened. Sticky within its own entry, so it goes away with the entry
+   * rather than piling up.
+   */
   .entry-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
     border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+    border-radius: 5px 5px 0 0;
+    /* Solid, because code scrolls underneath it. A translucent head over a
+       moving diff is unreadable in exactly the moment it matters. */
+    background: color-mix(in srgb, var(--text) 7%, var(--card-bg));
     font-size: 10.5px;
   }
 
@@ -480,6 +573,8 @@
   }
 
   .entry-code td { padding: 0; vertical-align: top; }
+
+  .entry-code tr:last-child td:first-child { border-bottom-left-radius: 5px; }
 
   .entry-code .n {
     width: 1%;

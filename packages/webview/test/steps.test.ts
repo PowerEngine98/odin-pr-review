@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { kindOf, stepOf } from "../src/app/hud/steps.js";
+import { kindOf, stepOf, tidy } from "../src/app/hud/steps.js";
 
 /**
  * Telling one act in a log from another.
@@ -60,5 +60,59 @@ describe("which acts are which", () => {
      */
     expect(kindOf("Sourcegraph")).toBe("other");
     expect(kindOf("Setup")).toBe("other");
+  });
+});
+
+describe("saying a path the way a person would", () => {
+  it("cuts a checkout path down to the file and its folder", () => {
+    /*
+     * The line as it actually reads in a worktree. The prefix is the same on
+     * every line of the turn, and the old truncation ran from the front — so
+     * what was cut was the filename, which is the only part anybody reads these
+     * for.
+     */
+    expect(
+      tidy(
+        "(/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/worktrees/agent-a45/backend/MediaType.kt)",
+      ),
+    ).toBe("(…/backend/MediaType.kt)");
+  });
+
+  it("leaves a path written relative to the project", () => {
+    /*
+     * It is already saying what a reader needs — where in the project the file
+     * is — and cutting it would throw that away for nothing. The unreadable
+     * ones are unreadable because they begin at somebody's home directory.
+     */
+    expect(tidy("(src/one.ts)")).toBe("(src/one.ts)");
+    expect(tidy("(src/app/hud/steps.ts)")).toBe("(src/app/hud/steps.ts)");
+    expect(tidy("(frontend/common/src/pages/app/LaborMediaIntro.tsx)")).toBe(
+      "(frontend/common/src/pages/app/LaborMediaIntro.tsx)",
+    );
+  });
+
+  it("leaves a URL alone", () => {
+    // Cutting the host off the front of one leaves something that names
+    // nothing at all.
+    expect(tidy('(curl -s http://localhost:8080/api/media/list)')).toContain(
+      "http://localhost:8080/api/media/list",
+    );
+  });
+
+  it("tidies a command without taking the command apart", () => {
+    const said = tidy("(JAVA_HOME=~/.sdkman/candidates/java/21.0.2-open ./gradlew boot)");
+    expect(said).toContain("./gradlew boot");
+    expect(said).toContain("…/java/21.0.2-open");
+  });
+
+  it("fixes the lines already written down", () => {
+    /*
+     * Which is the whole reason this happens as the line is drawn rather than
+     * only as it is written. A log is kept: what an agent printed this
+     * afternoon comes back after a reload, and a change to how lines are
+     * written leaves every earlier line exactly as unreadable as it was.
+     */
+    const old = "(/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/worktrees/agent-…)";
+    expect(tidy(old)).toBe("(…/worktrees/agent-…)");
   });
 });

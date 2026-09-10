@@ -117,3 +117,46 @@ describe("the order the changes are read in", () => {
     expect(ledger).toContain("if (!pane || !following) return;");
   });
 });
+
+describe("reading a long ledger", () => {
+  const ledger = readFileSync(
+    new URL("../src/app/hud/Ledger.svelte", import.meta.url),
+    "utf8",
+  );
+
+  it("draws a change only while it is somewhere near the view", () => {
+    /*
+     * A session leaves hundreds of entries, and each one is a diff to compute,
+     * a table to build and a round trip to the host for its colours. Doing all
+     * of that so the reader can look at six is most of a second of the page
+     * doing nothing useful, every time another edit lands.
+     */
+    expect(ledger).toContain("use:watch={delta.id}");
+    expect(ledger).toContain("{#if near.has(delta.id)}");
+    // And it stops asking the host to colour what it is not drawing.
+    expect(ledger).toContain("if (!near.has(delta.id)) continue;");
+  });
+
+  it("keeps the room a change will take while it is away", () => {
+    // Otherwise the scrollbar lies and rows jump under the reader as they
+    // arrive behind it.
+    expect(ledger).toContain('class="entry-room"');
+    expect(ledger).toContain("function roomFor(");
+  });
+
+  it("lets go of an entry that has left", () => {
+    // The point of the exercise: what is off screen is not merely hidden.
+    expect(ledger).toMatch(/destroy\(\): void \{[\s\S]{0,200}?eye\.disconnect\(\)/);
+  });
+
+  it("keeps the head in view while its own change scrolls past", () => {
+    /*
+     * Halfway down twenty rows of diff the reader has lost the two things that
+     * make it mean anything: which file, and when. Sticky within its own entry,
+     * so it leaves with the entry rather than piling up.
+     */
+    expect(ledger).toMatch(/\.entry-head \{[\s\S]{0,400}?position: sticky/);
+    // And the entry cannot clip, or there is no scrollport to stick inside.
+    expect(ledger).not.toMatch(/\.entry \{[\s\S]{0,400}?overflow: hidden/);
+  });
+});
