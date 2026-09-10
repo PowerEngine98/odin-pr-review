@@ -197,3 +197,34 @@ describe("a head held at the top of the panel", () => {
     expect(ledger).toContain("seen.boundingClientRect.top < 0");
   });
 });
+
+describe("finding the way back to the newest", () => {
+  const ledger = readFileSync(
+    new URL("../src/app/hud/Ledger.svelte", import.meta.url),
+    "utf8",
+  );
+
+  it("offers the way back only while the reader is behind", () => {
+    /*
+     * A button offering to do what is already happening teaches a reader that
+     * the buttons here mean nothing — and this list is following the end for
+     * most of the time anybody is looking at it.
+     */
+    expect(ledger).toContain("{#if !following}");
+    expect(ledger).toContain('class="to-latest"');
+  });
+
+  it("follows again as part of the same press", () => {
+    // They asked for the end, and the end keeps moving. Arriving there and then
+    // being left behind by the next edit is the same complaint again.
+    expect(ledger).toMatch(
+      /function toLatest\(\): void \{[\s\S]{0,200}?following = true;[\s\S]{0,200}?scrollTo/,
+    );
+  });
+
+  it("travels with the reader rather than waiting at the end", () => {
+    // Sticky at the bottom of the box, so it is where their eye already is when
+    // they notice they have fallen behind.
+    expect(ledger).toMatch(/\.to-latest \{[\s\S]{0,300}?position: sticky/);
+  });
+});

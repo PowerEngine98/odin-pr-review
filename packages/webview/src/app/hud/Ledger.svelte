@@ -319,6 +319,20 @@
     following = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 24;
   }
 
+  /**
+   * Back to the newest, in one press.
+   *
+   * A ledger is read backwards as often as forwards — somebody scrolls up to
+   * find where a file first moved — and the way back is a long drag through
+   * everything they have just read. Following again is part of the same
+   * gesture: they asked for the end, and the end keeps moving.
+   */
+  function toLatest(): void {
+    if (!pane) return;
+    following = true;
+    pane.scrollTo({ top: pane.scrollHeight, behavior: "smooth" });
+  }
+
   $effect(() => {
     // Read so this runs when another entry arrives.
     mine.length;
@@ -445,6 +459,27 @@
         {/if}
       </article>
     {/each}
+
+    <!--
+      Only while it is behind. A button offering to do what is already happening
+      teaches a reader that the buttons here mean nothing — and this list is
+      following the end for most of the time anybody is looking at it.
+    -->
+    {#if !following}
+      <button
+        class="to-latest"
+        type="button"
+        title="Go to the newest change"
+        aria-label="Go to the newest change"
+        onclick={toLatest}
+      >
+        <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+          <path d="M8 3v9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          <path d="M4.4 8.6 8 12.2l3.6-3.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        latest
+      </button>
+    {/if}
   {/if}
 </div>
 
@@ -512,6 +547,38 @@
   .entry-mark {
     display: block;
     height: 0;
+  }
+
+  /*
+   * The way back to the newest, over the list rather than beside it.
+   *
+   * Sticky at the bottom of the box, so it is where the reader's eye already is
+   * when they notice they have fallen behind, and it travels with them rather
+   * than waiting at the end of a list they are not at.
+   */
+  .to-latest {
+    position: sticky;
+    bottom: 4px;
+    align-self: flex-end;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: 2px;
+    padding: 2px 8px 2px 6px;
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+    border-radius: 999px;
+    /* Solid, because entries pass underneath it. */
+    background: color-mix(in srgb, var(--text) 10%, var(--card-bg));
+    color: var(--text);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.28);
+  }
+
+  .to-latest:hover {
+    background: color-mix(in srgb, var(--text) 18%, var(--card-bg));
   }
 
   /* An entry that no longer matches the file is still the record of what
