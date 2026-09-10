@@ -67,7 +67,7 @@ describe("which field the ledger reads", () => {
     expect(state).toContain("deltas: new Map<string, Delta>()");
 
     const ledger = source(LEDGER);
-    expect(ledger).toContain("ui.written.slice()");
+    expect(ledger).toContain("$derived(ui.written)");
     expect(ledger).not.toMatch(/ui\.deltas\b/);
   });
 
@@ -91,5 +91,29 @@ describe("pressing an entry", () => {
     const ledger = source(LEDGER);
     expect(ledger).toContain("if (delta.line === undefined) return;");
     expect(ledger).toContain("disabled={delta.line === undefined}");
+  });
+});
+
+describe("the order the changes are read in", () => {
+  const ledger = readFileSync(
+    new URL("../src/app/hud/Ledger.svelte", import.meta.url),
+    "utf8",
+  );
+
+  it("is the order they happened in", () => {
+    /*
+     * A ledger is a sequence — this edit, then that one, then the one that
+     * undid it. Read newest first that sequence runs backwards, which is a hard
+     * way to follow what an afternoon did to a file.
+     */
+    expect(ledger).not.toContain(".reverse()");
+  });
+
+  it("keeps itself at the newest, unless the reader has scrolled away", () => {
+    // With the newest at the end, a list that does not follow leaves the entry
+    // somebody is waiting for just below the fold; one that follows while they
+    // are reading further up cannot be read at all.
+    expect(ledger).toContain("pane.scrollTop = pane.scrollHeight");
+    expect(ledger).toContain("if (!pane || !following) return;");
   });
 });

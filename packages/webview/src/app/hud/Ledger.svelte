@@ -38,7 +38,7 @@
   let { agent }: { agent: string } = $props();
 
   /**
-   * Every change to this checkout, newest first.
+   * Every change to this checkout, oldest first.
    *
    * Every one, not this agent's. The list is built from what the file watcher
    * saw, and the watcher does not know or care who was typing: an agent that
@@ -50,12 +50,13 @@
    * So the console it is opened from decides nothing about what is in it. What
    * the console adds is which rows are its own, and those are marked.
    *
-   * Newest first, unlike the log beside it. A log is read downwards because it
-   * is a narrative; a ledger is read to find out what just happened, and that
-   * is at the bottom of a list four hundred rows long by the end of an
-   * afternoon.
+   * In the order things happened, like the log beside it. A ledger is a
+   * sequence — this edit, then that one, then the one that undid it — and read
+   * newest first that sequence runs backwards, which is a hard way to follow
+   * what an afternoon did to a file. The newest is at the end, where the box
+   * keeps itself unless the reader has scrolled away.
    */
-  const mine = $derived(ui.written.slice().reverse());
+  const mine = $derived(ui.written);
 
   /** The file this entry is in, when the change has a card for it. */
   function nodeOf(path: string): { language?: string } | undefined {
@@ -212,6 +213,29 @@
   });
 
   /**
+   * Following the end, unless the reader has scrolled away from it.
+   *
+   * The same rule the log beside this uses, and for the same reason: with the
+   * newest at the bottom, a list that does not follow leaves the entry somebody
+   * is waiting for just below the fold — and one that follows while they are
+   * reading further up is a list that cannot be read at all.
+   */
+  let pane = $state<HTMLElement | null>(null);
+  let following = $state(true);
+
+  function scrolled(): void {
+    if (!pane) return;
+    following = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 24;
+  }
+
+  $effect(() => {
+    // Read so this runs when another entry arrives.
+    mine.length;
+    if (!pane || !following) return;
+    pane.scrollTop = pane.scrollHeight;
+  });
+
+  /**
    * The ledger, asked for when this opens.
    *
    * And asked for again rather than kept: whether an entry still matches the
@@ -227,7 +251,7 @@
 
 {#snippet code(at: number, lines: string[], row: number)}{#if painted[at] && painted[at][row]}{#each painted[at][row] as token}<span style="color:{safeColour(token.color)}">{token.text}</span>{/each}{:else}{lines[row]}{/if}{/snippet}
 
-<div class="ledger">
+<div class="ledger" bind:this={pane} onscroll={scrolled}>
   {#if mine.length === 0}
     <!--
       An empty list means one thing now, and it is a true thing.
@@ -239,8 +263,8 @@
     -->
     <p class="ledger-empty">
       Nothing has changed in this checkout yet. Every edit — by an agent, by a
-      tool, or by hand — will be listed here as it happens, newest first, with
-      what it replaced.
+      tool, or by hand — will be listed here as it happens, in the order it
+      happened, with what it replaced.
     </p>
   {:else}
     {#each mine as delta (delta.id)}
