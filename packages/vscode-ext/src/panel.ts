@@ -41,7 +41,7 @@ import { imageFolder, keepPasted, readImage, withImages } from "./images.js";
 import { waitingPage } from "./loading.js";
 import { failedToPost } from "./posting.js";
 import { activeTheme } from "./theme.js";
-import { keyOf } from "./session.js";
+import { conversationKey, keyOf } from "./session.js";
 import { PairingSession, PLACEHOLDER } from "./pairing.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
@@ -1153,15 +1153,41 @@ export class GraphPanel {
    */
   pairing(): PairingSession {
     if (!this.paired) {
+      /*
+       * Filed under what the conversation is about, not under which tab it is.
+       *
+       * The two were the same string, and for a live reading the tab's name
+       * deliberately has no branch in it — one working tree, one live picture.
+       * So every branch read live in a checkout inherited the last one's
+       * conversation: its remarks, its threads, its agents' sessions and the
+       * name the reader had given one, all anchored to line numbers that mean
+       * nothing in the file now in front of them.
+       */
+      const about = conversationKey({
+        repo: this.repo,
+        ...(this.graph.meta.baseRef ? { baseRef: this.graph.meta.baseRef } : {}),
+        ...(this.graph.meta.headRef ? { headRef: this.graph.meta.headRef } : {}),
+        ...(this.graph.meta.worktree === true ? { worktree: true } : {}),
+      });
       this.paired = new PairingSession(
         GraphPanel.store!,
-        this.key || readingKey(this.graph, this.repo),
+        about,
         this.repo,
         () => this.sendComments(),
         // Whether the working tree is what is being read. Only then can a
         // remark be anchored to the code it is about, because only then is the
         // file on disk the file the reader was looking at.
         this.graph.meta.worktree === true,
+        /*
+         * Where this reading's conversation used to be kept.
+         *
+         * Everything written before this distinction existed is filed under the
+         * tab's name. It is taken over once, by the branch that is checked out
+         * now — which is the branch it was actually written against, since that
+         * is what the reader was looking at when they wrote it. Losing a
+         * reviewer's notes to a rename of a storage key is not a fix.
+         */
+        this.key || readingKey(this.graph, this.repo),
       );
       /*
        * A conversation the store has settled, settled on the forge as well.
