@@ -58,6 +58,16 @@ export interface Delta extends Change {
    */
   line?: number;
   /**
+   * A short contiguous run of the new text, for finding this entry again.
+   *
+   * `after` is what the entry draws, and a drawing may be several separated
+   * passages with a marker between them — text that appears nowhere in any
+   * file. Searching for that would mark every entry outdated, correctly and
+   * uselessly. This is one unbroken run taken from the change itself, which is
+   * what the line and the outdated mark are both worked out from.
+   */
+  probe?: string;
+  /**
    * Whether the file still reads the way this entry says it left it.
    *
    * Worked out by the host against the file on disk, because that is the only
@@ -311,6 +321,33 @@ export function lineOf(content: string, passage: string): number | undefined {
  * shows a hundred lines as though they were the whole thing is not.
  */
 export const ROOM = 8000;
+
+/**
+ * The longest unbroken run of new text in a drawn change.
+ *
+ * Unbroken because a passage with a gap marker in it exists in no file, and the
+ * longest because the more of it there is the less likely it is to match
+ * somewhere else by accident. Falls back to the unchanged lines for a pure
+ * deletion, which has no new text of its own but still happened somewhere.
+ */
+export function probeOf(lines: Line[]): string {
+  const runs: string[][] = [];
+  let run: string[] = [];
+  for (const line of lines) {
+    // The marker, which is not a line of anything.
+    if (line.kind === "same" && line.was === undefined && line.now === undefined) {
+      if (run.length > 0) runs.push(run);
+      run = [];
+      continue;
+    }
+    if (line.kind === "del") continue;
+    run.push(line.text);
+  }
+  if (run.length > 0) runs.push(run);
+
+  const best = runs.sort((a, b) => b.length - a.length)[0] ?? [];
+  return best.join("\n");
+}
 
 export function within(body: string): string {
   return body.length <= ROOM ? body : `${body.slice(0, ROOM)}\n… truncated`;

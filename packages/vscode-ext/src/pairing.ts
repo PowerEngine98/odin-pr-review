@@ -11,6 +11,8 @@ import {
   git,
   keepsOpen,
   lineOf,
+  linesOf,
+  probeOf,
   passageAt,
   promptFor,
   spanText,
@@ -652,17 +654,48 @@ export class PairingSession {
           ? claim.agent
           : undefined;
 
+      /*
+       * The passage that changed, not the two files it changed between.
+       *
+       * Kept as whole files at first, which was wrong three ways at once. The
+       * entry held two copies of a source file, four hundred of those live in
+       * the editor's workspace storage beside every comment in the reading, and
+       * — the one that showed — "is this entry still true" became "is this file
+       * byte for byte what it was", which stops being true on the very next
+       * save. Every row in a working session was marked outdated, correctly and
+       * uselessly.
+       *
+       * Diffed here and stored as the two sides of the change with a little
+       * context, so `after` is a passage again: something that can be looked
+       * for in the file, that means one place rather than a whole document, and
+       * that stays true while the rest of the file moves around it.
+       */
+      const drawn = linesOf(before, after);
+      const wasThere = drawn
+        .filter((row) => row.kind !== "add")
+        .map((row) => row.text)
+        .join("\n");
+      const isThere = drawn
+        .filter((row) => row.kind !== "del")
+        .map((row) => row.text)
+        .join("\n");
+
       const delta: Delta = {
         id: `${this.deltas.length}:${Date.now()}:${path}`,
         ...(mine ? { agent: mine } : {}),
         at: Date.now(),
         path,
-        before: within(before),
-        after: within(after),
+        before: within(wasThere),
+        after: within(isThere),
         whole: before === "" || after === "",
         ...(mine && this.working !== undefined ? { ask: this.working } : {}),
       };
-      const line = this.lineIn(path, after);
+      // One unbroken run of the new text, which is what "is this still true"
+      // and "where do I fly to" are both answered from. `after` may be several
+      // passages with a marker between them, and that matches no file anywhere.
+      const probe = probeOf(drawn);
+      if (probe) delta.probe = probe;
+      const line = probe ? this.lineIn(path, probe) : undefined;
       if (line !== undefined) delta.line = line;
 
       this.deltas.push(delta);
@@ -722,7 +755,8 @@ export class PairingSession {
     return this.deltas.map((delta) => {
       const held = content(delta.path);
       if (held === null) return { ...delta, stale: true };
-      const at = lineOf(held, delta.after);
+      // The probe rather than the drawing, for the reasons on `probe` itself.
+      const at = delta.probe ? lineOf(held, delta.probe) : undefined;
       return {
         ...delta,
         stale: at === undefined,

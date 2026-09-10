@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { changesIn, clockOf, lineOf, linesOf } from "../src/agents/deltas.js";
+import { changesIn, clockOf, lineOf, linesOf, probeOf } from "../src/agents/deltas.js";
 
 /**
  * The record of what an agent wrote.
@@ -207,5 +207,49 @@ describe("finding a passage in a file", () => {
 
   it("finds a passage spanning several lines", () => {
     expect(lineOf("one\ntwo\nthree\n", "two\nthree")).toBe(2);
+  });
+});
+
+describe("finding an entry again", () => {
+  it("takes one unbroken run of the new text", () => {
+    /*
+     * What an entry draws may be several separated passages with a marker
+     * between them, and that text appears in no file anywhere. Searching for it
+     * marks every entry outdated — correctly, and uselessly, since it is
+     * answering a question nobody asked.
+     */
+    const lines = linesOf("a\nb\nc", "a\nB\nc");
+    const probe = probeOf(lines);
+    expect(probe).not.toContain("⋯");
+    expect(probe).toContain("B");
+  });
+
+  it("skips over a gap rather than joining across it", () => {
+    const many = Array.from({ length: 40 }, (_, n) => `line ${n}`);
+    const after = [...many];
+    after[0] = "first change";
+    after[39] = "second change";
+
+    const probe = probeOf(linesOf(many.join("\n"), after.join("\n")));
+    expect(probe).not.toContain("⋯");
+    // One side of the gap, whole, rather than both sides glued together into a
+    // passage that exists nowhere.
+    expect(probe.includes("first change")).not.toBe(probe.includes("second change"));
+  });
+
+  it("says something for a passage that was only deleted", () => {
+    // A deletion has no new text of its own, and it still happened somewhere.
+    // The lines around it are what is left to find that somewhere by.
+    const probe = probeOf(linesOf("keep\ngone\nkeep too", "keep\nkeep too"));
+    expect(probe).toContain("keep");
+    expect(probe).not.toContain("gone");
+  });
+
+  it("is text a file actually contains", () => {
+    // Which is the whole of it: this is handed to a search of the file.
+    const file = ["one", "two", "three", "four", "five"].join("\n");
+    const edited = file.replace("three", "THREE");
+    const probe = probeOf(linesOf(file, edited));
+    expect(edited).toContain(probe);
   });
 });

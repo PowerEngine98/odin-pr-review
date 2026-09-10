@@ -340,6 +340,18 @@
   }
 
   .entry {
+    /*
+     * Its own height, and never less.
+     *
+     * A flex item shrinks by default, and this list is a flex column inside a
+     * box with a height of its own — so forty entries did not overflow and
+     * scroll, they were squashed to about a pixel each. What the reader got was
+     * sixty dashed rules stacked down the panel with nothing legible anywhere,
+     * and a count in the tab saying forty-two, which is the most confusing way
+     * this could possibly have failed: the data was all there and all of it was
+     * one pixel tall.
+     */
+    flex: 0 0 auto;
     border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
     border-radius: 6px;
     overflow: hidden;
