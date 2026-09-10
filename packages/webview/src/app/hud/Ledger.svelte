@@ -230,6 +230,42 @@
     };
   }
 
+  /**
+   * Which heads are currently held at the top rather than sitting on their own
+   * entry.
+   *
+   * There is no way to ask an element whether it is stuck — the state exists in
+   * the layout and nowhere in the DOM — so a hairline is put where the head
+   * would be if it were not stuck, and the head is stuck exactly when that
+   * hairline has scrolled out of the top of the box.
+   */
+  let stuck = $state(new Set<string>());
+
+  function pin(node: HTMLElement, id: string) {
+    if (typeof IntersectionObserver === "undefined") return {};
+    const eye = new IntersectionObserver(
+      ([seen]) => {
+        if (!seen) return;
+        const held = new Set(stuck);
+        // Above the top of the box, rather than below the bottom of it: an
+        // entry scrolled past underneath is not stuck, it is gone.
+        if (!seen.isIntersecting && seen.boundingClientRect.top < 0) held.add(id);
+        else held.delete(id);
+        stuck = held;
+      },
+      { root: pane, threshold: 0 },
+    );
+    eye.observe(node);
+    return {
+      destroy(): void {
+        eye.disconnect();
+        const held = new Set(stuck);
+        held.delete(id);
+        stuck = held;
+      },
+    };
+  }
+
   /** Roughly how tall an entry will be, for the space it holds while away. */
   function roomFor(delta: Delta): number {
     const rows = Math.min(delta.after.split("\n").length + 2, 20);
@@ -325,7 +361,10 @@
     {#each mine as delta (delta.id)}
       {@const at = numberOf(delta.id)}
       <article class="entry" class:stale={delta.stale} use:watch={delta.id}>
-        <div class="entry-head">
+        <!-- Where the head sits when it is not being held at the top. Nothing
+             is drawn here; it is watched, and the head reads its answer. -->
+        <i class="entry-mark" use:pin={delta.id}></i>
+        <div class="entry-head" class:held={stuck.has(delta.id)}>
           <span class="entry-time">{clockOf(delta.at)}</span>
           <!--
             The file, as a button, because going to it is what a reader wants
@@ -417,7 +456,13 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    padding: 6px 8px 10px;
+    /*
+     * No padding at the top, because padding is inside the scrollable area:
+     * rows scrolled up into it stay visible, so a sticky head at `top: 0` had
+     * six pixels of somebody else's code showing above it. The breathing space
+     * belongs to the first entry, which scrolls away with it.
+     */
+    padding: 0 8px 10px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -460,6 +505,15 @@
      it says while the reader is moving. */
   .entry-room { width: 100%; }
 
+  .entry:first-child { margin-top: 6px; }
+
+  /* Nothing to see: a hairline where the head would be, watched so the head can
+     tell whether it is being held at the top. */
+  .entry-mark {
+    display: block;
+    height: 0;
+  }
+
   /* An entry that no longer matches the file is still the record of what
      happened, so it keeps its colours; only the frame says it has been
      overtaken. */
@@ -485,10 +539,24 @@
     padding: 4px 6px;
     border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
     border-radius: 5px 5px 0 0;
+    transition: border-radius 90ms ease;
     /* Solid, because code scrolls underneath it. A translucent head over a
        moving diff is unreadable in exactly the moment it matters. */
     background: color-mix(in srgb, var(--text) 7%, var(--card-bg));
     font-size: 10.5px;
+  }
+
+  /*
+   * Square while it is held at the top.
+   *
+   * A rounded corner is a corner: it says the box begins here. Held against the
+   * top of the panel with its own code running out from under it, a head that
+   * keeps its rounding reads as a floating card rather than as the top of the
+   * thing being read — and leaves two slivers of code showing through where the
+   * curve cuts away.
+   */
+  .entry-head.held {
+    border-radius: 0;
   }
 
   .entry-gap { flex: 1; }

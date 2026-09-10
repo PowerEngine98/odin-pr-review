@@ -160,3 +160,40 @@ describe("reading a long ledger", () => {
     expect(ledger).not.toMatch(/\.entry \{[\s\S]{0,400}?overflow: hidden/);
   });
 });
+
+describe("a head held at the top of the panel", () => {
+  const ledger = readFileSync(
+    new URL("../src/app/hud/Ledger.svelte", import.meta.url),
+    "utf8",
+  );
+
+  it("has nothing showing above it", () => {
+    /*
+     * Padding is inside the scrollable area, so rows scrolled up into it stay
+     * visible — a sticky head at `top: 0` had six pixels of somebody else's
+     * code showing above it. The breathing space belongs to the first entry,
+     * which scrolls away with it.
+     */
+    expect(ledger).toMatch(/\.ledger \{[\s\S]{0,700}?padding: 0 8px 10px/);
+    expect(ledger).toContain(".entry:first-child { margin-top: 6px; }");
+  });
+
+  it("squares its corners while it is held", () => {
+    // A rounded corner says the box begins here. Held against the top with its
+    // own code running out from under it, rounding reads as a floating card and
+    // leaves slivers of code showing where the curve cuts away.
+    expect(ledger).toMatch(/\.entry-head\.held \{[\s\S]{0,120}?border-radius: 0/);
+    expect(ledger).toContain("class:held={stuck.has(delta.id)}");
+  });
+
+  it("works out that it is held rather than being told", () => {
+    /*
+     * There is no way to ask an element whether it is stuck: the state exists
+     * in the layout and nowhere in the DOM. A hairline is put where the head
+     * would sit if it were not, and the head is held exactly when that hairline
+     * has gone off the top.
+     */
+    expect(ledger).toContain("use:pin={delta.id}");
+    expect(ledger).toContain("seen.boundingClientRect.top < 0");
+  });
+});
