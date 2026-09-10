@@ -101,3 +101,53 @@ describe("reading a narrated turn", () => {
     expect(readClaude("Using model claude-opus-5")?.show).toBe("Using model claude-opus-5");
   });
 });
+
+describe("a tool call worth reading at a glance", () => {
+  const call = (name: string, input: Record<string, unknown>) =>
+    readClaude(
+      JSON.stringify({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", name, input }] },
+      }),
+    )?.show;
+
+  it("names the file rather than the walk to it", () => {
+    /*
+     * The fault, as a log of a turn in a worktree actually reads: forty lines
+     * of `/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/…`, the
+     * same prefix every time, with the filename — the only part anybody is
+     * reading for — truncated off the end.
+     */
+    const said = call("Read", {
+      file_path:
+        "/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/worktrees/agent-a45/frontend/common/src/pages/app/laborPost/LaborMediaIntro.tsx",
+    });
+    expect(said).toBe("→ Read(…/laborPost/LaborMediaIntro.tsx)");
+  });
+
+  it("leaves a short path alone", () => {
+    expect(call("Read", { file_path: "src/one.ts" })).toBe("→ Read(src/one.ts)");
+  });
+
+  it("shows the command rather than the walk to it", () => {
+    // These tools are handed a working directory rather than inheriting one, so
+    // almost every command begins by walking to it.
+    const said = call("Bash", {
+      command:
+        "cd /Users/somebody/workspace/thinginc/thinglabs/thing/.claude/worktrees/agent-a45 && ./gradlew compileKotlin",
+    });
+    expect(said).toBe("→ Bash(./gradlew compileKotlin)");
+  });
+
+  it("keeps a command that did not begin with a walk", () => {
+    expect(call("Bash", { command: "git status --porcelain" })).toBe(
+      "→ Bash(git status --porcelain)",
+    );
+  });
+
+  it("still cuts a command that is long on its own account", () => {
+    const said = call("Bash", { command: `echo ${"x".repeat(200)}` }) ?? "";
+    expect(said.length).toBeLessThan(100);
+    expect(said.endsWith("…)")).toBe(true);
+  });
+});

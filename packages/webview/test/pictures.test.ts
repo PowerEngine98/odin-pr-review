@@ -133,9 +133,17 @@ describe("a picture in the agent console", () => {
   const terminal = source("hud/Terminal.svelte");
 
   it("draws the picture a tool call names, under the line that names it", () => {
+    /*
+     * Under the line, said as an order rather than as a byte count. This used
+     * to check the first 1600 characters of the block, which is the same claim
+     * only for as long as nothing else is ever added to a step — and the moment
+     * a step grew an icon and a colour, a test about pictures failed.
+     */
     const work = terminal.slice(terminal.indexOf('<div class="work">'));
-    expect(work.slice(0, 1600)).toMatch(/picturesNamed\(line\)/);
-    expect(work.slice(0, 1600)).toMatch(/class="step-shot"/);
+    expect(work).toMatch(/picturesNamed\(line\)/);
+    expect(work).toMatch(/class="step-shot"/);
+    // Inside the loop over the log's lines, and after the line itself.
+    expect(work.indexOf("picturesNamed(line)")).toBeGreaterThan(work.indexOf('class="step'));
   });
 
   it("opens the viewer that already exists rather than a second one", () => {

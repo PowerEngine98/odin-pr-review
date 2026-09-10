@@ -115,14 +115,43 @@ function describeTool(part: Record<string, unknown>): string {
           : "";
   const command = typeof input.command === "string" ? input.command : "";
 
-  const about = command || path;
-  return about ? `${name}(${short(about)})` : name;
+  if (path) return `${name}(${place(path)})`;
+  return command ? `${name}(${short(gist(command))})` : name;
 }
 
 /** Long enough to recognise, short enough for one line of a log. */
 function short(text: string): string {
   const one = text.replace(/\s+/g, " ").trim();
   return one.length <= 80 ? one : `${one.slice(0, 80)}…`;
+}
+
+/**
+ * A path as somebody would say it out loud.
+ *
+ * Cut from the front, which is the whole point. A log of a turn in a worktree
+ * reads `Read(/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/…)`
+ * over and over — eighty characters of prefix that is the same on every line,
+ * and the filename, which is the only part anybody is reading for, truncated
+ * off the end. The last couple of segments say which file and roughly where;
+ * the rest is the same directory the reader is already sitting in.
+ */
+function place(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  if (parts.length <= 2) return path;
+  return `…/${parts.slice(-2).join("/")}`;
+}
+
+/**
+ * A command with the walk to it taken off.
+ *
+ * These tools are handed a working directory rather than inheriting one, so
+ * almost every command they run begins by walking to it: `cd <forty characters
+ * of path> && the thing they actually ran`. Truncated from the front, the log
+ * showed the walk and hid the command.
+ */
+function gist(command: string): string {
+  const walked = command.match(/^\s*cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*&&\s*([\s\S]+)$/);
+  return walked?.[1] ?? command;
 }
 
 /**

@@ -15,6 +15,7 @@
   import { tick } from "svelte";
 
   import { markOf } from "@odin/core/agents/marks.js";
+  import { stepOf } from "./steps.js";
   import { showRemark } from "../canvas/camera.svelte.js";
   import { sideOf } from "../marks/marks.js";
   import Editor from "../panels/Editor.svelte";
@@ -1021,7 +1022,43 @@
           -->
           <div class="work">
             {#each block.text.split("\n") as line, n (n)}
-              <p class="step">{line.replace(/^\s*/, "")}</p>
+              {@const act = stepOf(line)}
+              {#if act}
+                <!--
+                  What kind of act it was, said in a glyph and a colour.
+
+                  A page of a turn is forty lines in one colour, and the three
+                  questions somebody watching has — is it still reading, has it
+                  started writing, is it running something — were answerable
+                  only by reading every line. The name carries the colour and
+                  nothing else does: what a tool was handed stays the log's own
+                  grey, because it is a path or a command rather than a
+                  category, and colouring it too turns the whole box into a
+                  highlight.
+                -->
+                <p class="step step-act">
+                  <span class="act act-{act.kind}" title={act.tool}>
+                    {#if act.kind === "read"}
+                      <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
+                        <path d="M8 4.4C6.8 3.3 5.2 3 3.2 3.1v8C5.2 11 6.8 11.3 8 12.4c1.2-1.1 2.8-1.4 4.8-1.3v-8C10.8 3 9.2 3.3 8 4.4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" />
+                        <path d="M8 4.6v7.6" fill="none" stroke="currentColor" stroke-width="1.2" />
+                      </svg>
+                    {:else if act.kind === "write"}
+                      <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
+                        <path d="M11.3 2.4a1.6 1.6 0 0 1 2.3 2.3L5.9 12.4l-3 .7.7-3z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+                        <path d="M10.2 3.6 12.4 5.8" fill="none" stroke="currentColor" stroke-width="1.3" />
+                      </svg>
+                    {:else if act.kind === "run"}
+                      <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
+                        <rect x="1.9" y="2.7" width="12.2" height="10.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.2" />
+                        <path d="M4.6 6.2 6.7 8l-2.1 1.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M8.4 10.2h3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+                      </svg>
+                    {/if}<span class="act-name">{act.tool}</span></span>{act.rest}
+                </p>
+              {:else}
+                <p class="step">{line.replace(/^\s*/, "")}</p>
+              {/if}
               <!--
                 The picture a step names, under the step that names it.
 
@@ -2215,6 +2252,35 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
+
+  /*
+   * The act, and only the act.
+   *
+   * The colour is on the name and the glyph. What follows stays the log's own
+   * grey — it is a path or a command, and a line coloured end to end is a line
+   * that reads as an alert rather than as a record.
+   */
+  .act {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    vertical-align: -1px;
+  }
+
+  .act-name { font-weight: 600; }
+
+  /* Unchanged: reading is what an agent does most, and the thing a reader is
+     least interested in. It should recede. */
+  .act-read { color: var(--muted); }
+
+  /* Writing is the one that changes their branch. */
+  .act-write { color: var(--warning, #e2b341); }
+
+  /* And running something is the one that can do anything at all. Green
+     because that is what a terminal has always been. */
+  .act-run { color: var(--added, #3fb950); }
+
+  .act-other { color: var(--muted); }
 
   /* The thinking and the tool calls read differently and are marked
      differently: one is the agent talking to itself, the other is something it
