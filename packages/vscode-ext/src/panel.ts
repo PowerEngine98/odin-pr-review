@@ -29,10 +29,12 @@ import {
   type GraphLayout,
   type ReviewComment,
   type ReviewEvent,
+  standingOf,
 } from "@odin/core";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
-import { rmSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
 import { SettingsStore } from "./settings.js";
 
@@ -235,7 +237,28 @@ interface DeltasMessage {
   type: "deltas";
 }
 
+/**
+ * Remarks not yet sent, asking where their code has got to.
+ *
+ * The page owns these — a draft in the review, the box being typed into — so it
+ * asks rather than being told. Each carries the code it was opened against,
+ * which is the only thing that survives the lines above it moving.
+ */
+interface ReplaceMessage {
+  type: "replace";
+  payload: {
+    anchors: {
+      id: string;
+      path: string;
+      text: string;
+      line: number;
+      startLine?: number;
+    }[];
+  };
+}
+
 type Message =
+  | ReplaceMessage
   | DeltasMessage
   | ApprovalMessage
   | LocalRemarkMessage
@@ -273,6 +296,21 @@ type Message =
  * pictures — one follows the reader's typing and the other does not — and a
  * reviewer who asks for both means to have both.
  */
+/**
+ * A file of a checkout, or nothing when it cannot be read.
+ *
+ * Both spellings of the root, for the same reason the store tries both: on
+ * macOS a path that has been resolved by something else comes back under
+ * `/private`, and a prefix test against the one this process was handed misses.
+ */
+function readFile(repo: string, path: string): string | undefined {
+  try {
+    return readFileSync(isAbsolute(path) ? path : join(repo, path), "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 function readingKey(graph: ChangeGraph, repo: string): string {
   return keyOf({
     repo,
@@ -2580,6 +2618,46 @@ export class GraphPanel {
        * Somebody who edits the file themselves, or checks out another branch,
        * should see the pills change the next time they look.
        */
+      /*
+       * Remarks still being written, put back where their code has got to.
+       *
+       * The store renumbers the remarks it holds, because it has the passage
+       * each was written against. A remark that has not been sent yet is not in
+       * the store — it is a draft in the page, or the box the reader is typing
+       * into right now — and those were left on the numbers they were opened
+       * at. An agent's edit lands, every line below it moves, and the region
+       * the reader picked now covers different code; press send and the remark
+       * is filed against lines nobody looked at.
+       *
+       * The page keeps the picked code with each one, so this is the same
+       * search the store does, answered for anchors it does not own.
+       */
+      if (message.type === "replace") {
+        const live = this.graph.meta.worktree === true;
+        const read = new Map<string, string | undefined>();
+        const spans = (message.payload.anchors ?? []).map((anchor) => {
+          // Only a live reading has a file on disk that is the file being
+          // read. Elsewhere nothing moves under a remark, so nothing is moved.
+          if (!live || !anchor.text) return { id: anchor.id };
+          if (!read.has(anchor.path)) read.set(anchor.path, readFile(this.repo, anchor.path));
+          const held = read.get(anchor.path);
+          if (held === undefined) return { id: anchor.id };
+
+          const now = standingOf(held, anchor.text, {
+            line: anchor.line,
+            ...(anchor.startLine === undefined ? {} : { startLine: anchor.startLine }),
+          });
+          if (now.state === "here") return { id: anchor.id };
+          if (now.state === "gone") return { id: anchor.id, gone: true };
+          return {
+            id: anchor.id,
+            line: now.span.line,
+            ...(now.span.startLine === undefined ? {} : { startLine: now.span.startLine }),
+          };
+        });
+        void this.panel.webview.postMessage({ type: "replaced", payload: { spans } });
+        return;
+      }
       if (message.type === "deltas") {
         void this.panel.webview.postMessage({
           type: "deltas",

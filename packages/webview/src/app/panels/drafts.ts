@@ -27,6 +27,19 @@ export interface Draft {
   startLine?: number;
   side: string;
   body: string;
+  /**
+   * The code this was written against, so it can be found again.
+   *
+   * A draft is a line number and a body, and in a live reading the line number
+   * stops being true the moment anything above it moves — an agent takes an
+   * earlier remark, inserts nine lines, and this one now covers different code.
+   * Nothing announces that. The reader presses submit and files a remark
+   * against lines nobody looked at.
+   *
+   * The text is what survives the move, and the page has it: the composer opens
+   * with the picked lines already in hand, for the suggestion button.
+   */
+  lines?: string[];
 }
 
 /** What a composer is open against — enough to say what its draft is about. */

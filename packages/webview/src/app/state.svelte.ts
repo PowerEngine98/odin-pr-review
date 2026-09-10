@@ -4,6 +4,7 @@
 // called in the file it lives in.
 import type { Delta as LedgerEntry } from "@odin/core/agents/deltas.js";
 import { deltaOf, type Delta } from "./canvas/deltas.js";
+import { fileDrafts, load, type Draft } from "./panels/drafts.js";
 import { partPaths } from "./parts.js";
 
 import type { RowView } from "./canvas/rows.js";
@@ -22,6 +23,111 @@ import type { CommentView, ReaderSettings, ViewModel } from "./model.js";
  * model and the page keeps its scroll, its open threads and its camera,
  * because nothing was thrown away to apply it.
  */
+
+/** Where one unsent remark has got to, as the host works it out. */
+interface Placed {
+  id: string;
+  line?: number;
+  startLine?: number;
+  /** Its code is not in the file any more, so it has nowhere to be. */
+  gone?: boolean;
+}
+
+/**
+ * The name the composer's own anchor goes under.
+ *
+ * Drafts are named by their key in the filing cabinet; the box being typed into
+ * has no key, because it is not filed until it is finished — and it is the one
+ * that matters most, since it is the one the reader is looking at.
+ */
+const COMPOSING = "\u0000composing";
+
+/**
+ * Asks the host where every unsent remark's code has got to.
+ *
+ * The store renumbers the remarks it holds — it has the passage each was
+ * written against. These are the ones it does not hold: drafts waiting on a
+ * verdict, and the box open right now. In a live reading an agent's edit moves
+ * every line below it, and a region picked before that edit covers different
+ * code after it, with nothing on screen saying so.
+ */
+export function replaceAnchors(): void {
+  if (!host) return;
+  const anchors: {
+    id: string;
+    path: string;
+    text: string;
+    line: number;
+    startLine?: number;
+  }[] = [];
+
+  const composing = ui.composer;
+  if (composing?.line !== undefined && composing.lines?.length) {
+    anchors.push({
+      id: COMPOSING,
+      path: composing.path,
+      text: composing.lines.join("\n"),
+      line: composing.line,
+      ...(composing.startLine === undefined ? {} : { startLine: composing.startLine }),
+    });
+  }
+
+  for (const draft of load(model.current.review).drafts) {
+    if (draft.line === undefined || !draft.lines?.length) continue;
+    anchors.push({
+      id: draftKey(draft),
+      path: draft.path,
+      text: draft.lines.join("\n"),
+      line: draft.line,
+      ...(draft.startLine === undefined ? {} : { startLine: draft.startLine }),
+    });
+  }
+
+  if (anchors.length > 0) notify("replace", { anchors });
+}
+
+/** A draft's name, which has to be worked out the same way twice. */
+function draftKey(draft: Draft): string {
+  return [draft.path, draft.side, draft.startLine ?? "", draft.line ?? ""].join("\u0000");
+}
+
+/** Puts one unsent remark back where its code is now. */
+function applyPlacement(span: Placed): void {
+  if (span.gone || span.line === undefined) return;
+
+  if (span.id === COMPOSING && ui.composer) {
+    /*
+     * The open box, moved under the reader.
+     *
+     * Which is the point: they picked a region, and the region is what they
+     * meant. The box stays where it is on screen — it is anchored to a row that
+     * the rebuild has already redrawn — and what changes is the lines it will
+     * be filed against.
+     */
+    const { startLine: _was, ...rest } = ui.composer;
+    ui.composer = {
+      ...rest,
+      line: span.line,
+      ...(span.startLine === undefined ? {} : { startLine: span.startLine }),
+    };
+    return;
+  }
+
+  const review = model.current.review;
+  const held = load(review).drafts;
+  let touched = false;
+  const next = held.map((draft) => {
+    if (draftKey(draft) !== span.id) return draft;
+    touched = true;
+    const { startLine: _was, ...rest } = draft;
+    return {
+      ...rest,
+      line: span.line,
+      ...(span.startLine === undefined ? {} : { startLine: span.startLine }),
+    };
+  });
+  if (touched) fileDrafts(review, next);
+}
 
 /** The bridge to the extension, absent when the page is opened in a browser. */
 declare function acquireVsCodeApi(): {
@@ -798,6 +904,24 @@ export function listen(): void {
          * the part they had opened.
          */
         samePart();
+        // The rows moved, so anything anchored to a line and not yet sent has
+        // to be asked where its code went.
+        replaceAnchors();
+        return;
+      }
+
+      /*
+       * Where the remarks still being written have got to.
+       *
+       * The host answers, because only it has the file. A remark whose passage
+       * has gone keeps the numbers it had and is left to the reader: there is
+       * nowhere honest to move it to, and quietly filing it against whatever is
+       * on that line now is the failure this exists to prevent.
+       */
+      case "replaced": {
+        const spans = message.payload?.spans;
+        if (!Array.isArray(spans)) return;
+        for (const span of spans as Placed[]) applyPlacement(span);
         return;
       }
 

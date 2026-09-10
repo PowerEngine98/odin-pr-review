@@ -302,6 +302,10 @@
             : undefined,
         side: where.side,
         body,
+        // What it was written against, so it can be found again after an agent
+        // moves it. Only where there is a line to move: a remark about the file
+        // as a whole has nothing to anchor to and needs nothing.
+        ...(where.line !== undefined && lines.length > 0 ? { lines } : {}),
       },
     ]);
 
