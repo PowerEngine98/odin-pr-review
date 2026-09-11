@@ -10,10 +10,34 @@
  */
 const disposable = { dispose() {} };
 
+/**
+ * Every command something has asked the editor to run, in order.
+ *
+ * Most of what the sidebar decides it says by running one: which buttons its
+ * title bar may offer is a `setContext`, and whether the reader is being shown
+ * the chooser or a change is one of those. There is nothing else to read it
+ * off — the bar is drawn by the editor, not by us — so the asking is recorded.
+ */
+export const ran: { id: string; args: unknown[] }[] = [];
+
 export const commands = {
-  executeCommand: () => Promise.resolve(),
+  executeCommand: (id?: string, ...args: unknown[]) => {
+    ran.push({ id: id ?? "", args });
+    return Promise.resolve();
+  },
   registerCommand: () => disposable,
 };
+
+/** Everything the editor has been asked to run, forgotten. */
+export function forgetRan(): void {
+  ran.length = 0;
+}
+
+/** What was last set under a context key, or nothing if it never was. */
+export function contextOf(key: string): unknown {
+  const said = ran.filter((one) => one.id === "setContext" && one.args[0] === key);
+  return said.length === 0 ? undefined : said[said.length - 1]!.args[1];
+}
 
 export const window = {
   activeColorTheme: { kind: 2 },
@@ -190,6 +214,12 @@ export function makePanel(viewType: string, title: string): StubPanel {
     },
     reveal: () => {},
     dispose: () => {
+      // Once, however often it is asked for, which is what the editor does.
+      // Everything holding a panel closes it on the way out — the panel itself
+      // does, from inside the very handler this fires — so a stub that told
+      // them again each time would not be a harsher editor, it would be an
+      // endless one.
+      if (panel.disposed) return;
       panel.disposed = true;
       for (const fn of closing) fn();
     },
@@ -207,6 +237,52 @@ export function makePanel(viewType: string, title: string): StubPanel {
 /** Everything the stub has been asked for, forgotten. */
 export function forgetFrames(): void {
   frames.length = 0;
+}
+
+/**
+ * The bar beside the drawing, as much of it as the provider actually touches.
+ *
+ * A view is not a panel — it has no tab, nothing to reveal and no state to
+ * change — but what a test wants of it is the same thing: the document it was
+ * last given. What the reader is being offered in the sidebar is only readable
+ * there, because the rows are markup rather than anything this side keeps.
+ */
+export interface StubView {
+  webview: {
+    html: string;
+    cspSource: string;
+    options: unknown;
+    onDidReceiveMessage: (fn: (message: unknown) => void) => { dispose(): void };
+    postMessage: (message: unknown) => Promise<boolean>;
+  };
+  /** Sends the view a message, as the page in it would. */
+  say: (message: unknown) => void;
+  /** What the view has been told, so a test can read the news. */
+  sent: { type?: string }[];
+}
+
+export function makeView(): StubView {
+  const heard: ((message: unknown) => void)[] = [];
+  const view: StubView = {
+    webview: {
+      html: "",
+      cspSource: "vscode-test:",
+      options: {},
+      onDidReceiveMessage: (fn: (message: unknown) => void) => {
+        heard.push(fn);
+        return disposable;
+      },
+      postMessage: (message: unknown) => {
+        view.sent.push(message as { type?: string });
+        return Promise.resolve(true);
+      },
+    },
+    say: (message: unknown) => {
+      for (const fn of heard) fn(message);
+    },
+    sent: [],
+  };
+  return view;
 }
 
 export const ViewColumn = { One: 1, Two: 2, Beside: -2 };

@@ -2807,12 +2807,21 @@ export class GraphPanel {
   }
 
   dispose(): void {
+    /*
+     * Whether the reader was looking at this one, asked before it is forgotten.
+     *
+     * Everything outside this panel that means "the change" — the file list,
+     * the marks against it, the store those are kept in — follows the reading
+     * in front. Once the registry has been emptied of this panel there is no
+     * way left to tell whether it was the one in front, and the answer decides
+     * whether any of that has to move.
+     */
+    const front = GraphPanel.active === this;
     GraphPanel.open.delete(this.key);
-    if (GraphPanel.active === this) {
-      // Whatever is left, so the next press has somewhere to land. The editor
-      // will correct this the moment the reader looks at a tab.
-      GraphPanel.active = GraphPanel.open.values().next().value;
-    }
+    // Whatever is left, so the next press has somewhere to land. The editor
+    // will correct this the moment the reader looks at a tab.
+    const next: GraphPanel | undefined = GraphPanel.open.values().next().value;
+    if (front) GraphPanel.active = next;
     // The pulse is a timer, and a timer outliving its tab is a timer writing an
     // icon onto a panel that has been thrown away.
     if (this.beat) clearInterval(this.beat);
@@ -2831,8 +2840,46 @@ export class GraphPanel {
       this.images = undefined;
     }
     GraphPanel.onClosed?.(this.key);
+    // Only when it was the one in front. A tab closed in the background takes
+    // nothing with it that the reader can see, and moving the list because of
+    // one would pull the bar off the change they are actually reading.
+    if (front) GraphPanel.movedOff(next);
     this.panel.dispose();
     for (const disposable of this.disposables.splice(0)) disposable.dispose();
+  }
+
+  /**
+   * The reading in front has gone, so something else is in front — or nothing.
+   *
+   * Closing a tab is a decision, and it was the one decision nothing outside
+   * the panel was ever told about. The list beside the drawing is moved by the
+   * reader turning from one tab to another, and a tab that has been closed
+   * cannot report being turned away from; so a reviewer who finished with a
+   * change and shut it was left with its file list still in the bar, rows
+   * offering to open files of a reading that no longer exists anywhere.
+   *
+   * With another reading still open it is that one's list, which is the same
+   * answer turning to its tab would have given. With none, there is no change
+   * left to list at all, and what belongs in the bar is the pull requests to
+   * choose from — which is where it started, and the only honest thing to show
+   * while nothing is being read.
+   */
+  private static movedOff(next: GraphPanel | undefined): void {
+    if (!next) {
+      GraphPanel.onNone?.();
+      return;
+    }
+    GraphPanel.onActive?.(next.graph, next.repo);
+    /*
+     * And which part of that reading, which only its page knows.
+     *
+     * The same question the reader turning to a tab provokes, and it has to be
+     * asked here for the same reason: a list showing forty files beside a
+     * drawing showing five is two answers to one question. It cannot be left to
+     * the editor's own focus event either — that one returns early once this
+     * reading is already the one in front, which it now is.
+     */
+    void next.panel.webview.postMessage({ type: "sayPart" });
   }
 
   /**
@@ -2843,6 +2890,17 @@ export class GraphPanel {
    * rebuilt.
    */
   static onClosed: ((key: string) => void) | undefined;
+
+  /**
+   * Nothing is being read any more.
+   *
+   * Told apart from a reading closing with others still open, because the two
+   * want opposite things of the bar beside the drawing: one moves the list to
+   * the change now in front, and this one has no change to move it to. The
+   * panel does not know what the bar shows instead — the extension wires that,
+   * the way it does for every other thing out there that follows the reading.
+   */
+  static onNone: (() => void) | undefined;
 
   /**
    * The reader has turned to another reading.

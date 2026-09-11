@@ -215,6 +215,28 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     this.render();
   }
 
+  /**
+   * The change this list was of has been closed, and there is no other.
+   *
+   * Deliberately not `showChooser`, which sets the change aside and keeps the
+   * way back: here there is nothing to go back to. A reader who closes a review
+   * has decided they are done with it, and a bar that goes on listing its
+   * files, its references and its progress is describing a reading that exists
+   * nowhere else in the window — with rows that open files of a change nobody
+   * is looking at, and a button back to a drawing that has been shut.
+   *
+   * So the change is dropped rather than put down, and what is left is the pull
+   * requests to choose from, which is what the bar holds before anything has
+   * been opened.
+   */
+  forgetChange(): void {
+    this.graph = undefined;
+    this.part = undefined;
+    this.chooser = true;
+    this.announce();
+    this.render();
+  }
+
   /** And back again, to the change list that is still there. */
   showChanges(): void {
     if (!this.graph) return;

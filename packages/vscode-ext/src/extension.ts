@@ -136,6 +136,13 @@ export function activate(context: vscode.ExtensionContext): void {
     // should not bring it back.
     session.forget(key);
   };
+
+  // And when the last of them goes there is no change for the bar to describe.
+  // The list of files belongs to a reading, so it goes with the reading, and
+  // what is left is the pull requests to choose from. Without this a reviewer
+  // who shut the drawing kept its file list — rows offering to open files of a
+  // change they had just decided they were finished with.
+  GraphPanel.onNone = () => sidebar.forgetChange();
   sidebar = new ChangeSidebar(viewed, seen);
 
   // Populated in the background so activation is not held up by the network.
