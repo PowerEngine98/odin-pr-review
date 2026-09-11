@@ -5,11 +5,33 @@
  * of the window as the reader scrolls past the cards they name — so a change
  * nested six folders deep stands six bars against the chrome and the drawing
  * begins a long way down a screen that is mostly labels. Collapsing a folder is
- * the answer: its bar leaves the stack and six bars become five. The box is
- * still drawn, and its name goes to one of two places — into the bar above it
- * where the rule below allows, and otherwise onto a small stub `Clusters.svelte`
- * leaves on its own frame — so what the reader gives up is a line of chrome and
- * nothing else.
+ * the answer: its bar leaves the stack and six bars become five.
+ *
+ * ## And that is the whole of what collapsing does
+ *
+ * Said as the reader said it: collapsing only serves to decrease the sticky
+ * stack on the visible window, and a header should be visible where it belongs
+ * while it has not yet joined that stack. So a folded box is drawn with the same
+ * header an open one has, at the top of its own frame, in the same markup at the
+ * same height — and the one thing it never does is slide down to hold itself
+ * under the chrome. An open header does that only once the reader has scrolled
+ * past the box's own top; a folded one never does it at all.
+ *
+ * What this module decides, then, is which headers may join the stack and how
+ * far down it each of them sits. A box with no entry in the map below draws its
+ * header exactly where its frame begins and is counted in nobody's slot, which
+ * is what makes the bars beneath it come up by one.
+ *
+ * This used to be a different arrangement, and the difference is worth recording
+ * because it read as a smaller change than it was. A folded box was given a
+ * little pressable stub on its frame instead of a header — the same corner, a
+ * different and smaller thing — on the argument that a full-width bar would say
+ * the fold had not happened. It says no such thing. The reader can see perfectly
+ * well that the stack against the top of the window is a header shorter, which
+ * is the thing they asked for, and what the stub bought in exchange was a second
+ * way of drawing a folder's name that had to be styled, hovered, measured and
+ * tested alongside the first. The header is what belongs on a box, so a folded
+ * box gets a header.
  *
  * ## When a bar may say two folders' names, which took three goes to get right
  *
@@ -120,7 +142,7 @@
  * more a layer up.
  */
 
-import type { Headed } from "./heading.js";
+import { pinHead, type Headed, type Held } from "./heading.js";
 
 /**
  * Enough of a folder box to say whose bar is whose, and what it may say.
@@ -181,7 +203,14 @@ export interface Filled {
   nodes: readonly string[];
 }
 
-/** A bar that is drawn, and what the reader ends up reading on it. */
+/**
+ * A header that joins the pinned stack, and what the reader ends up reading on
+ * it.
+ *
+ * "Bar" throughout this module means a header that pins, which is the only sort
+ * there was when it was written. Every box has a header; only the ones with an
+ * entry here are held against the top of the window.
+ */
 export interface Bar {
   /**
    * How many bars enclose this one, counting itself, and therefore how far
@@ -213,12 +242,19 @@ export interface Bar {
    * has to say which folder to unfold, which a bare name cannot — a change with
    * `src/hooks` and `test/hooks` in it has two folders called `hooks`.
    *
-   * Empty on a bar that absorbed nothing, which is most of them, and that
-   * emptiness is load-bearing in both directions. A folded box whose name is in
-   * one of these lists is pressable there and must not also be given a stub on
-   * its own frame; a folded box named in none of them has only the stub. Exactly
-   * one of the two, never both and never neither, is what keeps a folder from
-   * becoming unreachable — a trap this feature has fallen into once already.
+   * Empty on a bar that absorbed nothing, which is most of them. It used to be
+   * load-bearing in a way it no longer is, and the correction matters because
+   * the old reading is still the intuitive one: a name in this list meant the
+   * folder was pressable up here and therefore must not be pressable anywhere
+   * else, exactly one of the two places, never both and never neither. That was
+   * a rule about reachability at a time when a folded box had a name in only one
+   * place. It has a header of its own now, always, with a chevron on it that
+   * opens it, so reachability is not in question and a name appearing twice is
+   * not a contradiction — the parent's bar says `app/home` while `home`'s own
+   * header sits on `home`'s frame, and both are true of the folder they name.
+   * What this list is still needed for is the press: the segments are drawn
+   * separately so that the half of `app/home` that says `home` unfolds `home`,
+   * which a bare name could not say.
    *
    * The last of them is also the deepest, which is what the hover tip shows: a
    * bar reading `app/home` is asked "where is this" and the honest answer is
@@ -235,13 +271,14 @@ function nameOf(path: string): string {
 /**
  * The bars, by the path of the box each belongs to.
  *
- * A box with no entry draws no bar. It is still a box and it is still drawn, and
- * its name is in one of two places: in the bar above it, where that bar absorbed
- * it, or on a stub on its own frame, which is what `stranded` below is for. The
- * folded set is not consulted a second time downstream, because a box draws no
- * bar only if it was folded, which is the whole of `draws` below: asking the set
- * again would be a second answer to a question this map has already answered,
- * free to disagree with it.
+ * A box with no entry is a box whose header never joins the stack. It is still a
+ * box, it is still drawn, and it still carries a header across its own top
+ * saying its own name — what it does not do is hold that header against the top
+ * of the window, and what it does not have is a place in anybody's slot. The
+ * folded set is not consulted a second time downstream, because a box is missing
+ * from this map only if it was folded, which is the whole of `draws` below:
+ * asking the set again would be a second answer to a question this map has
+ * already answered, free to disagree with it.
  *
  * An outermost box always draws, whatever the reader has folded. There is no bar
  * above it, so folding it buys a line of chrome by leaving the whole drawing
@@ -364,14 +401,13 @@ export function barsFor(
  * that has a `depth` is an invitation, and somebody will accept it.
  *
  * Nothing rather than a fallback where no bar is drawn. There used to be a `??
- * box.depth` here, which read as caution and was a bug: the only caller that
- * could reach it is the hover tip, which asks where a name sits in order to put
- * itself under it, and a box with no bar holds nothing under the chrome at all —
- * its name is on a stub at the top of its own frame, or in its parent's bar
- * where the tip is anchored to the parent instead. So the tip was pushed down
- * the screen by headers that were not there, by exactly as many as the folder
- * was deep. A caller that gets nothing has to decide what to do about it, which
- * is the point.
+ * box.depth` here, which read as caution and was a bug: a box that does not join
+ * the stack holds nothing under the chrome at all, since its header stays at the
+ * top of its own frame, so anything worked out from a depth here is an offset
+ * for a position nothing is in. It was the hover tip that reached it, and the tip
+ * was pushed down the screen by headers that were not there, by exactly as many
+ * as the folder was deep. A caller that gets nothing has to decide what to do
+ * about it, which is the point — and `pinOf` below is that decision, made once.
  */
 export function headOf(
   bars: ReadonlyMap<string, Bar>,
@@ -380,6 +416,39 @@ export function headOf(
   const bar = bars.get(box.path);
   if (!bar) return undefined;
   return { y: box.y, height: box.height, depth: bar.slot };
+}
+
+/**
+ * How far a box's header slides down its own frame to stay under the chrome,
+ * which for a folded box is not at all.
+ *
+ * This is the principle itself, in one number. A header is drawn at the top of
+ * the box it names, and while the reader scrolls past that box an open header
+ * follows the chrome down so that something on screen still says which folder
+ * these cards are in. Folding takes that away and takes away nothing else: the
+ * header stays where the box is, and when the box has scrolled by, it goes with
+ * it. Nought here is the whole of what the reader bought.
+ *
+ * It is a function in this module rather than four lines in the component for
+ * the reason the two above it are, and it is the strongest case of the three.
+ * Written inline it read `const head = headOf(bars, box); if (!head) return 0;`
+ * — a guard clause, in a `.svelte` file, in a repository that mounts no
+ * components — and deleting a guard clause because the fallback below it looks
+ * harmless is the single easiest way for a folded header to start pinning again.
+ * Here the claim "a folded header never joins the stack" is a thing a test can
+ * hold at three zooms, which is what it took to catch this fault the last time.
+ *
+ * The arithmetic is still `heading.ts`'s and is not touched. What is decided
+ * here is only whether to ask it.
+ */
+export function pinOf(
+  bars: ReadonlyMap<string, Bar>,
+  box: Framed,
+  held: Held,
+): number {
+  const head = headOf(bars, box);
+  if (!head) return 0;
+  return pinHead(held, head);
 }
 
 /**
@@ -413,45 +482,4 @@ export function barsAbove(
     for (const id of box.nodes) over.set(id, (over.get(id) ?? 0) + 1);
   }
   return over;
-}
-
-/**
- * The folded folders whose names appear in no bar, so that each can be given a
- * way back on its own frame.
- *
- * This existed, was deleted, and is back, and the deletion is the part worth
- * understanding. While every folded folder's name went nowhere, this was the
- * same question as "which boxes did `barsFor` give no bar to" — one lookup, and
- * a whole function to answer it was a second thing to keep in step with the
- * first. Now that a parent absorbs a sole occupant's name, the two questions
- * have come apart again: a folded box may have its name written in the bar
- * above, as a pressable segment that unfolds it, and a box whose name is up
- * there must not also carry a stub saying it a few pixels lower.
- *
- * So this is the far side of the walk in `barsFor`, and the two have to describe
- * the same set between them. Every folded folder is in exactly one of the two
- * positions — named in some bar's `absorbed`, or named here — and that is not a
- * tidiness but the property that keeps a folder reachable. A folder in neither
- * has no name anywhere in the drawing and no control anywhere that opens it
- * again, which is precisely the hole this feature fell into the first time and
- * the reason it is asserted in the tests rather than left to be noticed.
- *
- * The folded set is not an argument, because it cannot disagree with the bars
- * and would be a second chance to. A box draws no bar only if it was folded —
- * that is the whole of `draws` — so a missing bar already says folded, and
- * asking the set again is asking a question the map has answered.
- */
-export function stranded(
-  boxes: readonly Barred[],
-  bars: ReadonlyMap<string, Bar>,
-): Set<string> {
-  const spoken = new Set<string>();
-  for (const bar of bars.values()) {
-    for (const path of bar.absorbed) spoken.add(path);
-  }
-  const lost = new Set<string>();
-  for (const box of boxes) {
-    if (!bars.has(box.path) && !spoken.has(box.path)) lost.add(box.path);
-  }
-  return lost;
 }

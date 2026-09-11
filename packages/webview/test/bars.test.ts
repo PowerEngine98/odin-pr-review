@@ -4,7 +4,7 @@ import {
   barsAbove,
   barsFor,
   headOf,
-  stranded,
+  pinOf,
   type Barred,
 } from "../src/app/canvas/bars.js";
 import {
@@ -217,6 +217,29 @@ function barOnScreen(
 }
 
 /**
+ * Where a box's header ends up on screen whether or not it is in the stack.
+ *
+ * `barOnScreen` above refuses a box with no bar, which is right for the question
+ * it answers and useless for the one the fold raises: a folded header is drawn,
+ * it is simply drawn where its box is. So this is the page's own line — the top
+ * of the box, plus however far `pinOf` slides it down, which for a folded box is
+ * nothing at all.
+ *
+ * It repeats an addition that `headOnScreen` also performs, which is the sort of
+ * second copy the two helpers above were written to get rid of, so the tests
+ * that use it check the two against each other on a box that does pin. What
+ * cannot be borrowed is `headOnScreen` itself: it takes a `Headed`, and a folded
+ * box has none to give it.
+ */
+function headAt(
+  held: Held,
+  bars: ReturnType<typeof barsFor>,
+  box: { path: string; y: number; height: number },
+): number {
+  return held.y + (box.y + pinOf(bars, box, held)) * held.scale;
+}
+
+/**
  * The bars a card has above it, asked of the function the page asks.
  *
  * This was a reimplementation of `Canvas.svelte`'s loop written out here, which
@@ -250,6 +273,13 @@ function barsOver(
  * outermost rather than two — one header meaning `CLUSTER_HEAD` canvas units,
  * which is that many window pixels times whatever the reader has done to the
  * zoom.
+ *
+ * And the folded folder's own header is stated in the same breath and the same
+ * units, because the two halves are one promise. The stack is a header shorter
+ * *and* the folded box still says what it is, at the top of its own frame, where
+ * it would have been anyway had the reader not scrolled past it. A version of
+ * this feature that took the header away instead of taking it out of the stack
+ * would pass every assertion about spacing above and be the wrong drawing.
  */
 describe("the pinned stack of folder bars when a folder in the middle is collapsed", () => {
   it("holds the innermost bar exactly one header below the outermost, at every zoom", () => {
@@ -289,6 +319,60 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
 
       expect(spread(open)).toBeCloseTo(2 * CLUSTER_HEAD * scale, 6);
       expect(spread(shut)).toBeCloseTo(CLUSTER_HEAD * scale, 6);
+    }
+  });
+
+  it("leaves the folded folder's header at the top of its own box, at every zoom", () => {
+    for (const scale of ZOOMS) {
+      const { boxes, outer, middle, inner } = nested();
+      const bars = barsFor(boxes, new Set([MIDDLE]));
+
+      // Scrolled past all three tops, which is the arrangement in which a
+      // header either holds itself under the chrome or goes with its box.
+      const held = looking(scale, inner.y);
+
+      // It does not hold. Not at any of the three zooms, and not because
+      // nothing is holding here: its two neighbours are both against the
+      // chrome at this moment, and the middle box would be too — `pinHead` is
+      // asked directly, with the depth the box has always had, and answers that
+      // an unfolded header in this position slides a long way down.
+      expect(pinOf(bars, middle, held)).toBe(0);
+      expect(pinOf(bars, outer, held)).toBeGreaterThan(0);
+      expect(pinOf(bars, inner, held)).toBeGreaterThan(0);
+      expect(
+        pinHead(held, {
+          y: middle.y,
+          height: middle.height,
+          depth: middle.depth,
+        }),
+      ).toBeGreaterThan(0);
+
+      // So it is drawn where its frame is and nowhere else, in window pixels.
+      expect(headAt(held, bars, middle)).toBeCloseTo(
+        held.y + middle.y * scale,
+        6,
+      );
+      // Which at this scroll position is off the top of the window: the box has
+      // gone past, so its name has gone past with it, exactly as an open one
+      // does once it runs out. What it never does is stop at the chrome.
+      expect(headAt(held, bars, middle)).toBeLessThan(
+        barOnScreen(held, bars, outer),
+      );
+
+      // And the two that do hold are held, one header apart, where the helper
+      // above and `headOnScreen` agree to the unit.
+      expect(headAt(held, bars, outer)).toBeCloseTo(
+        barOnScreen(held, bars, outer),
+        6,
+      );
+      expect(headAt(held, bars, inner)).toBeCloseTo(
+        barOnScreen(held, bars, inner),
+        6,
+      );
+      expect(headAt(held, bars, inner) - headAt(held, bars, outer)).toBeCloseTo(
+        CLUSTER_HEAD * scale,
+        6,
+      );
     }
   });
 
@@ -599,9 +683,16 @@ describe("the name a bar reads", () => {
 
     expect(bars.get("src")?.label).toBe("src/app/profile");
     expect(bars.get("src")?.absorbed).toEqual(["src/app", "src/app/profile"]);
-    // And the folder the walk refused is not lost: it has no bar and no segment
-    // in anybody's label, so it is where a stub goes.
-    expect([...stranded(deep, bars)]).toEqual(["src/app/profile/laborer"]);
+    // And the folder the walk refused is not lost. It has no bar and no segment
+    // in anybody's label, which now means only that its own header stays on its
+    // own frame and out of the stack — where the reader can read it and press
+    // the chevron on it.
+    expect(bars.has("src/app/profile/laborer")).toBe(false);
+    expect(
+      [...bars.values()].some((bar) =>
+        bar.absorbed.includes("src/app/profile/laborer"),
+      ),
+    ).toBe(false);
   });
 
   it("absorbs nothing where two children could each claim the whole box", () => {
@@ -705,7 +796,9 @@ describe("a bar reading a path off a drawing that was really placed", () => {
 
     expect(bars.get(app.path)?.label).toBe("app/home");
     expect(bars.get(app.path)?.absorbed).toEqual([home.path]);
-    expect([...stranded(boxes, bars)]).toEqual([media.path]);
+    // `media` is folded and absorbed by nobody, so it keeps its header on its
+    // own frame and keeps it out of the stack.
+    expect(bars.has(media.path)).toBe(false);
   });
 });
 
@@ -856,26 +949,31 @@ describe("how many bars stand above a card, as the canvas counts them", () => {
 });
 
 /**
- * The way back out of a fold, and the one property that must never be false.
+ * The way back out of a fold, which every folded box now carries itself.
  *
- * A folded folder has to be openable again, and there are two things that open
- * one: a pressable segment of the bar that absorbed its name, and a stub on its
- * own frame where no bar did. Which of the two it gets is not a preference, and
- * the failure on either side is the same failure in two directions — a folder
- * named twice in the same corner of the drawing, or a folder named nowhere with
- * nothing anywhere that brings it back.
+ * A folded folder has to be openable again, and for a while the arrangement was
+ * delicate: a folded box had a name in one of two places — a pressable segment
+ * of the bar that absorbed it, or a small stub on its own frame where no bar
+ * did — and the tests here asserted that it was always in exactly one of them,
+ * never both and never neither. That was the right invariant for that design and
+ * it is the wrong one for this. Every box draws its own header now, folded or
+ * not, so a folded folder's name is always on its own frame with a chevron on it
+ * that opens the folder; the parent's bar may say the name a second time where
+ * the folder is the whole of what that box holds, and two true statements about
+ * one folder is not a contradiction to be broken by choosing one of them.
  *
- * That second one is not hypothetical. It is what this feature shipped the first
- * time: two folded siblings under one parent that could absorb neither left two
- * folders with no bar, no segment and no mention in the hover tip, and the
- * gesture that removed them offered nothing that undid it. The stub was the
- * repair, and then for a while every folded box had one because nothing was ever
- * absorbed, which made this question the same as "does the box have a bar". It
- * is two questions again, so it is asserted again — exhaustively, over every
- * folded set of a few shapes, because the hole appeared in exactly the corner
- * nobody thought to fold.
+ * The failure being guarded against is still the same failure, and it is not
+ * hypothetical: this feature shipped once with two folded siblings under a
+ * parent that could absorb neither, which left two folders with no bar, no
+ * segment and nothing anywhere that undid the gesture that removed them. What
+ * has changed is that the guard no longer has to be a rule about balancing two
+ * places. It is the one place: the header on the box. So what is asserted below,
+ * exhaustively over every folded subset of a couple of shapes, is the pair of
+ * facts the component turns into that header — that no box ever disappears from
+ * the drawing, and that a folded box is exactly a box with no bar, which is what
+ * makes its chevron read the other way round.
  */
-describe("the way back from a fold, which every folded box must have exactly one of", () => {
+describe("the way back from a fold, which every folded box carries on its own header", () => {
   const chain: Barred[] = [
     { path: "a", depth: 1, nodes: ["x", "y"] },
     { path: "a/b", depth: 2, nodes: ["x", "y"] },
@@ -914,20 +1012,16 @@ describe("the way back from a fold, which every folded box must have exactly one
   }
 
   /**
-   * Where a box's name is currently said, which is what the component asks.
+   * Where a box's name is said, which is what the component draws.
    *
-   * `Clusters.svelte` draws a bar where there is one, a stub where `stranded`
-   * says so, and nothing otherwise, and this is that decision written out so
-   * that the three answers can be counted rather than eyeballed.
+   * Every box gets a header on its own frame, so the first answer is never
+   * absent; what varies is whether that header is held against the top of the
+   * window. The rest is the bars above, each of which may say the name again as
+   * a segment the reader can press. This used to be able to return nothing at
+   * all, and returning nothing at all was the bug.
    */
-  function saidOn(
-    boxes: readonly Barred[],
-    bars: ReturnType<typeof barsFor>,
-    path: string,
-  ): string[] {
-    const where: string[] = [];
-    if (bars.has(path)) where.push("bar");
-    if (stranded(boxes, bars).has(path)) where.push("stub");
+  function saidOn(bars: ReturnType<typeof barsFor>, path: string): string[] {
+    const where = [bars.has(path) ? "pinned header" : "header out of the stack"];
     for (const [owner, bar] of bars) {
       if (bar.absorbed.includes(path)) where.push(`segment of ${owner}`);
     }
@@ -935,54 +1029,78 @@ describe("the way back from a fold, which every folded box must have exactly one
   }
 
   it("gives a bar to every box when nothing is folded at all", () => {
-    // Which is the state the reader starts in, and the one where a stub
-    // appearing at all would be a name said in a place nobody asked for it.
+    // Which is the state the reader starts in, and the one where a header
+    // sitting outside the stack would be a fold nobody asked for.
     for (const boxes of [chain, siblings]) {
       const bars = barsFor(boxes, new Set());
       expect(boxes.filter((box) => !bars.has(box.path))).toEqual([]);
-      expect(stranded(boxes, bars).size).toBe(0);
+      for (const box of boxes) {
+        expect(saidOn(bars, box.path)).toEqual(["pinned header"]);
+      }
     }
   });
 
-  it("says every folded folder's name in exactly one place, whatever is folded", () => {
-    // The invariant, over every fold of both shapes and both directions of the
-    // failure at once: two places is the same folder offered twice with two
-    // different presses, and none is a folder the reader cannot get back.
+  it("names every folded folder on its own header, whatever is folded", () => {
+    // The invariant, over every fold of both shapes. It used to read "in exactly
+    // one place", which was a rule about a stub and a segment balancing each
+    // other; it is now the plainer thing that rule was trying to buy — the
+    // folder is named where the folder is, and it is never named nowhere.
     for (const boxes of [chain, siblings]) {
       for (const folded of everyFold(boxes)) {
         const bars = barsFor(boxes, folded);
         for (const box of boxes) {
-          const where = saidOn(boxes, bars, box.path);
-          expect({ path: box.path, folded: [...folded], where }).toEqual({
+          const where = saidOn(bars, box.path);
+          // The outermost box never leaves the stack, whatever the reader
+          // folded, so it is the one place folding and the bar come apart.
+          const pinned = box.depth === 1 || !folded.has(box.path);
+          expect({ path: box.path, folded: [...folded], head: where[0] }).toEqual({
             path: box.path,
             folded: [...folded],
-            where: [bars.has(box.path) ? "bar" : where[0] ?? "nowhere"],
+            head: pinned ? "pinned header" : "header out of the stack",
           });
-          // Said again without the indirection, so that a `where` of length one
-          // containing the wrong thing could not satisfy the line above.
-          expect(where).toHaveLength(1);
         }
       }
     }
   });
 
-  it("moves a folder's name off its stub and into a bar when it becomes the whole box", () => {
-    // The transition worth naming, because it is the one where a box loses a
-    // stub without being unfolded. `a/b` folded beside an open `a/c` has a stub
-    // of its own; fold `a/c` away as well and — on this shape, where `a/c` is
-    // the only other thing in `a` — `a/b` is still not the whole of `a`, so it
-    // keeps the stub. `chain` is where it does change hands.
-    const apart = barsFor(siblings, new Set(["a/b"]));
-    expect(saidOn(siblings, apart, "a/b")).toEqual(["stub"]);
-
+  it("may also say a folded folder's name in the bar above, which is two ways back", () => {
+    // The claim that replaces "exactly one place". `a/b` folded inside a `a`
+    // that holds nothing else is a segment of `a`'s bar and has a header of its
+    // own, and both presses open the same folder. Beside an open sibling it is
+    // simply not absorbed, and the header is the only way back — which is the
+    // ordinary case and the one the stub existed for.
     const together = barsFor(chain, new Set(["a/b"]));
-    expect(saidOn(chain, together, "a/b")).toEqual(["segment of a"]);
+    expect(saidOn(together, "a/b")).toEqual([
+      "header out of the stack",
+      "segment of a",
+    ]);
     expect(together.get("a")?.label).toBe("a/b");
+
+    const apart = barsFor(siblings, new Set(["a/b"]));
+    expect(saidOn(apart, "a/b")).toEqual(["header out of the stack"]);
+    expect(apart.get("a")?.label).toBe("a");
+  });
+
+  it("keeps every box in the drawing, so there is always a header to press", () => {
+    // The other half of it, and the half no assertion about `bars` can make on
+    // its own: the component draws a header for each of the boxes it is handed,
+    // and folding is not allowed to take a box off that list. Every bar belongs
+    // to a box that was handed in, and every fold leaves the list of boxes
+    // exactly as long as it was.
+    for (const boxes of [chain, siblings]) {
+      const paths = boxes.map((box) => box.path);
+      for (const folded of everyFold(boxes)) {
+        const bars = barsFor(boxes, folded);
+        expect([...bars.keys()].every((path) => paths.includes(path))).toBe(true);
+        expect(boxes.map((box) => box.path)).toEqual(paths);
+      }
+    }
   });
 
   it("takes a box's bar back the moment the reader unfolds it", () => {
-    // Which is what pressing a stub, or the segment that says its name, does:
-    // the way back lands the reader exactly where they were.
+    // Which is what pressing the chevron on a folded box's own header does, and
+    // what pressing the segment that says its name does: the way back lands the
+    // reader exactly where they were.
     const bars = barsFor(siblings, new Set(["a/b", "a/c"]));
     expect([...bars.keys()]).toEqual(["a"]);
     expect(bars.get("a")?.absorbed).toEqual([]);
@@ -1021,19 +1139,18 @@ describe("the way back from a fold, which every folded box must have exactly one
       const both = barsFor(order, new Set(["a/b", "a/b/c"]));
       expect(both.get("a")?.label).toBe("a/b/c");
       expect(both.get("a")?.absorbed).toEqual(["a/b", "a/b/c"]);
-      expect([...stranded(order, both)]).toEqual([]);
     }
   });
 
   it("keeps an outermost box's bar even where the reader folded it", () => {
-    // So an outermost box never gets a stub and is never absorbed into
-    // anything. There is no bar above it, and a drawing whose top-level frames
-    // were all stubs would be a change nobody could say the shape of at a
-    // glance.
+    // So an outermost box's header is never taken out of the stack and is never
+    // absorbed into anything. There is no bar above it, and a drawing whose
+    // top-level frames all sat outside the stack would be a change nobody could
+    // say the shape of at a glance.
     const bars = barsFor(chain, new Set(["a", "a/b"]));
     expect(bars.get("a")?.slot).toBe(1);
     expect(bars.get("a")?.label).toBe("a/b");
     expect(bars.has("a/b")).toBe(false);
-    expect(saidOn(chain, bars, "a")).toEqual(["bar"]);
+    expect(saidOn(bars, "a")).toEqual(["pinned header"]);
   });
 });

@@ -112,16 +112,13 @@ let origin: { x: number; y: number } | null = null;
  * threads stopped opening.
  *
  * `.cluster-act` is the same deal made a second time, for the controls a folder
- * box carries — the chevron in a bar that collapses it, the segments of a bar
- * that has absorbed a folded name, which bring that folder back, and the stub
- * left on the frame of a folded folder whose name went into no bar at all. Those
- * last two are the only ways back a folded folder has, and every folded folder
- * has exactly one of them, so a press swallowed here is a folder the reader
- * cannot open again. The stub is worth naming separately because it is not in a
- * bar: it sits in the
- * header's reserved strip at the top of an otherwise silent box, in a layer that
- * is `pointer-events: none` the whole way down so that dragging anywhere on a
- * folder pans the drawing. Being `pointer-events: auto` is not enough
+ * box carries — the chevron on its header, which takes that header out of the
+ * pinned stack or puts it back, and the segments of a bar that has absorbed a
+ * folded name, which bring that folder back. The chevron is how a folded folder
+ * is unfolded, so a press swallowed here is a folder the reader cannot open
+ * again. Every one of these sits in a layer that is `pointer-events: none` the
+ * whole way down, so that dragging anywhere on a folder pans the drawing.
+ * Being `pointer-events: auto` is not enough
  * on its own and looks as though it ought to be: the press lands on the button,
  * bubbles to the viewport, and the viewport captures the pointer, after which
  * the release is delivered somewhere else and no click is ever generated. The
