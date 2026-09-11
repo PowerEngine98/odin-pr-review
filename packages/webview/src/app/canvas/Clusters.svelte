@@ -204,7 +204,7 @@
    * again, so on a change that rebuilds while an agent works it mostly never
    * appears at all.
    */
-  let over: string | undefined = $state(undefined);
+  let over: { path: string; bar: boolean } | undefined = $state(undefined);
 
   /**
    * That folder again, but only while it is still a folder in the drawing.
@@ -216,15 +216,23 @@
    * the canvas naming nothing — a rebuild that drops the box, a filter that
    * empties it, the reader asking for the grouping to go away.
    *
-   * Folding used to be on that list and no longer is. It took the bar out of
-   * the document and left the box with nothing to hover at all; now every box
-   * has either a bar or a stub, in the same corner, so the name under the
-   * pointer survives the fold and the tip goes on answering for the same folder
-   * it was answering for.
+   * Folding is on that list too, and remembering which of the two was hovered
+   * is the whole of why. Every box has either a bar or a stub, so a box always
+   * has something to hover and asking whether the folder is still drawn would
+   * always say yes — but the reader was hovering one particular element, and
+   * folding takes that one out of the document and puts the other in its place.
+   * The bar never reports the pointer leaving because the bar is gone, and the
+   * stub never reports it arriving because the pointer was already where it is.
+   * So the tip sat there naming a folder whose bar the reader had just folded
+   * away, with nothing under it. Asking which kind was under the pointer, and
+   * dropping the tip the moment the box stops being that kind, answers both the
+   * fold and the unfold.
    */
   const tip = $derived.by(() => {
     if (over === undefined) return undefined;
-    return folders.find((one) => one.path === over);
+    const box = folders.find((one) => one.path === over.path);
+    if (!box) return undefined;
+    return bars.has(box.path) === over.bar ? box : undefined;
   });
 </script>
 
@@ -339,9 +347,9 @@
         class="cluster-said"
         style:transform="translateX({slide(box)}px)"
         bind:offsetWidth={said[box.path]}
-        onmouseenter={() => (over = box.path)}
+        onmouseenter={() => (over = { path: box.path, bar: true })}
         onmouseleave={() => {
-          if (over === box.path) over = undefined;
+          if (over?.path === box.path) over = undefined;
         }}
         role="presentation"
       >
@@ -456,9 +464,9 @@
       bind:offsetWidth={said[box.path]}
       onclick={() => fold(box.path, false)}
       onkeydown={(event) => onKey(event, box.path, false)}
-      onmouseenter={() => (over = box.path)}
+      onmouseenter={() => (over = { path: box.path, bar: false })}
       onmouseleave={() => {
-        if (over === box.path) over = undefined;
+        if (over?.path === box.path) over = undefined;
       }}
     >
       <!-- Downwards, against the chevron that folded it, which points up at the
