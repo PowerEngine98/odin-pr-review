@@ -12,6 +12,7 @@
   import { arriving } from "../hud/arriving.js";
   import { landed } from "../hud/boot.svelte.js";
   import { travel, ui, view } from "../state.svelte.js";
+  import { barsFor } from "./bars.js";
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
@@ -65,6 +66,32 @@ import Pinned from "./Pinned.svelte";
   const boxed = $derived(camera.folders());
 
   /**
+   * Which folder boxes draw a bar, and what each of those bars says.
+   *
+   * Derived once here and used twice — handed to the boxes, which draw the
+   * bars, and read below to work out how far down a card's own title starts.
+   * Those two have to agree exactly: the card begins under the last bar above
+   * it, so a second derivation of "how many bars are above this" is a file's
+   * name landing on a folder's the moment the two opinions differ. They have
+   * differed before, over the related question of how many boxes hold a card,
+   * which is why that count is already taken from the boxes rather than from a
+   * path's segments.
+   *
+   * The folded set is rebuilt from the record each time rather than kept as a
+   * `Set` in the state. A set inside `$state` is not watched from the inside,
+   * so folding would change nothing anybody could see; the record is reassigned
+   * wholesale on every press, and reading its keys here is what makes this
+   * recompute.
+   *
+   * Note what is *not* here: the placement. `place()` is never told what is
+   * folded, which is what guarantees no card moves. Threading it through would
+   * re-run the whole layout on every press, and the reader would collapse a
+   * folder to save a strip of chrome and watch the entire drawing rearrange
+   * itself underneath them.
+   */
+  const bars = $derived(barsFor(boxed, new Set(Object.keys(ui.folded))));
+
+  /**
    * How far down the window a card's own title has to start.
    *
    * The card slides its title down to stay under the bar, and so does every
@@ -73,12 +100,16 @@ import Pinned from "./Pinned.svelte";
    * headers stacked above it instead, and starts below the last of them.
    */
   const titleLine = $derived.by(() => {
-    // How many boxes actually hold this card, which is how many names are
-    // stacked above it. Not how deep its path is: the levels that hold one
-    // thing each are never drawn, and counting them pushed a title down by
-    // headers that are not on screen.
+    // How many bars actually stand above this card, which is how many names are
+    // stacked over it. Not how deep its path is: the levels that hold one thing
+    // each are never drawn, and counting them pushed a title down by headers
+    // that are not on screen. Nor how many boxes hold it, which was the same
+    // number until a bar could be folded away — a card inside a collapsed
+    // folder has one box more than it has names above it, and charged for the
+    // box it would start a header lower than anything it needs to clear.
     const held = new Map<string, number>();
     for (const box of boxed) {
+      if (!bars.has(box.path)) continue;
       for (const id of box.nodes) held.set(id, (held.get(id) ?? 0) + 1);
     }
     /*
@@ -317,7 +348,7 @@ import Pinned from "./Pinned.svelte";
       behind them and behind the arrows between them — drawn over either, it
       would be a pane of glass across the thing the reader came to look at.
     -->
-    <Clusters folders={boxed} {chromeBottom} {viewLeft} {viewRight} />
+    <Clusters folders={boxed} {bars} {chromeBottom} {viewLeft} {viewRight} />
 
     <EdgeLayer {size} {boxes} {lineAt} {onfollow} />
 

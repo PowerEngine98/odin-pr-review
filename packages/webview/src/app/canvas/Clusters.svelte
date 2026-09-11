@@ -12,13 +12,28 @@
   would be a second opinion about where a folder is.
 -->
 <script lang="ts">
-  import { view } from "../state.svelte.js";
+  import { setFolded, view } from "../state.svelte.js";
 
+  import type { Bar } from "./bars.js";
   import { CLUSTER_HEAD, pinHead } from "./heading.js";
   import type { FolderBox } from "./placement.js";
 
   let {
     folders = [],
+    /**
+     * Which boxes draw a bar, where each sits in the stack, and what it says.
+     *
+     * Worked out once above and handed down rather than derived here. The same
+     * answer decides how far a card's own title is pushed down the window, and
+     * that is computed in the canvas — two derivations of "how many names are
+     * above this" is how a file's name comes to sit on a folder's.
+     *
+     * A box with no entry draws no bar. Its frame is still drawn, in the loop
+     * below that draws every box: collapsing merges a label, it does not remove
+     * a folder, and a box that vanished when its bar did would be the reader
+     * losing the grouping they were using to read the change.
+     */
+    bars = new Map<string, Bar>(),
     /**
      * What the reader can see, in canvas units.
      *
@@ -38,6 +53,7 @@
     chromeBottom = 0,
   }: {
     folders?: FolderBox[];
+    bars?: Map<string, Bar>;
     chromeBottom?: number;
     viewLeft?: number;
     viewRight?: number;
@@ -56,13 +72,43 @@
     if (!viewLeft && !viewRight) return 0;
     const off = Math.max(0, viewLeft - box.x);
     if (off <= 0) return 0;
+    const room = said[box.path] ?? 0;
+    // Not laid out yet, so there is no honest answer to how much room the name
+    // needs. Nought rather than a guess: a name that has not moved is merely
+    // where it started, and a name allowed to slide on a width of zero would
+    // travel the whole length of the box on the first frame and jump back once
+    // the browser reported. `Card.svelte` refuses the same question the same
+    // way for the same reason.
+    if (!room) return 0;
     // Never past the point where the name would leave the box's far end: the
     // bar is the folder's, and a name pinned beyond it belongs to nothing.
-    return Math.min(off, Math.max(0, box.width - NAME_ROOM));
+    return Math.min(off, Math.max(0, box.width - room));
   }
 
-  /** Room the name and its count need, so the slide can stop before the edge. */
-  const NAME_ROOM = 180;
+  /**
+   * How much room each name actually takes, measured rather than assumed.
+   *
+   * This was a constant — a hundred and eighty units, standing for an icon, a
+   * short name and a count — and it was wrong the moment a bar could say more
+   * than one folder's name. A merged label reading
+   * `frontend/common/src/components/carousel` is several times that guess, so
+   * the clamp let the name go on travelling long after it should have stopped,
+   * and `.cluster-head { overflow: hidden }` ate the tail without a word. The
+   * reader panning across a wide folder watched its name walk off the end of
+   * its own bar, which is the exact failure the sliding exists to prevent,
+   * arriving by the door left open to fix it.
+   *
+   * The number bound here is a pre-transform layout width, which means it is
+   * already in canvas units — the same units `box.width` and the slide are in.
+   * It must not be divided by the zoom on the way past. Scaling it "for the
+   * zoom" is the very fault `heading.ts` was split out to make impossible, and
+   * it would look right at scale one and at no other.
+   *
+   * Keyed by path rather than by index because the boxes are keyed by path in
+   * every loop below, and an index would rebind a measurement onto a different
+   * folder the first time a rebuild reordered them.
+   */
+  let said: Record<string, number> = $state({});
 
   /**
    * How far a header slides down its own box to stay in view.
@@ -86,7 +132,78 @@
    * other as the reader zooms in and leaves them adrift as they zoom out.
    */
   function pin(box: FolderBox): number {
-    return pinHead({ chromeBottom, y: view.y, scale: view.scale }, box);
+    return pinHead(
+      { chromeBottom, y: view.y, scale: view.scale },
+      // Its slot and not its depth, which is the whole of what collapsing
+      // changes. `depth` counts the boxes around this one; the stack is made of
+      // the bars that are drawn, and a folded folder contributes a box to the
+      // first and no bar to the second. Handed `depth` here a bar below a
+      // folded one would be held a header lower than the bar it actually sits
+      // under, leaving a strip of the drawing showing through a stack that is
+      // meant to be solid — and the thirty pixels the reader collapsed the
+      // folder to recover would not be recovered at all. The arithmetic is
+      // `heading.ts`'s and is untouched; only the number it is asked about has
+      // changed.
+      { y: box.y, height: box.height, depth: bars.get(box.path)?.slot ?? box.depth },
+    );
+  }
+
+  /**
+   * Everything the bar for a box needs, or nothing where no bar is drawn.
+   *
+   * A lookup rather than a field on the box, because a box is derived geometry
+   * handed over by the placement and a bar is a fact about what the reader has
+   * folded. Writing one onto the other would put a piece of view state inside
+   * the object the layout tests compare, which is how "nothing geometric
+   * changed" stops being checkable.
+   */
+  function barOf(box: FolderBox): Bar | undefined {
+    return bars.get(box.path);
+  }
+
+  /**
+   * Which folder a bar is really about, for the tip under it.
+   *
+   * The deepest name written on it, and not the box's own path. A bar reading
+   * `common/mediaGroup` belongs to the box around `common`, but the question a
+   * reader asks by hovering it is "where is the thing I am looking at", and
+   * what they are looking at is `mediaGroup` — answering with `common` would be
+   * the drawing replying to a question the reader did not ask, and doing it
+   * only on the bars where the answer was least obvious.
+   */
+  function whole(box: FolderBox): string {
+    const bar = barOf(box);
+    return bar?.absorbed.at(-1) ?? box.path;
+  }
+
+  /**
+   * A folder's bar collapsed into its parent's, or brought back.
+   *
+   * Both directions go through the shared state rather than through a local
+   * flag, because the host remembers this between readings and a second copy of
+   * the answer here would be the one that is right until the page is reopened.
+   */
+  function fold(path: string, folded: boolean): void {
+    setFolded(path, folded);
+  }
+
+  /**
+   * The keys, taken here rather than left to the canvas.
+   *
+   * A native button already fires a click for Enter and for space, so this
+   * looks redundant and is not. The canvas listens for keys on the document and
+   * `Enter` is bound to "mark the file read" — so a reader who has tabbed to a
+   * chevron and pressed Enter would collapse the folder and tick a file off at
+   * the same time, and would have no reason to connect the two. That handler
+   * steps aside for a press somebody has already dealt with, so dealing with it
+   * is what this does: the default is refused, which both stops the press
+   * reaching the canvas and stops the browser generating a second click of its
+   * own, and the fold is done here instead.
+   */
+  function onKey(event: KeyboardEvent, path: string, folded: boolean): void {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    fold(path, folded);
   }
 
   /**
@@ -128,8 +245,17 @@
   z-index would be a stacking context, and a header inside a stacking context
   cannot be painted above something the context as a whole is below — so the
   header's own number would mean nothing and it would sink with the frame.
+
+  And only for the boxes that draw one. A folder the reader has collapsed has
+  its name in its parent's bar, so a bar of its own here would be the name said
+  twice and the stack no shorter — which is the whole feature undone. The frame
+  above is drawn for every box regardless: what collapsing merges is the label,
+  and the grouping the reader is reading the change by stays exactly where it
+  was.
 -->
 {#each folders as box (box.path)}
+  {@const bar = barOf(box)}
+  {#if bar}
   <!--
     A clip of the same shape as the frame, holding nothing but the bar.
 
@@ -146,7 +272,7 @@
     style:top="{box.y}px"
     style:width="{box.width}px"
     style:height="{box.height}px"
-    style:z-index="calc(var(--z-folder) - {box.depth})"
+    style:z-index="calc(var(--z-folder) - {bar.slot})"
   >
     <!--
       A bar across the whole box, as a card's title is across the whole card.
@@ -189,6 +315,7 @@
       <span
         class="cluster-said"
         style:transform="translateX({slide(box)}px)"
+        bind:offsetWidth={said[box.path]}
         onmouseenter={() => (over = box)}
         onmouseleave={() => {
           if (over === box) over = undefined;
@@ -205,10 +332,72 @@
           />
         </svg>
         <span class="cluster-name">{box.label}</span>
+        <!--
+          And the folders folded into this bar, each one still its own word.
+
+          Drawn as separate presses rather than as one string, which is what
+          makes collapsing reversible without a second control anywhere. A bar
+          reading `common/mediaGroup` is two things the reader can point at, and
+          pressing the half that says `mediaGroup` gives `mediaGroup` its bar
+          back — the gesture undoes itself in the place it was made, rather than
+          sending the reader off to look for whatever they did it with.
+
+          The separator is its own span so that it is not part of either press.
+          A slash that belonged to the segment beside it would be a pixel or two
+          of "unfold" sitting between two names, hit by a reader aiming at
+          neither.
+        -->
+        {#each bar.absorbed as path, at (path)}
+          <span class="cluster-sep" aria-hidden="true">/</span>
+          <button
+            type="button"
+            class="cluster-act cluster-part"
+            aria-label="Expand {path}"
+            onclick={() => fold(path, false)}
+            onkeydown={(event) => onKey(event, path, false)}
+          >
+            {bar.label.split("/")[at + 1]}
+          </button>
+        {/each}
         <span class="cluster-count">{box.nodes.length}</span>
+        <!--
+          The control that collapses this bar into its parent's.
+
+          Inside the name rather than at the end of the bar, because the name is
+          the part that slides: pan across a folder wider than the window and a
+          chevron anchored to the bar would be left behind at the box's far left
+          with the label it belongs to now several columns away. Travelling with
+          the name costs nothing and means the control is wherever the reader is
+          already looking.
+
+          Only where there is a parent to fold into. An outermost box always
+          draws its bar, so offering to collapse one would be a control that
+          either does nothing or deletes the only name the frame has.
+        -->
+        {#if box.depth > 1}
+          <button
+            type="button"
+            class="cluster-act cluster-fold"
+            aria-label="Collapse {box.path} into the folder above it"
+            onclick={() => fold(box.path, true)}
+            onkeydown={(event) => onKey(event, box.path, true)}
+          >
+            <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+              <path
+                d="M4 10l4-4 4 4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+        {/if}
       </span>
     </div>
   </div>
+  {/if}
 {/each}
 
 <!--
@@ -226,7 +415,7 @@
     style:left="{over.x + 10 + slide(over)}px"
     style:top="{over.y + pin(over) + CLUSTER_HEAD}px"
   >
-    {over.path}
+    {whole(over)}
   </div>
 {/if}
 
@@ -252,9 +441,58 @@
      * box is a real thing the cards are in, so it gets a real edge, and it is
      * told apart from a card by being fainter and by holding others rather than
      * by being made of a different kind of line.
+     *
+     * A pixel and a half on the screen, and therefore not a pixel and a half
+     * here. Everything in this layer is inside the canvas's own
+     * `translate/scale`, so a length written plainly is a length in canvas units
+     * that shrinks with the drawing: pulled back to look at a whole change this
+     * border was a fraction of a device pixel, which a browser renders as a
+     * grey smear or as nothing at all. That is precisely backwards, because the
+     * zoom where the boxes matter most is the one where the reader is trying to
+     * take in the shape of the change rather than read any particular file.
+     * Dividing by the zoom is the page's existing answer for anything that must
+     * keep its size on screen, and it is what a card's tips and titles already
+     * do.
+     *
+     * The radius is deliberately left in canvas units and not given the same
+     * treatment. It has no failure mode — at every zoom it is visible and in
+     * proportion — and the cards inside these boxes round their own corners in
+     * canvas units too, so a frame whose corners stopped rounding as the reader
+     * zoomed in would be the one square thing in a drawing of soft ones. What is
+     * fixed here is the line's weight, which breaks; not its shape, which does
+     * not.
+     *
+     * Thirty-six per cent rather than twenty-six. The tint that used to sit
+     * inside these boxes is gone — nested frames stacked their washes and fogged
+     * the code in any card the reader had ticked off — so the border and the bar
+     * are now the only two things saying a box is there at all, and the border
+     * is the only one of those that is drawn the whole way round. A line that
+     * was only just visible when it had a fill helping it is a line that is not
+     * visible without one. It stays well under a card's own edge, which is a
+     * full-strength status colour, so the two are still told apart at a glance.
      */
-    border: 1.5px solid color-mix(in srgb, var(--text) 26%, transparent);
+    border: calc(1.5px / var(--zoom, 1)) solid
+      color-mix(in srgb, var(--text) 36%, transparent);
     border-radius: 10px;
+    /*
+     * The border grows inwards, which is what keeps this change from moving
+     * anything.
+     *
+     * The rectangle is derived geometry: `boxesFor` measured it from the cards
+     * the folder actually holds, and nothing drawing it is allowed to disagree.
+     * With a content-box model the border would be drawn outside the width and
+     * height set on this element, so the visible rectangle would be the derived
+     * one plus twice the border — and now that the border's width varies with
+     * the zoom, the box's own edges would creep outwards as the reader pulled
+     * back. A frame that breathes against the cards it encloses is exactly the
+     * complaint this whole layer exists to avoid.
+     *
+     * The page's reset already says this for every element. It is said again
+     * here because this rule now depends on it: the reset is a default, and a
+     * default that is quietly removed somewhere else would turn a border width
+     * into a geometry bug that only shows at zooms nobody screenshots.
+     */
+    box-sizing: border-box;
     /*
      * No fill, and the fill is what had to go.
      *
@@ -391,6 +629,69 @@
   }
 
   .cluster-name { color: var(--text); }
+
+  /* The slashes in a merged name, quieter than the names they join, so the bar
+     reads as a path rather than as a row of equally loud words. */
+  .cluster-sep {
+    opacity: 0.55;
+  }
+
+  /*
+   * The controls in a bar: the chevron that collapses it, and each folded name
+   * in it that brings a folder back.
+   *
+   * Stripped back to the text they contain, because a button drawn as a button
+   * in here would be a piece of furniture sitting in the middle of a label. The
+   * background, the border and the padding all go; what is left says what it is
+   * by being pressable, which the cursor announces.
+   *
+   * Never taller than the bar, and that is not a nicety. The bar's height is set
+   * on the element from the shared constant, and `.cluster-head` hides its
+   * overflow — so a child even a pixel taller is not accommodated, it is cut,
+   * and what the reader sees is a chevron with its bottom sliced off rather
+   * than a layout that has gone wrong somewhere. The line height is pinned for
+   * the same reason: a glyph is free to ask for more room than the bar has.
+   */
+  .cluster-act {
+    display: inline-flex;
+    align-items: center;
+    max-height: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: 16px;
+    cursor: pointer;
+    /* It is inside `.cluster-said`, which is the one part of a box that answers
+       the pointer at all — but being reachable is only half of it. The viewport
+       captures the pointer on the way past unless the target matches `HANDLES`
+       in `camera.svelte.ts`, and a captured pointer never produces a click, so
+       the class on these elements is named there too. */
+    pointer-events: auto;
+  }
+
+  /* A folded folder's name, which reads as part of the path and presses as a
+     way back. Coloured as a name rather than as a link: it is one of the words
+     in the label, and making it look like something else would break the path
+     the label is trying to be. */
+  .cluster-part {
+    color: var(--text);
+  }
+
+  .cluster-part:hover,
+  .cluster-fold:hover {
+    color: var(--text);
+    opacity: 0.7;
+  }
+
+  /* The chevron, after the count, at the quiet end of the bar. It is the least
+     important thing in the label until it is wanted, so it is drawn at the
+     weight of the muted text around it rather than competing with the name. */
+  .cluster-fold {
+    opacity: 0.65;
+  }
 
   .cluster-count {
     padding: 0 5px;

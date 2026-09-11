@@ -335,6 +335,57 @@ export function watchSettings(): void {
   notify("settings", now);
 }
 
+/** The folder boxes whose bars have been collapsed, by path. */
+export type Folds = Record<string, true>;
+
+/**
+ * What the host remembered about collapsed folders, read back.
+ *
+ * Everything unrecognised is dropped rather than trusted, and an unreadable
+ * answer is no folds rather than an error. The field arrives from a document
+ * the host wrote, a file on a disk a reviewer can edit, or not at all — and
+ * every one of those is better answered by the state the page would have had
+ * anyway than by a stack trace in front of a reader who wanted to look at a
+ * diff.
+ *
+ * Read as `unknown` and checked rather than trusted to be the `string[]` the
+ * model now declares. The value does not come from the type: it comes from a
+ * global on a page a reviewer can run scripts in, written by a host that may be
+ * older than this code, and a declaration is a promise about what ought to be
+ * there rather than a fact about what is.
+ */
+function seededFolds(): Folds {
+  const held = (embedded() as { folded?: unknown }).folded;
+  if (!Array.isArray(held)) return {};
+  const out: Folds = {};
+  for (const one of held) if (typeof one === "string" && one) out[one] = true;
+  return out;
+}
+
+/**
+ * A folder's bar collapsed into its parent's, or brought back.
+ *
+ * A new record rather than the same one altered, on the rule this module keeps
+ * learning: what holds this is reactive state, and a collection changed in
+ * place is a collection nothing is watching. The record is a proxy and would in
+ * fact survive being mutated, unlike the sets beside it — but the two are
+ * written the same way here so that nobody has to know which is which in order
+ * to change one safely.
+ *
+ * The host is told after the fact and is not asked first. Collapsing is about
+ * how much of the window the chrome is allowed, which is the reader's business
+ * and takes effect the moment they press; a page that waited for an answer
+ * before redrawing would put a round trip in the middle of a gesture whose
+ * whole purpose is to recover thirty pixels.
+ */
+export function setFolded(path: string, folded: boolean): void {
+  const next: Folds = { ...ui.folded };
+  if (folded) next[path] = true;
+  else delete next[path];
+  ui.folded = next;
+  notify("folded", { path, folded });
+}
+
 /**
  * The parts of the page that are about the page rather than about the change.
  *
@@ -434,6 +485,29 @@ export const ui = $state({
   deltas: new Map<string, Delta>(),
   /** Files the reader has marked off. */
   viewed: new Set<string>(),
+  /**
+   * Folder boxes whose bars the reader has collapsed into their parent's.
+   *
+   * A record and not a `Set`, which is not a matter of taste. A plain `Set`
+   * inside `$state` is not watched from the inside — adding to one changes
+   * nothing anybody can see, and this page has had that bug before and fixed it
+   * twice by replacing the set wholesale. A record is a deep proxy and cannot
+   * be got wrong the same way, and it is the shape `shut.ts` already keeps the
+   * side bar's closed folders in, so there is one answer to "how is a set of
+   * paths held here" rather than two.
+   *
+   * What is recorded is what the reader has collapsed, not what they have left
+   * open, for the same reason the side bar records what is shut: folders start
+   * showing their own bar, so the departures from that are the part worth
+   * keeping, and a folder appearing for the first time after a rebuild draws
+   * its bar rather than inheriting a state nobody chose for it.
+   *
+   * Seeded from the view model where the host has remembered one, and read
+   * defensively: the field is optional and absent altogether from the static
+   * page `odin view` writes, since a file opened from disk has no host behind
+   * it to have remembered anything.
+   */
+  folded: seededFolds(),
   /** The card and edge under the reader's attention, for dimming the rest. */
   activeNode: null as string | null,
   activeEdge: null as string | null,

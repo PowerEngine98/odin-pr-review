@@ -315,6 +315,20 @@ export interface ViewModel {
    * together.
    */
   settings?: Partial<ReaderSettings>;
+  /**
+   * The folder headers this reader had collapsed on this change.
+   *
+   * Apart from the settings above because it is a different kind of thing: how
+   * somebody likes to read follows them to the next pull request, while which
+   * folders they folded is about the shape of this one change and means nothing
+   * anywhere else. The host files it per change and per branch for that reason.
+   *
+   * Paths from the root, never labels: a change with `src/hooks` and
+   * `test/hooks` in it has two folders called `hooks`. Absent means none are
+   * folded, which is also what the file `odin view` writes always looks like —
+   * that page has no host behind it to remember anything.
+   */
+  folded?: string[];
 }
 
 /** The reader's own choices about how to read, not about what is being read. */

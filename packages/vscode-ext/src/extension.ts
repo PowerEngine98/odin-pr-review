@@ -39,6 +39,7 @@ import { BaseStore } from "./base.js";
 import { keyOf, SessionStore, type Session } from "./session.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
+import { FoldedStore } from "./folded.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
 function isDark(): boolean {
@@ -52,6 +53,16 @@ function isDark(): boolean {
 
 /** Which files the reviewer has marked off, shared by both views. */
 let viewed: ViewedStore;
+
+/**
+ * Which folder headers the reviewer has collapsed on the canvas.
+ *
+ * Deliberately not shared with the sidebar, which the store beside it is. The
+ * bar's tree and the drawing's boxes are two answers to two questions — the
+ * tree shows every folder in the change, the canvas only boxes the ones it drew
+ * a cluster for — and folding one is not a statement about the other.
+ */
+let folded: FoldedStore;
 
 /** The sidebar's view of the most recent review. */
 let sidebar: ChangeSidebar;
@@ -86,6 +97,10 @@ export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.assets = context.extensionUri;
 
   viewed = new ViewedStore(context.workspaceState);
+  // Per workspace, like the marks above and unlike the settings below: which
+  // folders somebody folded is about one change in one repository, where
+  // whether they want import arrows is about them.
+  folded = new FoldedStore(context.workspaceState);
   seen = new SeenStore(context.workspaceState);
   session = new SessionStore(context.workspaceState);
   chosenBase = new BaseStore(context.workspaceState);
@@ -123,6 +138,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // opened.
   GraphPanel.onActive = (graph, repo) => {
     viewed.open(repo, graph.meta.baseRef, graph.meta.headRef);
+    // And the folds, which follow the reader between tabs for the same reason:
+    // the next document this reading builds has to carry the arrangement that
+    // reading was left in, not the one the tab beside it was.
+    folded.open(repo, graph.meta.baseRef, graph.meta.headRef, graph.meta.worktree);
     sidebar.setGraph(graph);
   };
 
@@ -1261,6 +1280,17 @@ async function present(
   const { graph, shown, layout, layoutWithTests, unifiedLayout, unifiedWithTests } = built;
 
   viewed.open(repo, graph.meta.baseRef, graph.meta.headRef);
+  /*
+   * The folds, pointed at the same reading and by the same refs.
+   *
+   * The refs as the graph resolved them, never the ones the reader asked for.
+   * The two disagree often — `HEAD~1` going in, `main` coming out — and a store
+   * keyed one way while the panel is built the other would keep two sets of
+   * folds for one reading, of which only ever one is on screen. The branch is
+   * in the key as well, which the tab's own name deliberately leaves out for a
+   * live reading: two branches read in one working tree are two folder trees.
+   */
+  folded.open(repo, graph.meta.baseRef, graph.meta.headRef, graph.meta.worktree);
   // What is being read, so the list can say later when it has moved on.
   if (graph.meta.pullRequest && graph.meta.headSha) {
     seen.mark(
@@ -1319,6 +1349,7 @@ async function present(
       built.redrawn,
       built.withdrawn,
       where,
+      folded,
     );
     if (took) {
       sidebar.setGraph(graph);
@@ -1330,6 +1361,7 @@ async function present(
     shown, layout, repo, layoutWithTests, viewed, highlight,
     { layout: unifiedLayout, withTests: unifiedWithTests },
     where,
+    folded,
   );
 
   // Fetched after the graph is on screen: the picture is the point, and

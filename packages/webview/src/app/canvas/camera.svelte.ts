@@ -110,8 +110,22 @@ let origin: { x: number; y: number } | null = null;
  * Capturing the pointer here would redirect the rest of the gesture to the
  * viewport, and the click would never reach the mark at all — which is why the
  * threads stopped opening.
+ *
+ * `.cluster-act` is the same deal made a second time, for the controls in a
+ * folder's bar — the chevron that collapses it and the segments of a merged
+ * name that bring a folded one back. Being `pointer-events: auto` is not enough
+ * on its own and looks as though it ought to be: the press lands on the button,
+ * bubbles to the viewport, and the viewport captures the pointer, after which
+ * the release is delivered somewhere else and no click is ever generated. The
+ * button appears to be dead while plainly being hoverable, which is precisely
+ * how the marks failed.
+ *
+ * The cost is that a drag begun on one of these controls does not pan the
+ * drawing. That is the trade `.mark` already makes and it is the right way
+ * round: these are small targets a reader presses deliberately, and somewhere
+ * to start a pan is the one thing a canvas is never short of.
  */
-const HANDLES = ".card, .card-slot, path.hit, .mark, .port";
+const HANDLES = ".card, .card-slot, path.hit, .mark, .port, .cluster-act";
 
 export function beginPan(event: PointerEvent, viewport: HTMLElement): void {
   const target = event.target as Element | null;

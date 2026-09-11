@@ -92,6 +92,19 @@ export interface RenderOptions {
    */
   settings?: Record<string, unknown>;
   /**
+   * The folder headers the reader had collapsed, if the host remembers them.
+   *
+   * Written into the document beside the settings and for the same reason: a
+   * fold changes the shape of the drawing, so a page told about one after it had
+   * drawn would show every collapsed folder open and then fold it while the
+   * reader watched. Paths from the root of the change, never labels — `src/hooks`
+   * and `test/hooks` are two folders with one name.
+   *
+   * Absent for the file `odin view` writes, which has no host to remember
+   * anything for it, so the page must read every folder as open without it.
+   */
+  folded?: string[];
+  /**
    * Syntax colouring, already loaded for the languages in this change.
    *
    * Structural on purpose: the renderer needs no dependency on whatever
@@ -165,6 +178,10 @@ export function renderHtml(
 
   const viewModel = {
     ...(options.settings ? { settings: options.settings } : {}),
+    // Which folder boxes are folded into their parents, from the host that
+    // remembered them. In the model rather than in a message, so the first
+    // paint is already the arrangement the reader left.
+    ...(options.folded ? { folded: options.folded } : {}),
     width: layout.width,
     height: layout.height,
     rowGap: layout.metrics.rowGap,

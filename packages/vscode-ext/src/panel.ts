@@ -47,6 +47,7 @@ import { conversationKey, keyOf } from "./session.js";
 import { PairingSession, PLACEHOLDER } from "./pairing.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
+import type { FoldedStore } from "./folded.js";
 
 /** What the webview sends back when a reviewer follows something. */
 interface NavigateMessage {
@@ -67,6 +68,19 @@ interface OpenMessage {
 interface ViewedMessage {
   type: "viewed";
   payload: { path: string; viewed: boolean };
+}
+
+/**
+ * A folder's header bar folded into its parent's, or opened out again.
+ *
+ * One folder at a time rather than the whole set, because that is what the
+ * reader did: a message carrying every folded path would be the page telling
+ * the host what the host already knows, and the two would disagree the moment a
+ * rebuild arrived between the click and the message.
+ */
+interface FoldedMessage {
+  type: "folded";
+  payload: { path: string; folded: boolean };
 }
 
 interface SubmitMessage {
@@ -282,6 +296,7 @@ type Message =
   | NavigateMessage
   | OpenMessage
   | ViewedMessage
+  | FoldedMessage
   | SubmitMessage
   | DraftMessage
   | RemarkMessage
@@ -377,6 +392,14 @@ export class GraphPanel {
      * rather than for a field: head, base, and whatever is re-derived next.
      */
     where?: string,
+    /**
+     * Which folder headers the reader had folded, pointed at this reading.
+     *
+     * Last, and optional, because the static export has none: `odin view`
+     * writes a file with no host behind it, and a page that has never been told
+     * about folds simply draws every folder open.
+     */
+    folded?: FoldedStore,
   ): GraphPanel {
     const key = where ?? readingKey(graph, repo);
     const already = GraphPanel.open.get(key);
@@ -386,7 +409,7 @@ export class GraphPanel {
       // panel has would leave the code grey until the next full review.
       if (highlight) already.highlight = remember(highlight);
       already.alternate = alternate;
-      already.update(graph, layout, repo, withTests, viewed);
+      already.update(graph, layout, repo, withTests, viewed, folded);
       already.panel.reveal(vscode.ViewColumn.One);
       GraphPanel.active = already;
       GraphPanel.closePromoted(key);
@@ -400,7 +423,7 @@ export class GraphPanel {
 
     const made = new GraphPanel(
       panel, graph, layout, repo, withTests, viewed,
-      highlight ? remember(highlight) : undefined, alternate,
+      highlight ? remember(highlight) : undefined, alternate, folded,
     );
     made.key = key;
     GraphPanel.open.set(key, made);
@@ -1686,6 +1709,14 @@ export class GraphPanel {
   /** The same graph in the other diff mode, for the page's own switch. */
   private alternate: { layout: GraphLayout; withTests?: GraphLayout } | undefined;
   private viewed: ViewedStore | undefined;
+  /**
+   * Which folder headers this reading had folded when it was last read.
+   *
+   * Per panel rather than static, unlike the settings beside it: two tabs are
+   * two changes with two folder trees, and the one in front is not necessarily
+   * the one a rebuild belongs to.
+   */
+  private folded: FoldedStore | undefined;
   private comments: ReviewComment[] = [];
   /** Loaded before the first paint, so the code is never briefly grey. */
   private highlight: Highlighter | undefined;
@@ -2099,6 +2130,8 @@ export class GraphPanel {
     withdrawn?: readonly string[],
     /** The reading this rebuild belongs to, as its watcher knows it. */
     where?: string,
+    /** The folded folders, pointed at this reading by whoever built it. */
+    folded?: FoldedStore,
   ): boolean {
     /*
      * The panel holding *this* reading, rather than whichever is in front.
@@ -2139,6 +2172,7 @@ export class GraphPanel {
     panel.repo = repo;
     panel.withTests = withTests;
     panel.viewed = viewed;
+    panel.folded = folded;
     panel.alternate = alternate;
     return panel.send(layout, redrawn, withdrawn);
   }
@@ -2161,12 +2195,18 @@ export class GraphPanel {
     viewed?: ViewedStore,
     highlight?: Highlighter,
     alternate?: { layout: GraphLayout; withTests?: GraphLayout },
+    folded?: FoldedStore,
   ) {
     this.panel = panel;
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;
     this.viewed = viewed;
+    // Set before the first render for the same reason the measurements below
+    // are: the folds go into the document, and a panel that learned them after
+    // it had drawn would show every bar the reader had folded and then fold
+    // them while they watched.
+    this.folded = folded;
     this.highlight = highlight;
     // Set before the first render: without it the page has one set of card
     // sizes for two ways of reading the change, and the unified cards are
@@ -2238,11 +2278,13 @@ export class GraphPanel {
     repo: string,
     withTests?: GraphLayout,
     viewed?: ViewedStore,
+    folded?: FoldedStore,
   ): void {
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;
     this.viewed = viewed;
+    this.folded = folded;
     this.render(layout);
   }
 
@@ -2303,6 +2345,21 @@ export class GraphPanel {
       // draws itself once the reader's way and then again the other way.
       ...(GraphPanel.settings?.read()
         ? { settings: GraphPanel.settings.read() }
+        : {}),
+      /*
+       * And the folded folder headers, for the same reason and not by message.
+       *
+       * A fold is visible: the box shrinks and the cards under it go into the
+       * parent's bar. Sent after the document, the way the viewed marks are,
+       * every folder the reader had collapsed would appear in full and then
+       * collapse again on every load — a flinch across the whole canvas that
+       * says nothing and happens every time the page is built.
+       *
+       * Left out when nothing is folded, because absent and empty mean the same
+       * thing here: folders start open.
+       */
+      ...(this.folded && this.folded.all().length > 0
+        ? { folded: this.folded.all() }
         : {}),
       // Written into the document, so a redraw does not lose what the forge
       // said. The message channel is for news; this is for what is already
@@ -2712,6 +2769,21 @@ export class GraphPanel {
       }
       if (message.type === "viewed") {
         this.viewed?.set([message.payload.path], message.payload.viewed);
+        return;
+      }
+      /*
+       * Written down, and told to nobody else.
+       *
+       * The bar beside the drawing has a folder tree of its own, and folding a
+       * folder there is a different act: that tree shows every folder in the
+       * change, while the canvas only boxes the ones a cluster was drawn for.
+       * Joining the two would mean a folder the reader collapsed on the canvas
+       * hiding files in a list that never grouped them that way — one gesture
+       * quietly doing two things. They answer different questions and they are
+       * meant to stay apart, whatever the coincidence of names suggests.
+       */
+      if (message.type === "folded") {
+        this.folded?.set(message.payload.path, message.payload.folded);
         return;
       }
       if (message.type === "submitReview") {
