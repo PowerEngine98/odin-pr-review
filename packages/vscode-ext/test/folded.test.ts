@@ -128,9 +128,10 @@ describe("folds made on one branch read live in a checkout", () => {
  *
  * The marks saying which files have been read travel as a message sent just
  * after the document is assigned, and that is tolerable for a tick in a corner.
- * A fold is not a tick: the box shrinks and every card under it goes into its
- * parent's bar. Delivered that way, every folder the reader had collapsed would
- * be drawn open and then collapse while they watched, on every single load.
+ * A fold is not a tick: a bar leaves the stack at the top of the window and
+ * every name below it moves up a header. Delivered that way, every folder the
+ * reader had collapsed would be drawn open and then collapse while they
+ * watched, on every single load.
  *
  * So this insists on both halves — that the host writes a fold down, and that
  * the next document it builds already carries it.

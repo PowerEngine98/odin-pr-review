@@ -4,7 +4,6 @@ import {
   barsAbove,
   barsFor,
   headOf,
-  stranded,
   type Barred,
 } from "../src/app/canvas/bars.js";
 import {
@@ -19,7 +18,7 @@ import { place, type Standing } from "../src/app/canvas/placement.js";
 import type { Arrangement, ViewModel } from "../src/app/model.js";
 
 /*
- * Collapsing a folder's bar into its parent's.
+ * Collapsing a folder's bar out of the stack held against the top of the window.
  *
  * The fixture is the same three-deep nest the header stacking was photographed
  * on, and it is rebuilt here rather than borrowed from `heading.test.ts`
@@ -253,9 +252,11 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
     }
   });
 
-  it("never folds away an outermost bar, which has no parent to fold into", () => {
-    // Folding one would delete the name rather than move it, and the reader
-    // would be left with an unnamed frame and no way of discovering what it is.
+  it("never folds away an outermost bar, whatever the reader has folded", () => {
+    // It is the one bar that says what the change is in rather than which
+    // corner of it this is, and there is no bar above it to fall back to. The
+    // component offers no chevron on one; this is the same rule said where a
+    // fold stored by an older reading cannot get round it.
     const { boxes, outer } = nested();
     const bars = barsFor(boxes, new Set([outer.path, MIDDLE]));
     expect(bars.has(outer.path)).toBe(true);
@@ -411,25 +412,26 @@ describe("what collapsing a folder is not allowed to change", () => {
 });
 
 /**
- * What a merged bar says, which has to be the same sentence on everybody's
- * repository.
+ * What a bar says, which is its own folder's name and nothing else.
  *
- * Collapsing folds a name into the bar above it, so `common` with `mediaGroup`
- * folded into it reads `common/mediaGroup` and the reader is told where the
- * cards actually live rather than being left to conclude they are directly
- * inside `common`.
+ * This was the other way round and the tests below said so. A folded folder's
+ * name went into the bar above it, which then read as a path — `common` with
+ * `mediaGroup` folded into it read `common/mediaGroup` — on the argument that
+ * the reader had to be told where the cards went rather than left to conclude
+ * they sat directly inside `common`. The rule was overturned by what it did to
+ * the bar at the top of the drawing: fold a few folders under an outermost box
+ * and its bar read `src / app / profile / laborer`, four folders' worth of name
+ * on the one bar whose job is to say `src`. A path belongs to the box it names
+ * and not to the bar of a box that merely contains it.
  *
- * The case with a decision in it is two folded children of the same parent.
- * There is one bar and two names, and every rule for choosing between them —
- * the first in the array, the shortest, the one that sorts first — is either
- * invisible to the reader or an accident of how the boxes happened to be built.
- * The first in the array is the worst of the three precisely because it looks
- * like a rule: the same drawing would read `common/mediaGroup` on one machine
- * and `common/util` on another, and neither would be wrong in any way anybody
- * could report. So the walk degrades instead, and these permutations are what
- * says it degrades the same way whatever order the boxes arrive in.
+ * So there is nothing to concatenate and nothing to choose between, and the two
+ * things that follow from that are worth stating rather than assuming. A bar
+ * reads one name however deep the folding below it goes, and a parent with two
+ * folded children is no longer a special case at all — it used to need a
+ * degradation rule, because one bar cannot say two names, and the rule had to
+ * be proved deterministic over every order the boxes might arrive in.
  */
-describe("the name a bar reads once folders have been folded into it", () => {
+describe("the name a bar reads", () => {
   /** A nest as `barsFor` sees it: paths and how many boxes enclose each. */
   const chain: Barred[] = [
     { path: "a", depth: 1 },
@@ -437,79 +439,77 @@ describe("the name a bar reads once folders have been folded into it", () => {
     { path: "a/b/c", depth: 3 },
   ];
 
-  it("reads the whole chain when each step has exactly one folded child", () => {
-    const bars = barsFor(chain, new Set(["a/b", "a/b/c"]));
-    expect(bars.get("a")?.label).toBe("a/b/c");
-    expect(bars.get("a")?.absorbed).toEqual(["a/b", "a/b/c"]);
-    // And the two that were folded draw nothing, so one bar stands where three
-    // did — which is the saving, said in bars rather than in pixels.
-    expect([...bars.keys()]).toEqual(["a"]);
-    expect(bars.get("a")?.slot).toBe(1);
+  it("reads only its own name however deep the folding below it goes", () => {
+    // The failure this exists to prevent, said in the smallest fixture that can
+    // show it: an outermost bar reading `src/app/profile/laborer` because
+    // somebody folded three folders underneath it. The reader asked for less
+    // chrome and was given the longest label in the drawing, on the one bar
+    // that cannot be folded away to be rid of it.
+    const deep: Barred[] = [
+      { path: "src", depth: 1 },
+      { path: "src/app", depth: 2 },
+      { path: "src/app/profile", depth: 3 },
+      { path: "src/app/profile/laborer", depth: 4 },
+    ];
+    const bars = barsFor(
+      deep,
+      new Set(["src/app", "src/app/profile", "src/app/profile/laborer"]),
+    );
+
+    expect(bars.get("src")?.label).toBe("src");
+    // And no other reading of it, stated as the whole map so that a label
+    // arriving on some other bar instead would not pass quietly.
+    expect([...bars].map(([path, bar]) => [path, bar.label])).toEqual([
+      ["src", "src"],
+    ]);
+    expect(bars.get("src")?.slot).toBe(1);
   });
 
-  it("stops at the folded folder when the one below it is still open", () => {
+  it("says nothing about the folder below it when that one is folded", () => {
+    // This used to read `a/b`, and the `b` half of it was pressable. What the
+    // reader gets instead is a stub on `a/b`'s own frame, which `barsFor` says
+    // by giving `a/b` no bar.
     const bars = barsFor(chain, new Set(["a/b"]));
-    expect(bars.get("a")?.label).toBe("a/b");
-    // `a/b/c` still draws, and is now one slot nearer the bar than its depth
-    // would have put it. Its box has not moved.
+    expect(bars.get("a")?.label).toBe("a");
+    expect(bars.has("a/b")).toBe(false);
+    // `a/b/c` still draws, and is now one slot nearer the top of the window
+    // than its depth would have put it. Its box has not moved.
     expect(bars.get("a/b/c")?.slot).toBe(2);
     expect(bars.get("a/b/c")?.label).toBe("c");
   });
 
-  it("names neither of two folded siblings, in every order they may arrive in", () => {
+  it("reads the same name whether one child under it is folded or two", () => {
+    // The degradation this replaces: with a parent able to absorb one child's
+    // name but not two, folding a second child changed what the first fold had
+    // done to the parent's bar, and the rule for it had to be proved stable
+    // over all six orders three boxes can arrive in. A bar that says its own
+    // name has nothing to be unstable about.
     const siblings: Barred[] = [
       { path: "a", depth: 1 },
       { path: "a/b", depth: 2 },
       { path: "a/c", depth: 2 },
     ];
 
-    /** Every order the boxes could have been built in. */
-    const orders: Barred[][] = [];
-    for (const first of siblings) {
-      for (const second of siblings) {
-        for (const third of siblings) {
-          const order = [first, second, third];
-          if (new Set(order).size === 3) orders.push(order);
-        }
-      }
-    }
-    expect(orders).toHaveLength(6);
+    const one = barsFor(siblings, new Set(["a/b"]));
+    expect(one.get("a")?.label).toBe("a");
+    // The sibling that is still open keeps its own bar, its own name and the
+    // slot below its parent's.
+    expect(one.get("a/c")?.label).toBe("c");
+    expect(one.get("a/c")?.slot).toBe(2);
 
-    for (const order of orders) {
-      const bars = barsFor(order, new Set(["a/b", "a/c"]));
-      // Its own name and nothing appended: a bar that named one of the two
-      // would be naming it because of where it sat in this array.
-      expect(bars.get("a")?.label).toBe("a");
-      expect(bars.get("a")?.absorbed).toEqual([]);
-      expect([...bars.keys()]).toEqual(["a"]);
-    }
+    const both = barsFor(siblings, new Set(["a/b", "a/c"]));
+    expect(both.get("a")?.label).toBe("a");
+    expect([...both.keys()]).toEqual(["a"]);
   });
 
-  it("absorbs an only folded child even where an open sibling stands beside it", () => {
-    // One folded child is unambiguous however many open ones there are: the
-    // open one draws its own bar and says its own name, so nothing is lost and
-    // nothing has been chosen between.
-    const bars = barsFor(
-      [
-        { path: "a", depth: 1 },
-        { path: "a/b", depth: 2 },
-        { path: "a/c", depth: 2 },
-      ],
-      new Set(["a/b"]),
-    );
-    expect(bars.get("a")?.label).toBe("a/b");
-    expect(bars.get("a/c")?.label).toBe("c");
-    expect(bars.get("a/c")?.slot).toBe(2);
-  });
-
-  it("gives every bar its own name back when nothing is folded", () => {
+  it("gives every bar its own name when nothing is folded", () => {
     const bars = barsFor(chain, new Set());
     expect([...bars.keys()]).toEqual(["a", "a/b", "a/b/c"]);
+    expect([...bars.values()].map((bar) => bar.label)).toEqual(["a", "b", "c"]);
     for (const box of chain) {
       // The ordinary case, and the one where slot and depth agree exactly —
       // which is why the two are so easy to confuse and why this says it.
       expect(bars.get(box.path)?.slot).toBe(box.depth);
-      expect(bars.get(box.path)?.absorbed).toEqual([]);
     }
   });
 });
@@ -541,9 +541,9 @@ describe("the number a folder box's header arithmetic is fed", () => {
     const bars = barsFor(boxes, new Set([MIDDLE]));
 
     // Three boxes enclose the innermost one and only two bars stand above it,
-    // because the middle folder's bar has gone into its parent's. Said as two
-    // separate assertions so that a failure names which of the two numbers came
-    // out, rather than reporting that some number was not two.
+    // because the middle folder's bar is not drawn. Said as two separate
+    // assertions so that a failure names which of the two numbers came out,
+    // rather than reporting that some number was not two.
     expect(inner.depth).toBe(3);
     expect(headOf(bars, inner)?.depth).toBe(2);
 
@@ -661,27 +661,24 @@ describe("how many bars stand above a card, as the canvas counts them", () => {
 });
 
 /**
- * The folders a degrading parent leaves with their names nowhere at all.
+ * The boxes left with no bar, which is where a stub goes.
  *
- * Folding is meant to be a loan: `mediaGroup` gives its name to `common`, the
- * bar reads `common/mediaGroup`, and the `mediaGroup` half of it is pressable,
- * so the gesture undoes itself where it was made. Fold a second child of the
- * same parent and the loan cannot be made — there is one bar and two names and
- * every rule for choosing between them is invisible to the reader or an
- * accident of how the boxes were built — so the parent says its own name and
- * absorbs neither. That rule is right and it is not what is being changed here.
+ * There was a `stranded` beside `barsFor` that answered this, and it had to,
+ * because while a parent could absorb a child's name a folded folder was
+ * usually not silent at all — its name was in the bar above and pressable
+ * there, and only the pair of siblings the absorbing refused to choose between
+ * fell through to a stub on their own frame. Working out which folders those
+ * were took reading every bar's absorbed list.
  *
- * What it leaves behind is: two folders with no bar, no segment in anybody
- * else's bar, and a hover tip on the parent that answers with the parent's own
- * path. The names are gone from the drawing and there is nothing on the canvas
- * to press. `stranded` is what names them so that `Clusters.svelte` can put a
- * stub back on each one's own frame, and what this asks is that the set is
- * exactly the folders that have gone silent — no more, because a stub beside a
- * name that is already in a bar is the name said twice and the fold undone, and
- * no fewer, because a folder missing from it is a folder the reader cannot get
- * back.
+ * With no concatenation anywhere, a folded box's name is on a stub and nowhere
+ * else, so the set is simply the boxes `barsFor` gave no bar to — a lookup, and
+ * `Clusters.svelte` now asks for a bar and draws a stub where there is none in
+ * the same breath. That is what makes it impossible for a box to end up with
+ * both a bar and a stub, or with neither, and what is asked here is that the
+ * map says so: a missing bar means folded, and a bar means not, with no third
+ * state in between for a box to get lost in.
  */
-describe("the folded folders left with no name in any bar", () => {
+describe("the boxes left with no bar, which is where a stub goes", () => {
   const chain: Barred[] = [
     { path: "a", depth: 1 },
     { path: "a/b", depth: 2 },
@@ -708,72 +705,64 @@ describe("the folded folders left with no name in any bar", () => {
     return out;
   }
 
-  it("names both of two folded siblings, in every order they may arrive in", () => {
-    for (const order of orders(siblings)) {
-      const folded = new Set(["a/b", "a/c"]);
-      const bars = barsFor(order, folded);
-      // The degradation, restated so that this test says what it is about
-      // rather than relying on the describe above it.
-      expect(bars.get("a")?.label).toBe("a");
-      expect(bars.get("a")?.absorbed).toEqual([]);
-
-      expect([...stranded(order, bars)].sort()).toEqual(["a/b", "a/c"]);
+  it("gives a bar to every box when nothing is folded at all", () => {
+    // Which is the state the reader starts in, and the one where a stub
+    // appearing at all would be a name said in a place nobody asked for it.
+    for (const boxes of [chain, siblings]) {
+      const bars = barsFor(boxes, new Set());
+      expect(boxes.filter((box) => !bars.has(box.path))).toEqual([]);
     }
   });
 
-  it("names nobody when every folded folder went into a bar", () => {
-    // The whole chain folded reads `a/b/c` on one bar, so both folded folders
-    // are named on it and a stub for either would be the name said twice.
+  it("leaves exactly the folded boxes without one, and so with a stub", () => {
+    // Every one of them, which is the change: this used to be only the folders
+    // a degrading parent could not name, and the rest had their names in a bar
+    // above. One affordance now, in the same place on every folded box.
     const bars = barsFor(chain, new Set(["a/b", "a/b/c"]));
-    expect(bars.get("a")?.absorbed).toEqual(["a/b", "a/b/c"]);
-    expect([...stranded(chain, bars)]).toEqual([]);
-  });
-
-  it("names nobody when nothing is folded at all", () => {
-    expect([...stranded(chain, barsFor(chain, new Set()))]).toEqual([]);
-    expect([...stranded(siblings, barsFor(siblings, new Set()))]).toEqual([]);
-  });
-
-  it("names nobody where an only folded child stands beside an open one", () => {
-    // One folded child is unambiguous however many open ones there are: it goes
-    // into the parent's bar and the open one keeps its own.
-    const bars = barsFor(siblings, new Set(["a/b"]));
-    expect(bars.get("a")?.label).toBe("a/b");
-    expect([...stranded(siblings, bars)]).toEqual([]);
-  });
-
-  it("empties itself as soon as one of the two stranded folders is brought back", () => {
-    // Which is what pressing a stub does, and the reason it is enough of an
-    // answer: the drawing goes straight back to a state where both folders have
-    // a name, one on its own bar and one in its parent's.
-    const bars = barsFor(siblings, new Set(["a/c"]));
-    expect(bars.get("a")?.label).toBe("a/c");
-    expect(bars.get("a/b")?.label).toBe("b");
-    expect([...stranded(siblings, bars)]).toEqual([]);
-  });
-
-  it("names a folded folder underneath a stranded one, which is silent too", () => {
-    // `a` degrades over `a/b` and `a/c`, so `a/b` draws nothing — and `a/b/d`,
-    // folded into a bar that is not drawn, is just as lost as `a/b` is. Each
-    // gets its own stub on its own frame.
-    const deep: Barred[] = [
-      { path: "a", depth: 1 },
-      { path: "a/b", depth: 2 },
-      { path: "a/c", depth: 2 },
-      { path: "a/b/d", depth: 3 },
-    ];
-    const bars = barsFor(deep, new Set(["a/b", "a/c", "a/b/d"]));
     expect([...bars.keys()]).toEqual(["a"]);
-    expect([...stranded(deep, bars)].sort()).toEqual(["a/b", "a/b/d", "a/c"]);
+    expect(bars.has("a/b")).toBe(false);
+    expect(bars.has("a/b/c")).toBe(false);
+  });
 
-    // And pressing `a/b`'s stub settles the whole of it in one go, which is
-    // what says the stubs are a way out rather than a state of their own. `a/b`
-    // gets a bar and absorbs `a/b/d` into it, and `a` is left with a single
-    // folded child so its degradation lifts and it absorbs `a/c`. Three silent
-    // folders become three names on two bars, and nothing is stranded.
-    const after = barsFor(deep, new Set(["a/c", "a/b/d"]));
-    expect(after.get("a/b")?.label).toBe("b/d");
-    expect(after.get("a")?.label).toBe("a/c");
-    expect([...stranded(deep, after)]).toEqual([]);
+  it("takes a box's bar back the moment the reader unfolds it", () => {
+    // Which is what pressing a stub does, and the reason a stub is enough of an
+    // answer on its own: the way back is one press on the box the reader
+    // folded, and it lands them exactly where they were.
+    const bars = barsFor(siblings, new Set(["a/b", "a/c"]));
+    expect([...bars.keys()]).toEqual(["a"]);
+
+    const after = barsFor(siblings, new Set(["a/c"]));
+    expect(after.get("a/b")?.label).toBe("b");
+    expect(after.get("a/b")?.slot).toBe(2);
+    expect(after.has("a/c")).toBe(false);
+  });
+
+  it("answers the same way in every order the boxes may arrive in", () => {
+    // The property the degradation rule needed proving over six permutations,
+    // kept because it is the one that would fail silently: nothing here may
+    // depend on where a box sits in the array it arrived in, and both the slot
+    // loop and the folded lookup are positioned to make that easy to break.
+    for (const order of orders(siblings)) {
+      const bars = barsFor(order, new Set(["a/b", "a/c"]));
+      expect([...bars.keys()]).toEqual(["a"]);
+      expect(bars.get("a")?.label).toBe("a");
+      expect(bars.get("a")?.slot).toBe(1);
+    }
+
+    for (const order of orders(chain)) {
+      const bars = barsFor(order, new Set(["a/b"]));
+      expect([...bars.keys()].sort()).toEqual(["a", "a/b/c"]);
+      expect(bars.get("a/b/c")?.slot).toBe(2);
+    }
+  });
+
+  it("keeps an outermost box's bar even where the reader folded it", () => {
+    // So an outermost box never gets a stub. There is no bar above it, and a
+    // drawing whose top-level frames were all stubs would be a change nobody
+    // could say the shape of at a glance.
+    const bars = barsFor(chain, new Set(["a", "a/b"]));
+    expect(bars.get("a")?.label).toBe("a");
+    expect(bars.get("a")?.slot).toBe(1);
+    expect(bars.has("a/b")).toBe(false);
   });
 });

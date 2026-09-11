@@ -71,7 +71,7 @@ interface ViewedMessage {
 }
 
 /**
- * A folder's header bar folded into its parent's, or opened out again.
+ * A folder's header bar folded out of the pinned stack, or opened out again.
  *
  * One folder at a time rather than the whole set, because that is what the
  * reader did: a message carrying every folded path would be the page telling
@@ -2349,11 +2349,12 @@ export class GraphPanel {
       /*
        * And the folded folder headers, for the same reason and not by message.
        *
-       * A fold is visible: the box shrinks and the cards under it go into the
-       * parent's bar. Sent after the document, the way the viewed marks are,
-       * every folder the reader had collapsed would appear in full and then
-       * collapse again on every load — a flinch across the whole canvas that
-       * says nothing and happens every time the page is built.
+       * A fold is visible: a bar leaves the stack held against the top of the
+       * window and everything below it moves up a header, and the folder's name
+       * comes back as a stub on its own frame. Sent after the document, the way
+       * the viewed marks are, every folder the reader had collapsed would appear
+       * in full and then collapse again on every load — a flinch across the
+       * whole canvas that says nothing and happens every time the page is built.
        *
        * Left out when nothing is folded, because absent and empty mean the same
        * thing here: folders start open.

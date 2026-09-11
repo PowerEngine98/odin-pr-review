@@ -363,7 +363,7 @@ function seededFolds(): Folds {
 }
 
 /**
- * A folder's bar collapsed into its parent's, or brought back.
+ * A folder's bar folded out of the stack, or brought back into it.
  *
  * A new record rather than the same one altered, on the rule this module keeps
  * learning: what holds this is reactive state, and a collection changed in

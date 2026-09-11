@@ -6,8 +6,8 @@ import { conversationKey } from "./session.js";
  * Which folder headers the reader has collapsed on the canvas, per change.
  *
  * Clustering draws a box per folder with a bar across its head, and a nested
- * folder's bar can be folded into its parent's. That is a reading decision, not
- * a fact about the change: it is how somebody chose to hold a large pull request
+ * folder's bar can be folded out of the stack. That is a reading decision, not a
+ * fact about the change: it is how somebody chose to hold a large pull request
  * still while they read one corner of it, and closing the tab on Friday and
  * opening it again on Monday should not undo an afternoon of tidying.
  *
@@ -84,7 +84,7 @@ export class FoldedStore {
     return [...this.collapsed].sort();
   }
 
-  /** One folder folded into its parent's bar, or opened out of it again. */
+  /** One folder's bar folded out of the stack, or brought back into it. */
   set(path: string, folded: boolean): void {
     if (!path) return;
     if (folded) this.collapsed.add(path);
