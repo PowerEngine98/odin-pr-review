@@ -54,7 +54,24 @@
  * units is the part of this feature that has been got wrong before and it is
  * now measured at several zooms, so the way to keep it right is to feed it a
  * different number rather than to teach it a new sum.
+ *
+ * ## Which is why the feeding is done here and not in the component
+ *
+ * Feeding it a different number is a decision, and a decision written inline in
+ * a `.svelte` file is a decision nothing can test. That was demonstrated rather
+ * than assumed: with the choice spelled out in `Clusters.svelte` as `depth:
+ * bars.get(box.path)?.slot ?? box.depth`, replacing it with `depth: box.depth` —
+ * handing the arithmetic the old number, which is the single most likely
+ * regression this feature has — left every one of the twelve tests beside it
+ * passing. The tests exercised the modules and the components were the part
+ * nobody was holding. `headOf` and `barsAbove` below are that decision lifted
+ * out whole, so that the component is left with a call and no arithmetic and no
+ * choice, and so that feeding a depth where a slot belongs is a thing a test can
+ * see. It is the argument `heading.ts` makes for its own existence, made once
+ * more a layer up.
  */
+
+import type { Headed } from "./heading.js";
 
 /**
  * Enough of a folder box to say whose bar is whose.
@@ -69,6 +86,33 @@ export interface Barred {
   path: string;
   /** How many boxes enclose it, counting itself. One for an outermost box. */
   depth: number;
+}
+
+/**
+ * Enough of a folder box to say where the bar across its top is drawn.
+ *
+ * The geometry the doc-comment above says is irrelevant here, and it still is:
+ * `headOf` reads these two numbers and hands them straight on without touching
+ * them, because the thing it is deciding is the third number beside them. What
+ * is forbidden is a function in this module that *changes* a `y` or a `height`,
+ * since moving a box is the one thing collapsing must never do, and that remains
+ * forbidden.
+ */
+export interface Framed {
+  /** The folder, as a path. */
+  path: string;
+  /** The top of the box, in canvas units. */
+  y: number;
+  /** How tall it is, in canvas units. */
+  height: number;
+}
+
+/** Enough of a folder box to say which cards have its bar above them. */
+export interface Filled {
+  /** The folder, as a path. */
+  path: string;
+  /** The cards inside it, by id, at whatever depth they sit. */
+  nodes: readonly string[];
 }
 
 /** A bar that is drawn, and what the reader ends up reading on it. */
@@ -207,4 +251,110 @@ export function barsFor(
   }
 
   return bars;
+}
+
+/**
+ * Where this box's name is held under the bar, or nothing where it draws none.
+ *
+ * The whole of this function is the third field, and the third field is the
+ * whole of what collapsing changes downstream. `depth` counts the boxes around
+ * this one; the pinned stack is made of the bars that are drawn, and a folded
+ * folder contributes a box to the first and no bar to the second. Handed a
+ * `depth` here, a bar sitting below a folded one is held a header lower than the
+ * bar it actually sits under, so a strip of the drawing shows through a stack
+ * that is meant to be solid and the thirty pixels the reader folded the folder
+ * to recover are not recovered at all.
+ *
+ * `Headed`'s field is called `depth` because that is what it was always fed and
+ * renaming it would reach into arithmetic that is deliberately not being
+ * touched. That name is exactly why this belongs in a function rather than in an
+ * object literal in a template: a field called `depth` sitting beside a `box`
+ * that has a `depth` is an invitation, and somebody will accept it.
+ *
+ * Nothing rather than a fallback where no bar is drawn. There used to be a `??
+ * box.depth` here, which read as caution and was a bug: the only caller that
+ * could reach it is the hover tip, which asks where a name sits in order to
+ * put itself under it, and a box with no name has none — so the tip was pushed
+ * down the screen by headers that were not there, by exactly as many as the
+ * folder was deep. A caller that gets nothing has to decide what to do about it,
+ * which is the point.
+ */
+export function headOf(
+  bars: ReadonlyMap<string, Bar>,
+  box: Framed,
+): Headed | undefined {
+  const bar = bars.get(box.path);
+  if (!bar) return undefined;
+  return { y: box.y, height: box.height, depth: bar.slot };
+}
+
+/**
+ * How many bars stand above each card, by the card's id.
+ *
+ * What a card's own title has to clear before it may start. Not how deep its
+ * path is — the levels that hold one thing each are never drawn as boxes, and
+ * counting path segments pushed every title down past headers that are not on
+ * screen. Nor how many boxes hold it, which was the same number right up until a
+ * bar could be folded away: a card inside a folded folder has one box more than
+ * it has names above it, and charged for the box it starts a header lower than
+ * anything it needs to clear, leaving a strip of nothing between the stack and
+ * the file's name.
+ *
+ * Counted over the boxes that hold the card rather than over its path, and only
+ * over the ones that draw, which is the same rule `headOf` applies one card
+ * higher up. The two have to agree exactly: a card begins under the last bar
+ * above it, so two opinions about how many bars that is put a file's name on a
+ * folder's.
+ *
+ * A card with no entry has no bar above it at all, which is not the same as not
+ * having been asked, so the caller reads a missing entry as nought.
+ */
+export function barsAbove(
+  boxes: readonly Filled[],
+  bars: ReadonlyMap<string, Bar>,
+): Map<string, number> {
+  const over = new Map<string, number>();
+  for (const box of boxes) {
+    if (!bars.has(box.path)) continue;
+    for (const id of box.nodes) over.set(id, (over.get(id) ?? 0) + 1);
+  }
+  return over;
+}
+
+/**
+ * The folded folders whose names now appear nowhere at all.
+ *
+ * Ordinarily a folded folder has not lost its name, it has lent it to the bar
+ * above — `common` reads `common/mediaGroup`, and the `mediaGroup` half of that
+ * is pressable, so the fold undoes itself where it was made. The exception is
+ * the case `barsFor` degrades on. Two folded children of one parent cannot both
+ * be folded into one bar, so the parent says its own name and absorbs neither,
+ * and at that moment two folders have no bar, no segment in anybody else's bar,
+ * and no mention in the hover tip — which answers with the parent's path. The
+ * reader who folded the second of the two siblings has not shortened the stack
+ * by one more name; they have deleted two names from the drawing with a gesture
+ * that undid nothing and offered no way back.
+ *
+ * So they are named here, and `Clusters.svelte` draws a stub on each one's own
+ * frame. The frame is still drawn for every box, folded or not, which is what
+ * makes there be somewhere to put it.
+ *
+ * The folded set is not an argument, because it cannot disagree with the bars
+ * and would be a second chance to. A box draws no bar only if it was folded —
+ * that is the whole of `draws` — so a missing bar already says folded, and
+ * asking the set again is asking a question the map has answered.
+ */
+export function stranded(
+  boxes: readonly Barred[],
+  bars: ReadonlyMap<string, Bar>,
+): Set<string> {
+  const spoken = new Set<string>();
+  for (const bar of bars.values()) {
+    for (const path of bar.absorbed) spoken.add(path);
+  }
+  const lost = new Set<string>();
+  for (const box of boxes) {
+    if (!bars.has(box.path) && !spoken.has(box.path)) lost.add(box.path);
+  }
+  return lost;
 }

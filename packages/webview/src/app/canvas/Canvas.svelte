@@ -12,7 +12,7 @@
   import { arriving } from "../hud/arriving.js";
   import { landed } from "../hud/boot.svelte.js";
   import { travel, ui, view } from "../state.svelte.js";
-  import { barsFor } from "./bars.js";
+  import { barsAbove, barsFor } from "./bars.js";
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
@@ -100,18 +100,21 @@ import Pinned from "./Pinned.svelte";
    * headers stacked above it instead, and starts below the last of them.
    */
   const titleLine = $derived.by(() => {
-    // How many bars actually stand above this card, which is how many names are
-    // stacked over it. Not how deep its path is: the levels that hold one thing
-    // each are never drawn, and counting them pushed a title down by headers
-    // that are not on screen. Nor how many boxes hold it, which was the same
-    // number until a bar could be folded away — a card inside a collapsed
-    // folder has one box more than it has names above it, and charged for the
-    // box it would start a header lower than anything it needs to clear.
-    const held = new Map<string, number>();
-    for (const box of boxed) {
-      if (!bars.has(box.path)) continue;
-      for (const id of box.nodes) held.set(id, (held.get(id) ?? 0) + 1);
-    }
+    /*
+     * How many bars actually stand above this card, counted next door rather
+     * than here.
+     *
+     * The count itself is four lines and they were four lines in this file
+     * until it turned out that being here is what made them untestable. The
+     * tests beside this feature exercise `barsFor` and `heading.ts` thoroughly
+     * and at three zooms, and every one of them went on passing when this loop
+     * was fed the wrong thing, because nothing in the suite mounts a component
+     * — so the one place the two modules are joined together was the one place
+     * with no cover on it. `barsAbove` is that join, lifted into `bars.ts`
+     * where a test can reach it, and this is now a call with nothing in it to
+     * get wrong.
+     */
+    const held = barsAbove(boxed, bars);
     /*
      * The conversion is `heading.ts`'s, so that the number handed to a card and
      * the line the folder headers are held on are worked out in one place. What

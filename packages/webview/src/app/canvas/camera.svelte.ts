@@ -111,9 +111,14 @@ let origin: { x: number; y: number } | null = null;
  * viewport, and the click would never reach the mark at all — which is why the
  * threads stopped opening.
  *
- * `.cluster-act` is the same deal made a second time, for the controls in a
- * folder's bar — the chevron that collapses it and the segments of a merged
- * name that bring a folded one back. Being `pointer-events: auto` is not enough
+ * `.cluster-act` is the same deal made a second time, for the controls a folder
+ * box carries — the chevron in a bar that collapses it, the segments of a merged
+ * name that bring a folded one back, and the stub left on the frame of a folder
+ * whose name went into no bar at all, which is the only way back those have.
+ * That last one is worth naming because it is not in a bar: it sits in the
+ * header's reserved strip at the top of an otherwise silent box, in a layer that
+ * is `pointer-events: none` the whole way down so that dragging anywhere on a
+ * folder pans the drawing. Being `pointer-events: auto` is not enough
  * on its own and looks as though it ought to be: the press lands on the button,
  * bubbles to the viewport, and the viewport captures the pointer, after which
  * the release is delivered somewhere else and no click is ever generated. The

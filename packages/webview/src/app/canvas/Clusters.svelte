@@ -14,7 +14,7 @@
 <script lang="ts">
   import { setFolded, view } from "../state.svelte.js";
 
-  import type { Bar } from "./bars.js";
+  import { headOf, stranded, type Bar } from "./bars.js";
   import { CLUSTER_HEAD, pinHead } from "./heading.js";
   import type { FolderBox } from "./placement.js";
 
@@ -132,21 +132,32 @@
    * other as the reader zooms in and leaves them adrift as they zoom out.
    */
   function pin(box: FolderBox): number {
-    return pinHead(
-      { chromeBottom, y: view.y, scale: view.scale },
-      // Its slot and not its depth, which is the whole of what collapsing
-      // changes. `depth` counts the boxes around this one; the stack is made of
-      // the bars that are drawn, and a folded folder contributes a box to the
-      // first and no bar to the second. Handed `depth` here a bar below a
-      // folded one would be held a header lower than the bar it actually sits
-      // under, leaving a strip of the drawing showing through a stack that is
-      // meant to be solid — and the thirty pixels the reader collapsed the
-      // folder to recover would not be recovered at all. The arithmetic is
-      // `heading.ts`'s and is untouched; only the number it is asked about has
-      // changed.
-      { y: box.y, height: box.height, depth: bars.get(box.path)?.slot ?? box.depth },
-    );
+    // What goes into the arithmetic is `headOf`'s decision and not this
+    // file's, and that is the point of it being a call. The number wanted is
+    // the box's slot rather than its depth — the stack is made of the bars that
+    // are drawn, and a folded folder contributes a box to the count of boxes
+    // and no bar to the stack — and written out here as an object literal with
+    // a field called `depth` beside a `box` that has one, it was a line nothing
+    // could test and anyone could quietly simplify. `heading.ts`'s arithmetic is
+    // untouched; only who chooses the number it is asked about has moved.
+    const head = headOf(bars, box);
+    // No bar, so no name to hold under the chrome and nothing to slide. Only
+    // the hover tip asks this of a box with no bar, and it asks in order to sit
+    // under a name: the honest answer is that the name is where the box is.
+    if (!head) return 0;
+    return pinHead({ chromeBottom, y: view.y, scale: view.scale }, head);
   }
+
+  /**
+   * The folded folders whose names have ended up nowhere, so that each can be
+   * given a way back on its own frame.
+   *
+   * Worked out in `bars.ts` beside the rule that strands them, because this is
+   * the far side of the degradation and the two have to describe the same set.
+   * A folder is here only when its bar is gone and no other bar has taken its
+   * name in, which is precisely the case two folded siblings produce.
+   */
+  const lost = $derived(stranded(folders, bars));
 
   /**
    * Everything the bar for a box needs, or nothing where no bar is drawn.
@@ -170,6 +181,12 @@
    * what they are looking at is `mediaGroup` — answering with `common` would be
    * the drawing replying to a question the reader did not ask, and doing it
    * only on the bars where the answer was least obvious.
+   *
+   * A stranded folder's stub has no bar behind it, so the fallback is what
+   * answers and it answers with that folder's own path — which is right, and is
+   * the reason the stub can afford to say a bare name. The reader hovering a
+   * stub that says `hooks` on a change with `src/hooks` and `test/hooks` in it
+   * gets told which of the two it is, exactly as they would from a bar.
    */
   function whole(box: FolderBox): string {
     const bar = barOf(box);
@@ -217,7 +234,28 @@
    * again, so on a change that rebuilds while an agent works it mostly never
    * appears at all.
    */
-  let over: FolderBox | undefined = $state(undefined);
+  let over: string | undefined = $state(undefined);
+
+  /**
+   * That folder again, but only while it still has something to hover.
+   *
+   * The path is remembered rather than the box, and it is looked up again on
+   * every read, because a pointer leaving is not the only way a name stops
+   * being under it. Folding a bar takes the bar out of the document, and an
+   * element that is removed never reports the pointer leaving — so the tip of
+   * the folder the reader had just folded stayed on the canvas with nothing
+   * under it, naming a bar that was no longer there. Anything that ends the
+   * name ends the tip: the fold, a rebuild that drops the box, a filter that
+   * empties it.
+   */
+  const tip = $derived.by(() => {
+    if (over === undefined) return undefined;
+    const box = folders.find((one) => one.path === over);
+    if (!box) return undefined;
+    // A bar or a stub: the two things a reader can put a pointer on. A box that
+    // has neither is a frame, and a frame says nothing to answer about.
+    return bars.has(box.path) || lost.has(box.path) ? box : undefined;
+  });
 </script>
 
 <!--
@@ -252,6 +290,26 @@
   above is drawn for every box regardless: what collapsing merges is the label,
   and the grouping the reader is reading the change by stays exactly where it
   was.
+
+  Except where the name went into no bar at all, which is the second branch
+  below and is a real hole rather than a tidy case. Fold two folders under one
+  parent and `barsFor` refuses to choose between them: the parent says its own
+  name and absorbs neither, because there is one bar and two names and every
+  rule for picking one is either invisible to the reader or an accident of the
+  order the boxes were built in. That is the right answer to the question it
+  asks and it leaves the reader stranded — two folders with no bar, no segment
+  in anybody else's bar, and a hover tip on the parent that answers with the
+  parent's path. The names are simply gone from the drawing, and the gesture
+  that removed them offers nothing that brings them back.
+
+  So each of those gets a stub on its own frame instead, which is the one
+  surface it still has. Not a bar: it does not join the pinned stack, it does
+  not hold itself under the chrome, and it sits inside the header's reserved
+  strip at the top of the box rather than across it, so the chrome the reader
+  folded the folders to recover stays recovered. It says the folder's name,
+  because a count would tell a reader that two folders are missing without
+  telling them which two, and it presses to bring the bar back — in the place
+  the chevron that folded it was, which is where the reader is still looking.
 -->
 {#each folders as box (box.path)}
   {@const bar = barOf(box)}
@@ -316,9 +374,9 @@
         class="cluster-said"
         style:transform="translateX({slide(box)}px)"
         bind:offsetWidth={said[box.path]}
-        onmouseenter={() => (over = box)}
+        onmouseenter={() => (over = box.path)}
         onmouseleave={() => {
-          if (over === box) over = undefined;
+          if (over === box.path) over = undefined;
         }}
         role="presentation"
       >
@@ -397,6 +455,74 @@
       </span>
     </div>
   </div>
+  {:else if lost.has(box.path)}
+  <!--
+    The same clip again, holding a stub instead of a bar.
+
+    The clip and not the frame, for the reason the frame gives above: a frame
+    carries no z-index so that its edge is painted under the cards, and a
+    control painted under the cards is a control behind the thing the reader
+    would have to click through to reach it. Stacked by the box's depth rather
+    than by a slot, since a box with no bar has no slot — which puts it under
+    the bar of the parent that failed to absorb it, the right way round for the
+    two or three units where a deep box's top meets a shallow one's bar.
+  -->
+  <div
+    class="cluster-clip"
+    style:left="{box.x}px"
+    style:top="{box.y}px"
+    style:width="{box.width}px"
+    style:height="{box.height}px"
+    style:z-index="calc(var(--z-folder) - {box.depth})"
+  >
+    <!--
+      It lives in the room the header would have had, and costs nothing for it.
+
+      `bandsFor` reserves a pad and a header above the first card of every box
+      that opens at a band, and it goes on reserving them whether or not that
+      box's bar is drawn — that reservation is what makes folding move nothing.
+      A folded box therefore has a header's worth of empty canvas across its
+      top that nobody is using, and this sits in the middle of it. So the stub
+      is drawn in space that was already paid for: no card is covered, no band
+      is asked to be taller, and the height it is held to is the shared constant
+      rather than a number here that happens to agree with it.
+
+      It slides with the pan on the same terms the names do, measured into the
+      same record. A box has either a bar or a stub and never both, so the two
+      cannot collide over one key — and a stub left behind at the far left of a
+      folder wider than the window is a way back the reader cannot see, which is
+      the complaint this whole branch exists to answer.
+    -->
+    <button
+      type="button"
+      class="cluster-act cluster-stub"
+      aria-label="Expand {box.path}"
+      style:top="calc(({CLUSTER_HEAD}px - 16px) / 2)"
+      style:transform="translateX({slide(box)}px)"
+      bind:offsetWidth={said[box.path]}
+      onclick={() => fold(box.path, false)}
+      onkeydown={(event) => onKey(event, box.path, false)}
+      onmouseenter={() => (over = box.path)}
+      onmouseleave={() => {
+        if (over === box.path) over = undefined;
+      }}
+    >
+      <!-- Downwards, against the chevron that folded it, which points up into
+           the parent the name went to. -->
+      <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+        <path
+          d="M4 6l4 4 4-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <span class="cluster-name">{box.label}</span>
+      <span class="cluster-count">{box.nodes.length}</span>
+    </button>
+  </div>
   {/if}
 {/each}
 
@@ -409,13 +535,13 @@
   is exactly the thing they would cut. There is only ever one, so this is one
   element and not a third copy of every box.
 -->
-{#if over}
+{#if tip}
   <div
     class="cluster-tip"
-    style:left="{over.x + 10 + slide(over)}px"
-    style:top="{over.y + pin(over) + CLUSTER_HEAD}px"
+    style:left="{tip.x + 10 + slide(tip)}px"
+    style:top="{tip.y + pin(tip) + CLUSTER_HEAD}px"
   >
-    {whole(over)}
+    {whole(tip)}
   </div>
 {/if}
 
@@ -670,6 +796,47 @@
        in `camera.svelte.ts`, and a captured pointer never produces a click, so
        the class on these elements is named there too. */
     pointer-events: auto;
+  }
+
+  /*
+   * The stub on a stranded folder's frame: the name, and the way back.
+   *
+   * Drawn as a pill and not as a bar, which is the whole distinction it has to
+   * carry. A second full-width bar here would say the fold had not happened —
+   * the reader folded two folders to be rid of two names held against the top
+   * of the window and would be looking at two names again, in the same shape,
+   * a few pixels lower. A pill is plainly a marker left behind on a box rather
+   * than the box's heading, it scrolls away with the box instead of pinning
+   * itself under the chrome, and it occupies the strip of canvas the header's
+   * reservation had already set aside above the folder's first card.
+   *
+   * It repeats the font rather than inheriting it, because `.cluster-act` says
+   * `font: inherit` and this one is not inside `.cluster-head` — there is no
+   * bar for it to be inside. Inheriting there would give it the page's body
+   * face at the page's body size, which at a wide zoom is a paragraph sitting
+   * across the top of a folder.
+   *
+   * Sixteen units tall like everything else in a bar, and that is not a
+   * nicety either. The room above the first card is exactly one header's worth
+   * and this sits inside it; a stub that grew past `CLUSTER_HEAD` would be
+   * cut by the clip around it, and what the reader would see is a name with
+   * its underside sliced off rather than a layout that had gone wrong.
+   */
+  .cluster-stub {
+    position: absolute;
+    left: 10px;
+    gap: 5px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text) 16%, var(--card-bg));
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .cluster-stub:hover {
+    background: color-mix(in srgb, var(--text) 24%, var(--card-bg));
   }
 
   /* A folded folder's name, which reads as part of the path and presses as a

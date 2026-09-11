@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { barsFor, type Barred } from "../src/app/canvas/bars.js";
+import {
+  barsAbove,
+  barsFor,
+  headOf,
+  stranded,
+  type Barred,
+} from "../src/app/canvas/bars.js";
 import {
   CLUSTER_HEAD,
   headOnScreen,
+  pinHead,
   titleLine,
   type Held,
 } from "../src/app/canvas/heading.js";
@@ -152,37 +159,39 @@ const ZOOMS = [0.4, 1, 2.5];
 /**
  * Where a bar actually ends up on screen, worked out the way the page does it.
  *
- * `Clusters.svelte` hands `heading.ts` the box's *slot* where it used to hand
- * it the box's depth, and nothing else about the arithmetic changes. Doing the
- * same substitution here rather than reimplementing the sum means the test is
- * checking the conversion the page performs instead of a second opinion about
- * it written next door, which is the rule the rest of `heading.ts` is tested
- * under.
+ * `Clusters.svelte` hands `heading.ts` the box's *slot* where it used to hand it
+ * the box's depth, and nothing else about the arithmetic changes. That
+ * substitution used to be written out here as an object literal, which meant
+ * this said what the page ought to do rather than what it does — and the page's
+ * copy of it was the one in a `.svelte` file with nothing testing it. It goes
+ * through `headOf` now, so the conversion checked below is the conversion
+ * performed, which is the rule the rest of `heading.ts` is tested under.
  */
 function barOnScreen(
   held: Held,
-  box: { y: number; height: number },
-  slot: number,
+  bars: ReturnType<typeof barsFor>,
+  box: { path: string; y: number; height: number },
 ): number {
-  return headOnScreen(held, { y: box.y, height: box.height, depth: slot });
+  const head = headOf(bars, box);
+  if (!head) throw new Error(`no bar is drawn for ${box.path}`);
+  return headOnScreen(held, head);
 }
 
 /**
- * The bars a card has above it, counted the way `Canvas.svelte` counts them.
+ * The bars a card has above it, asked of the function the page asks.
  *
- * The boxes that hold the card and draw a bar, which is no longer simply the
- * boxes that hold it.
+ * This was a reimplementation of `Canvas.svelte`'s loop written out here, which
+ * meant the test and the page agreed only for as long as somebody kept them
+ * agreeing by hand — and a test that keeps its own copy of the thing under test
+ * passes whatever the page does. `barsAbove` is now the page's own count, so
+ * this is a lookup into its answer and nothing more.
  */
 function barsOver(
   boxes: readonly { path: string; nodes: string[] }[],
-  bars: ReadonlyMap<string, unknown>,
+  bars: ReturnType<typeof barsFor>,
   id: string,
 ): number {
-  let over = 0;
-  for (const box of boxes) {
-    if (bars.has(box.path) && box.nodes.includes(id)) over += 1;
-  }
-  return over;
+  return barsAbove(boxes, bars).get(id) ?? 0;
 }
 
 /**
@@ -219,8 +228,8 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
       expect(outerSlot).toBe(1);
       expect(innerSlot).toBe(2);
 
-      const top = barOnScreen(held, outer, outerSlot!);
-      const below = barOnScreen(held, inner, innerSlot!);
+      const top = barOnScreen(held, bars, outer);
+      const below = barOnScreen(held, bars, inner);
       expect(below - top).toBeCloseTo(CLUSTER_HEAD * scale, 6);
     }
   });
@@ -237,8 +246,7 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
       // The same pair of names, a header nearer each other than they were.
       const held = looking(scale, inner.y);
       const spread = (bars: ReturnType<typeof barsFor>) =>
-        barOnScreen(held, inner, bars.get(inner.path)!.slot) -
-        barOnScreen(held, outer, bars.get(outer.path)!.slot);
+        barOnScreen(held, bars, inner) - barOnScreen(held, bars, outer);
 
       expect(spread(open)).toBeCloseTo(2 * CLUSTER_HEAD * scale, 6);
       expect(spread(shut)).toBeCloseTo(CLUSTER_HEAD * scale, 6);
@@ -503,5 +511,269 @@ describe("the name a bar reads once folders have been folded into it", () => {
       expect(bars.get(box.path)?.slot).toBe(box.depth);
       expect(bars.get(box.path)?.absorbed).toEqual([]);
     }
+  });
+});
+
+/**
+ * The number the component hands the header arithmetic, which was the part
+ * nobody was holding.
+ *
+ * Everything above this tests a module, and the modules were the easy half. The
+ * two of them are joined together inside `.svelte` files, and this repository
+ * mounts no components in any of its tests — so the join was uncovered, and it
+ * was uncovered in the one way that says nothing when it breaks. It was checked
+ * by hand: with the choice spelled out in `Clusters.svelte` as `depth:
+ * bars.get(box.path)?.slot ?? box.depth`, changing it to `depth: box.depth` —
+ * feeding the arithmetic the old number, which is the single most likely
+ * regression this feature has and the one the whole `slot` idea exists to
+ * prevent — left all twelve tests above passing and the drawing wrong.
+ *
+ * So the choice is `headOf`'s now and this is what watches it. The first test
+ * states it as a number because that is unambiguous; the second states it in
+ * window pixels on the screen at three zooms, because a slot that agrees with a
+ * depth at scale one and disagrees everywhere else is exactly the shape of bug
+ * `heading.ts` was split out to catch, and a screenshot only ever shows one
+ * scale.
+ */
+describe("the number a folder box's header arithmetic is fed", () => {
+  it("answers with the box's slot and never with its depth", () => {
+    const { boxes, outer, middle, inner } = nested();
+    const bars = barsFor(boxes, new Set([MIDDLE]));
+
+    // Three boxes enclose the innermost one and only two bars stand above it,
+    // because the middle folder's bar has gone into its parent's. Said as two
+    // separate assertions so that a failure names which of the two numbers came
+    // out, rather than reporting that some number was not two.
+    expect(inner.depth).toBe(3);
+    expect(headOf(bars, inner)?.depth).toBe(2);
+
+    // The outermost is the case where the two agree, which is why nothing
+    // caught this: with nothing folded above it, a slot is a depth.
+    expect(headOf(bars, outer)?.depth).toBe(outer.depth);
+
+    // And the geometry is passed straight through. A function in `bars.ts` that
+    // adjusted a `y` or a `height` would be collapsing moving the drawing,
+    // which is the one thing the whole feature promises not to do.
+    expect(headOf(bars, inner)).toEqual({
+      y: inner.y,
+      height: inner.height,
+      depth: 2,
+    });
+    expect(headOf(bars, middle)).toBeUndefined();
+  });
+
+  it("holds the bar one header higher than its depth would, at every zoom", () => {
+    for (const scale of ZOOMS) {
+      const { boxes, inner } = nested();
+      const bars = barsFor(boxes, new Set([MIDDLE]));
+      const held = looking(scale, inner.y);
+
+      // Where the page actually holds it.
+      const fed = headOnScreen(held, headOf(bars, inner)!);
+      // And where the regression would have held it: the box's own depth, which
+      // is what this line said before the decision was lifted out of the
+      // component. One header lower, in window pixels, which is a strip of the
+      // drawing showing through a stack that is meant to be solid.
+      const stale = headOnScreen(held, {
+        y: inner.y,
+        height: inner.height,
+        depth: inner.depth,
+      });
+
+      expect(stale - fed).toBeCloseTo(CLUSTER_HEAD * scale, 6);
+      // Not nought at any zoom, which is what would make the assertion above
+      // pass vacuously if the fixture ever stopped nesting.
+      expect(stale - fed).toBeGreaterThan(0);
+    }
+  });
+
+  it("answers with nothing for a folded box, rather than with a stale depth", () => {
+    // There used to be a `?? box.depth` behind this, which looked like caution
+    // and was a bug. Nothing drawing a bar ever reached it — a box with no bar
+    // is skipped by the loop that draws them — so the only caller that could
+    // was the hover tip, which asks where a name sits in order to put itself
+    // underneath it. A folded box has no name, so the tip was pushed down the
+    // screen by as many headers as the folder was deep and sat in the middle of
+    // the cards it was meant to be labelling.
+    const { boxes, middle, inner } = nested();
+    const bars = barsFor(boxes, new Set([MIDDLE, inner.path]));
+
+    expect(headOf(bars, middle)).toBeUndefined();
+    expect(headOf(bars, inner)).toBeUndefined();
+    // Which is the answer the tip turns into nought, rather than into the two
+    // and three headers of offset those depths would have bought.
+    for (const scale of ZOOMS) {
+      const held = looking(scale, middle.y);
+      expect(
+        pinHead(held, { y: middle.y, height: middle.height, depth: middle.depth }),
+      ).toBeGreaterThan(0);
+    }
+  });
+});
+
+/**
+ * And the same hole one layer along, in the count a card's own title clears.
+ *
+ * `Canvas.svelte` works out how many names are stacked over each card and hands
+ * the number to `titleLine`. It is four lines of loop and it had the same
+ * problem as the line next door: written inside the component it could not be
+ * exercised without mounting a page, and the obvious wrong version of it —
+ * counting the boxes that hold a card rather than the boxes that draw a bar —
+ * is the version that was correct right up until a bar could be folded away.
+ *
+ * What it costs to get wrong is a file's name drawn on top of a folder's, or a
+ * strip of nothing between the stack and the file's name, depending on which
+ * way the count went. Both are the complaint this column of numbers exists to
+ * answer, and neither throws.
+ */
+describe("how many bars stand above a card, as the canvas counts them", () => {
+  it("counts the boxes that draw a bar and not the boxes that hold the card", () => {
+    const { boxes } = nested();
+    const open = barsFor(boxes, new Set());
+    const shut = barsFor(boxes, new Set([MIDDLE]));
+
+    // `m1` lives in the innermost folder, so three boxes hold it whatever the
+    // reader has folded — that is what `depth` means and it does not move.
+    const holding = boxes.filter((box) => box.nodes.includes("m1")).length;
+    expect(holding).toBe(3);
+
+    expect(barsAbove(boxes, open).get("m1")).toBe(3);
+    expect(barsAbove(boxes, shut).get("m1")).toBe(2);
+    // Said out loud: folding changed the count of names and not the count of
+    // boxes, and a loop that counted boxes would have answered three twice.
+    expect(barsAbove(boxes, shut).get("m1")).not.toBe(holding);
+  });
+
+  it("leaves a card outside the folded folder on the same count", () => {
+    // `a1` is in `labura/app`, which is beside `common` rather than inside it.
+    // Somebody else's fold is not a reason to move its name.
+    const { boxes } = nested();
+    expect(barsAbove(boxes, barsFor(boxes, new Set())).get("a1")).toBe(2);
+    expect(barsAbove(boxes, barsFor(boxes, new Set([MIDDLE]))).get("a1")).toBe(2);
+  });
+
+  it("gives no entry to a card no box holds, which the caller reads as nought", () => {
+    const { boxes } = nested();
+    const above = barsAbove(boxes, barsFor(boxes, new Set()));
+    expect(above.has("nobody")).toBe(false);
+    expect(above.get("nobody") ?? 0).toBe(0);
+  });
+});
+
+/**
+ * The folders a degrading parent leaves with their names nowhere at all.
+ *
+ * Folding is meant to be a loan: `mediaGroup` gives its name to `common`, the
+ * bar reads `common/mediaGroup`, and the `mediaGroup` half of it is pressable,
+ * so the gesture undoes itself where it was made. Fold a second child of the
+ * same parent and the loan cannot be made — there is one bar and two names and
+ * every rule for choosing between them is invisible to the reader or an
+ * accident of how the boxes were built — so the parent says its own name and
+ * absorbs neither. That rule is right and it is not what is being changed here.
+ *
+ * What it leaves behind is: two folders with no bar, no segment in anybody
+ * else's bar, and a hover tip on the parent that answers with the parent's own
+ * path. The names are gone from the drawing and there is nothing on the canvas
+ * to press. `stranded` is what names them so that `Clusters.svelte` can put a
+ * stub back on each one's own frame, and what this asks is that the set is
+ * exactly the folders that have gone silent — no more, because a stub beside a
+ * name that is already in a bar is the name said twice and the fold undone, and
+ * no fewer, because a folder missing from it is a folder the reader cannot get
+ * back.
+ */
+describe("the folded folders left with no name in any bar", () => {
+  const chain: Barred[] = [
+    { path: "a", depth: 1 },
+    { path: "a/b", depth: 2 },
+    { path: "a/b/c", depth: 3 },
+  ];
+
+  const siblings: Barred[] = [
+    { path: "a", depth: 1 },
+    { path: "a/b", depth: 2 },
+    { path: "a/c", depth: 2 },
+  ];
+
+  /** Every order the boxes could have been built in. */
+  function orders(boxes: Barred[]): Barred[][] {
+    const out: Barred[][] = [];
+    for (const first of boxes) {
+      for (const second of boxes) {
+        for (const third of boxes) {
+          const order = [first, second, third];
+          if (new Set(order).size === 3) out.push(order);
+        }
+      }
+    }
+    return out;
+  }
+
+  it("names both of two folded siblings, in every order they may arrive in", () => {
+    for (const order of orders(siblings)) {
+      const folded = new Set(["a/b", "a/c"]);
+      const bars = barsFor(order, folded);
+      // The degradation, restated so that this test says what it is about
+      // rather than relying on the describe above it.
+      expect(bars.get("a")?.label).toBe("a");
+      expect(bars.get("a")?.absorbed).toEqual([]);
+
+      expect([...stranded(order, bars)].sort()).toEqual(["a/b", "a/c"]);
+    }
+  });
+
+  it("names nobody when every folded folder went into a bar", () => {
+    // The whole chain folded reads `a/b/c` on one bar, so both folded folders
+    // are named on it and a stub for either would be the name said twice.
+    const bars = barsFor(chain, new Set(["a/b", "a/b/c"]));
+    expect(bars.get("a")?.absorbed).toEqual(["a/b", "a/b/c"]);
+    expect([...stranded(chain, bars)]).toEqual([]);
+  });
+
+  it("names nobody when nothing is folded at all", () => {
+    expect([...stranded(chain, barsFor(chain, new Set()))]).toEqual([]);
+    expect([...stranded(siblings, barsFor(siblings, new Set()))]).toEqual([]);
+  });
+
+  it("names nobody where an only folded child stands beside an open one", () => {
+    // One folded child is unambiguous however many open ones there are: it goes
+    // into the parent's bar and the open one keeps its own.
+    const bars = barsFor(siblings, new Set(["a/b"]));
+    expect(bars.get("a")?.label).toBe("a/b");
+    expect([...stranded(siblings, bars)]).toEqual([]);
+  });
+
+  it("empties itself as soon as one of the two stranded folders is brought back", () => {
+    // Which is what pressing a stub does, and the reason it is enough of an
+    // answer: the drawing goes straight back to a state where both folders have
+    // a name, one on its own bar and one in its parent's.
+    const bars = barsFor(siblings, new Set(["a/c"]));
+    expect(bars.get("a")?.label).toBe("a/c");
+    expect(bars.get("a/b")?.label).toBe("b");
+    expect([...stranded(siblings, bars)]).toEqual([]);
+  });
+
+  it("names a folded folder underneath a stranded one, which is silent too", () => {
+    // `a` degrades over `a/b` and `a/c`, so `a/b` draws nothing — and `a/b/d`,
+    // folded into a bar that is not drawn, is just as lost as `a/b` is. Each
+    // gets its own stub on its own frame.
+    const deep: Barred[] = [
+      { path: "a", depth: 1 },
+      { path: "a/b", depth: 2 },
+      { path: "a/c", depth: 2 },
+      { path: "a/b/d", depth: 3 },
+    ];
+    const bars = barsFor(deep, new Set(["a/b", "a/c", "a/b/d"]));
+    expect([...bars.keys()]).toEqual(["a"]);
+    expect([...stranded(deep, bars)].sort()).toEqual(["a/b", "a/b/d", "a/c"]);
+
+    // And pressing `a/b`'s stub settles the whole of it in one go, which is
+    // what says the stubs are a way out rather than a state of their own. `a/b`
+    // gets a bar and absorbs `a/b/d` into it, and `a` is left with a single
+    // folded child so its degradation lifts and it absorbs `a/c`. Three silent
+    // folders become three names on two bars, and nothing is stranded.
+    const after = barsFor(deep, new Set(["a/c", "a/b/d"]));
+    expect(after.get("a/b")?.label).toBe("b/d");
+    expect(after.get("a")?.label).toBe("a/c");
+    expect([...stranded(deep, after)]).toEqual([]);
   });
 });
