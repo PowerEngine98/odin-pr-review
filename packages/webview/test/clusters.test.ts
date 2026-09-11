@@ -256,3 +256,90 @@ describe("asking for the cards to be grouped by folder", () => {
     }
   });
 });
+
+describe("how far a name sits below the bar", () => {
+  /*
+   * Every header that is held against the top of the window has to sit below
+   * the one that encloses it, and a card's own title below all of them — three
+   * things sliding down to stay under one bar and all arriving on the same line
+   * is a folder's name written over a file's.
+   *
+   * What decides the offset is how many names are actually above it, and that
+   * is not how deep the path is. A file five folders down may be inside two
+   * boxes, because the levels in between hold one thing each and a frame around
+   * a frame says nothing. Counting path segments pushed the title down by three
+   * headers that were never drawn, which is what a reader saw as a card whose
+   * name had slid into the middle of its own code.
+   */
+  function deep(): ViewModel {
+    const data = model();
+    // Two files, five folders down, with nothing else at the levels between.
+    data.nodes = [
+      card("d1", "frontend/common/src/components/carousel/one.ts", 0, 0),
+      card("d2", "frontend/common/src/components/carousel/two.ts", 1, 0),
+    ];
+    return data;
+  }
+
+  it("counts the boxes a card is in, not the folders in its path", () => {
+    const drawn = grouped(deep());
+    const boxes = drawn.folders ?? [];
+
+    // One box: every folder above `carousel` holds exactly one thing.
+    expect(boxes.map((box) => box.path)).toEqual([
+      "frontend/common/src/components/carousel",
+    ]);
+    expect(boxes[0]?.depth).toBe(1);
+  });
+
+  it("counts each enclosing box once, however deep the nesting goes", () => {
+    const drawn = grouped(model());
+    const boxes = drawn.folders ?? [];
+
+    const parent = boxes.find((box) => box.path === "src")!;
+    const child = boxes.find((box) => box.path === "src/alpha")!;
+    expect(parent.depth).toBe(1);
+    expect(child.depth).toBe(2);
+  });
+
+  it("draws a parent before the child it contains", () => {
+    // A box is behind the cards and behind its own children, so the order they
+    // are handed over in is the order they must be painted in.
+    const boxes = grouped(model()).folders ?? [];
+    const at = (path: string) => boxes.findIndex((box) => box.path === path);
+    expect(at("src")).toBeLessThan(at("src/alpha"));
+  });
+});
+
+describe("the room between one box and the next", () => {
+  it("gives a folder a corridor inside its parent rather than the same border", () => {
+    /*
+     * Every box is measured from the same cards, and a folder very often shares
+     * its leftmost file with the folder inside it. Inset by a fixed amount they
+     * came out with their borders drawn on top of one another, so three nested
+     * folders read as one box with a thick edge and a reader could not tell
+     * which of them a card was in.
+     */
+    const boxes = grouped(model()).folders ?? [];
+    const parent = boxes.find((box) => box.path === "src")!;
+    const child = boxes.find((box) => box.path === "src/alpha")!;
+
+    expect(child.x - parent.x).toBeGreaterThan(20);
+    expect(parent.x + parent.width - (child.x + child.width)).toBeGreaterThan(20);
+  });
+
+  it("does not take that room out of the band below", () => {
+    /*
+     * Sideways only. Down the page the room is already reserved — a band pays a
+     * pad and a header for every box that opens at it — so growing a box
+     * downwards to match would push it into a band nobody set aside for it,
+     * which is a box drawn over somebody else's cards. That is what the first
+     * attempt did, and three of the measurements above caught it.
+     */
+    const drawn = grouped(model());
+    const loose = drawn.cards.find((placed) => placed.node.path === "root.ts")!;
+    for (const box of drawn.folders ?? []) {
+      expect(overlaps(box, loose)).toBe(false);
+    }
+  });
+});

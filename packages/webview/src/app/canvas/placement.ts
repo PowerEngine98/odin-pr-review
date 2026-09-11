@@ -28,11 +28,14 @@ export interface FolderBox {
   /** What the header says, which is the last segment of that path. */
   label: string;
   /**
-   * How many folders deep this one is, counting from the top of the project.
+   * How many boxes enclose this one, counting itself. One for an outermost box.
    *
-   * Drawn with rather than worked out again: it decides how far the header sits
-   * below the bar, so that a folder inside a folder has both names on screen
-   * and in the order they nest instead of one on top of the other.
+   * Boxes and not folders. `frontend/common/src/components/carousel` is five
+   * folders deep and may be drawn as two boxes, because the levels in between
+   * hold one thing each and a frame around a frame says nothing — so counting
+   * path segments pushed every header and every card title down by three
+   * headers that were never drawn. What decides how far a name sits below the
+   * bar is how many names are actually above it.
    */
   depth: number;
   x: number;
@@ -251,7 +254,7 @@ export interface Layout {
  * depends on them: the bands are worked out on this side, where the cards' real
  * heights are known.
  */
-const CLUSTER_PAD = 22;
+const CLUSTER_PAD = 30;
 const CLUSTER_HEAD = 30;
 
 /** The band a file belongs to, which is the folder it lives in. */
@@ -446,17 +449,52 @@ function boxesFor(
     boxes.push({
       path: band.key,
       label: band.key.slice(band.key.lastIndexOf("/") + 1),
-      depth: band.depth,
-      x: left - CLUSTER_PAD,
+      depth: 1,
+      x: left,
       y: band.top - CLUSTER_HEAD,
-      width: right - left + CLUSTER_PAD * 2,
+      width: right - left,
       height: bottom - band.top + CLUSTER_HEAD + CLUSTER_PAD,
       nodes: inside.map((card) => card.node.id),
     });
   }
 
+  /*
+   * How many drawn boxes each one sits inside, counted once they are all known.
+   *
+   * It cannot be worked out while they are being made: whether a folder gets a
+   * box at all depends on what survived the filters, so an ancestor may be
+   * absent from a drawing its descendant is in.
+   */
+  for (const box of boxes) {
+    box.depth =
+      1 +
+      boxes.filter((other) => box.path.startsWith(`${other.path}/`)).length;
+  }
+
+  /*
+   * A corridor between a box and the one it sits inside.
+   *
+   * Sideways only. Every box is measured from the same cards — a folder and the
+   * folder inside it very often share their leftmost file — so inset by a fixed
+   * amount they came out with their borders drawn on top of one another, and
+   * three nested folders read as one box with a thick edge.
+   *
+   * Sideways only because down the page the room is already reserved: a band
+   * pays a pad and a header for every box that opens at it, so the levels are
+   * spaced apart before any card is placed. Growing a box downwards here would
+   * push it into a band nobody set aside for it, which is a box over somebody
+   * else's cards.
+   */
+  const deepest = Math.max(1, ...boxes.map((box) => box.depth));
+  for (const box of boxes) {
+    const room = CLUSTER_PAD * (1 + deepest - box.depth);
+    box.x -= room;
+    box.width += room * 2;
+  }
+
   void data;
-  return boxes;
+  // Outermost first, so whatever draws them draws a parent before its child.
+  return boxes.sort((a, b) => a.depth - b.depth || a.y - b.y);
 }
 
 export function place(

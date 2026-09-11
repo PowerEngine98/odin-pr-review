@@ -46,10 +46,15 @@ import Pinned from "./Pinned.svelte";
      * anything to be sticky inside.
      */
     chromeBottom = 0,
+    /** What the reader can see, so a wide folder's name can slide into it. */
+    viewLeft = 0,
+    viewRight = 0,
   }: {
     card?: Snippet<[Placed, number]>;
     onfollow?: (journey: Journey) => void;
     chromeBottom?: number;
+    viewLeft?: number;
+    viewRight?: number;
   } = $props();
 
   let viewport: HTMLDivElement;
@@ -67,13 +72,15 @@ import Pinned from "./Pinned.svelte";
    * headers stacked above it instead, and starts below the last of them.
    */
   const titleLine = $derived.by(() => {
-    const deepest = new Map<string, number>();
+    // How many boxes actually hold this card, which is how many names are
+    // stacked above it. Not how deep its path is: the levels that hold one
+    // thing each are never drawn, and counting them pushed a title down by
+    // headers that are not on screen.
+    const held = new Map<string, number>();
     for (const box of boxed) {
-      for (const id of box.nodes) {
-        deepest.set(id, Math.max(deepest.get(id) ?? 0, box.depth));
-      }
+      for (const id of box.nodes) held.set(id, (held.get(id) ?? 0) + 1);
     }
-    return (id: string) => chromeBottom + (deepest.get(id) ?? 0) * CLUSTER_HEAD;
+    return (id: string) => chromeBottom + (held.get(id) ?? 0) * CLUSTER_HEAD;
   });
   const size = $derived(camera.extent());
 
@@ -296,7 +303,7 @@ import Pinned from "./Pinned.svelte";
       behind them and behind the arrows between them — drawn over either, it
       would be a pane of glass across the thing the reader came to look at.
     -->
-    <Clusters folders={boxed} {chromeBottom} />
+    <Clusters folders={boxed} {chromeBottom} {viewLeft} {viewRight} />
 
     <EdgeLayer {size} {boxes} {lineAt} {onfollow} />
 
