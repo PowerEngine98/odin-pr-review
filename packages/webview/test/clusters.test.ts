@@ -439,6 +439,29 @@ describe("two folders that stand over different columns", () => {
       drawn.cards.map((placed) => [placed.node.id, placed.x] as const);
     expect(columns(shared)).toEqual(columns(plain));
   });
+
+  it("keeps a plain edge inside each box even where the two stand side by side", () => {
+    /*
+     * The bill for folders being able to stand beside each other at all, and it
+     * came in the moment they could. Each box was taking half the gap between
+     * them and then standing a full clearance back from that half — but the box
+     * opposite was doing the same arithmetic at the same moment, so the
+     * clearance was subtracted twice from one gap and the two borders ended up
+     * two clearances apart. At a column gap of a hundred and forty and a
+     * clearance of fifty-six that left each of them fourteen units, less than
+     * half the plain edge a box is meant to have, and a reader saw a frame drawn
+     * hard against its own card with a wide empty corridor on the other side of
+     * it. The clearance belongs between the two borders, once.
+     */
+    const drawn = grouped(downstream());
+    for (const box of drawn.folders ?? []) {
+      const mine = drawn.cards.filter((placed) => box.nodes.includes(placed.node.id));
+      const left = Math.min(...mine.map((placed) => placed.x));
+      const right = Math.max(...mine.map((placed) => placed.x + placed.width));
+      expect(left - box.x).toBeGreaterThanOrEqual(30);
+      expect(box.x + box.width - right).toBeGreaterThanOrEqual(30);
+    }
+  });
 });
 
 /**
