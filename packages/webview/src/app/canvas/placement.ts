@@ -13,6 +13,17 @@
 import { folderOf } from "@odin/core/layout/folders.js";
 
 import type { Arrangement, NodeView, ViewModel } from "../model.js";
+/*
+ * The header's height comes from the module that draws with it.
+ *
+ * The placement reserves the room and `heading.ts` puts the header in it, so
+ * the two have to agree exactly — a reservation that is not the header's own
+ * height is either a bar lying across the first card or a strip of nothing
+ * above it. They were two literals in two files, which is how they came to
+ * disagree once already; now there is one number and only one place to change
+ * it.
+ */
+import { CLUSTER_HEAD } from "./heading.js";
 import { isSchema } from "./wire.js";
 
 /**
@@ -264,7 +275,6 @@ const CLUSTER_EDGE = 14;
 
 /** And how much further out each enclosing box sits than the one inside it. */
 const CLUSTER_STEP = 16;
-const CLUSTER_HEAD = 30;
 
 /** The band a file belongs to, which is the folder it lives in. */
 const LOOSE = "\u0000loose";

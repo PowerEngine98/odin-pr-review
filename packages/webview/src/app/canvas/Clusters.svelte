@@ -11,18 +11,10 @@
   these are the rectangles they came out as. A box with a position of its own
   would be a second opinion about where a folder is.
 -->
-<script module lang="ts">
-  /**
-   * How tall a folder's own header is, and how far each nested one sits below
-   * the one above it. Matches `CLUSTER_HEAD` in the placement, which reserves
-   * the room for it.
-   */
-  export const CLUSTER_HEAD = 30;
-</script>
-
 <script lang="ts">
   import { view } from "../state.svelte.js";
 
+  import { CLUSTER_HEAD, pinHead } from "./heading.js";
   import type { FolderBox } from "./placement.js";
 
   let {
@@ -84,29 +76,17 @@
    * It stops at the foot of the box rather than following the bar for ever, so
    * a name never outlives the cards it is about: as the folder leaves, its
    * header slides out with it and the next folder's takes over.
+   *
+   * The arithmetic is next door in `heading.ts` rather than here, because it is
+   * the part of this component that two units meet in — the bar is window
+   * pixels, a header is canvas units — and every version of that fault has
+   * looked right at whatever zoom it was last seen at. `media` and `media/grid`
+   * are both held against the top of the window at once, and a step that is not
+   * exactly one header tall in the header's own units puts one name over the
+   * other as the reader zooms in and leaves them adrift as they zoom out.
    */
   function pin(box: FolderBox): number {
-    /*
-     * A pixel above the bar rather than level with it, and one header lower per
-     * folder deep.
-     *
-     * `media` and `media/grid` are both held against the top of the window at
-     * once, and pinned to the same line they land on the same row and read as
-     * one illegible name. A folder's name sits below its parent's, in the order
-     * they nest, which is the order the path reads in.
-     *
-     * The step is added after the scale has been divided out, not before, and
-     * that is not a detail. A header is thirty canvas units tall, so at any
-     * zoom but one a step measured in window pixels is a different size from
-     * the thing it is stepping over — the names drifted apart as the reader
-     * zoomed in and overlapped as they zoomed out, which looked like the
-     * stacking being wrong rather than the units being.
-     */
-    const line =
-      (chromeBottom - 1 - view.y) / view.scale + (box.depth - 1) * CLUSTER_HEAD;
-    const offset = Math.floor(line - box.y);
-    if (offset <= 0 || box.height <= CLUSTER_HEAD) return 0;
-    return Math.min(offset, box.height - CLUSTER_HEAD);
+    return pinHead({ chromeBottom, y: view.y, scale: view.scale }, box);
   }
 </script>
 
@@ -123,8 +103,18 @@
       A bar across the whole box, as a card's title is across the whole card.
       A pill floating at one corner reads as a label stuck onto the drawing;
       a bar reads as the top of the thing it names, which is what it is.
+
+      Its height is the constant rather than a number in the stylesheet that
+      happens to match it. The names are stacked one header apart, so a header
+      drawn at any other size is names that overlap or names with daylight
+      between them — and the two numbers sitting in two files is how they came
+      to disagree in the first place.
     -->
-    <div class="cluster-head" style:transform="translateY({pin(box)}px)">
+    <div
+      class="cluster-head"
+      style:height="{CLUSTER_HEAD}px"
+      style:transform="translateY({pin(box)}px)"
+    >
       <span class="cluster-said" style:transform="translateX({slide(box)}px)">
         <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
           <path
@@ -191,7 +181,19 @@
     top: 0;
     display: flex;
     align-items: center;
-    height: 30px;
+    /*
+     * A header is as tall as it says it is, rule and all.
+     *
+     * The height itself is set on the element, from the same constant the
+     * stacking steps by. What is said here is that the border along the bottom
+     * counts towards it: nothing in this page resets the box model, so without
+     * this the rule is a thirty-first unit hanging below a thirty-unit bar, and
+     * every name in the column sits a unit over the one above it. A unit is a
+     * quarter of a screen pixel pulled well back and three of them zoomed in,
+     * so it is a seam that only appears once the reader is close enough to read
+     * the names it is spoiling.
+     */
+    box-sizing: border-box;
     padding: 0 10px;
     /* Solid, because cards pass under it as the folder scrolls. */
     /*

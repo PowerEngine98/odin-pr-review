@@ -15,7 +15,8 @@
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
-  import Clusters, { CLUSTER_HEAD } from "./Clusters.svelte";
+  import Clusters from "./Clusters.svelte";
+  import { titleLine as titleLineFor } from "./heading.js";
 import Pinned from "./Pinned.svelte";
   import { wheelGesture } from "./gestures.js";
   import { listen as listenForKeys } from "./keyboard.svelte.js";
@@ -81,13 +82,19 @@ import Pinned from "./Pinned.svelte";
       for (const id of box.nodes) held.set(id, (held.get(id) ?? 0) + 1);
     }
     /*
-     * Scaled, because the card divides this by the zoom to reach canvas units
-     * and a header is thirty of those tall. Handed over unscaled it pushed the
-     * title by a different amount than the headers actually occupy, so a card's
-     * name sat in its own code at one zoom and under a folder's name at another.
+     * The conversion is `heading.ts`'s, so that the number handed to a card and
+     * the line the folder headers are held on are worked out in one place. What
+     * it does is scale the headers on the way out, because the card divides by
+     * the zoom itself to reach canvas units and a header is thirty of those
+     * tall. Handed over unscaled it pushed the title by a different amount than
+     * the headers actually occupy, so a card's name sat in its own code at one
+     * zoom and under a folder's name at another.
      */
     return (id: string) =>
-      chromeBottom + (held.get(id) ?? 0) * CLUSTER_HEAD * view.scale;
+      titleLineFor(
+        { chromeBottom, y: view.y, scale: view.scale },
+        held.get(id) ?? 0,
+      );
   });
   const size = $derived(camera.extent());
 
