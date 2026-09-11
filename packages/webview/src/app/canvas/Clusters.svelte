@@ -158,10 +158,23 @@
       drawn at any other size is names that overlap or names with daylight
       between them — and the two numbers sitting in two files is how they came
       to disagree in the first place.
+
+      Plus one screen pixel, which is not a fudge of that number but a repair of
+      a different one. Seven of these stand against the top of the window at
+      once on a deeply nested change, exactly one header apart, so in the
+      drawing's own units they are already flush. What shows through between
+      them is the screen's grid: a header is thirty canvas units, thirty units
+      is a fraction of a pixel at most zooms, and each bar is rounded to the
+      grid on its own — so consecutive bars round apart and leave a hairline of
+      the drawing between them, which reads as a gap in a solid stack of labels.
+      The seam is measured in screen pixels, so the bleed that closes it is too:
+      dividing by the zoom leaves it one pixel wide at every scale. It grows
+      downwards into the pad below the bar rather than into the reservation, so
+      the stacking step and the room a band sets aside are both untouched.
     -->
     <div
       class="cluster-head"
-      style:height="{CLUSTER_HEAD}px"
+      style:height="calc({CLUSTER_HEAD}px + 1px / var(--zoom, 1))"
       style:transform="translateY({pin(box)}px)"
     >
       <!--
