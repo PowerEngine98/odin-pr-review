@@ -4,6 +4,7 @@ import {
   barsAbove,
   barsFor,
   headOf,
+  stranded,
   type Barred,
 } from "../src/app/canvas/bars.js";
 import {
@@ -130,6 +131,45 @@ function nested() {
     outer: at("labura"),
     middle: at("labura/common"),
     inner: at("labura/common/mediaGroup"),
+  };
+}
+
+/**
+ * The other shape, where one folder really is the whole of what its parent holds.
+ *
+ * `labura/app` is drawn as a box and the only box inside it is `labura/app/home`,
+ * which holds every card `app` holds — so `app` is `app/home` and saying so on
+ * one bar is a true statement about the whole frame. `labura` around it is not
+ * in that position at all: it holds `docs`, and a file of its own, neither of
+ * which is anywhere under `app`.
+ *
+ * Built through `place()` rather than written out as `Barred` literals, because
+ * the rule turns on a relationship between two boxes and a hand-built pair can
+ * be given any relationship at all. What is being claimed is that a real drawing
+ * produces this shape, and the way to claim it is to draw one.
+ */
+function occupied() {
+  const data = model([
+    card("l1", "labura/one.ts", 0, 0),
+    card("h1", "labura/app/home/one.ts", 0, 200),
+    card("h2", "labura/app/home/two.ts", 1, 0),
+    card("d1", "labura/docs/one.ts", 2, 0),
+    card("g1", "labura/app/home/media/one.ts", 1, 400),
+    card("g2", "labura/app/home/media/two.ts", 0, 600),
+  ]);
+  const drawn = place(data, arrangement(data), STANDING);
+  const boxes = drawn.folders ?? [];
+  const at = (path: string) => {
+    const box = boxes.find((one) => one.path === path);
+    if (!box) throw new Error(`no box was drawn for ${path}`);
+    return box;
+  };
+  return {
+    boxes,
+    root: at("labura"),
+    app: at("labura/app"),
+    home: at("labura/app/home"),
+    media: at("labura/app/home/media"),
   };
 }
 
@@ -412,97 +452,198 @@ describe("what collapsing a folder is not allowed to change", () => {
 });
 
 /**
- * What a bar says, which is its own folder's name and nothing else.
+ * What a bar says, which is its own folder's name and then whatever folded
+ * folder turns out to be the whole of what the box contains.
  *
- * This was the other way round and the tests below said so. A folded folder's
- * name went into the bar above it, which then read as a path — `common` with
- * `mediaGroup` folded into it read `common/mediaGroup` — on the argument that
- * the reader had to be told where the cards went rather than left to conclude
- * they sat directly inside `common`. The rule was overturned by what it did to
- * the bar at the top of the drawing: fold a few folders under an outermost box
- * and its bar read `src / app / profile / laborer`, four folders' worth of name
- * on the one bar whose job is to say `src`. A path belongs to the box it names
- * and not to the bar of a box that merely contains it.
+ * This is the third answer to the same question and the tests below have said
+ * all three, so what they used to claim is worth writing down. First a folded
+ * folder's name went into the bar above it unconditionally, which then read as a
+ * path — `common` with `mediaGroup` folded into it read `common/mediaGroup`.
+ * Then it did not, and these tests asserted that a bar reads one name however
+ * deep the folding below it goes. Neither is right, and the reason the middle
+ * one was overturned is the reason the first one was: the failure was never
+ * concatenation, it was concatenating a path that was not true of the frame it
+ * was written across. `src / app / profile / laborer` on a box that also held a
+ * second folder and a file of its own named a thread through the box and offered
+ * it as a name for the box.
  *
- * So there is nothing to concatenate and nothing to choose between, and the two
- * things that follow from that are worth stating rather than assuming. A bar
- * reads one name however deep the folding below it goes, and a parent with two
- * folded children is no longer a special case at all — it used to need a
- * degradation rule, because one bar cannot say two names, and the rule had to
- * be proved deterministic over every order the boxes might arrive in.
+ * So the condition is sole occupancy, tested against the drawing as it stands:
+ * a parent absorbs a folded child only while that child is a box holding every
+ * card the parent holds, so that everything inside the frame really is inside
+ * the path on the bar. Two folded children is not an ambiguity to be resolved by
+ * some rule the reader cannot see — which is what the first version needed and
+ * had to prove stable over every order three boxes can arrive in — it is a frame
+ * with two things in it, and it is declined for the same reason a stray card
+ * declines it.
  */
 describe("the name a bar reads", () => {
-  /** A nest as `barsFor` sees it: paths and how many boxes enclose each. */
-  const chain: Barred[] = [
-    { path: "a", depth: 1 },
-    { path: "a/b", depth: 2 },
-    { path: "a/b/c", depth: 3 },
+  /**
+   * A parent that is nothing but one folder, which is the case the rule is for.
+   *
+   * `app` holds two cards and `app/home` holds the same two, so the frame
+   * labelled `app` and the frame labelled `app/home` enclose exactly the same
+   * drawing.
+   */
+  const sole: Barred[] = [
+    { path: "app", depth: 1, nodes: ["h1", "h2"] },
+    { path: "app/home", depth: 2, nodes: ["h1", "h2"] },
   ];
 
-  it("reads only its own name however deep the folding below it goes", () => {
-    // The failure this exists to prevent, said in the smallest fixture that can
-    // show it: an outermost bar reading `src/app/profile/laborer` because
-    // somebody folded three folders underneath it. The reader asked for less
-    // chrome and was given the longest label in the drawing, on the one bar
-    // that cannot be folded away to be rid of it.
+  /** The same, with a second folder standing beside the folded one. */
+  const beside: Barred[] = [
+    { path: "src", depth: 1, nodes: ["h1", "h2", "p1", "p2"] },
+    { path: "src/home", depth: 2, nodes: ["h1", "h2"] },
+    { path: "src/pages", depth: 2, nodes: ["p1", "p2"] },
+  ];
+
+  /** And with one card of the parent's own, outside the folded folder. */
+  const loose: Barred[] = [
+    { path: "src", depth: 1, nodes: ["h1", "h2", "readme"] },
+    { path: "src/home", depth: 2, nodes: ["h1", "h2"] },
+  ];
+
+  it("absorbs a folded child that is the whole of what the box holds", () => {
+    // The reader's case, stated as the smallest fixture that can show it: fold
+    // `home` inside `app` where nothing else is in `app`, and one bar says
+    // `app/home` rather than a bar saying `app` with a stub on the frame below
+    // it saying `home`. Both frames are the same rectangle round the same two
+    // cards, so two labels for it is the drawing saying the same thing twice.
+    const bars = barsFor(sole, new Set(["app/home"]));
+
+    expect(bars.get("app")?.label).toBe("app/home");
+    expect(bars.get("app")?.absorbed).toEqual(["app/home"]);
+    // And the fold still did what folds are for: one bar where there were two.
+    expect(bars.has("app/home")).toBe(false);
+    expect(bars.get("app")?.slot).toBe(1);
+  });
+
+  it("absorbs nothing when another box stands beside the folded one", () => {
+    // `src` holds `home` and `pages`. A bar reading `src/home` across the whole
+    // of `src` would be written over `pages`'s cards, which are in `src` and are
+    // not in `src/home` — the reader is told what the frame is and then finds
+    // things in it the name does not cover.
+    const bars = barsFor(beside, new Set(["src/home"]));
+
+    expect(bars.get("src")?.label).toBe("src");
+    expect(bars.get("src")?.absorbed).toEqual([]);
+    // The sibling that is still open keeps its own bar, its own name and the
+    // slot below its parent's.
+    expect(bars.get("src/pages")?.label).toBe("pages");
+    expect(bars.get("src/pages")?.slot).toBe(2);
+
+    // And folding the sibling too is not a second question. There is no rule
+    // here choosing between two names, which the first version of this needed
+    // and could only answer by an accident of array order.
+    const both = barsFor(beside, new Set(["src/home", "src/pages"]));
+    expect(both.get("src")?.label).toBe("src");
+    expect([...both.keys()]).toEqual(["src"]);
+  });
+
+  it("absorbs nothing when the box holds a card outside the folded one", () => {
+    // One child box and it is folded, so the first condition holds and the
+    // second is the whole of what refuses this. `src` has a file of its own
+    // sitting directly in it, and `src/home` is not where that file is.
+    const bars = barsFor(loose, new Set(["src/home"]));
+
+    expect(bars.get("src")?.label).toBe("src");
+    expect(bars.get("src")?.absorbed).toEqual([]);
+    expect(bars.has("src/home")).toBe(false);
+  });
+
+  it("walks a whole chain of sole occupants down to the last of them", () => {
+    // The label the second version of this was written to prevent, on the shape
+    // where it is not a complaint at all. Every box here holds the same two
+    // cards, so `src`, `src/app`, `src/app/profile` and the `laborer` inside it
+    // are four frames around one drawing, and the bar that says so is saying
+    // what the reader would otherwise have to read off four stubs.
     const deep: Barred[] = [
-      { path: "src", depth: 1 },
-      { path: "src/app", depth: 2 },
-      { path: "src/app/profile", depth: 3 },
-      { path: "src/app/profile/laborer", depth: 4 },
+      { path: "src", depth: 1, nodes: ["one", "two"] },
+      { path: "src/app", depth: 2, nodes: ["one", "two"] },
+      { path: "src/app/profile", depth: 3, nodes: ["one", "two"] },
+      { path: "src/app/profile/laborer", depth: 4, nodes: ["one", "two"] },
     ];
     const bars = barsFor(
       deep,
       new Set(["src/app", "src/app/profile", "src/app/profile/laborer"]),
     );
 
-    expect(bars.get("src")?.label).toBe("src");
-    // And no other reading of it, stated as the whole map so that a label
-    // arriving on some other bar instead would not pass quietly.
+    expect(bars.get("src")?.label).toBe("src/app/profile/laborer");
+    expect(bars.get("src")?.absorbed).toEqual([
+      "src/app",
+      "src/app/profile",
+      "src/app/profile/laborer",
+    ]);
+    // Said as the whole map so that a label arriving on some other bar instead
+    // would not pass quietly.
     expect([...bars].map(([path, bar]) => [path, bar.label])).toEqual([
-      ["src", "src"],
+      ["src", "src/app/profile/laborer"],
     ]);
     expect(bars.get("src")?.slot).toBe(1);
   });
 
-  it("says nothing about the folder below it when that one is folded", () => {
-    // This used to read `a/b`, and the `b` half of it was pressable. What the
-    // reader gets instead is a stub on `a/b`'s own frame, which `barsFor` says
-    // by giving `a/b` no bar.
-    const bars = barsFor(chain, new Set(["a/b"]));
-    expect(bars.get("a")?.label).toBe("a");
-    expect(bars.has("a/b")).toBe(false);
-    // `a/b/c` still draws, and is now one slot nearer the top of the window
-    // than its depth would have put it. Its box has not moved.
-    expect(bars.get("a/b/c")?.slot).toBe(2);
-    expect(bars.get("a/b/c")?.label).toBe("c");
+  it("stops the walk at the first folder that is not the whole of its parent", () => {
+    // The same chain with one card left behind in `profile`, which is exactly
+    // the difference between the label above and the one that was reported. The
+    // walk takes `app` and `profile` and refuses `laborer`, so the bar says what
+    // is true of the frame and stops.
+    const deep: Barred[] = [
+      { path: "src", depth: 1, nodes: ["one", "two"] },
+      { path: "src/app", depth: 2, nodes: ["one", "two"] },
+      { path: "src/app/profile", depth: 3, nodes: ["one", "two"] },
+      { path: "src/app/profile/laborer", depth: 4, nodes: ["one"] },
+    ];
+    const bars = barsFor(
+      deep,
+      new Set(["src/app", "src/app/profile", "src/app/profile/laborer"]),
+    );
+
+    expect(bars.get("src")?.label).toBe("src/app/profile");
+    expect(bars.get("src")?.absorbed).toEqual(["src/app", "src/app/profile"]);
+    // And the folder the walk refused is not lost: it has no bar and no segment
+    // in anybody's label, so it is where a stub goes.
+    expect([...stranded(deep, bars)]).toEqual(["src/app/profile/laborer"]);
   });
 
-  it("reads the same name whether one child under it is folded or two", () => {
-    // The degradation this replaces: with a parent able to absorb one child's
-    // name but not two, folding a second child changed what the first fold had
-    // done to the parent's bar, and the rule for it had to be proved stable
-    // over all six orders three boxes can arrive in. A bar that says its own
-    // name has nothing to be unstable about.
-    const siblings: Barred[] = [
-      { path: "a", depth: 1 },
-      { path: "a/b", depth: 2 },
-      { path: "a/c", depth: 2 },
+  it("absorbs nothing where two children could each claim the whole box", () => {
+    // The condition about there being exactly one child, held on its own rather
+    // than left to the count comparison to imply. On a real drawing it is
+    // implied: sibling boxes hold different cards, so a parent with two of them
+    // has cards outside either. This fixture is the case that cannot arise, and
+    // it is here because the implementation reads the first element of a
+    // filtered array — which is the exact shape of the rule the first version
+    // of this feature had to be rescued from, where a bar read `common/util` on
+    // one machine and `common/mediaGroup` on another with the same change in
+    // front of it, and neither was wrong in a way anybody could report.
+    const twins: Barred[] = [
+      { path: "a", depth: 1, nodes: ["x", "y"] },
+      { path: "a/b", depth: 2, nodes: ["x", "y"] },
+      { path: "a/c", depth: 2, nodes: ["x", "y"] },
     ];
+    for (const order of [twins, [twins[1]!, twins[2]!, twins[0]!], [twins[2]!, twins[0]!, twins[1]!]]) {
+      const bars = barsFor(order, new Set(["a/b", "a/c"]));
+      expect(bars.get("a")?.label).toBe("a");
+      expect(bars.get("a")?.absorbed).toEqual([]);
+    }
+  });
 
-    const one = barsFor(siblings, new Set(["a/b"]));
-    expect(one.get("a")?.label).toBe("a");
-    // The sibling that is still open keeps its own bar, its own name and the
-    // slot below its parent's.
-    expect(one.get("a/c")?.label).toBe("c");
-    expect(one.get("a/c")?.slot).toBe(2);
+  it("absorbs nothing from a child that still draws its own bar", () => {
+    // An open folder is already saying its name a header lower, so there is
+    // nothing for the bar above to say on its behalf. Sole occupancy is not on
+    // its own a reason to concatenate — a fold is.
+    const bars = barsFor(sole, new Set());
 
-    const both = barsFor(siblings, new Set(["a/b", "a/c"]));
-    expect(both.get("a")?.label).toBe("a");
-    expect([...both.keys()]).toEqual(["a"]);
+    expect(bars.get("app")?.label).toBe("app");
+    expect(bars.get("app")?.absorbed).toEqual([]);
+    expect(bars.get("app/home")?.label).toBe("home");
+    expect(bars.get("app/home")?.slot).toBe(2);
   });
 
   it("gives every bar its own name when nothing is folded", () => {
+    const chain: Barred[] = [
+      { path: "a", depth: 1, nodes: ["x", "y"] },
+      { path: "a/b", depth: 2, nodes: ["x", "y"] },
+      { path: "a/b/c", depth: 3, nodes: ["x", "y"] },
+    ];
     const bars = barsFor(chain, new Set());
     expect([...bars.keys()]).toEqual(["a", "a/b", "a/b/c"]);
     expect([...bars.values()].map((bar) => bar.label)).toEqual(["a", "b", "c"]);
@@ -510,7 +651,61 @@ describe("the name a bar reads", () => {
       // The ordinary case, and the one where slot and depth agree exactly —
       // which is why the two are so easy to confuse and why this says it.
       expect(bars.get(box.path)?.slot).toBe(box.depth);
+      expect(bars.get(box.path)?.absorbed).toEqual([]);
     }
+  });
+});
+
+/**
+ * The same rule again, read off a drawing rather than off a fixture.
+ *
+ * Everything above hands `barsFor` `Barred` literals, which is the right way to
+ * state a rule and no way at all to claim that a real change ever produces the
+ * shape the rule is about. A hand-built parent and child can be given any
+ * relationship somebody types. So this asks `place()` for a drawing and then
+ * asks whether the boxes it actually drew are in the position the rule
+ * describes, which is the part that would quietly stop being true if the
+ * placement's idea of which folders are worth a box ever moved.
+ *
+ * It is also the reader's own example: `app` whose only content is `home`.
+ */
+describe("a bar reading a path off a drawing that was really placed", () => {
+  it("absorbs the sole occupant and leaves the crowded box alone", () => {
+    const { boxes, root, app, home, media } = occupied();
+
+    // The shape the rest of this rests on, said out loud so that a placement
+    // that stopped producing it could not turn the assertions below into a
+    // check of two boxes nobody would recognise.
+    expect(home.nodes.length).toBe(app.nodes.length);
+    expect(root.nodes.length).toBeGreaterThan(app.nodes.length);
+    expect(media.nodes.length).toBeLessThan(home.nodes.length);
+
+    const bars = barsFor(boxes, new Set([home.path]));
+
+    // `app` is `app/home` and says so.
+    expect(bars.get(app.path)?.label).toBe("app/home");
+    expect(bars.get(app.path)?.absorbed).toEqual([home.path]);
+    // `labura` is not: it holds `docs` and a file of its own, neither of which
+    // is anywhere under `app`.
+    expect(bars.get(root.path)?.label).toBe("labura");
+    expect(bars.get(root.path)?.absorbed).toEqual([]);
+    // And the box below the absorbed one carries on drawing its own bar, one
+    // slot nearer the top of the window than its depth would have put it.
+    expect(media.depth).toBe(4);
+    expect(bars.get(media.path)?.slot).toBe(3);
+    expect(bars.get(media.path)?.label).toBe("media");
+  });
+
+  it("refuses the folder below it, which holds half of what its parent does", () => {
+    // Fold both, and the walk takes `home` and stops: `media` has two of
+    // `home`'s four cards, so `app/home/media` across that frame would be a name
+    // for half of it.
+    const { boxes, app, home, media } = occupied();
+    const bars = barsFor(boxes, new Set([home.path, media.path]));
+
+    expect(bars.get(app.path)?.label).toBe("app/home");
+    expect(bars.get(app.path)?.absorbed).toEqual([home.path]);
+    expect([...stranded(boxes, bars)]).toEqual([media.path]);
   });
 });
 
@@ -661,34 +856,36 @@ describe("how many bars stand above a card, as the canvas counts them", () => {
 });
 
 /**
- * The boxes left with no bar, which is where a stub goes.
+ * The way back out of a fold, and the one property that must never be false.
  *
- * There was a `stranded` beside `barsFor` that answered this, and it had to,
- * because while a parent could absorb a child's name a folded folder was
- * usually not silent at all — its name was in the bar above and pressable
- * there, and only the pair of siblings the absorbing refused to choose between
- * fell through to a stub on their own frame. Working out which folders those
- * were took reading every bar's absorbed list.
+ * A folded folder has to be openable again, and there are two things that open
+ * one: a pressable segment of the bar that absorbed its name, and a stub on its
+ * own frame where no bar did. Which of the two it gets is not a preference, and
+ * the failure on either side is the same failure in two directions — a folder
+ * named twice in the same corner of the drawing, or a folder named nowhere with
+ * nothing anywhere that brings it back.
  *
- * With no concatenation anywhere, a folded box's name is on a stub and nowhere
- * else, so the set is simply the boxes `barsFor` gave no bar to — a lookup, and
- * `Clusters.svelte` now asks for a bar and draws a stub where there is none in
- * the same breath. That is what makes it impossible for a box to end up with
- * both a bar and a stub, or with neither, and what is asked here is that the
- * map says so: a missing bar means folded, and a bar means not, with no third
- * state in between for a box to get lost in.
+ * That second one is not hypothetical. It is what this feature shipped the first
+ * time: two folded siblings under one parent that could absorb neither left two
+ * folders with no bar, no segment and no mention in the hover tip, and the
+ * gesture that removed them offered nothing that undid it. The stub was the
+ * repair, and then for a while every folded box had one because nothing was ever
+ * absorbed, which made this question the same as "does the box have a bar". It
+ * is two questions again, so it is asserted again — exhaustively, over every
+ * folded set of a few shapes, because the hole appeared in exactly the corner
+ * nobody thought to fold.
  */
-describe("the boxes left with no bar, which is where a stub goes", () => {
+describe("the way back from a fold, which every folded box must have exactly one of", () => {
   const chain: Barred[] = [
-    { path: "a", depth: 1 },
-    { path: "a/b", depth: 2 },
-    { path: "a/b/c", depth: 3 },
+    { path: "a", depth: 1, nodes: ["x", "y"] },
+    { path: "a/b", depth: 2, nodes: ["x", "y"] },
+    { path: "a/b/c", depth: 3, nodes: ["x", "y"] },
   ];
 
   const siblings: Barred[] = [
-    { path: "a", depth: 1 },
-    { path: "a/b", depth: 2 },
-    { path: "a/c", depth: 2 },
+    { path: "a", depth: 1, nodes: ["x", "y", "z"] },
+    { path: "a/b", depth: 2, nodes: ["x", "y"] },
+    { path: "a/c", depth: 2, nodes: ["z"] },
   ];
 
   /** Every order the boxes could have been built in. */
@@ -705,31 +902,90 @@ describe("the boxes left with no bar, which is where a stub goes", () => {
     return out;
   }
 
+  /** Every set of folders the reader could have folded, including none. */
+  function everyFold(boxes: readonly Barred[]): Set<string>[] {
+    const out: Set<string>[] = [];
+    for (let mask = 0; mask < 1 << boxes.length; mask++) {
+      out.push(
+        new Set(boxes.filter((_, at) => mask & (1 << at)).map((box) => box.path)),
+      );
+    }
+    return out;
+  }
+
+  /**
+   * Where a box's name is currently said, which is what the component asks.
+   *
+   * `Clusters.svelte` draws a bar where there is one, a stub where `stranded`
+   * says so, and nothing otherwise, and this is that decision written out so
+   * that the three answers can be counted rather than eyeballed.
+   */
+  function saidOn(
+    boxes: readonly Barred[],
+    bars: ReturnType<typeof barsFor>,
+    path: string,
+  ): string[] {
+    const where: string[] = [];
+    if (bars.has(path)) where.push("bar");
+    if (stranded(boxes, bars).has(path)) where.push("stub");
+    for (const [owner, bar] of bars) {
+      if (bar.absorbed.includes(path)) where.push(`segment of ${owner}`);
+    }
+    return where;
+  }
+
   it("gives a bar to every box when nothing is folded at all", () => {
     // Which is the state the reader starts in, and the one where a stub
     // appearing at all would be a name said in a place nobody asked for it.
     for (const boxes of [chain, siblings]) {
       const bars = barsFor(boxes, new Set());
       expect(boxes.filter((box) => !bars.has(box.path))).toEqual([]);
+      expect(stranded(boxes, bars).size).toBe(0);
     }
   });
 
-  it("leaves exactly the folded boxes without one, and so with a stub", () => {
-    // Every one of them, which is the change: this used to be only the folders
-    // a degrading parent could not name, and the rest had their names in a bar
-    // above. One affordance now, in the same place on every folded box.
-    const bars = barsFor(chain, new Set(["a/b", "a/b/c"]));
-    expect([...bars.keys()]).toEqual(["a"]);
-    expect(bars.has("a/b")).toBe(false);
-    expect(bars.has("a/b/c")).toBe(false);
+  it("says every folded folder's name in exactly one place, whatever is folded", () => {
+    // The invariant, over every fold of both shapes and both directions of the
+    // failure at once: two places is the same folder offered twice with two
+    // different presses, and none is a folder the reader cannot get back.
+    for (const boxes of [chain, siblings]) {
+      for (const folded of everyFold(boxes)) {
+        const bars = barsFor(boxes, folded);
+        for (const box of boxes) {
+          const where = saidOn(boxes, bars, box.path);
+          expect({ path: box.path, folded: [...folded], where }).toEqual({
+            path: box.path,
+            folded: [...folded],
+            where: [bars.has(box.path) ? "bar" : where[0] ?? "nowhere"],
+          });
+          // Said again without the indirection, so that a `where` of length one
+          // containing the wrong thing could not satisfy the line above.
+          expect(where).toHaveLength(1);
+        }
+      }
+    }
+  });
+
+  it("moves a folder's name off its stub and into a bar when it becomes the whole box", () => {
+    // The transition worth naming, because it is the one where a box loses a
+    // stub without being unfolded. `a/b` folded beside an open `a/c` has a stub
+    // of its own; fold `a/c` away as well and — on this shape, where `a/c` is
+    // the only other thing in `a` — `a/b` is still not the whole of `a`, so it
+    // keeps the stub. `chain` is where it does change hands.
+    const apart = barsFor(siblings, new Set(["a/b"]));
+    expect(saidOn(siblings, apart, "a/b")).toEqual(["stub"]);
+
+    const together = barsFor(chain, new Set(["a/b"]));
+    expect(saidOn(chain, together, "a/b")).toEqual(["segment of a"]);
+    expect(together.get("a")?.label).toBe("a/b");
   });
 
   it("takes a box's bar back the moment the reader unfolds it", () => {
-    // Which is what pressing a stub does, and the reason a stub is enough of an
-    // answer on its own: the way back is one press on the box the reader
-    // folded, and it lands them exactly where they were.
+    // Which is what pressing a stub, or the segment that says its name, does:
+    // the way back lands the reader exactly where they were.
     const bars = barsFor(siblings, new Set(["a/b", "a/c"]));
     expect([...bars.keys()]).toEqual(["a"]);
+    expect(bars.get("a")?.absorbed).toEqual([]);
 
     const after = barsFor(siblings, new Set(["a/c"]));
     expect(after.get("a/b")?.label).toBe("b");
@@ -738,31 +994,46 @@ describe("the boxes left with no bar, which is where a stub goes", () => {
   });
 
   it("answers the same way in every order the boxes may arrive in", () => {
-    // The property the degradation rule needed proving over six permutations,
-    // kept because it is the one that would fail silently: nothing here may
-    // depend on where a box sits in the array it arrived in, and both the slot
-    // loop and the folded lookup are positioned to make that easy to break.
+    // The property that would fail silently: nothing here may depend on where a
+    // box sits in the array it arrived in, and the slot loop, the folded lookup
+    // and now the walk that looks for an only child are all positioned to make
+    // that easy to break. The walk is the newest of the three and the most
+    // exposed, since `childrenOf` filters an array and then asks how long the
+    // answer is.
     for (const order of orders(siblings)) {
       const bars = barsFor(order, new Set(["a/b", "a/c"]));
       expect([...bars.keys()]).toEqual(["a"]);
       expect(bars.get("a")?.label).toBe("a");
+      expect(bars.get("a")?.absorbed).toEqual([]);
       expect(bars.get("a")?.slot).toBe(1);
     }
 
     for (const order of orders(chain)) {
       const bars = barsFor(order, new Set(["a/b"]));
       expect([...bars.keys()].sort()).toEqual(["a", "a/b/c"]);
+      // The absorbing one, which is the reading that has an order to be
+      // unstable about: `a` has one child here and the walk has to find it
+      // wherever it was put.
+      expect(bars.get("a")?.label).toBe("a/b");
+      expect(bars.get("a")?.absorbed).toEqual(["a/b"]);
       expect(bars.get("a/b/c")?.slot).toBe(2);
+
+      const both = barsFor(order, new Set(["a/b", "a/b/c"]));
+      expect(both.get("a")?.label).toBe("a/b/c");
+      expect(both.get("a")?.absorbed).toEqual(["a/b", "a/b/c"]);
+      expect([...stranded(order, both)]).toEqual([]);
     }
   });
 
   it("keeps an outermost box's bar even where the reader folded it", () => {
-    // So an outermost box never gets a stub. There is no bar above it, and a
-    // drawing whose top-level frames were all stubs would be a change nobody
-    // could say the shape of at a glance.
+    // So an outermost box never gets a stub and is never absorbed into
+    // anything. There is no bar above it, and a drawing whose top-level frames
+    // were all stubs would be a change nobody could say the shape of at a
+    // glance.
     const bars = barsFor(chain, new Set(["a", "a/b"]));
-    expect(bars.get("a")?.label).toBe("a");
     expect(bars.get("a")?.slot).toBe(1);
+    expect(bars.get("a")?.label).toBe("a/b");
     expect(bars.has("a/b")).toBe(false);
+    expect(saidOn(chain, bars, "a")).toEqual(["bar"]);
   });
 });

@@ -111,10 +111,14 @@ let origin: { x: number; y: number } | null = null;
  * viewport, and the click would never reach the mark at all — which is why the
  * threads stopped opening.
  *
- * `.cluster-act` is the same deal made a second time, for the two controls a
- * folder box carries — the chevron in a bar that collapses it, and the stub left
- * on a folded folder's frame, which is the only way back it has. That second one
- * is worth naming because it is not in a bar: it sits in the
+ * `.cluster-act` is the same deal made a second time, for the controls a folder
+ * box carries — the chevron in a bar that collapses it, the segments of a bar
+ * that has absorbed a folded name, which bring that folder back, and the stub
+ * left on the frame of a folded folder whose name went into no bar at all. Those
+ * last two are the only ways back a folded folder has, and every folded folder
+ * has exactly one of them, so a press swallowed here is a folder the reader
+ * cannot open again. The stub is worth naming separately because it is not in a
+ * bar: it sits in the
  * header's reserved strip at the top of an otherwise silent box, in a layer that
  * is `pointer-events: none` the whole way down so that dragging anywhere on a
  * folder pans the drawing. Being `pointer-events: auto` is not enough

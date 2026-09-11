@@ -14,7 +14,7 @@
 <script lang="ts">
   import { setFolded, view } from "../state.svelte.js";
 
-  import { headOf, type Bar } from "./bars.js";
+  import { headOf, stranded, type Bar } from "./bars.js";
   import { CLUSTER_HEAD, pinHead } from "./heading.js";
   import type { FolderBox } from "./placement.js";
 
@@ -28,11 +28,12 @@
      * that is computed in the canvas — two derivations of "how many names are
      * above this" is how a file's name comes to sit on a folder's.
      *
-     * A box with no entry draws no bar, and gets a stub on its frame instead.
-     * Its frame is still drawn either way, in the loop below that draws every
-     * box: collapsing takes a bar out of the stack, it does not remove a folder,
-     * and a box that vanished when its bar did would be the reader losing the
-     * grouping they were using to read the change.
+     * A box with no entry draws no bar, and its name is then either a segment of
+     * the bar above it or a stub on its own frame. Its frame is still drawn
+     * whichever it is, in the loop below that draws every box: collapsing takes
+     * a bar out of the stack, it does not remove a folder, and a box that
+     * vanished when its bar did would be the reader losing the grouping they
+     * were using to read the change.
      */
     bars = new Map<string, Bar>(),
     /**
@@ -164,6 +165,39 @@
   }
 
   /**
+   * The folded folders whose names have ended up in no bar, so that each can be
+   * given a way back on its own frame.
+   *
+   * Worked out in `bars.ts` beside the walk that decides which folded names a
+   * bar absorbs, because this is the far side of that decision and the two have
+   * to describe the same set. A folder is here only when its bar is gone and no
+   * other bar has taken its name in — so a folded folder is pressable in exactly
+   * one place, either as a segment of the bar above it or as a stub here, and
+   * never in two places and never in none.
+   */
+  const lost = $derived(stranded(folders, bars));
+
+  /**
+   * Which folder a bar is really about, for the tip under it.
+   *
+   * The deepest name written on it, and not the box's own path. A bar reading
+   * `app/home` belongs to the box around `app`, but the question a reader asks
+   * by hovering it is "where is the thing I am looking at", and what they are
+   * looking at is `home` — answering with `app` would be the drawing replying to
+   * a question the reader did not ask, and doing it only on the bars where the
+   * answer was least obvious.
+   *
+   * A folded folder's stub has no bar behind it, so the fallback is what answers
+   * and it answers with that folder's own path — which is right, and is the
+   * reason the stub can afford to say a bare name. The reader hovering a stub
+   * that says `hooks` on a change with `src/hooks` and `test/hooks` in it gets
+   * told which of the two it is, exactly as they would from a bar.
+   */
+  function whole(box: FolderBox): string {
+    return barOf(box)?.absorbed.at(-1) ?? box.path;
+  }
+
+  /**
    * A folder's bar folded out of the stack, or brought back into it.
    *
    * Both directions go through the shared state rather than through a local
@@ -194,6 +228,20 @@
   }
 
   /**
+   * What a box is currently wearing, which is what the pointer was actually on.
+   *
+   * Three states and not two, now that a folded box may have its name in the bar
+   * above it instead of on a frame of its own: a bar, a stub, or nothing at all
+   * because the bar above is saying its name for it.
+   */
+  type Wearing = "bar" | "stub" | "nothing";
+
+  function wearing(box: FolderBox): Wearing {
+    if (bars.has(box.path)) return "bar";
+    return lost.has(box.path) ? "stub" : "nothing";
+  }
+
+  /**
    * The folder whose name the pointer is over, if any.
    *
    * A name says the last part of a path — `media`, where three folders in the
@@ -204,10 +252,10 @@
    * again, so on a change that rebuilds while an agent works it mostly never
    * appears at all.
    */
-  let over: { path: string; bar: boolean } | undefined = $state(undefined);
+  let over: { path: string; on: Wearing } | undefined = $state(undefined);
 
   /**
-   * That folder again, but only while it is still a folder in the drawing.
+   * That folder again, but only while it is still wearing what was hovered.
    *
    * The path is remembered rather than the box, and it is looked up again on
    * every read, because a pointer leaving is not the only way a name stops
@@ -216,23 +264,23 @@
    * the canvas naming nothing — a rebuild that drops the box, a filter that
    * empties it, the reader asking for the grouping to go away.
    *
-   * Folding is on that list too, and remembering which of the two was hovered
-   * is the whole of why. Every box has either a bar or a stub, so a box always
-   * has something to hover and asking whether the folder is still drawn would
-   * always say yes — but the reader was hovering one particular element, and
-   * folding takes that one out of the document and puts the other in its place.
-   * The bar never reports the pointer leaving because the bar is gone, and the
-   * stub never reports it arriving because the pointer was already where it is.
-   * So the tip sat there naming a folder whose bar the reader had just folded
-   * away, with nothing under it. Asking which kind was under the pointer, and
-   * dropping the tip the moment the box stops being that kind, answers both the
-   * fold and the unfold.
+   * Folding is on that list too, and remembering which of the three the reader
+   * was pointing at is the whole of why. Asking merely whether the folder is
+   * still drawn would usually say yes, because folding a box does not remove it
+   * — but the reader was on one particular element and folding swaps that
+   * element for a different one in the same corner. The bar never reports the
+   * pointer leaving because the bar has gone, and whatever replaces it never
+   * reports the pointer arriving because the pointer was already where it is, so
+   * the tip sat there naming a folder whose bar the reader had just folded away.
+   * The third state matters for the same reason one step along: unfold a
+   * sibling and a box that was wearing a stub is suddenly wearing nothing, its
+   * name having moved up into a parent's bar that has stopped absorbing it.
    */
   const tip = $derived.by(() => {
     if (over === undefined) return undefined;
     const box = folders.find((one) => one.path === over.path);
     if (!box) return undefined;
-    return bars.has(box.path) === over.bar ? box : undefined;
+    return wearing(box) === over.on ? box : undefined;
   });
 </script>
 
@@ -262,31 +310,33 @@
   cannot be painted above something the context as a whole is below — so the
   header's own number would mean nothing and it would sink with the frame.
 
-  And only for the boxes that draw one. A folder the reader has collapsed drew
-  its bar to say its own name and now says it on a stub instead, which is the
-  second branch below; a bar of its own here as well would be the stack no
-  shorter, which is the whole feature undone. The frame above is drawn for every
-  box regardless, so the grouping the reader is reading the change by stays
-  exactly where it was.
+  And only for the boxes that draw one. A folder the reader has collapsed says
+  its name somewhere else — as a segment of the bar above it, where that bar
+  absorbed it, and otherwise on a stub of its own, which is the second branch
+  below. A bar of its own here as well would be the stack no shorter, which is
+  the whole feature undone. The frame above is drawn for every box regardless, so
+  the grouping the reader is reading the change by stays exactly where it was.
 
-  The stub is the single way back, and it is in the same place on every folded
-  box. That is worth more than it looks. A folded name used to appear in its
-  parent's bar most of the time and on a stub the rest of the time, depending on
-  whether a sibling happened to be folded too, so the reader had to find out
-  which kind of fold they had made before they knew where to press to undo it.
-  Now there is one affordance and it is always on the box the reader folded.
-
-  Not a bar, though: it does not join the pinned stack, it does not hold itself
-  under the chrome, and it sits inside the header's reserved strip at the top of
-  the box rather than across it, so the chrome the fold recovered stays
-  recovered. It says the folder's name, because a mark that only said "something
-  is folded here" would tell the reader that a folder is missing without telling
-  them which, and it presses to bring the bar back — in the place the chevron
-  that folded it was, which is where the reader is still looking.
+  Which of the two a folded box gets is `bars.ts`'s answer and is asked here in
+  one breath, because the reader has to be able to open the folder again and
+  there has to be exactly one place they can do it. Two would say a folder's name
+  twice in the same corner of the drawing; none would leave a folder with no name
+  anywhere and no control that brings it back, which this feature has already
+  done to somebody once.
 -->
 {#each folders as box (box.path)}
   {@const bar = barOf(box)}
   {#if bar}
+  <!--
+    The label cut back into the words it was joined from.
+
+    Split rather than kept as an array on the bar, because the bar's label is the
+    one thing that decides what the reader sees and a parallel list of words
+    beside it would be a second version of the same sentence, free to drift. The
+    first word is the box's own name and the rest line up one for one with
+    `bar.absorbed`, which is what the press below relies on.
+  -->
+  {@const words = bar.label.split("/")}
   <!--
     A clip of the same shape as the frame, holding nothing but the bar.
 
@@ -347,7 +397,7 @@
         class="cluster-said"
         style:transform="translateX({slide(box)}px)"
         bind:offsetWidth={said[box.path]}
-        onmouseenter={() => (over = { path: box.path, bar: true })}
+        onmouseenter={() => (over = { path: box.path, on: "bar" })}
         onmouseleave={() => {
           if (over?.path === box.path) over = undefined;
         }}
@@ -363,15 +413,45 @@
           />
         </svg>
         <!--
-          The bar's own word for itself, and only ever one word.
+          The bar's own word for itself, which is the first word of its label.
 
           Taken from the bar rather than from the box, though a `FolderBox`
           carries a label of its own that says the same thing today. What a bar
           reads is `bars.ts`'s question — the same function decides whether the
-          bar is drawn at all — and two places entitled to answer it is how a
-          rule that has just been changed once comes back half-changed.
+          bar is drawn at all, and whether any folded name joins this one — and
+          two places entitled to answer it is how a rule that has just been
+          changed twice comes back half-changed.
         -->
-        <span class="cluster-name">{bar.label}</span>
+        <span class="cluster-name">{words[0]}</span>
+        <!--
+          And the folders folded into this bar, each one still its own word.
+
+          Drawn as separate presses rather than as one string, which is what
+          makes an absorbed fold reversible without a second control anywhere. A
+          bar reading `app/home` is two things the reader can point at, and
+          pressing the half that says `home` gives `home` its bar back — the
+          gesture undoes itself in the place it was made, rather than sending the
+          reader off to look for whatever they did it with. A folded folder whose
+          name is not up here has a stub on its own frame instead, and no folder
+          ever has both.
+
+          The separator is its own span so that it is not part of either press.
+          A slash that belonged to the segment beside it would be a pixel or two
+          of "unfold" sitting between two names, hit by a reader aiming at
+          neither.
+        -->
+        {#each bar.absorbed as path, at (path)}
+          <span class="cluster-sep" aria-hidden="true">/</span>
+          <button
+            type="button"
+            class="cluster-act cluster-part"
+            aria-label="Expand {path}"
+            onclick={() => fold(path, false)}
+            onkeydown={(event) => onKey(event, path, false)}
+          >
+            {words[at + 1]}
+          </button>
+        {/each}
         <span class="cluster-count">{box.nodes.length}</span>
         <!--
           The control that takes this bar out of the stack.
@@ -410,16 +490,19 @@
       </span>
     </div>
   </div>
-  {:else}
+  {:else if lost.has(box.path)}
   <!--
     The same clip again, holding a stub instead of a bar.
 
-    No second condition on it, and that is the simplification the whole change
-    is for. A box has a bar or it has a stub: `barsFor` gives no bar only to a
-    box the reader folded, so the absence of one is already the question
-    answered, and a second test here — of the folded set, or of a list of
-    folders worked out somewhere else — would be a second answer free to
-    disagree with the first and leave a box with two names or none.
+    The condition is the one thing here worth being careful about. A folded box
+    whose name went up into the bar above it is pressable there and must not also
+    carry a stub, or the reader is looking at the same folder named twice in two
+    shapes a few pixels apart and has to guess which press means what. A folded
+    box whose name went nowhere must carry one, or the folder has no name in the
+    drawing at all and no control that opens it again — which is the hole this
+    feature has already left somebody in, and the reason `stranded` works the
+    question out once in `bars.ts` against the walk that decides it rather than
+    being re-derived here from the folded set.
 
     The clip and not the frame, for the reason the frame gives above: a frame
     carries no z-index so that its edge is painted under the cards, and a
@@ -464,7 +547,7 @@
       bind:offsetWidth={said[box.path]}
       onclick={() => fold(box.path, false)}
       onkeydown={(event) => onKey(event, box.path, false)}
-      onmouseenter={() => (over = { path: box.path, bar: false })}
+      onmouseenter={() => (over = { path: box.path, on: "stub" })}
       onmouseleave={() => {
         if (over?.path === box.path) over = undefined;
       }}
@@ -491,13 +574,17 @@
 <!--
   And where that folder actually lives, while the pointer is on its name.
 
-  The only place in the drawing a full path appears, now that a bar says one
-  folder's name and a stub says one folder's name. That makes this more than a
-  convenience: a bar reading `hooks` on a change that touches `src/hooks` and
-  `test/hooks` is two bars reading the same word, and hovering is the whole of
-  how a reader tells them apart. It answers for a box with a stub exactly as it
-  does for a box with a bar — `pin` gives nought where there is no bar, so the
+  Nearly the only place in the drawing a full path appears, since a bar says one
+  folder's name most of the time and a stub always does. That makes this more
+  than a convenience: a bar reading `hooks` on a change that touches `src/hooks`
+  and `test/hooks` is two bars reading the same word, and hovering is the whole
+  of how a reader tells them apart. It answers for a box with a stub exactly as
+  it does for a box with a bar — `pin` gives nought where there is no bar, so the
   tip sits under the stub rather than under a header that is not there.
+
+  And it answers with `whole`, which is the deepest folder the bar names rather
+  than the box the bar is drawn on. A reader hovering `app/home` is asking about
+  `home`.
 
   A pass of its own because both of the layers above clip what is inside them —
   one to cut the header to the box's corners, the other because a name that is
@@ -511,7 +598,7 @@
     style:left="{tip.x + 10 + slide(tip)}px"
     style:top="{tip.y + pin(tip) + CLUSTER_HEAD}px"
   >
-    {tip.path}
+    {whole(tip)}
   </div>
 {/if}
 
@@ -726,9 +813,16 @@
 
   .cluster-name { color: var(--text); }
 
+  /* The slashes in an absorbed name, quieter than the names they join, so the
+     bar reads as a path rather than as a row of equally loud words. */
+  .cluster-sep {
+    opacity: 0.55;
+  }
+
   /*
-   * The controls a box carries: the chevron in a bar that collapses it, and the
-   * stub on a folded box's frame that brings it back.
+   * The controls a box carries: the chevron in a bar that collapses it, each
+   * folded name it has absorbed that brings a folder back, and the stub on a
+   * folded box's frame that does the same where no bar absorbed it.
    *
    * Stripped back to the text they contain, because a button drawn as a button
    * in here would be a piece of furniture sitting in the middle of a label. The
@@ -803,6 +897,15 @@
     background: color-mix(in srgb, var(--text) 24%, var(--card-bg));
   }
 
+  /* A folded folder's name, which reads as part of the path and presses as a
+     way back. Coloured as a name rather than as a link: it is one of the words
+     in the label, and making it look like something else would break the path
+     the label is trying to be. */
+  .cluster-part {
+    color: var(--text);
+  }
+
+  .cluster-part:hover,
   .cluster-fold:hover {
     color: var(--text);
     opacity: 0.7;

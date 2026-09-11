@@ -6,26 +6,57 @@
  * nested six folders deep stands six bars against the chrome and the drawing
  * begins a long way down a screen that is mostly labels. Collapsing a folder is
  * the answer: its bar leaves the stack and six bars become five. The box is
- * still drawn, and `Clusters.svelte` leaves a small stub on its frame saying
- * which folder it is, so what the reader gives up is a line of chrome and
+ * still drawn, and its name goes to one of two places — into the bar above it
+ * where the rule below allows, and otherwise onto a small stub `Clusters.svelte`
+ * leaves on its own frame — so what the reader gives up is a line of chrome and
  * nothing else.
  *
- * ## A bar reads its own folder's name, and concatenation is not coming back
+ * ## When a bar may say two folders' names, which took three goes to get right
  *
- * This was built the other way round first, and the record of that is here so
- * that nobody rebuilds it. A folded folder's name used to be folded into its
- * parent's bar, which then read as a path — `common` became `common/mediaGroup`
- * — on the argument that the reader had to be told where the cards went rather
- * than left to conclude they sat directly inside `common`. What it actually did
- * was put four folders' worth of name on the one bar at the top of the drawing
- * whose job is to say `src`: `src / app / profile / laborer`, read off an
- * outermost box that had never been folded and could not be. A path belongs to
- * the box it names and not to the bar of a box that merely contains it.
+ * The record of the two wrong answers is here because the third one only makes
+ * sense against them, and because both of the wrong ones are things somebody
+ * would arrive at again from first principles.
  *
- * So a bar says the last segment of its own path, always, whatever is folded
- * below it, and there is no rule here for joining two names together. The full
- * path has not gone anywhere: the hover tip answers with it, and that is now the
- * only place it appears, which is why it matters more than it did.
+ * It was built first so that a folded folder's name went into its parent's bar
+ * unconditionally, which then read as a path — `common` became
+ * `common/mediaGroup` — on the argument that the reader had to be told where the
+ * cards went rather than left to conclude they sat directly inside `common`.
+ * What that did on a real change was put four folders' worth of name on the one
+ * bar at the top of the drawing whose job is to say `src`: `src / app / profile
+ * / laborer`, read off an outermost box that had never been folded and could not
+ * be. It was then taken out altogether, and a bar said the last segment of its
+ * own path and nothing else, whatever was folded below it.
+ *
+ * Neither is quite it, and the reason is worth saying precisely, because "a bar
+ * names its own box" sounds like a principle and is really only a symptom. What
+ * was actually wrong with `src / app / profile / laborer` is that it was a false
+ * statement about the frame it was drawn on. That box held `laborer`'s cards and
+ * it held others besides — a card sitting directly in `src`, a second folder
+ * beside `app` — and none of those are anywhere in that path, so the bar named a
+ * thread through the box and presented it as a name for the whole box. A reader
+ * who takes the label at its word looks for `profile` inside `app` and finds
+ * four other things there too.
+ *
+ * The same concatenation is not a lie at all when nothing else is in the frame.
+ * If `app` holds exactly one box, `home`, and `home` holds every card `app`
+ * holds, then everything inside that frame is inside `app/home`, and `app/home`
+ * is simply what the frame is — two words for one rectangle rather than one word
+ * for a rectangle and another for a corner of it. So that is the rule: a parent
+ * absorbs a folded child's name only while the child is the sole occupant of the
+ * parent as the drawing currently stands, and the walk stops at the first step
+ * where it is not. `src` in the case above has a second child and cards of its
+ * own, so it stops immediately and reads `src`.
+ *
+ * "As the drawing currently stands" means the boxes that were built, which is
+ * after the reader's filters and after the part on screen — `FolderBox.nodes`
+ * holds the cards that survived, which is why the count of them is what answers
+ * the question. It does not mean the viewport, and must not: a label that
+ * changed as the reader panned would be worse than either of the two behaviours
+ * above, because neither of those ever moved under somebody's eye.
+ *
+ * The full path is still the hover tip's answer, and the tip answers with the
+ * deepest name on the bar rather than the box's own, since the deepest name is
+ * what a reader hovering `app/home` is asking about.
  *
  * ## Nothing here is geometry, and that is the whole point
  *
@@ -92,18 +123,35 @@
 import type { Headed } from "./heading.js";
 
 /**
- * Enough of a folder box to say whose bar is whose.
+ * Enough of a folder box to say whose bar is whose, and what it may say.
  *
- * Two fields, and deliberately not `FolderBox` itself. Everything about where a
- * box is drawn is irrelevant here, and a function that could see the geometry
- * is a function that could be tempted to adjust it — which is the one thing
- * collapsing must never do.
+ * Deliberately not `FolderBox` itself. Everything about where a box is drawn is
+ * irrelevant here, and a function that could see the geometry is a function that
+ * could be tempted to adjust it — which is the one thing collapsing must never
+ * do.
  */
 export interface Barred {
   /** The folder, as a path — `src/components/media`. Never empty. */
   path: string;
   /** How many boxes enclose it, counting itself. One for an outermost box. */
   depth: number;
+  /**
+   * The cards in it, and only how many of them there are.
+   *
+   * Absorbing a folded child's name into its parent's bar is allowed exactly
+   * while the child holds everything the parent holds, so what is needed here is
+   * the comparison of two counts. A child's cards are a subset of its parent's
+   * by construction — a box is the cards under a path — so equal counts is the
+   * same statement as "the parent has nothing of its own outside the child", and
+   * it is the cheap way to say it.
+   *
+   * Typed as the length alone rather than as the ids, which a `string[]`
+   * satisfies without anybody having to convert one. It is the same argument the
+   * rest of this interface makes: this module decides what a label reads, so it
+   * is handed the least that can answer that, and a list of ids sitting here
+   * would be an invitation to start deciding something about particular cards.
+   */
+  nodes: { readonly length: number };
 }
 
 /**
@@ -146,15 +194,37 @@ export interface Bar {
    */
   slot: number;
   /**
-   * What the bar says: the last segment of its own folder's path, and nothing
-   * else.
+   * What the bar says: its own folder's name, and then the name of every folded
+   * folder that turned out to be the whole of what this box contains.
    *
-   * Never a path, however much is folded below it, for the reason the module
-   * doc-comment gives at length. Said as a field rather than left to the
-   * component to take off the box it happens to have, so that what a bar reads
-   * is decided in the one place that decides whether it is drawn at all.
+   * A single name on nearly every bar, because nearly every box holds more than
+   * one thing. A path — `app/home` — only where the walk below could say the
+   * path is a true name for the entire frame, which the module doc-comment
+   * argues at the length the argument deserves. Said as a field rather than left
+   * to the component to take off the box it happens to have, so that what a bar
+   * reads is decided in the one place that decides whether it is drawn at all.
    */
   label: string;
+  /**
+   * The folders folded into that label, nearest first.
+   *
+   * Full paths and not names, because this is what makes an absorbed fold
+   * reversible: the label is drawn as separate pressable segments and a press
+   * has to say which folder to unfold, which a bare name cannot — a change with
+   * `src/hooks` and `test/hooks` in it has two folders called `hooks`.
+   *
+   * Empty on a bar that absorbed nothing, which is most of them, and that
+   * emptiness is load-bearing in both directions. A folded box whose name is in
+   * one of these lists is pressable there and must not also be given a stub on
+   * its own frame; a folded box named in none of them has only the stub. Exactly
+   * one of the two, never both and never neither, is what keeps a folder from
+   * becoming unreachable — a trap this feature has fallen into once already.
+   *
+   * The last of them is also the deepest, which is what the hover tip shows: a
+   * bar reading `app/home` is asked "where is this" and the honest answer is
+   * where `home` is, not where `app` is.
+   */
+  absorbed: string[];
 }
 
 /** The last segment of a path, which is what a folder is called. */
@@ -165,13 +235,13 @@ function nameOf(path: string): string {
 /**
  * The bars, by the path of the box each belongs to.
  *
- * A box with no entry draws no bar. It is still a box and it is still drawn,
- * and `Clusters.svelte` puts a stub on its frame — a missing entry here is the
- * whole of how it knows to, and the whole of the way back. The folded set is not
- * consulted a second time downstream, because a box draws no bar only if it was
- * folded, which is the whole of `draws` below: asking the set again would be a
- * second answer to a question this map has already answered, free to disagree
- * with it.
+ * A box with no entry draws no bar. It is still a box and it is still drawn, and
+ * its name is in one of two places: in the bar above it, where that bar absorbed
+ * it, or on a stub on its own frame, which is what `stranded` below is for. The
+ * folded set is not consulted a second time downstream, because a box draws no
+ * bar only if it was folded, which is the whole of `draws` below: asking the set
+ * again would be a second answer to a question this map has already answered,
+ * free to disagree with it.
  *
  * An outermost box always draws, whatever the reader has folded. There is no bar
  * above it, so folding it buys a line of chrome by leaving the whole drawing
@@ -186,6 +256,27 @@ export function barsFor(
 ): Map<string, Bar> {
   const draws = (box: Barred): boolean =>
     box.depth === 1 || !folded.has(box.path);
+
+  /*
+   * The boxes directly inside one, which is a question about boxes and not
+   * about folders.
+   *
+   * A box's depth is one more than the number of boxes enclosing it, so a box
+   * enclosed by this one and no deeper is a direct child — the same relation
+   * `placement.ts` uses to find a box's brood, read the same way, because the
+   * two disagreeing about who is inside whom is how a label comes to name a
+   * folder that is not there.
+   *
+   * The levels in between that were never drawn do not appear and must not: a
+   * path may run five folders deep and be drawn as two boxes, and a label that
+   * walked path segments rather than boxes would announce folders the reader
+   * cannot see and has no box to look for.
+   */
+  const childrenOf = (box: Barred): Barred[] =>
+    boxes.filter(
+      (other) =>
+        other.depth === box.depth + 1 && other.path.startsWith(`${box.path}/`),
+    );
 
   const bars = new Map<string, Bar>();
 
@@ -206,19 +297,49 @@ export function barsFor(
     }
 
     /*
-     * And what it says, which is its own folder's name and is not a question.
+     * And what it says, walked down through the folded folders that are the
+     * whole of what this box turns out to contain.
      *
-     * There was a walk here once, stepping down through the folded boxes below
-     * this one and appending each name, so that a folded folder's name lived on
-     * in its parent's bar. It is gone on purpose and the module doc-comment
-     * above says why at the length the argument deserves. What is worth
-     * repeating here, where somebody would put it back, is that the walk had no
-     * answer for two folded children of one parent and had to degrade on them —
-     * and that the case which sank it was not that one at all but the ordinary
-     * one, a bar at the top of the drawing reading four folders deep because
-     * somebody had folded four folders under it.
+     * Two conditions per step and the walk stops the moment either fails, which
+     * is the entire refinement and the thing to leave alone. The first is that
+     * there is exactly one box inside this one and it draws no bar: more than
+     * one and there is no single name to append, none and there is nothing
+     * below to say anything about, and one that draws its own bar is already
+     * saying its name for itself a header lower. The second is that the child
+     * holds every card the parent holds, which is the condition the two earlier
+     * versions of this were missing in opposite directions.
+     *
+     * That second one is what makes the label a true statement about the frame
+     * rather than a true statement about a thread running through it. Absorb
+     * `home` into `app` while `app` also holds a card of its own, or a second
+     * folder, and the bar across the whole rectangle reads `app/home` over cards
+     * that are in neither — the reader is told the frame is `app/home` and then
+     * finds things in it that `app/home` does not contain. That is exactly the
+     * `src / app / profile / laborer` failure with fewer words in it, and it is
+     * why the counts are compared rather than the walk simply being allowed to
+     * run as far as the folding goes.
+     *
+     * There is nothing here that has to choose between two children, which the
+     * first version of this needed a degradation rule for and had to have proved
+     * deterministic over every order the boxes might arrive in. Two children is
+     * not an ambiguity to resolve now; it is a frame with two things in it, and
+     * the rule above declines it for the same reason it declines a stray card.
      */
-    bars.set(box.path, { slot, label: nameOf(box.path) });
+    const absorbed: string[] = [];
+    const parts = [nameOf(box.path)];
+    let at = box;
+    for (;;) {
+      const inside = childrenOf(at);
+      if (inside.length !== 1) break;
+      const only = inside[0]!;
+      if (draws(only)) break;
+      if (only.nodes.length !== at.nodes.length) break;
+      at = only;
+      absorbed.push(at.path);
+      parts.push(nameOf(at.path));
+    }
+
+    bars.set(box.path, { slot, label: parts.join("/"), absorbed });
   }
 
   return bars;
@@ -246,10 +367,11 @@ export function barsFor(
  * box.depth` here, which read as caution and was a bug: the only caller that
  * could reach it is the hover tip, which asks where a name sits in order to put
  * itself under it, and a box with no bar holds nothing under the chrome at all —
- * its name is on a stub at the top of its own frame, where the drawing has taken
- * it. So the tip was pushed down the screen by headers that were not there, by
- * exactly as many as the folder was deep. A caller that gets nothing has to
- * decide what to do about it, which is the point.
+ * its name is on a stub at the top of its own frame, or in its parent's bar
+ * where the tip is anchored to the parent instead. So the tip was pushed down
+ * the screen by headers that were not there, by exactly as many as the folder
+ * was deep. A caller that gets nothing has to decide what to do about it, which
+ * is the point.
  */
 export function headOf(
   bars: ReadonlyMap<string, Bar>,
@@ -293,17 +415,43 @@ export function barsAbove(
   return over;
 }
 
-/*
- * There was a `stranded` here, and the reason it is not is worth a line.
+/**
+ * The folded folders whose names appear in no bar, so that each can be given a
+ * way back on its own frame.
  *
- * It named the folded folders whose names had ended up in no bar at all, which
- * while a parent could absorb a child's name was a genuinely awkward subset: a
- * folded folder usually had its name in the bar above and pressable there, and
- * only the pair of siblings the absorbing refused to choose between fell through
- * to a stub. With nothing absorbed anywhere, every folded box is in that
- * position, so the set it returned is exactly the boxes `barsFor` gave no bar —
- * a question the map already answers by a lookup, and a second function
- * answering it is a second thing to keep in step. `Clusters.svelte` asks for a
- * bar and draws a stub where there is none, in the same breath, which is also
- * what makes it impossible for a box to end up with both or neither.
+ * This existed, was deleted, and is back, and the deletion is the part worth
+ * understanding. While every folded folder's name went nowhere, this was the
+ * same question as "which boxes did `barsFor` give no bar to" — one lookup, and
+ * a whole function to answer it was a second thing to keep in step with the
+ * first. Now that a parent absorbs a sole occupant's name, the two questions
+ * have come apart again: a folded box may have its name written in the bar
+ * above, as a pressable segment that unfolds it, and a box whose name is up
+ * there must not also carry a stub saying it a few pixels lower.
+ *
+ * So this is the far side of the walk in `barsFor`, and the two have to describe
+ * the same set between them. Every folded folder is in exactly one of the two
+ * positions — named in some bar's `absorbed`, or named here — and that is not a
+ * tidiness but the property that keeps a folder reachable. A folder in neither
+ * has no name anywhere in the drawing and no control anywhere that opens it
+ * again, which is precisely the hole this feature fell into the first time and
+ * the reason it is asserted in the tests rather than left to be noticed.
+ *
+ * The folded set is not an argument, because it cannot disagree with the bars
+ * and would be a second chance to. A box draws no bar only if it was folded —
+ * that is the whole of `draws` — so a missing bar already says folded, and
+ * asking the set again is asking a question the map has answered.
  */
+export function stranded(
+  boxes: readonly Barred[],
+  bars: ReadonlyMap<string, Bar>,
+): Set<string> {
+  const spoken = new Set<string>();
+  for (const bar of bars.values()) {
+    for (const path of bar.absorbed) spoken.add(path);
+  }
+  const lost = new Set<string>();
+  for (const box of boxes) {
+    if (!bars.has(box.path) && !spoken.has(box.path)) lost.add(box.path);
+  }
+  return lost;
+}
