@@ -180,10 +180,27 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
    * conversation is over everything it is about; and a menu is over even that,
    * since it was opened from it.
    */
+  /* A folder's name, over the cards it holds and under their own names.
+     Cards pass under the bar as the folder scrolls, so it has to be above
+     them; but a file's name is the one thing on the drawing that has to stay
+     readable when the reader is too far out to read anything else, and a
+     folder's bar drawn over it takes that away. Deeper folders are a step
+     lower, so a parent's bar is over its children's - the outer name is the
+     one about to leave the screen.
+
+     The band runs downwards from here, one step per level, and it has to stay
+     above the card's own furniture at the bottom of the scale - a path tip sits
+     at 6. Real changes nest deeper than they look: a drawing of one has been
+     seen six folders deep, so a band that only cleared three would have put a
+     header underneath the very cards it is meant to label. The room between
+     this and 6 is what that costs, and it is why this sits as high under the
+     name as it does. */
+  --z-folder: 19;
   /* A zoomed-out card's name, over every card rather than only its own: in a
      packed column a name lies across the card above it, and it is the one
-     thing on the drawing that has to stay readable at that distance. */
-  --z-name: 10;
+     thing on the drawing that has to stay readable at that distance. Above
+     the folder bars, and by enough to clear the whole band of them. */
+  --z-name: 20;
   --z-canvas: 1;
   --z-marks: 22;
   /* An agent's log is the most background thing on the page. It is left open

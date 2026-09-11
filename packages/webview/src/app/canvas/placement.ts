@@ -268,10 +268,18 @@ export interface Layout {
  * depends on them: the bands are worked out on this side, where the cards' real
  * heights are known.
  */
-const CLUSTER_PAD = 30;
+const CLUSTER_PAD = 44;
 
-/** Room between a box's own edge and what it holds. */
-const CLUSTER_EDGE = 14;
+/**
+ * Room between a box's own edge and what it holds.
+ *
+ * Generous on purpose, and affordable: the only thing this has to stay clear of
+ * is the lane beside it, and a column gap is a hundred and forty, so an edge of
+ * this size still leaves most of the corridor unused. Drawn tight against the
+ * cards a box reads as a border somebody put on the files rather than as a room
+ * they are standing in, which is the whole of what a folder is meant to say.
+ */
+const CLUSTER_EDGE = 30;
 
 /** And how much further out each enclosing box sits than the one inside it. */
 const CLUSTER_STEP = 16;
