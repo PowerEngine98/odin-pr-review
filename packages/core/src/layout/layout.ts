@@ -13,6 +13,7 @@ import {
   type RowPair,
   type Snippet,
 } from "./display.js";
+import { folderOf } from "./folders.js";
 import { DEFAULT_METRICS, type LayoutMetrics } from "./metrics.js";
 
 export interface PlacedNode {
@@ -444,10 +445,91 @@ function assignRanks(
   // Files with no references of their own form a trailing column rather than
   // crowding the sources; they are changes the reviewer reads on their own.
   const lastRank = nodes.reduce((max, n) => Math.max(max, n.rank), 0);
-  for (const node of nodes) {
-    if (!connected.has(node.id)) node.rank = lastRank + 1;
+
+  /*
+   * Every file any arrow touches at all, which is a wider net than `connected`
+   * and deliberately so.
+   *
+   * `connected` is built from the forward edges, so a file whose only reference
+   * was dropped as a back edge is not in it and is parked in the trailing
+   * column along with the files that genuinely reference nothing. That has
+   * always been true and is left alone. What must not happen is that such a
+   * file is then dealt sideways into a lane, because it does have an arrow and
+   * that arrow's direction is a claim the drawing is making. The lanes below
+   * are safe precisely because the files in them have neither a caller nor a
+   * callee, and this is the set that says so.
+   */
+  const touched = new Set<string>();
+  for (const edge of edges) {
+    touched.add(edge.from.nodeId);
+    touched.add(edge.to.nodeId);
+  }
+
+  const parked = nodes.filter((node) => !connected.has(node.id));
+
+  /*
+   * Which lane each folder of unreferenced files is dealt into.
+   *
+   * The trailing column is not a lane in the dependency chain, it is the pile
+   * of everything that is not in the chain — and on a real change it is most of
+   * the change, because most files in a pull request reference nothing that the
+   * pull request also touched. Measured on this repository's own history it ran
+   * from two thirds to five sixths of the cards: two hundred and thirty-seven of
+   * three hundred and twenty-seven on the largest. All of them queued in a
+   * single column, which is a drawing a hundred times taller than it is wide,
+   * and a reader who asked to see the whole thing was handed it at a scale where
+   * a card is a speck. Grouped into folders it was worse rather than better,
+   * because every folder in that column spans the same one column, so no two of
+   * them could ever stand side by side and they stacked into one endless tower.
+   *
+   * Dealt by path and never by height, and that is the one thing here that is
+   * not a matter of taste. Balancing the lanes by how tall each folder is packs
+   * them far better and is unusable: the deal then depends on the contents of
+   * the files, so an agent adding thirty lines to one file re-deals the entire
+   * drawing underneath a reader who is looking at it. Measured, that moved some
+   * other card two hundred and fifty-one thousand units, against five hundred
+   * and forty for the same edit today. A deal that reads only the paths cannot
+   * be disturbed by an edit at all, and it came in at exactly five hundred and
+   * forty — the same as today, and better than today on how many cards move at
+   * all, because folders spread across lanes means an edit disturbs fewer cards
+   * below it.
+   *
+   * A folder at a time rather than a file at a time, because the point of the
+   * exercise is that a folder's box can stand beside another one. Scattering a
+   * folder's own files across the lanes would give its box every lane to span
+   * and put it straight back in everybody's way.
+   */
+  const laneKey = (node: PlacedNode) => folderOf(node.path) ?? "";
+  const loose = parked.filter((node) => !touched.has(node.id));
+  const folders = [...new Set(loose.map(laneKey))].sort();
+  const lanes = new Map(folders.map((folder, at) => [folder, at % TRAILING_LANES]));
+
+  for (const node of parked) {
+    // A parked file that an arrow still touches stays in the first lane, which
+    // is the column it has always been in.
+    const lane = touched.has(node.id) ? 0 : (lanes.get(laneKey(node)) ?? 0);
+    node.rank = lastRank + 1 + lane;
   }
 }
+
+/**
+ * How many columns the files that reference nothing are spread over.
+ *
+ * A trade between the two directions, and they are not worth the same. The
+ * drawing is framed into a window that is wider than it is tall, so height is
+ * the binding side by a long way — before this the largest change in this
+ * repository's history came out eleven thousand units wide and one and a
+ * quarter million tall, which is to say the width was never what the reader was
+ * short of. Spending it to buy height back is very nearly free.
+ *
+ * Six rather than eight, which is the figure that measured slightly better on
+ * the largest change alone. Past six the height stops coming down much on
+ * anything smaller while the width keeps going up, and a change of forty files
+ * does not have enough folders to fill eight lanes — it just pays for the empty
+ * ones in white space. Six was within a few per cent of the best on the large
+ * change and clearly better than eight everywhere below it.
+ */
+const TRAILING_LANES = 6;
 
 // ------------------------------------------------------------------- ordering
 
@@ -699,6 +781,18 @@ function roadLength(anchored: Anchored[]): number {
 function assignColumns(ranks: PlacedNode[][], metrics: LayoutMetrics): void {
   let x = metrics.margin;
   for (const group of ranks) {
+    /*
+     * A rank with nothing in it reserves nothing.
+     *
+     * It used to charge a column gap for a column that was not there. A change
+     * whose references all resolved outside itself has every card parked in the
+     * trailing lanes and rank zero left standing empty, so the drawing opened
+     * with a gap the width of a corridor and no card on the near side of it —
+     * and a reader reads that as a column whose cards failed to load rather
+     * than as a margin. Spreading the parked files over several lanes makes the
+     * empty rank easier to produce, so it is worth not producing.
+     */
+    if (group.length === 0) continue;
     const columnWidth = group.reduce((max, n) => Math.max(max, n.width), 0);
     for (const node of group) {
       // Centre narrower cards in their column so the arrow gutters stay even.

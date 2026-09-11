@@ -516,6 +516,203 @@ describe("cards never overlap", () => {
 });
 
 /**
+ * The files that reference nothing, and why they are no longer in one column.
+ *
+ * Most files in most pull requests reference nothing that the same pull request
+ * also touched, so the trailing column the ranker sweeps them into is not a
+ * small tidying-up at the end of the drawing — measured on this repository's own
+ * history it was two thirds to five sixths of every change, and on the largest
+ * it was two hundred and thirty-seven cards of three hundred and twenty-seven
+ * queueing in a single lane. The drawing came out a hundred times taller than it
+ * was wide, and asked to frame the whole of it a reader was handed it at a scale
+ * where a card is a speck. Grouped into folders it was worse rather than better:
+ * every folder in that column spans that one column, so no two of them can ever
+ * stand side by side and they stacked into one endless tower, which is the
+ * complaint that started this.
+ *
+ * Spreading them sideways is safe in a way that spreading anything else would
+ * not be, and the reason is the whole of what these tests are for. A card in
+ * that column has neither a caller nor a callee, so moving it cannot contradict
+ * anything the drawing says about which file calls which. The guard is written
+ * as that rule rather than as an observation about the graphs that were
+ * measured, so a file that does have an arrow stays exactly where the ranking
+ * put it even if it is parked for some other reason.
+ */
+describe("the lanes the unreferenced files are dealt into", () => {
+  const LONE_FOLDERS = [
+    "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta",
+  ];
+
+  /**
+   * A caller and its target, a folder apiece of files that reference nothing at
+   * all, and a file that only ever references itself.
+   *
+   * The self-referencing file shares `src/zeta` with an unreferenced one on
+   * purpose. Left in a folder of its own it would fall to the first lane by
+   * default — its folder is not among the ones being dealt, so there would be no
+   * lane to look up — and the test would pass whether or not the rule that keeps
+   * it there exists at all. Sitting in a folder that is dealt a lane other than
+   * the first, it can only stay put because it is an end of an arrow.
+   */
+  function spread(): ChangeGraph {
+    const files = [
+      "src/chain/caller.ts",
+      "src/chain/target.ts",
+      "src/zeta/recurse.ts",
+      ...LONE_FOLDERS.map((name) => `src/${name}/one.ts`),
+    ];
+    const patch = files
+      .flatMap((path) => [
+        `diff --git a/${path} b/${path}`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/${path}`,
+        "@@ -0,0 +1,3 @@",
+        "+const a = 1;",
+        "+const b = 2;",
+        "+const c = 3;",
+      ])
+      .join("\n");
+
+    const base = buildGraph(parseUnifiedDiff(patch), { meta: META });
+    const at = (path: string) => base.nodes.find((n) => n.path === path)!;
+    const caller = at("src/chain/caller.ts");
+    const target = at("src/chain/target.ts");
+    const recurse = at("src/zeta/recurse.ts");
+
+    return sortGraph({
+      ...base,
+      edges: [
+        edge(
+          { nodeId: caller.id, side: "head", line: 1 },
+          { nodeId: target.id, side: "head", line: 1 },
+          "added",
+        ),
+        // Its own only reference is to itself, so the ranker never counts it as
+        // connected — and it still must not be dealt sideways, because it is an
+        // end of an arrow and the arrow is drawn.
+        edge(
+          { nodeId: recurse.id, side: "head", line: 1 },
+          { nodeId: recurse.id, side: "head", line: 2 },
+          "added",
+        ),
+      ],
+    });
+  }
+
+  /** The rank of the first trailing lane, which is one past the chain. */
+  function firstLane(layout: ReturnType<typeof layoutGraph>): number {
+    const target = layout.nodes.find((n) => n.path === "src/chain/target.ts")!;
+    return target.rank + 1;
+  }
+
+  it("spreads folders of unreferenced files over columns of their own", () => {
+    const layout = layoutGraph(spread());
+    const lanes = new Set(
+      LONE_FOLDERS.map(
+        (name) => layout.nodes.find((n) => n.path === `src/${name}/one.ts`)!.rank,
+      ),
+    );
+    // Eight folders over six lanes, so every lane is used and two are shared.
+    expect(lanes.size).toBe(6);
+  });
+
+  it("never puts a card left of the column its own chain gave it", () => {
+    const layout = layoutGraph(spread());
+    const first = firstLane(layout);
+    for (const node of layout.nodes) {
+      expect(node.rank).toBeGreaterThanOrEqual(0);
+      if (node.path.startsWith("src/chain/")) expect(node.rank).toBeLessThan(first);
+    }
+  });
+
+  it("leaves a file an arrow touches in the first lane", () => {
+    // The one that matters. `recurse.ts` references nothing but itself, so the
+    // ranker parks it with the unreferenced files — and it has an arrow, so it
+    // keeps the column it has always had rather than being dealt across.
+    const layout = layoutGraph(spread());
+    const recurse = layout.nodes.find((n) => n.path === "src/zeta/recurse.ts")!;
+    const neighbour = layout.nodes.find((n) => n.path === "src/zeta/one.ts")!;
+    expect(recurse.rank).toBe(firstLane(layout));
+    // And its folder really was dealt elsewhere, or the line above proves
+    // nothing beyond the first lane being the first lane.
+    expect(neighbour.rank).toBeGreaterThan(firstLane(layout));
+  });
+
+  it("draws every caller to the left of what it calls", () => {
+    const layout = layoutGraph(spread());
+    const byId = new Map(layout.nodes.map((n) => [n.id, n]));
+    const inverted: string[] = [];
+    for (const { edge: link } of layout.edges) {
+      const from = byId.get(link.from.nodeId)!;
+      const to = byId.get(link.to.nodeId)!;
+      if (from === to || from.rank >= to.rank) continue;
+      if (from.x + from.width >= to.x) inverted.push(`${from.path} → ${to.path}`);
+    }
+    expect(inverted).toEqual([]);
+  });
+
+  it("deals by the paths alone, so an edit cannot re-deal the drawing", () => {
+    /*
+     * The trap this was nearly built into. Balancing the lanes by how tall each
+     * folder is packs them a good deal better and is unusable, because the deal
+     * then depends on what is written in the files: an agent adding thirty lines
+     * to one of them re-deals every other folder, and measured that way some
+     * other card moved two hundred and fifty-one thousand units for an edit that
+     * moves cards five hundred and forty units today. Reading only the paths is
+     * what makes the deal survive the contents changing under it.
+     */
+    const before = layoutGraph(spread());
+    const grown = spread();
+    const swollen: ChangeGraph = {
+      ...grown,
+      nodes: grown.nodes.map((node) =>
+        node.path === "src/alpha/one.ts"
+          ? {
+              ...node,
+              hunks: node.hunks.map((hunk) => ({
+                ...hunk,
+                newLines: hunk.newLines + 30,
+                lines: [
+                  ...hunk.lines,
+                  ...Array.from({ length: 30 }, (_, i) => ({
+                    kind: "add" as const,
+                    text: `const grown${i} = ${i};`,
+                    newLine: hunk.newStart + hunk.newLines + i,
+                  })),
+                ],
+              })),
+            }
+          : node,
+      ),
+    };
+    const after = layoutGraph(swollen);
+
+    const lanes = (layout: ReturnType<typeof layoutGraph>) =>
+      layout.nodes.map((node) => [node.path, node.rank] as const).sort();
+    expect(lanes(after)).toEqual(lanes(before));
+  });
+
+  it("keeps a folder's own files together in one lane", () => {
+    // A folder split across lanes would give its box every one of them to span,
+    // which puts it back in the way of everything it was moved clear of.
+    const patch = ["one.ts", "two.ts", "three.ts"]
+      .flatMap((name) => [
+        `diff --git a/src/pack/${name} b/src/pack/${name}`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/src/pack/${name}`,
+        "@@ -0,0 +1,2 @@",
+        "+const a = 1;",
+        "+const b = 2;",
+      ])
+      .join("\n");
+    const layout = layoutGraph(buildGraph(parseUnifiedDiff(patch), { meta: META }));
+    expect(new Set(layout.nodes.map((n) => n.rank)).size).toBe(1);
+  });
+});
+
+/**
  * Where a card sits in its column decides how long its roads are.
  *
  * Two files that call each other constantly used to sit at opposite ends of
