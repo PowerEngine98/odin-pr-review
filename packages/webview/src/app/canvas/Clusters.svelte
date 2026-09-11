@@ -14,7 +14,7 @@
 <script lang="ts">
   import { setFolded, view } from "../state.svelte.js";
 
-  import { headOf, stranded, type Bar } from "./bars.js";
+  import { headOf, type Bar } from "./bars.js";
   import { CLUSTER_HEAD, pinHead } from "./heading.js";
   import type { FolderBox } from "./placement.js";
 
@@ -61,146 +61,7 @@
     viewRight?: number;
   } = $props();
 
-  /**
-   * How far a name slides along its own bar to stay in view.
-   *
-   * Horizontally, and stopping at the far end of the box rather than following
-   * the window for ever, on the same terms as the vertical pin: a folder's name
-   * never outlives the box it is about. Left alone, a reader panning through a
-   * wide folder has a dotted rule across the top of the screen and nothing
-   * saying which folder it is.
-   */
-  function slide(box: FolderBox): number {
-    if (!viewLeft && !viewRight) return 0;
-    const off = Math.max(0, viewLeft - box.x);
-    if (off <= 0) return 0;
-    const room = said[box.path] ?? 0;
-    // Not laid out yet, so there is no honest answer to how much room the name
-    // needs. Nought rather than a guess: a name that has not moved is merely
-    // where it started, and a name allowed to slide on a width of zero would
-    // travel the whole length of the box on the first frame and jump back once
-    // the browser reported. `Card.svelte` refuses the same question the same
-    // way for the same reason.
-    if (!room) return 0;
-    // Never past the point where the name would leave the box's far end: the
-    // bar is the folder's, and a name pinned beyond it belongs to nothing.
-    return Math.min(off, Math.max(0, box.width - room));
-  }
 
-  /**
-   * How much room each name actually takes, measured rather than assumed.
-   *
-   * This was a constant — a hundred and eighty units, standing for an icon, a
-   * short name and a count — and a guess at how wide a name is, is wrong on
-   * every name that is not the one it was guessed from. A folder called
-   * `presentationComponents` is several times that guess, so the clamp let the
-   * name go on travelling long after it should have stopped, and
-   * `.cluster-head { overflow: hidden }` ate the tail without a word. The reader
-   * panning across a wide folder watched its name walk off the end of its own
-   * bar, which is the exact failure the sliding exists to prevent, arriving by
-   * the door left open to fix it. The browser has already laid the name out and
-   * knows exactly how wide it is; there is no reason to ask anybody else.
-   *
-   * The number bound here is a pre-transform layout width, which means it is
-   * already in canvas units — the same units `box.width` and the slide are in.
-   * It must not be divided by the zoom on the way past. Scaling it "for the
-   * zoom" is the very fault `heading.ts` was split out to make impossible, and
-   * it would look right at scale one and at no other.
-   *
-   * Keyed by path rather than by index because the boxes are keyed by path in
-   * every loop below, and an index would rebind a measurement onto a different
-   * folder the first time a rebuild reordered them.
-   */
-  let said: Record<string, number> = $state({});
-
-  /**
-   * How far a header slides down its own box to stay in view.
-   *
-   * The card's problem exactly, and the card's answer: the canvas is one
-   * transformed layer, so there is no scrolling ancestor for anything to be
-   * sticky inside. A folder spanning half the drawing is worse off than a long
-   * file — scroll past its top and there is nothing at all saying which folder
-   * the eight cards on screen belong to.
-   *
-   * It stops at the foot of the box rather than following the bar for ever, so
-   * a name never outlives the cards it is about: as the folder leaves, its
-   * header slides out with it and the next folder's takes over.
-   *
-   * The arithmetic is next door in `heading.ts` rather than here, because it is
-   * the part of this component that two units meet in — the bar is window
-   * pixels, a header is canvas units — and every version of that fault has
-   * looked right at whatever zoom it was last seen at. `media` and `media/grid`
-   * are both held against the top of the window at once, and a step that is not
-   * exactly one header tall in the header's own units puts one name over the
-   * other as the reader zooms in and leaves them adrift as they zoom out.
-   */
-  function pin(box: FolderBox): number {
-    // What goes into the arithmetic is `headOf`'s decision and not this
-    // file's, and that is the point of it being a call. The number wanted is
-    // the box's slot rather than its depth — the stack is made of the bars that
-    // are drawn, and a folded folder contributes a box to the count of boxes
-    // and no bar to the stack — and written out here as an object literal with
-    // a field called `depth` beside a `box` that has one, it was a line nothing
-    // could test and anyone could quietly simplify. `heading.ts`'s arithmetic is
-    // untouched; only who chooses the number it is asked about has moved.
-    const head = headOf(bars, box);
-    // No bar, so no name to hold under the chrome and nothing to slide. Only
-    // the hover tip asks this of a box with no bar, and it asks in order to sit
-    // under a name: the honest answer is that the name is where the box is.
-    if (!head) return 0;
-    return pinHead({ chromeBottom, y: view.y, scale: view.scale }, head);
-  }
-
-  /**
-   * Everything the bar for a box needs, or nothing where no bar is drawn.
-   *
-   * A lookup rather than a field on the box, because a box is derived geometry
-   * handed over by the placement and a bar is a fact about what the reader has
-   * folded. Writing one onto the other would put a piece of view state inside
-   * the object the layout tests compare, which is how "nothing geometric
-   * changed" stops being checkable.
-   */
-  function barOf(box: FolderBox): Bar | undefined {
-    return bars.get(box.path);
-  }
-
-  /**
-   * The folded folders whose names have ended up in no bar, so that each can be
-   * given a way back on its own frame.
-   *
-   * Worked out in `bars.ts` beside the walk that decides which folded names a
-   * bar absorbs, because this is the far side of that decision and the two have
-   * to describe the same set. A folder is here only when its bar is gone and no
-   * other bar has taken its name in — so a folded folder is pressable in exactly
-   * one place, either as a segment of the bar above it or as a stub here, and
-   * never in two places and never in none.
-   */
-  const lost = $derived(stranded(folders, bars));
-
-  /**
-   * The strip at the top of a box that nothing is going to be drawn in.
-   *
-   * Every box is given a header's worth of canvas above its first card,
-   * reserved by the banding before any card is placed and kept reserved whether
-   * a bar is drawn in it or not — because the alternative is that folding a
-   * folder re-places every card in the drawing, and a reader who pressed a
-   * chevron to recover a strip of chrome would watch the whole picture move
-   * under them. That reservation is not negotiable and nothing here touches it.
-   *
-   * What the frame is drawn around is another matter. A box whose name went
-   * into its parent's bar draws neither a bar nor a stub, so the strip stands
-   * empty and the frame was being drawn around it: a rectangle opening a header
-   * above its own contents, with a band of nothing between its top edge and the
-   * first thing inside. It read as a box that had lost its label rather than as
-   * one whose label is up in the bar above.
-   *
-   * So a frame with nothing in that strip begins below it. The room stays
-   * reserved and every card stays exactly where it was — only the border moves,
-   * which is the one thing here that is safe to move.
-   */
-  function bare(box: FolderBox): number {
-    return bars.has(box.path) || lost.has(box.path) ? 0 : CLUSTER_HEAD;
-  }
 
   /**
    * Which folder a bar is really about, for the tip under it.
@@ -263,7 +124,7 @@
 
   function wearing(box: FolderBox): Wearing {
     if (bars.has(box.path)) return "bar";
-    return lost.has(box.path) ? "stub" : "nothing";
+    return "stub";
   }
 
   /**
@@ -320,9 +181,9 @@
   <div
     class="cluster"
     style:left="{box.x}px"
-    style:top="{box.y + bare(box)}px"
+    style:top="{box.y}px"
     style:width="{box.width}px"
-    style:height="{box.height - bare(box)}px"
+    style:height="{box.height}px"
   ></div>
 {/each}
 
@@ -515,7 +376,7 @@
       </span>
     </div>
   </div>
-  {:else if lost.has(box.path)}
+  {:else}
   <!--
     The same clip again, holding a stub instead of a bar.
 
