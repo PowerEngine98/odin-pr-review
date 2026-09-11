@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { CLUSTER_HEAD } from "../src/app/canvas/heading.js";
 import { place, type Standing } from "../src/app/canvas/placement.js";
 
 import type { Arrangement, ViewModel } from "../src/app/model.js";
@@ -851,6 +852,82 @@ describe("the room between one box and the next", () => {
     const loose = drawn.cards.find((placed) => placed.node.path === "root.ts")!;
     for (const box of drawn.folders ?? []) {
       expect(overlaps(box, loose)).toBe(false);
+    }
+  });
+});
+
+/**
+ * And the same room down the page, which was much the smaller of the two.
+ *
+ * A box and the box inside it were set two hundred units apart sideways and
+ * seventy-four apart vertically, and seventy-four flattered it: thirty of that
+ * is the enclosing folder's own header, a bar with a name on it rather than
+ * room, so the daylight between a parent's bar and its child's was forty-four
+ * against two hundred. The drawing said "this is nested" clearly when read
+ * across and barely at all when read down, and a reader scanning a column of
+ * headers could not see where one folder ended and the next began.
+ *
+ * What is pinned here is the shape of the answer rather than the constant
+ * itself. A test asserting the exact figure would fail the next time somebody
+ * tuned it and would have to be edited to agree, which makes it a record of the
+ * number rather than a statement about the drawing. What must stay true is that
+ * the vertical step is of the same order as the horizontal one — that is the
+ * complaint — and that it is still visibly a step at all.
+ *
+ * The floor is set at half the horizontal step, which forty-four failed by a
+ * wide margin and which anything answering the complaint clears easily. The
+ * ceiling is there because this direction is the expensive one: the pad is
+ * reserved rather than measured, it is charged twice to every box that opens at
+ * a band, and it is charged to flat folders that have nothing nested inside them
+ * at all — so a figure well above the horizontal step would be paid for by every
+ * change in the repository, including the ones with no nesting to show off.
+ */
+describe("the room between a box and the box nested inside it, down the page", () => {
+  it("steps a nested box's bar clear of its parent's by the order of the sideways step", () => {
+    const boxes = grouped(model()).folders ?? [];
+    const parent = boxes.find((box) => box.path === "src")!;
+    const child = boxes.find((box) => box.path === "src/alpha")!;
+
+    const down = child.y - parent.y;
+    const across = child.x - parent.x;
+
+    // A real step, and not merely the header's own height: a gap the size of
+    // the bar is two bars touching, which is what the complaint looked like.
+    expect(down).toBeGreaterThan(CLUSTER_HEAD * 2);
+    // Of the same order as the sideways step, which is the actual statement.
+    expect(down).toBeGreaterThanOrEqual(across / 2);
+    expect(down).toBeLessThanOrEqual(across * 1.5);
+  });
+
+  it("puts every card inside the box that names it, however generous the room", () => {
+    /*
+     * The thing raising the pad could quietly break. The room is reserved in the
+     * band before any card is placed, so a larger pad simply makes the drawing
+     * taller — but only as long as the box that is drawn afterwards is measured
+     * from the same cards the band was. A pad that the band paid and the box did
+     * not would be a frame sitting above its own contents.
+     */
+    const drawn = grouped(model());
+    for (const box of drawn.folders ?? []) {
+      for (const placed of drawn.cards) {
+        if (!box.nodes.includes(placed.node.id)) continue;
+        expect(placed.y).toBeGreaterThanOrEqual(box.y);
+        expect(placed.y + placed.height).toBeLessThanOrEqual(box.y + box.height);
+      }
+    }
+  });
+
+  it("leaves room for the header above the first card of every box", () => {
+    // The header is drawn inside the box's own top, so a first card sitting less
+    // than a header below that top would have a folder's name written over it.
+    const drawn = grouped(model());
+    for (const box of drawn.folders ?? []) {
+      const top = Math.min(
+        ...drawn.cards
+          .filter((placed) => box.nodes.includes(placed.node.id))
+          .map((placed) => placed.y),
+      );
+      expect(top - box.y).toBeGreaterThanOrEqual(CLUSTER_HEAD);
     }
   });
 });

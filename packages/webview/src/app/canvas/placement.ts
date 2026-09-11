@@ -267,8 +267,52 @@ export interface Layout {
  * Kept here rather than in the engine's metrics because nothing the engine does
  * depends on them: the bands are worked out on this side, where the cards' real
  * heights are known.
+ *
+ * Raised from forty-four, to answer the same complaint the horizontal step
+ * answers. A box and the box inside it were set two hundred units apart
+ * sideways and seventy-four apart down the page, and seventy-four is not really
+ * the figure either: thirty of it is the enclosing folder's own header, which is
+ * a bar with a name written on it rather than room, so the actual daylight
+ * between a parent's bar and its child's was forty-four against two hundred. A
+ * nest read as deliberately stepped when scanned across and as a stack of rules
+ * ruled together when scanned down, which is the same drawing giving two
+ * different accounts of how deep a thing is.
+ *
+ * Not raised to the horizontal figure, which was measured and costs too much.
+ * The two are not the same kind of number, and that is the whole of the
+ * judgement here. Sideways the step is a ceiling: `boxesFor` works out what each
+ * box may actually take from the room that is really beside it, so a box hemmed
+ * in by a neighbour takes less and a box holding nothing pays nothing at all.
+ * Down the page it is a reservation, it is charged twice to every box that opens
+ * at a band, and it is charged whether or not anything is nested inside — so an
+ * ordinary change of flat sibling folders pays the nesting bill in full without
+ * having any nesting.
+ *
+ * Measured on four shapes rather than guessed at. Against the drawing's height
+ * as it stands: eight flat sibling folders grow by a third, a change with a
+ * couple of folders nested two deep grows by about two fifths, and a six-deep
+ * nest grows by half. Taking the step the whole way to two hundred — which
+ * wants a pad of a hundred and seventy — costs between a half and five sixths
+ * instead, and two hundred costs between two thirds and a doubling. Height is
+ * the expensive direction because `fit` frames the whole drawing into a window
+ * that is wider than it is tall, so height is usually the binding side: doubling
+ * it halves the scale a reader is handed when they ask to see everything, and
+ * the cards they are being shown are already small at that point.
+ *
+ * A hundred and twenty doubles the visible step, from seventy-four to a hundred
+ * and fifty, which is plainly stepped beside the two hundred going across and
+ * still leaves the overview legible.
+ *
+ * One thing it does not buy, which is worth knowing before anybody raises it
+ * again expecting more: this only opens the gap at the *top* of a nested box.
+ * Where a child holds the last card in its parent, the two boxes' bottom edges
+ * are drawn flush and stay flush at any value of this, because `boxesFor`
+ * measures both from that same last card. The room is reserved below — the
+ * slab's closing pad is real — it is simply not what the drawn rectangle is
+ * measured from. Making the bottom edge use it is a change to how a box is
+ * measured rather than to this number.
  */
-const CLUSTER_PAD = 44;
+const CLUSTER_PAD = 120;
 
 /**
  * Room between a box's own edge and what it holds.
