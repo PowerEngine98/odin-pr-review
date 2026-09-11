@@ -549,6 +549,149 @@ describe("a card the drawing is going to leave out", () => {
 });
 
 /**
+ * A short folder standing beside a tall one, and what it is charged for it.
+ *
+ * The fault a reader saw as a clustered drawing being mostly nothing. The things
+ * sharing a stretch of canvas are not the same height and are nowhere near it: a
+ * band is as tall as the cards in it and a card is as tall as its diff, so a
+ * folder of two hundred-line files and a folder of twenty-six test files differ
+ * by a factor of twenty. Laid out as rows, every row was as tall as the tallest
+ * thing in it and every short folder in that row was charged the difference —
+ * measured on the largest change in the repository, an eighty-thousand-unit band
+ * standing beside a five-thousand-unit one, and the seventy-five thousand units
+ * of canvas below the short one drawn empty.
+ *
+ * What replaces the row is a floor per column: a folder drops to the lowest
+ * height every column it reaches into leaves free, so it is held up by what is
+ * actually above it rather than by whatever happened to be standing alongside.
+ * The disjointness that the boxes depend on survives untouched, and the second
+ * half of this says so — two things at the same height still have column ranges
+ * that do not touch, because a column either of them stands in would have held
+ * the other one up.
+ */
+describe("a folder charged for the height of the one beside it", () => {
+  /**
+   * A tall folder in the left column, and two short ones queueing in the next.
+   *
+   * `src/short` can stand beside `src/tall`, because their columns do not touch.
+   * `src/spare` cannot stand beside `src/short`, because both are in column one
+   * — so it has to go below something, and the whole question is below what.
+   */
+  function ladder(): ViewModel {
+    const data = model();
+    data.nodes = [
+      ...Array.from({ length: 6 }, (_, at) =>
+        card(`t${at}`, `src/tall/${at}.ts`, 0, at * 200),
+      ),
+      card("s1", "src/short/one.ts", 1, 0),
+      card("s2", "src/short/two.ts", 1, 200),
+      card("p1", "src/spare/one.ts", 1, 400),
+      card("p2", "src/spare/two.ts", 1, 600),
+    ];
+    return data;
+  }
+
+  it("drops it to the foot of what is above it, not of what is beside it", () => {
+    /*
+     * `src/spare` is held up by `src/short`, which is two cards tall, and by
+     * nothing else. Charged the row's height it was held up by `src/tall`,
+     * which is six — so it began below the whole of a folder standing in a
+     * column it does not reach into, and every one of those units was blank.
+     */
+    const boxes = grouped(ladder()).folders ?? [];
+    const tall = boxes.find((box) => box.path === "src/tall")!;
+    const spare = boxes.find((box) => box.path === "src/spare")!;
+
+    expect(spare.y + spare.height).toBeLessThanOrEqual(tall.y + tall.height);
+  });
+
+  /**
+   * A folder holding two folders, and another folder below the pair of them.
+   *
+   * `src/alpha` holds `src/alpha/one` and `src/alpha/two`, and `src/beta` is
+   * below both because it reaches across every column they stand in. So what
+   * `src/beta` is charged is exactly how much room `src/alpha` asked for, and
+   * that is the figure the packing has to be the only author of.
+   */
+  function alpha(here: number): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("a1", "src/alpha/one/x.ts", 0, 0),
+      card("a2", "src/alpha/one/y.ts", 0, 200),
+      card("a3", "src/alpha/two/x.ts", here, 0),
+      card("a4", "src/alpha/two/y.ts", here, 200),
+      card("b1", "src/beta/x.ts", 0, 600),
+      card("b2", "src/beta/y.ts", 2, 600),
+    ];
+    return data;
+  }
+
+  it("asks for the room its children came to, not for the sum of them", () => {
+    /*
+     * The one trap in changing how the things inside a box are packed, and the
+     * reason this measurement exists. How tall a box is and where each of its
+     * children sits are two answers to one question, and the first attempt at
+     * the floors changed the second and left the first reading a row grouping
+     * that no longer existed. Every box then asked for the sum of everything it
+     * held, and a change meant to take six and a half per cent off the drawing's
+     * height put twelve per cent on.
+     *
+     * Nothing about a box's own rectangle shows it, which is why this is a
+     * comparison rather than a measurement of one drawing: the rectangle is read
+     * off the cards afterwards, so it stays honest while the room reserved
+     * behind it doubles. What shows it is the folder underneath, which is
+     * charged the reservation. The two drawings differ only in whether the two
+     * inner folders stand over the same column, so a box that asks for the sum
+     * is charged the same for both and they come out the same height.
+     */
+    expect(grouped(alpha(2)).height).toBeLessThan(grouped(alpha(0)).height);
+  });
+
+  it("still draws no box over a card that is not its own", () => {
+    // The invariant the floors put at risk. Two folders sitting at heights that
+    // have nothing to do with each other is exactly the arrangement in which a
+    // box comes to be level with somebody else's cards.
+    const drawn = grouped(ladder());
+    const trespass: string[] = [];
+
+    for (const box of drawn.folders ?? []) {
+      for (const placed of drawn.cards) {
+        if (box.nodes.includes(placed.node.id)) continue;
+        if (overlaps(box, placed)) trespass.push(`${box.path} over ${placed.node.path}`);
+      }
+    }
+
+    expect(trespass).toEqual([]);
+  });
+
+  it("still leaves every card in the column its chain put it in", () => {
+    // Height bought by moving a card sideways would have changed what the
+    // arrows mean, which is the one thing clustering may never cost.
+    const data = ladder();
+    const plain = place(data, arrangement(data), STANDING);
+    const stacked = grouped(data);
+
+    const columns = (drawn: typeof plain) =>
+      drawn.cards.map((placed) => [placed.node.id, placed.x] as const);
+    expect(columns(stacked)).toEqual(columns(plain));
+  });
+
+  it("keeps a folder's box inside its parent's on all four sides", () => {
+    // A parent's height is now the floors' own answer rather than a sum of
+    // rows, so a parent that under-counted what it held would be drawn with a
+    // child hanging out of its foot.
+    const boxes = grouped(ladder()).folders ?? [];
+    const parent = boxes.find((box) => box.path === "src")!;
+    for (const child of boxes.filter((box) => box.path !== "src")) {
+      expect(child.x).toBeGreaterThanOrEqual(parent.x);
+      expect(child.y).toBeGreaterThanOrEqual(parent.y);
+      expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+      expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
+    }
+  });
+});
+
+/**
  * Two folders that are nowhere near each other and still cannot share a row.
  *
  * Written down as a refusal rather than as a fault, because the obvious repair
@@ -899,6 +1042,135 @@ describe("the room between a box and the box nested inside it, down the page", (
     expect(down).toBeLessThanOrEqual(across * 1.5);
   });
 
+  /**
+   * And the foot, which for a long time did not step at all.
+   *
+   * A reader looking at three nested boxes saw a generous gap at the top and
+   * down both sides and three borders within a few units of each other at the
+   * bottom. It was predicted in the commit that last raised the pad and it
+   * follows from how a box used to be measured: the bottom came from the lowest
+   * card inside it, and a parent's deepest child very often holds that same
+   * card, so both boxes ended exactly one pad below it whatever the pad was. No
+   * value of any constant separates two edges measured from the same thing.
+   *
+   * Pinned as a proportion of the step down the page rather than as the figure
+   * itself, for the same reason the other two are: a test that names the
+   * constant is a record of the constant and has to be edited to agree the next
+   * time somebody tunes it. What must stay true is that the foot steps like the
+   * sides do.
+   */
+  /** Five boxes, one inside the next, so that each level holds exactly one. */
+  function chain(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("a1", "frontend/app/main.ts", 0, 0),
+      card("a2", "frontend/app/routes.ts", 0, 200),
+      card("c1", "frontend/common/index.ts", 1, 0),
+      card("s1", "frontend/common/src/setup.ts", 1, 200),
+      card("k1", "frontend/common/src/components/Button.tsx", 2, 0),
+      card("i1", "frontend/common/src/components/interfaces/Props.ts", 3, 0),
+      card("i2", "frontend/common/src/components/interfaces/Theme.ts", 3, 200),
+    ];
+    return data;
+  }
+
+  it("steps a nested box's foot clear of its parent's rather than drawing them flush", () => {
+    // Flush is what the complaint looked like, and flush is exactly what two
+    // edges measured from one card give you at any value of any constant.
+    const boxes = grouped(model()).folders ?? [];
+    const parent = boxes.find((box) => box.path === "src")!;
+    const child = boxes.find((box) => box.path === "src/alpha")!;
+
+    const foot = parent.y + parent.height - (child.y + child.height);
+    expect(foot).toBeGreaterThan(CLUSTER_HEAD * 2);
+  });
+
+  it("steps it by the order of the gap between their two bars", () => {
+    /*
+     * The actual statement, measured on a nest five deep. Both figures are
+     * floors rather than fixed gaps — a parent holding a band of its own above
+     * its child pushes that child further down, and a parent holding several
+     * folders below its child reaches further past it — so what the nesting
+     * itself reserves is the tightest of each, and those are the two that have
+     * to be of a size.
+     *
+     * A proportion and not the figure, for the reason the other two steps are
+     * pinned that way: naming the constant makes this a record of the constant
+     * and something that has to be edited the next time anybody tunes it.
+     */
+    const boxes = grouped(chain()).folders ?? [];
+    const nested = [
+      "frontend",
+      "frontend/common",
+      "frontend/common/src",
+      "frontend/common/src/components",
+      "frontend/common/src/components/interfaces",
+    ].map((path) => boxes.find((box) => box.path === path)!);
+
+    const feet: number[] = [];
+    const bars: number[] = [];
+    for (let at = 1; at < nested.length; at++) {
+      const parent = nested[at - 1]!;
+      const child = nested[at]!;
+      feet.push(parent.y + parent.height - (child.y + child.height));
+      bars.push(child.y - parent.y);
+    }
+
+    const foot = Math.min(...feet);
+    const bar = Math.min(...bars);
+    expect(foot).toBeGreaterThanOrEqual(bar / 2);
+    expect(foot).toBeLessThanOrEqual(bar * 1.5);
+  });
+
+  it("costs the drawing no height to do it", () => {
+    /*
+     * The lever this must not reach for. The room below a box is already paid
+     * for — every box's slab closes with a pad, and has done since the boxes
+     * were first drawn — so drawing the border down to the foot of that
+     * reservation takes nothing that was not already set aside. A foot that had
+     * to buy its own room would be growing a box into a band nobody reserved for
+     * it, which is the fault the corridor is kept sideways to avoid.
+     *
+     * Said as the arithmetic the canvas is actually sized by: the last card and
+     * a margin, and nothing about any box. A foot that had cost height would
+     * have had to get into this number to do it.
+     */
+    for (const data of [model(), chain()]) {
+      const drawn = grouped(data);
+      const last = Math.max(...drawn.cards.map((placed) => placed.y + placed.height));
+      expect(drawn.height).toBe(last + data.margin);
+    }
+  });
+
+  it("reaches below the last card of the folder it names", () => {
+    // Which is the whole of what a border round something is. A box measured
+    // from its reservation that came out above its own contents would be a
+    // frame sitting on top of the cards it is meant to hold.
+    const drawn = grouped(chain());
+    for (const box of drawn.folders ?? []) {
+      const mine = drawn.cards.filter((placed) => box.nodes.includes(placed.node.id));
+      const last = Math.max(...mine.map((placed) => placed.y + placed.height));
+      expect(box.y + box.height).toBeGreaterThan(last);
+    }
+  });
+
+  it("still draws no box over a card that is not its own", () => {
+    // A foot reaching further down the page is exactly the move that historically
+    // put a box across somebody else's band, so the invariant is measured again
+    // on the drawing the longer feet produced.
+    const drawn = grouped(model());
+    const trespass: string[] = [];
+
+    for (const box of drawn.folders ?? []) {
+      for (const placed of drawn.cards) {
+        if (box.nodes.includes(placed.node.id)) continue;
+        if (overlaps(box, placed)) trespass.push(`${box.path} over ${placed.node.path}`);
+      }
+    }
+
+    expect(trespass).toEqual([]);
+  });
+
   it("puts every card inside the box that names it, however generous the room", () => {
     /*
      * The thing raising the pad could quietly break. The room is reserved in the
@@ -928,6 +1200,286 @@ describe("the room between a box and the box nested inside it, down the page", (
           .map((placed) => placed.y),
       );
       expect(top - box.y).toBeGreaterThanOrEqual(CLUSTER_HEAD);
+    }
+  });
+});
+
+/**
+ * The database card, and the folder that reads it.
+ *
+ * With the cards grouped into their folders the schema card was landing at the
+ * very bottom of the drawing, several screens below the code it describes.
+ * Ungrouped it was already right — level with its reader and one column along —
+ * so nothing about the arrangement was at fault and the whole of the fault was
+ * on this side.
+ *
+ * What did it is a band of its own meeting a box's envelope. A schema vertex has
+ * a synthesised path beginning `database/`, so it looks to `folderOf` like a file
+ * in a folder and gets a band like any other folder's; and a box's span is the
+ * union of everything beneath it, so the box holding the files that read the
+ * schema reaches a column or two further right than any of those files does,
+ * because one of its other subtrees goes there. The schema's own column is
+ * inside that span. Two things whose columns touch cannot share a stretch of
+ * canvas, so the schema had to go below the box — and sorting near-last by its
+ * own path, it went below everything else as well.
+ *
+ * The repair is to hang the band inside the box that holds its readers rather
+ * than leaving it a sibling of that box, which puts it level with the files that
+ * point at it and costs the drawing nothing. It settles a second complaint at the
+ * same time: as a root-level sibling the schema was levelled beside whichever
+ * folder happened to have room for it, and on the change that showed this that
+ * was a folder with nothing whatever to do with the database.
+ *
+ * What the box then encloses is a card whose title begins `database/`, which is
+ * accepted rather than worked around. There is no `database` directory to be
+ * wrong about — the segment is synthesised by the host so that a vertex nobody
+ * wrote has somewhere to be — so a box around it claims nothing about the
+ * checkout.
+ */
+describe("the schema, and the folder whose files read it", () => {
+  /** A vertex the host assembled rather than a file anybody wrote. */
+  const schema = (id: string, path: string, column: number, y: number) => ({
+    ...card(id, path, column, y),
+    untouched: true,
+  });
+
+  /** An arrow from a file to the row of the schema it names. */
+  const reads = (from: string, fromPath: string, to: string, toPath: string) => ({
+    id: `e:${from}-${to}`,
+    from,
+    to,
+    fromPath,
+    toPath,
+    fromLine: 1,
+    toLine: 1,
+    fromSide: "head",
+    toSide: "head",
+    change: "unchanged",
+    kind: "type",
+    confidence: "heuristic",
+    symbol: "",
+    fromSymbol: "",
+    label: "",
+  });
+
+  const pointedAt = (data: ViewModel) => [
+    reads("h1", "src/api/handler.ts", "db", "database/public"),
+    reads("h2", "src/api/query.ts", "db", "database/public"),
+    ...data.edges,
+  ];
+
+  /**
+   * The shape that put it at the bottom: a box reaching past the schema's column.
+   *
+   * `src/api` holds two files that read the schema and a generated subtree that
+   * lands a column beyond it, so the box spans the schema's lane without holding
+   * anything in it. That is the whole of what stopped the two standing level.
+   */
+  function beneath(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("h1", "src/api/handler.ts", 0, 0),
+      card("h2", "src/api/query.ts", 1, 0),
+      card("g1", "src/api/gen/rows.ts", 3, 0),
+      schema("db", "database/public", 2, 0),
+    ];
+    data.edges = pointedAt(data);
+    return data;
+  }
+
+  /** The same, with an unrelated folder standing in the lane between them. */
+  function between(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("h1", "src/api/handler.ts", 0, 0),
+      card("h2", "src/api/query.ts", 1, 0),
+      card("t1", "src/theme/colour.ts", 2, 0),
+      card("t2", "src/theme/spacing.ts", 2, 200),
+      schema("db", "database/public", 3, 0),
+    ];
+    data.edges = pointedAt(data);
+    return data;
+  }
+
+  /** The same cards with the schema taken out, which is the drawing to beat. */
+  const without = (data: ViewModel): ViewModel => {
+    const bare = model();
+    bare.nodes = data.nodes.filter((node) => node.path !== "database/public");
+    bare.edges = [];
+    return bare;
+  };
+
+  const at = (drawn: ReturnType<typeof grouped>, path: string) =>
+    drawn.cards.find((placed) => placed.node.path === path)!;
+
+  it("stands it level with the file that reads it", () => {
+    // The complaint, said as the number: it was several screens below its
+    // reader because a box nobody could see spanned the lane it was standing in.
+    const drawn = grouped(beneath());
+    expect(at(drawn, "database/public").y).toBe(at(drawn, "src/api/handler.ts").y);
+  });
+
+  it("costs the drawing no height at all", () => {
+    /*
+     * Eleven hundred and fifty-four units against eight hundred and eighty with
+     * the schema removed, with a hundred and forty-four of blank canvas below
+     * the last box — the schema was not merely in the wrong place, it was
+     * lengthening the drawing to be there. Hung inside its reader's box it fits
+     * in canvas that was already reserved, so the two drawings are the same
+     * height.
+     */
+    const data = beneath();
+    expect(grouped(data).height).toBe(grouped(without(data)).height);
+  });
+
+  it("hangs it inside the box that reads it, not beside whatever had room", () => {
+    /*
+     * The second defect, and the one the reader could not name. A band at the
+     * root goes wherever the columns leave a gap, so the schema was levelled
+     * against a folder chosen by nothing but the width of the hole beside it —
+     * a drawing standing two things side by side and inviting the reader to
+     * believe the arrangement meant something.
+     */
+    const drawn = grouped(between());
+    const boxes = drawn.folders ?? [];
+    const db = at(drawn, "database/public");
+
+    const readers = boxes.find((box) => box.path === "src/api")!;
+    expect(readers.nodes).toContain(db.node.id);
+
+    const stranger = boxes.find((box) => box.path === "src/theme")!;
+    expect(stranger.nodes).not.toContain(db.node.id);
+    expect(overlaps(stranger, db)).toBe(false);
+  });
+
+  it("measures the box around the card it took in", () => {
+    /*
+     * The step that cannot be skipped, and the one the diagnosis could not carry
+     * out for itself. A box's rectangle is read off the cards it holds, and the
+     * adopted card's path has nothing in common with the box's, so a box that
+     * did not know it had taken one in would be measured as though the card were
+     * somewhere else and drawn straight across it.
+     *
+     * The corridor is no help here. It only ever tests cards lying wholly to the
+     * left or wholly to the right of a box, and a card in the middle of a box's
+     * span is on neither side and invisible to the whole test.
+     */
+    for (const data of [beneath(), between()]) {
+      const drawn = grouped(data);
+      const db = at(drawn, "database/public");
+      for (const box of drawn.folders ?? []) {
+        if (!box.nodes.includes(db.node.id)) continue;
+        expect(db.x).toBeGreaterThanOrEqual(box.x);
+        expect(db.x + db.width).toBeLessThanOrEqual(box.x + box.width);
+        expect(db.y).toBeGreaterThanOrEqual(box.y);
+        expect(db.y + db.height).toBeLessThanOrEqual(box.y + box.height);
+      }
+    }
+  });
+
+  it("draws no frame around the folder the schema's path invents", () => {
+    /*
+     * There is no `database` directory in the checkout. One schema card was
+     * never enough to earn a box, so nothing showed it; two are, and a frame
+     * reading `database` drawn inside somebody else's box would be a folder the
+     * reader could go and look for and fail to find.
+     */
+    const data = model();
+    data.nodes = [
+      card("h1", "src/api/handler.ts", 0, 0),
+      card("h2", "src/api/query.ts", 1, 0),
+      schema("db", "database/public", 2, 0),
+      schema("db2", "database/audit", 2, 200),
+    ];
+    data.edges = [
+      reads("h1", "src/api/handler.ts", "db", "database/public"),
+      reads("h1", "src/api/handler.ts", "db2", "database/audit"),
+    ];
+
+    const named = (grouped(data).folders ?? []).map((box) => box.path);
+    expect(named).not.toContain("database");
+  });
+
+  it("leaves it where its own path put it when nothing on the canvas reads it", () => {
+    // A schema with no reader in the drawing has no folder with a better claim
+    // on it than its own, so today's behaviour is the right answer and has to
+    // survive rather than be replaced with a guess.
+    const data = beneath();
+    data.edges = [];
+    const drawn = grouped(data);
+    const db = at(drawn, "database/public");
+    for (const box of drawn.folders ?? []) expect(box.nodes).not.toContain(db.node.id);
+  });
+
+  it("asks the same question of an arrow that the arrows themselves do", () => {
+    /*
+     * The answer has to be the one on screen. A reader who has ticked off the
+     * file that reads the schema has taken that arrow away, so levelling the
+     * schema against it would be the drawing making a claim it is no longer
+     * drawing anywhere — and the reader has no way to find out why the card is
+     * where it is.
+     */
+    const data = beneath();
+    const read = {
+      hideViewed: true,
+      viewed: new Set(["src/api/handler.ts", "src/api/query.ts"]),
+    };
+    const drawn = groupedWith(data, read);
+    const db = at(drawn, "database/public");
+    for (const box of drawn.folders ?? []) expect(box.nodes).not.toContain(db.node.id);
+  });
+
+  it("still draws no box over a card that is not its own", () => {
+    /*
+     * The invariant the adoption puts most at risk, and the reason it is safe:
+     * a box that takes a band in takes its columns in too, so anything standing
+     * in the lane between the box and the card it adopted is in the box's way
+     * and has to move. Measured on the drawing where that is exactly what
+     * happens.
+     */
+    for (const data of [beneath(), between()]) {
+      const drawn = grouped(data);
+      const trespass: string[] = [];
+
+      for (const box of drawn.folders ?? []) {
+        for (const placed of drawn.cards) {
+          if (box.nodes.includes(placed.node.id)) continue;
+          if (overlaps(box, placed)) trespass.push(`${box.path} over ${placed.node.path}`);
+        }
+      }
+
+      expect(trespass).toEqual([]);
+    }
+  });
+
+  it("still keeps a folder's box inside its parent's on all four sides", () => {
+    // A parent has to enclose what its child took in as well, or the adoption
+    // draws a child out through the side of the box it sits in.
+    for (const data of [beneath(), between()]) {
+      const boxes = grouped(data).folders ?? [];
+      const held = (a: string, b: string) => a.startsWith(`${b}/`);
+
+      for (const child of boxes) {
+        for (const parent of boxes.filter((box) => held(child.path, box.path))) {
+          expect(child.x).toBeGreaterThanOrEqual(parent.x);
+          expect(child.y).toBeGreaterThanOrEqual(parent.y);
+          expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+          expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
+        }
+      }
+    }
+  });
+
+  it("still leaves every card in the column its chain put it in", () => {
+    // The schema moved up the drawing, not across it. Its column is the call
+    // order like every other card's, and clustering may not touch it.
+    for (const data of [beneath(), between()]) {
+      const plain = place(data, arrangement(data), STANDING);
+      const drawn = grouped(data);
+
+      const columns = (laid: typeof plain) =>
+        laid.cards.map((placed) => [placed.node.id, placed.x] as const);
+      expect(columns(drawn)).toEqual(columns(plain));
     }
   });
 });

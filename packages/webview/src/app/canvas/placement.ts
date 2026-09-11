@@ -12,7 +12,7 @@
 
 import { folderOf } from "@odin/core/layout/folders.js";
 
-import type { Arrangement, NodeView, ViewModel } from "../model.js";
+import type { Arrangement, EdgeView, NodeView, ViewModel } from "../model.js";
 /*
  * The header's height comes from the module that draws with it.
  *
@@ -358,6 +358,17 @@ interface Bands {
   rank(path: string): number;
   /** Every folder worth a box, innermost last. */
   real: { key: string; top: number; bottom: number; depth: number }[];
+  /**
+   * Bands hung inside a box that is nowhere on their own path, and by whom.
+   *
+   * The schema is the only thing this happens to, and the reason it has to be
+   * said out loud rather than inferred from the paths is that the paths are
+   * exactly what stopped agreeing. Every other band is inside the boxes its own
+   * folder is under, so a box can work out what it holds from a path prefix; an
+   * adopted band cannot be found that way by the box that took it in, and a box
+   * that cannot find its own contents is drawn straight over them.
+   */
+  adopted: { key: string; owner: string }[];
 }
 
 /** Every folder on the way down to a file, outermost first. */
@@ -392,8 +403,17 @@ interface Slab {
   last: number;
   /** The height it takes, its own frame and the clearance after it included. */
   extent: number;
-  /** For a box, what it holds, packed into rows. Empty for a band. */
-  rows: Slab[][];
+  /**
+   * For a box, where each thing inside it sits relative to its own top, and
+   * how much room they came to between them. Empty for a band.
+   *
+   * An offset each rather than a list of rows, because there are no longer any
+   * rows: two things inside a box may start at heights that have nothing to do
+   * with each other, and the only figure that survives the packing is where
+   * each one was actually put. See `pack`, which is where the argument for that
+   * is written down.
+   */
+  inside: { at: Map<Slab, number>; height: number };
 }
 
 /**
@@ -408,31 +428,48 @@ interface Slab {
  *
  * Two slabs whose column ranges do not touch cannot overlap horizontally, so
  * they cannot be drawn over each other and neither can swallow the other's
- * cards. That is the whole of the rule: sort by the leftmost column, and drop
- * each slab into the first row whose occupants all end before it begins.
- * Strictly before, and no clearance column demanded — the case this is for is
- * exactly the one where the downstream folder starts in the very next column,
- * and asking for a gap would refuse it. What keeps the two boxes off each
- * other's edges is the corridor in `boxesFor`, which is capped at half a
- * column gap for this reason.
+ * cards. That is the whole of the rule, and the way it is enforced is a floor
+ * per column: each slab is dropped to the lowest height every column it reaches
+ * into leaves free, so anything already standing in one of those columns ends
+ * above it. No clearance column is demanded — the case this is for is exactly
+ * the one where the downstream folder starts in the very next column, and
+ * asking for a gap would refuse it. What keeps the two boxes off each other's
+ * edges is the corridor in `boxesFor`, which is capped at half a column gap for
+ * this reason.
+ *
+ * The disjointness survives that unchanged, by the same argument in the other
+ * direction: if two slabs overlap vertically then neither ended above the
+ * other, so no column they share can have been occupied when the second was
+ * placed, so they share no column at all — and a slab never leaves the columns
+ * its cards are in. Anything at the same height as a box therefore stands in
+ * lanes the box does not reach, which is what stops a box being drawn over a
+ * card it does not hold.
+ *
+ * A floor per column rather than a row, because the things being packed are
+ * nothing like the same height and a row charges every one of them the tallest.
+ * A band is as tall as the cards in it and a card is as tall as its diff, so the
+ * heights in one drawing differ by a factor of twenty: on the largest change in
+ * the repository a folder standing eighty thousand units tall shared a row with
+ * one standing five thousand, and the short one was charged the tall one's
+ * height with nothing drawn in the canvas underneath it. That empty canvas is
+ * most of what a reader is looking at when they say a clustered drawing is
+ * mostly nothing.
  *
  * Packing slabs rather than bands is what keeps the nesting honest. A parent is
  * packed against its siblings as one thing, with the column range of everything
- * beneath it, so its descendants can never be split across a row that something
- * foreign is also standing in — which would put that foreign card inside the
- * parent's rectangle. Within a parent the same rule runs again on its children,
- * where every card in the row is the parent's own and there is nothing to
- * swallow.
+ * beneath it, so its descendants can never be dropped into a stretch of canvas
+ * that something foreign is also standing in — which would put that foreign card
+ * inside the parent's rectangle. Within a parent the same rule runs again on its
+ * children, where everything being packed is the parent's own and there is
+ * nothing to swallow.
  */
-function pack(slabs: Slab[]): Slab[][] {
-  const rows: { held: Slab[]; reach: number }[] = [];
-
+function pack(slabs: Slab[]): { at: Map<Slab, number>; height: number } {
   /*
    * Leftmost first, and the odds and ends at the top of a project last.
    *
-   * Leftmost first is what makes one pass enough: a row's occupants are added
-   * in the order they stand, so the rightmost edge of the row is the last thing
-   * put in it and a single running figure answers the question. The loose files
+   * Leftmost first is what makes one pass enough: a slab only ever has to look
+   * at the floors left by the slabs already down, and taking them in column
+   * order means the one that settles highest is asked for first. The loose files
    * go at the end rather than by their column because a drawing that opens with
    * them buries the part somebody came to read — they still land beside
    * something if they fit, which costs nothing and is no longer a stripe.
@@ -445,17 +482,24 @@ function pack(slabs: Slab[]): Slab[][] {
       a.key.localeCompare(b.key),
   );
 
+  /** How far down the canvas is already spoken for, column by column. */
+  const skyline = new Map<number, number>();
+  const at = new Map<Slab, number>();
+  let height = 0;
+
   for (const slab of order) {
-    const row = rows.find((held) => slab.first > held.reach);
-    if (row) {
-      row.held.push(slab);
-      row.reach = Math.max(row.reach, slab.last);
-    } else {
-      rows.push({ held: [slab], reach: slab.last });
+    let top = 0;
+    for (let column = slab.first; column <= slab.last; column++) {
+      top = Math.max(top, skyline.get(column) ?? 0);
     }
+    at.set(slab, top);
+    for (let column = slab.first; column <= slab.last; column++) {
+      skyline.set(column, top + slab.extent);
+    }
+    height = Math.max(height, top + slab.extent);
   }
 
-  return rows.map((row) => row.held);
+  return { at, height };
 }
 
 /**
@@ -478,6 +522,7 @@ function pack(slabs: Slab[]): Slab[][] {
 function bandsFor(
   columns: Map<number, { node: NodeView; spot: Spot }[]>,
   data: ViewModel,
+  standing: Standing,
 ): Bands {
   /** How much room each band needs, which is the worst any column needs. */
   const needed = new Map<string, number>();
@@ -544,9 +589,142 @@ function bandsFor(
       else under.set(folder, new Set([child]));
     }
   }
+  /**
+   * A band that is nothing but schema, which is a band of things nobody wrote.
+   *
+   * `folderOf` gives a schema vertex a folder like any other file, because its
+   * path is `database/public` and that is a path. It is not a directory: there
+   * is no `database` in the checkout, the segment is synthesised by the host so
+   * that the vertex has somewhere to be, and treating it as a folder is what
+   * gave the schema a band of its own at the root of the drawing.
+   */
+  const allSchema = (key: string) =>
+    key !== LOOSE && [...(held.get(key) ?? [])].every(isSchema);
+
+  /**
+   * And a folder that holds nothing else, at any depth beneath it.
+   *
+   * Worth naming separately from the band because it is the question a box asks
+   * rather than the one a band asks. A frame reading `database` drawn inside
+   * somebody else's box would be a folder the reader could go and look for and
+   * not find, which is a worse thing for a drawing to say than anything the
+   * misplacement cost.
+   */
+  const schemaFolder = (folder: string) =>
+    folder !== LOOSE &&
+    keys
+      .filter((key) => key === folder || key.startsWith(`${folder}/`))
+      .every(allSchema);
+
   const boxedFolder = (folder: string) =>
     folder !== LOOSE &&
+    !schemaFolder(folder) &&
     ((under.get(folder)?.size ?? 0) > 1 || (held.get(folder)?.size ?? 0) > 1);
+
+  /*
+   * Where the schema goes, which is beside whatever reads it.
+   *
+   * With the cards grouped by folder the schema card was landing at the very
+   * bottom of the drawing, several screens below the code it describes, while
+   * ungrouped it was already correct — level with its reader and one column to
+   * the right. So the fault was entirely on this side.
+   *
+   * What did it is the interaction between a band of its own and a box's
+   * envelope. The schema sits in a middling column, and the box holding the
+   * files that read it reaches a column further right because one of its other
+   * subtrees does — a box's span is the union of everything beneath it. Those
+   * two ranges therefore touch, so the schema could not stand beside that box
+   * and had to go below it; and sorting near-last by its own path, it went below
+   * everything. Measured on the change that showed it: eleven hundred and fifty
+   * units of canvas where the same drawing without the schema needed eight
+   * hundred and eighty, with a hundred and forty-four of blank canvas below the
+   * last box before the schema card began.
+   *
+   * Hanging it inside that box instead is the repair, and it fixes a second
+   * thing that was wrong for the same reason. As a root-level sibling the schema
+   * was levelled beside whichever folder happened to have room for it, which on
+   * that change was a folder with nothing whatever to do with the database — the
+   * drawing was putting two unrelated things side by side and inviting a reader
+   * to believe the arrangement meant something.
+   *
+   * What the box then encloses is a card whose title begins `database/`, and
+   * that is accepted rather than worked around. There is no `database`
+   * directory to be wrong about: the path is synthesised for a vertex nobody
+   * wrote, so a box around it is not a claim about where anything lives in the
+   * checkout.
+   */
+
+  /** Every card that is going to be drawn, which is both ends of a real arrow. */
+  const drawn = new Set<string>();
+  for (const bucket of columns.values()) {
+    for (const { node } of bucket) drawn.add(node.id);
+  }
+
+  /**
+   * Whether an arrow is one the reader can actually see.
+   *
+   * The same rule the arrows themselves obey, in `wantedEdges`, because the
+   * answer has to be the one on screen: a schema levelled beside a reader whose
+   * arrow the reader has switched off is a claim the drawing is not making
+   * anywhere else.
+   *
+   * Most of that rule answers itself here. An arrow at a schema is structural,
+   * so the filter about references that did not change never touches it; the
+   * infrastructure switch cannot be off, because with it off there is no schema
+   * card to place at all; and the part on screen and the stranded cards have
+   * already taken their ends off the canvas by the time this is asked, which is
+   * what the two membership tests are. What is left and has to be said is the
+   * read-file switch, which takes an arrow away while leaving both its ends on
+   * the canvas.
+   *
+   * The one clause that cannot be asked from here is the import switch, because
+   * `Standing` does not carry it and the camera builds `Standing`. An arrow into
+   * a schema is almost never an import — the database pass re-points a
+   * reference at the row it names and keeps its kind — and if every arrow into
+   * the schema were hidden the schema is untouched, so it would be stranded and
+   * gone from the drawing before this is reached. Worth knowing about rather
+   * than worth plumbing a whole reading through for.
+   */
+  const referring = (edge: EdgeView): boolean =>
+    drawn.has(edge.from) &&
+    drawn.has(edge.to) &&
+    !(
+      standing.hideViewed &&
+      (standing.viewed.has(edge.fromPath) || standing.viewed.has(edge.toPath))
+    );
+
+  /** Every folder all of these are inside, outermost first. */
+  const shared = (folders: string[]): string[] => {
+    let chain = ancestry(folders[0]!);
+    for (const folder of folders.slice(1)) {
+      const theirs = new Set(ancestry(folder));
+      chain = chain.filter((step) => theirs.has(step));
+    }
+    return chain;
+  };
+
+  /**
+   * The box a schema band should hang inside, or nothing to leave it at the root.
+   *
+   * The deepest box that holds every file pointing at it, so the schema lands as
+   * near to its readers as a box can put it. Deepest and not nearest-to-one:
+   * three files in three folders read the same schema and the drawing may only
+   * put it in one place, and the folder that holds all three is the only answer
+   * that is not a choice between them.
+   */
+  const ownerOf = (key: string): string | undefined => {
+    const readers: (string | undefined)[] = [];
+    for (const edge of data.edges) {
+      if (bandKey(edge.toPath) !== key || !referring(edge)) continue;
+      readers.push(folderOf(edge.fromPath));
+    }
+    // A reader at the top of a project is inside no folder, so no folder holds
+    // every reader and there is nothing to hang the band off.
+    if (!readers.length || readers.some((folder) => folder === undefined)) {
+      return undefined;
+    }
+    return [...shared(readers as string[])].reverse().find(boxedFolder);
+  };
 
   /*
    * The folders as a tree of slabs, one level of nesting per drawn box.
@@ -572,7 +750,7 @@ function bandsFor(
       first: Infinity,
       last: -Infinity,
       extent: 0,
-      rows: [],
+      inside: { at: new Map(), height: 0 },
     });
   }
 
@@ -592,10 +770,15 @@ function bandsFor(
     const chain = ancestry(folder).filter(boxedFolder);
     hang(chain[chain.length - 2], slabs.get(folder)!);
   }
+  const adopted: { key: string; owner: string }[] = [];
   for (const key of keys) {
     const chain = key === LOOSE ? [] : ancestry(key).filter(boxedFolder);
+    // A schema goes to the box that reads it, and stays where its own path put
+    // it when nothing on the canvas reads it any more.
+    const owner = allSchema(key) ? ownerOf(key) : undefined;
+    if (owner) adopted.push({ key, owner });
     const span = reach.get(key) ?? { first: 0, last: 0 };
-    hang(chain[chain.length - 1], {
+    hang(owner ?? chain[chain.length - 1], {
       key,
       box: false,
       first: span.first,
@@ -603,18 +786,27 @@ function bandsFor(
       // The clearance after the last card of a band is part of what the band
       // takes: without it the first card of whatever follows sits against it.
       extent: (needed.get(key) ?? 0) + data.rowGap,
-      rows: [],
+      inside: { at: new Map(), height: 0 },
     });
   }
 
   /*
    * How tall each slab is and how far it reaches, worked out from the bottom.
    *
-   * A box cannot say how much room it wants until its children have been packed
-   * into rows, and they cannot be packed until each of them knows how far it
+   * A box cannot say how much room it wants until the things inside it have
+   * been packed, and they cannot be packed until each of them knows how far it
    * reaches — so the answer is built upwards and the positions handed down
    * afterwards. A box's reach is the reach of everything beneath it, which is
    * what lets it be packed against its siblings as one thing.
+   *
+   * How tall a box is has to be the packing's own answer and not a second
+   * arithmetic about the same children, which is the one trap in changing how
+   * they are packed. The first attempt at the skyline left this reading the
+   * height off the old row grouping, which no longer existed, and every box came
+   * out as the sum of everything it held — a change that was meant to take six
+   * and a half per cent off the drawing's height put twelve per cent on. The
+   * packing decides where each child sits and therefore how much room they came
+   * to between them, and nothing else is entitled to an opinion about it.
    */
   const settle = (slab: Slab): Slab => {
     if (!slab.box) return slab;
@@ -623,14 +815,10 @@ function bandsFor(
       slab.first = Math.min(slab.first, child.first);
       slab.last = Math.max(slab.last, child.last);
     }
-    slab.rows = pack(brood);
-    const inside = slab.rows.reduce(
-      (total, row) => total + Math.max(...row.map((child) => child.extent)),
-      0,
-    );
+    slab.inside = pack(brood);
     // A pad and a header to open it, and a pad to close it. They nest, so three
     // levels of folder put three headers above the first card.
-    slab.extent = CLUSTER_PAD + CLUSTER_HEAD + inside + CLUSTER_PAD;
+    slab.extent = CLUSTER_PAD + CLUSTER_HEAD + slab.inside.height + CLUSTER_PAD;
     return slab;
   };
 
@@ -648,16 +836,12 @@ function bandsFor(
       bottom: top + slab.extent - CLUSTER_PAD,
       depth: ancestry(slab.key).length,
     });
-    lay(slab.rows, top + CLUSTER_PAD + CLUSTER_HEAD);
+    lay(slab.inside, top + CLUSTER_PAD + CLUSTER_HEAD);
   }
 
-  /** A row is as tall as the tallest thing in it, and they all start level. */
-  function lay(rows: Slab[][], from: number): void {
-    let at = from;
-    for (const row of rows) {
-      for (const slab of row) put(slab, at);
-      at += Math.max(...row.map((slab) => slab.extent));
-    }
+  /** Each thing where the packing put it, measured down from whatever holds it. */
+  function lay(packing: { at: Map<Slab, number> }, from: number): void {
+    for (const [slab, offset] of packing.at) put(slab, from + offset);
   }
 
   lay(pack(roots.map((slab) => settle(slab))), 0);
@@ -676,6 +860,7 @@ function bandsFor(
     rank: (path) => tops.get(bandKey(path)) ?? Number.MAX_SAFE_INTEGER,
     // Outermost first, so whatever draws them draws a parent before its child.
     real: real.sort((a, b) => a.depth - b.depth || a.top - b.top),
+    adopted,
   };
 }
 
@@ -698,10 +883,34 @@ function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
      * nesting the ordering went to the trouble of producing is drawn as two
      * boxes that happen to be near each other.
      */
+    /*
+     * And whatever this box, or a box inside it, took in from elsewhere.
+     *
+     * The step that cannot be skipped. A box's bounds are read off the cards it
+     * holds, and an adopted band's path has nothing to do with the box's, so
+     * without this the box is measured as though the card were not there and is
+     * then drawn straight across it. The corridor below cannot catch it either:
+     * it only ever tests cards lying wholly to the left or wholly to the right
+     * of a box, and an adopted card in the middle of a box's span is on neither
+     * side of it and invisible to the whole test.
+     *
+     * At or below, because a box has to hold everything its children hold. The
+     * band hangs off one box, and every box around that one encloses it too, so
+     * the ancestors have to find it as well or a parent is drawn inside its own
+     * child.
+     */
+    const taken = bands.adopted
+      .filter(
+        (other) =>
+          other.owner === band.key || other.owner.startsWith(`${band.key}/`),
+      )
+      .map((other) => other.key);
+
     const inside = [...placed.values()].filter(
       (card) =>
-        card.node.path.startsWith(`${band.key}/`) &&
-        bandKey(card.node.path).startsWith(band.key),
+        (card.node.path.startsWith(`${band.key}/`) &&
+          bandKey(card.node.path).startsWith(band.key)) ||
+        taken.includes(bandKey(card.node.path)),
     );
     // Every file in it was filtered away — tests hidden, a part opened, files
     // ticked off. A box around nothing is a box that is lying.
@@ -709,7 +918,49 @@ function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
 
     const left = Math.min(...inside.map((card) => card.x));
     const right = Math.max(...inside.map((card) => card.x + card.width));
-    const bottom = Math.max(...inside.map((card) => card.y + card.height));
+
+    /*
+     * The foot the band reserved, rather than the last card inside it.
+     *
+     * A reader looking at three nested folders saw a generous gap at the top and
+     * down both sides and three borders within a few units of each other at the
+     * bottom. This is why, and it was predicted by whoever last raised the pad:
+     * measured from the last card, a parent and its deepest child end at the
+     * same place, because the child holds that card and the parent holds the
+     * child. No value of the pad ever separates them — both are drawn exactly
+     * one pad below the same card — so the foot is the one edge of a box that
+     * never stepped.
+     *
+     * The reserved foot does step, and by exactly the right amount, because the
+     * nesting is what reserved it: every box pays a closing pad, so a parent's
+     * reservation ends one pad below its child's and the two borders come out a
+     * pad apart. That is the same order as the pad and a header that separates
+     * their two bars at the top, so the nest now reads as stepped from either
+     * end.
+     *
+     * Growing a box downwards is the move that historically put a box into a
+     * band nobody had set aside for it, which is why the corridor below is
+     * sideways only, and it is worth saying what makes this different. The
+     * corridor is invented room: it is taken from whatever happens to be beside
+     * the box, and down the page there is nothing to take it from because the
+     * next band begins where this one's reservation ends. This takes no new room
+     * at all. The closing pad is already paid for in `bandsFor` — it is part of
+     * the slab's extent and has been since the boxes were first drawn — and
+     * nothing is ever placed inside a slab's own span, so a box drawn down to
+     * the foot of its own reservation cannot reach anybody else's card.
+     *
+     * Whichever is lower, because a card can outgrow its band. The heights the
+     * reservation was worked out from are estimates until a browser has drawn a
+     * card and reported itself, and a card that turned out taller pushes past
+     * the room set aside for it — so the last card still has the last word, and
+     * a box whose contents have grown is drawn round them as it was before. The
+     * step goes when that happens, which is the honest answer: there is no room
+     * left to step into.
+     */
+    const bottom = Math.max(
+      band.bottom,
+      ...inside.map((card) => card.y + card.height),
+    );
 
     boxes.push({
       path: band.key,
@@ -1039,6 +1290,7 @@ export function place(
           ]),
         ),
         data,
+        standing,
       )
     : undefined;
 
