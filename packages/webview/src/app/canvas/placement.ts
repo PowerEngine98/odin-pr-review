@@ -315,6 +315,23 @@ export interface Layout {
 const CLUSTER_PAD = 120;
 
 /**
+ * What a box spends to close, which is what it spent to open.
+ *
+ * The opening pays a pad and a header, because a bar is drawn in the room it
+ * buys; the closing used to pay the pad alone, because nothing is drawn at the
+ * foot. That is true of what is drawn there and false of what it looks like: a
+ * reader sees the gap between one frame and the frame inside it, and it came
+ * out a header narrower at the bottom than at the top — near enough to even to
+ * read as a mistake rather than as a margin, which is the worst a margin can
+ * do.
+ *
+ * So the foot matches the head, and the header's height is in the figure for
+ * the sake of the symmetry rather than to make room for anything. It costs one
+ * header per nesting level and nothing else.
+ */
+const CLUSTER_FOOT = CLUSTER_PAD + CLUSTER_HEAD;
+
+/**
  * Room between a box's own edge and what it holds.
  *
  * Generous on purpose, and affordable: the only thing this has to stay clear of
@@ -818,7 +835,8 @@ function bandsFor(
     slab.inside = pack(brood);
     // A pad and a header to open it, and a pad to close it. They nest, so three
     // levels of folder put three headers above the first card.
-    slab.extent = CLUSTER_PAD + CLUSTER_HEAD + slab.inside.height + CLUSTER_PAD;
+    slab.extent =
+      CLUSTER_PAD + CLUSTER_HEAD + slab.inside.height + CLUSTER_FOOT;
     return slab;
   };
 
@@ -833,7 +851,7 @@ function bandsFor(
     real.push({
       key: slab.key,
       top: top + CLUSTER_PAD,
-      bottom: top + slab.extent - CLUSTER_PAD,
+      bottom: top + slab.extent - CLUSTER_FOOT,
       depth: ancestry(slab.key).length,
     });
     lay(slab.inside, top + CLUSTER_PAD + CLUSTER_HEAD);
@@ -969,7 +987,7 @@ function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
       x: left,
       y: band.top - CLUSTER_HEAD,
       width: right - left,
-      height: bottom - band.top + CLUSTER_HEAD + CLUSTER_PAD,
+      height: bottom - band.top + CLUSTER_HEAD + CLUSTER_FOOT,
       nodes: inside.map((card) => card.node.id),
     });
   }

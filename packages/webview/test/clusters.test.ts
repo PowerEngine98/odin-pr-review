@@ -1116,10 +1116,21 @@ describe("the room between a box and the box nested inside it, down the page", (
       bars.push(child.y - parent.y);
     }
 
+    /*
+     * The same, and not merely of a size.
+     *
+     * This allowed the foot anything from half the head to half again, which is
+     * how the two came to differ by a header without a test minding: the
+     * opening bought room for a bar to be drawn in it and the closing bought
+     * none, so the gap below a nested box came out one header tighter than the
+     * gap above it. A reader sees both edges of the same frame at once, and a
+     * margin that is nearly even reads as a mistake where an obviously
+     * different one would read as a choice. So they are equal, and a band wide
+     * enough to hide a header is not a band worth having.
+     */
     const foot = Math.min(...feet);
     const bar = Math.min(...bars);
-    expect(foot).toBeGreaterThanOrEqual(bar / 2);
-    expect(foot).toBeLessThanOrEqual(bar * 1.5);
+    expect(foot).toBe(bar);
   });
 
   it("costs the drawing no height to do it", () => {
