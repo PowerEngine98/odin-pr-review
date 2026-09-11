@@ -1735,7 +1735,16 @@
   .card.status-added   .card-block { background: color-mix(in srgb, var(--status-added) 30%, var(--card-bg)); }
   .card.status-deleted .card-block { background: color-mix(in srgb, var(--status-deleted) 28%, var(--card-bg)); }
   .card.status-renamed .card-block { background: color-mix(in srgb, var(--status-renamed) 24%, var(--card-bg)); }
-  .card.status-phantom .card-block { background: var(--card-bg); }
+  /* An untouched file is a square like the rest, in its own colour.
+     It was the card's own background, which is to say nothing at all: pulled
+     back far enough that a card is only its block, the file the change never
+     touched had no block to be — an empty rectangle where every other file was
+     a shape. A reader looking at the whole drawing could not see that the file
+     was there, only that something had left a gap. It takes the same share of
+     its status colour as the others take of theirs, so it reads as the same
+     kind of thing, quieter because its colour is quieter and not because it
+     has been faded. */
+  .card.status-phantom .card-block { background: color-mix(in srgb, var(--status-phantom) 26%, var(--card-bg)); }
 
   /* A file read as two panes says the same thing at a distance that it says up
      close: what it was down the left, what it became down the right. One flat
