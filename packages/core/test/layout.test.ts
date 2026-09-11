@@ -14,7 +14,13 @@ import {
 import { fitText, layoutGraph, rowOffset, textCapacity } from "../src/layout/layout.js";
 import { DEFAULT_METRICS } from "../src/layout/metrics.js";
 import { edgeId, nodeId } from "../src/model/ids.js";
-import type { ChangeGraph, Edge, Endpoint } from "../src/model/types.js";
+import type {
+  ChangeGraph,
+  Edge,
+  Endpoint,
+  FileNode,
+  Hunk,
+} from "../src/model/types.js";
 
 const META = { baseRef: "main", headRef: "feature", generator: "test" };
 
@@ -639,6 +645,192 @@ describe("the order within a column", () => {
     expect(layout.nodes.every((n) => Number.isFinite(n.x) && Number.isFinite(n.y))).toBe(true);
     expect(layout.edges.every((e) => Number.isFinite(e.from.y) && Number.isFinite(e.to.y))).toBe(true);
     expect(took).toBeLessThan(5000);
+  });
+});
+
+/**
+ * The database card, and where a drawing puts the thing being called.
+ *
+ * A schema is not a file anybody wrote. It is lifted out of the checkout and
+ * given a vertex of its own so that a reference to `invoices` lands on the table
+ * rather than on whichever migration happened to declare it, and every arrow it
+ * carries points into it — the migration that made an object, the query that
+ * reads one. So it is always the thing being called, and a drawing whose columns
+ * are the call order has exactly one place for it: the column after the files
+ * that reach it, level with them.
+ *
+ * Two separate things have to hold for it to land there, and either one giving
+ * way is the same fault on screen — a database card adrift from the code that
+ * reads it, somewhere near the bottom of the picture. The ranking has to read
+ * the arrows the way they point, or the card shares its referrers' column and is
+ * stacked underneath them rather than set beside them. And the ordering has to
+ * file it with the part of the change that actually points at it. That second
+ * one was wrong: a database vertex is listed under every part, because any part
+ * may talk to it and a part read on its own still has to draw the card its
+ * arrows end at, and the rule that gives a shared file to the first part that
+ * claims it handed the schema to the largest part of the change whether or not a
+ * line of that part ever touched the database. A column is ordered by part
+ * before it is ordered by where its arrows want it, so the card was pinned into
+ * a band of the drawing belonging to other work while the stacking dropped it at
+ * the height its own arrows asked for — and every card below it in that column
+ * was pushed down past it to make room.
+ */
+describe("where the database card goes", () => {
+  /** The schema as the database pass builds one: rows, no diff, no history. */
+  function schemaNode(): FileNode {
+    const lines = Array.from({ length: 4 }, (_, i) => ({
+      kind: "ctx" as const,
+      text: `table t${i}`,
+      oldLine: i + 1,
+      newLine: i + 1,
+    }));
+    const hunk: Hunk = {
+      header: "public",
+      oldStart: 1,
+      oldLines: lines.length,
+      newStart: 1,
+      newLines: lines.length,
+      lines,
+    };
+    return {
+      id: "n:schema",
+      path: "database/public",
+      status: "phantom",
+      language: "sql",
+      binary: false,
+      stats: { additions: 0, deletions: 0 },
+      hunks: [hunk],
+      symbols: [],
+      resolution: "untouched",
+      kind: "database",
+    };
+  }
+
+  /** Files of equal size, so nothing below turns on one card being taller. */
+  function files(names: string[]): ChangeGraph {
+    const patch = names
+      .flatMap((name) => [
+        `diff --git a/${name} b/${name}`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/${name}`,
+        "@@ -0,0 +1,3 @@",
+        "+const one = 1;",
+        "+const two = 2;",
+        "+const three = 3;",
+      ])
+      .join("\n");
+    return buildGraph(parseUnifiedDiff(patch), { meta: META });
+  }
+
+  /**
+   * Three stories of different sizes, only the smallest of which has any
+   * business with the database.
+   *
+   * The sizes are the point: the parts are offered largest first, so the part
+   * that reaches the schema is the last one a rule about "the first part to
+   * claim a file" would ever pick.
+   */
+  const NAMES = [
+    "src/big/a.ts", "src/big/b.ts", "src/big/c.ts", "src/big/d.ts",
+    "src/mid/e.ts", "src/mid/f.ts", "src/mid/g.ts",
+    "src/small/h.ts", "src/small/i.ts",
+  ];
+  const CHAINS: [string, string][] = [
+    ["src/big/a.ts", "src/big/b.ts"],
+    ["src/big/b.ts", "src/big/c.ts"],
+    ["src/big/c.ts", "src/big/d.ts"],
+    ["src/mid/e.ts", "src/mid/f.ts"],
+    ["src/mid/f.ts", "src/mid/g.ts"],
+    ["src/small/h.ts", "src/small/i.ts"],
+  ];
+  /** The one file in the change that reads the database. */
+  const READER = "src/small/i.ts";
+
+  function change(withSchema: boolean): ChangeGraph {
+    const base = files(NAMES);
+    const schema = schemaNode();
+    const idOf = (path: string) => base.nodes.find((n) => n.path === path)!.id;
+
+    const calls = CHAINS.map(([from, to]) =>
+      edge(
+        { nodeId: idOf(from), side: "head", line: 2 },
+        { nodeId: idOf(to), side: "head", line: 2, symbolName: "x" },
+        "added",
+      ),
+    );
+    if (!withSchema) return sortGraph({ ...base, edges: calls });
+
+    return sortGraph({
+      ...base,
+      nodes: [...base.nodes, schema],
+      edges: [
+        ...calls,
+        edge(
+          { nodeId: idOf(READER), side: "head", line: 2 },
+          { nodeId: schema.id, side: "head", line: 2, symbolName: "t1" },
+          "added",
+        ),
+      ],
+    });
+  }
+
+  const laid = () => layoutGraph(change(true));
+  const card = (layout: ReturnType<typeof layoutGraph>, path: string) =>
+    layout.nodes.find((n) => n.path === path)!;
+
+  it("sets the schema in the column after the files that reach it", () => {
+    const layout = laid();
+    const schema = card(layout, "database/public");
+    const reader = card(layout, READER);
+
+    // Columns are the call order, and every arrow a schema has points into it.
+    // Sharing the reader's column would say the two are called at the same
+    // depth, and the stacking would then put the card underneath the file that
+    // reads it rather than beside it.
+    expect(schema.rank).toBe(reader.rank + 1);
+    expect(schema.x).toBeGreaterThan(reader.x + reader.width);
+  });
+
+  it("keeps it level with the file that reads it", () => {
+    const layout = laid();
+    const schema = card(layout, "database/public");
+    const reader = card(layout, READER);
+
+    // Both cards are the same height and the arrow leaves and arrives on
+    // comparable rows, so anything other than roughly the same height means the
+    // card was placed by something that is not its own arrow.
+    expect(Math.abs(schema.y - reader.y)).toBeLessThan(schema.height);
+  });
+
+  it("draws its one arrow without sending it across the drawing", () => {
+    const layout = laid();
+    const road = layout.edges.find(
+      (e) => e.edge.to.nodeId === "n:schema",
+    )!;
+    // The whole of what the ordering can change is how far an arrow travels
+    // vertically, so that is the thing to measure.
+    expect(Math.abs(road.to.y - road.from.y)).toBeLessThan(
+      layout.metrics.lineHeight * 2,
+    );
+  });
+
+  it("leaves the rest of the change where it was without it", () => {
+    // The regression proper. The schema used to be filed with the largest part
+    // of the change, which has nothing to do with the database, so it took a
+    // place near the head of its column and the cards of every later part were
+    // pushed down past it — a card that belongs to nobody's story rearranging
+    // everybody's. Adding a vertex that one file reaches may not move a file
+    // that does not reach it.
+    const withIt = layoutGraph(change(true));
+    const without = layoutGraph(change(false));
+
+    for (const node of without.nodes) {
+      expect([node.path, card(withIt, node.path).y]).toEqual([
+        node.path,
+        node.y,
+      ]);
+    }
   });
 });
 

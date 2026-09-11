@@ -471,8 +471,48 @@ function partOrder(graph: ChangeGraph): Map<string, number> {
   // Everything that stands alone shares the last place, the way the tabs put
   // them all under "on their own" rather than giving each its own name.
   const alone = parts.filter((p) => p.files > 1).length;
+  const placeOf = (part: { files: number }, index: number) =>
+    part.files > 1 ? index : alone;
+
+  /*
+   * The schema is filed with whatever points at it, not with whatever is
+   * biggest.
+   *
+   * A database vertex is listed under every part of the change, because any
+   * part may talk to it and a part read on its own still has to draw the card
+   * its arrows end at. Left to the rule below — first claim wins, and the parts
+   * arrive largest first — that made the schema a member of the largest part of
+   * the change whether or not a single line of it ever touched the database.
+   *
+   * Which is not a harmless mislabelling, because a column is ordered by part
+   * before it is ordered by where its arrows want it. The schema was pinned
+   * among cards it shares no arrow with, while the stacking below put it at the
+   * height its own arrows asked for; so it sat in a band of the drawing
+   * belonging to work it has nothing to do with, and every card under it in that
+   * column was pushed down past it to make room. The reader saw the database
+   * card adrift from the files that read it, and a stretch of empty canvas where
+   * those cards used to be.
+   *
+   * So it takes the place of the first part that actually points at it. Still
+   * the largest such part, since the parts arrive in that order, which is the
+   * one a reader is likeliest to have open when the database matters at all.
+   */
+  const pointedAt = new Map<string, Set<string>>();
+  for (const node of graph.nodes) {
+    if (node.kind === "database") pointedAt.set(node.id, new Set());
+  }
+  for (const edge of graph.edges) {
+    pointedAt.get(edge.to.nodeId)?.add(edge.from.nodeId);
+  }
+  for (const [id, referrers] of pointedAt) {
+    const found = parts.findIndex((part) =>
+      part.nodeIds.some((member) => referrers.has(member)),
+    );
+    if (found >= 0) rank.set(id, placeOf(parts[found]!, found));
+  }
+
   parts.forEach((part, index) => {
-    const place = part.files > 1 ? index : alone;
+    const place = placeOf(part, index);
     // The first part that claims a file keeps it, and the parts arrive largest
     // first. Some files are in several — the schema is in all of them, and a
     // file the change never touched is in every part that leans on it — and a
