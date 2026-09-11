@@ -5,6 +5,7 @@ import {
   barsFor,
   headOf,
   pinOf,
+  type Bar,
   type Barred,
 } from "../src/app/canvas/bars.js";
 import {
@@ -147,6 +148,11 @@ function nested() {
  * the rule turns on a relationship between two boxes and a hand-built pair can
  * be given any relationship at all. What is being claimed is that a real drawing
  * produces this shape, and the way to claim it is to draw one.
+ *
+ * It is also the reader's own drawing, which is why the scroll tests below use
+ * it rather than a fixture: `app`'s bar read `app / home` while `home`'s own
+ * header sat on `home`'s frame directly beneath it, and both were on screen at
+ * once.
  */
 function occupied() {
   const data = model([
@@ -194,6 +200,64 @@ function looking(scale: number, at: number): Held {
 
 /** Pulled well back, life size, and close in. */
 const ZOOMS = [0.4, 1, 2.5];
+
+/**
+ * A reader who has not scrolled down into the drawing at all.
+ *
+ * Every header is still where its box is, nothing has had to hold itself under
+ * the chrome, and therefore no folded name has been handed up to the bar above
+ * it. It is the state to state anything in that is not itself about scroll, and
+ * there are a lot of those below: `barsFor` is asked for a view because what a
+ * bar *says* depends on one, and nothing else it answers does.
+ */
+const UNSCROLLED: Held = looking(1, -10_000);
+
+/**
+ * Where a box's own header would sit in the stack if it joined it.
+ *
+ * The line just under the deepest bar that is actually drawn above it, which for
+ * a folded box is the line it would be held on had the reader not folded it.
+ * Counted off the map `barsFor` returned rather than off the folded set, so this
+ * agrees with the module about which boxes draw and disagrees with it about
+ * nothing.
+ */
+function wouldSit(
+  boxes: readonly { path: string }[],
+  bars: ReadonlyMap<string, Bar>,
+  path: string,
+): number {
+  let slot = 1;
+  for (const other of boxes) {
+    if (path.startsWith(`${other.path}/`) && bars.has(other.path)) slot += 1;
+  }
+  return slot;
+}
+
+/**
+ * Whether a box's own header has gone behind the stack at this scroll position.
+ *
+ * Asked of `pinHead`, which is the function the page asks. Writing the
+ * comparison out here instead — the box's top against the chrome, say — would be
+ * a second opinion about a line the stack already has an opinion about, and a
+ * test carrying its own copy of the threshold it is checking passes whichever
+ * way the threshold drifts.
+ */
+function outOfSight(
+  boxes: readonly { path: string; y: number; height: number }[],
+  bars: ReadonlyMap<string, Bar>,
+  path: string,
+  held: Held,
+): boolean {
+  const box = boxes.find((one) => one.path === path);
+  if (!box) throw new Error(`no box was drawn for ${path}`);
+  return (
+    pinHead(held, {
+      y: box.y,
+      height: box.height,
+      depth: wouldSit(boxes, bars, path),
+    }) > 0
+  );
+}
 
 /**
  * Where a bar actually ends up on screen, worked out the way the page does it.
@@ -285,12 +349,12 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
   it("holds the innermost bar exactly one header below the outermost, at every zoom", () => {
     for (const scale of ZOOMS) {
       const { boxes, outer, inner } = nested();
-      const bars = barsFor(boxes, new Set([MIDDLE]));
 
       // Scrolled far enough that every box has run out from under the bar and
       // the names are genuinely being held there, which is the only
       // arrangement in which they can collide or leave a gap.
       const held = looking(scale, inner.y);
+      const bars = barsFor(boxes, new Set([MIDDLE]), held);
 
       const outerSlot = bars.get(outer.path)?.slot;
       const innerSlot = bars.get(inner.path)?.slot;
@@ -306,14 +370,14 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
   it("draws no bar for the folded folder, so the stack is one shorter", () => {
     for (const scale of ZOOMS) {
       const { boxes, outer, inner } = nested();
-      const open = barsFor(boxes, new Set());
-      const shut = barsFor(boxes, new Set([MIDDLE]));
+      const held = looking(scale, inner.y);
+      const open = barsFor(boxes, new Set(), held);
+      const shut = barsFor(boxes, new Set([MIDDLE]), held);
 
       expect(open.has(MIDDLE)).toBe(true);
       expect(shut.has(MIDDLE)).toBe(false);
 
       // The same pair of names, a header nearer each other than they were.
-      const held = looking(scale, inner.y);
       const spread = (bars: ReturnType<typeof barsFor>) =>
         barOnScreen(held, bars, inner) - barOnScreen(held, bars, outer);
 
@@ -325,11 +389,11 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
   it("leaves the folded folder's header at the top of its own box, at every zoom", () => {
     for (const scale of ZOOMS) {
       const { boxes, outer, middle, inner } = nested();
-      const bars = barsFor(boxes, new Set([MIDDLE]));
 
       // Scrolled past all three tops, which is the arrangement in which a
       // header either holds itself under the chrome or goes with its box.
       const held = looking(scale, inner.y);
+      const bars = barsFor(boxes, new Set([MIDDLE]), held);
 
       // It does not hold. Not at any of the three zooms, and not because
       // nothing is holding here: its two neighbours are both against the
@@ -382,7 +446,7 @@ describe("the pinned stack of folder bars when a folder in the middle is collaps
     // component offers no chevron on one; this is the same rule said where a
     // fold stored by an older reading cannot get round it.
     const { boxes, outer } = nested();
-    const bars = barsFor(boxes, new Set([outer.path, MIDDLE]));
+    const bars = barsFor(boxes, new Set([outer.path, MIDDLE]), UNSCROLLED);
     expect(bars.has(outer.path)).toBe(true);
     expect(bars.get(outer.path)?.slot).toBe(1);
   });
@@ -404,8 +468,8 @@ describe("where a card's title may start when a folder holding it is collapsed",
       const { boxes } = nested();
       const held = looking(scale, 1000);
 
-      const open = barsFor(boxes, new Set());
-      const shut = barsFor(boxes, new Set([MIDDLE]));
+      const open = barsFor(boxes, new Set(), held);
+      const shut = barsFor(boxes, new Set([MIDDLE]), held);
 
       // `m1` lives in the innermost folder, so all three boxes hold it.
       expect(barsOver(boxes, open, "m1")).toBe(3);
@@ -426,8 +490,8 @@ describe("where a card's title may start when a folder holding it is collapsed",
     for (const scale of ZOOMS) {
       const { boxes } = nested();
       const held = looking(scale, 1000);
-      const open = barsFor(boxes, new Set());
-      const shut = barsFor(boxes, new Set([MIDDLE]));
+      const open = barsFor(boxes, new Set(), held);
+      const shut = barsFor(boxes, new Set([MIDDLE]), held);
       expect(titleLine(held, barsOver(boxes, shut, "a1"))).toBe(
         titleLine(held, barsOver(boxes, open, "a1")),
       );
@@ -451,6 +515,12 @@ describe("where a card's title may start when a folder holding it is collapsed",
  * recover thirty pixels of label and would get the entire drawing re-flowing
  * underneath them — every card moved, every arrow redrawn, and the thing they
  * were looking at somewhere else on the screen.
+ *
+ * Scrolling is held to the same promise and it is a newer claim, because a bar's
+ * label now depends on where the reader is. That makes the drawing change as
+ * they scroll, and the thing to pin is that only the words change: `barsFor` is
+ * asked at a spread of scroll positions between the two readings below, and no
+ * card and no edge has moved when it is asked again.
  *
  * The second half is about `depth` itself. The tempting implementation of all
  * this is to recompute `FolderBox.depth` with the folded boxes left out, since
@@ -492,8 +562,14 @@ describe("what collapsing a folder is not allowed to change", () => {
     // differently. If this ever stops being true — if the folded set acquires a
     // route into `place()` or `Standing` — this is where it shows.
     const { boxes } = nested();
-    barsFor(boxes, new Set([MIDDLE]));
-    barsFor(boxes, new Set(["labura/common/mediaGroup", MIDDLE]));
+    barsFor(boxes, new Set([MIDDLE]), UNSCROLLED);
+    barsFor(boxes, new Set(["labura/common/mediaGroup", MIDDLE]), UNSCROLLED);
+    // And the whole of what scrolling does to it, which is the same nothing.
+    for (const scale of ZOOMS) {
+      for (const at of [-500, 0, 240, 390, 1010, 5000]) {
+        barsFor(boxes, new Set([MIDDLE]), looking(scale, at));
+      }
+    }
 
     const after = geometry();
     // Said out loud so that a fixture which stopped producing cards or boxes
@@ -522,7 +598,7 @@ describe("what collapsing a folder is not allowed to change", () => {
       new Set([MIDDLE]),
       new Set([MIDDLE, "labura/common/mediaGroup", "labura/app"]),
     ]) {
-      barsFor(boxes, folded);
+      barsFor(boxes, folded, UNSCROLLED);
       for (const box of boxes) {
         // `placement.ts`'s own definition, written out. Counting boxes and not
         // path segments: the levels that hold one thing each are never drawn.
@@ -533,32 +609,60 @@ describe("what collapsing a folder is not allowed to change", () => {
       }
     }
   });
+
+  it("moves no card's title when a bar's label changes under the reader", () => {
+    // The bars a card must clear are the bars that are drawn, and absorbing a
+    // name into one does not draw another. So the one visible consequence of
+    // crossing the threshold is the word on a bar: nothing reflows, nothing
+    // steps down, and the file names in the column stay exactly where they
+    // were. Worth pinning because the alternative is unpleasant and quiet — a
+    // whole column of titles nudging by a header as the reader pans.
+    const { boxes, app, home } = occupied();
+    const folded = new Set([home.path]);
+    for (const scale of ZOOMS) {
+      const near = looking(scale, home.y - 100);
+      const past = looking(scale, home.y + 100);
+      const before = barsFor(boxes, folded, near);
+      const after = barsFor(boxes, folded, past);
+
+      // The label really did change between the two, or this proves nothing.
+      expect(before.get(app.path)?.label).not.toBe(after.get(app.path)?.label);
+      expect([...barsAbove(boxes, before)]).toEqual([
+        ...barsAbove(boxes, after),
+      ]);
+      for (const box of boxes) {
+        expect(before.get(box.path)?.slot).toBe(after.get(box.path)?.slot);
+      }
+    }
+  });
 });
 
 /**
  * What a bar says, which is its own folder's name and then whatever folded
- * folder turns out to be the whole of what the box contains.
+ * folder is the whole of what the box contains *and* has gone behind the stack.
  *
- * This is the third answer to the same question and the tests below have said
- * all three, so what they used to claim is worth writing down. First a folded
+ * This is the fourth answer to one question and the tests here have said all
+ * four, so what they used to claim is worth writing down. First a folded
  * folder's name went into the bar above it unconditionally, which then read as a
- * path — `common` with `mediaGroup` folded into it read `common/mediaGroup`.
+ * path — `common` with `mediaGroup` folded into it read `common/mediaGroup`, and
+ * on a real change the outermost bar in the drawing read `src / app / profile /
+ * laborer` across a frame that also held a file of its own and a second folder.
  * Then it did not, and these tests asserted that a bar reads one name however
- * deep the folding below it goes. Neither is right, and the reason the middle
- * one was overturned is the reason the first one was: the failure was never
- * concatenation, it was concatenating a path that was not true of the frame it
- * was written across. `src / app / profile / laborer` on a box that also held a
- * second folder and a file of its own named a thread through the box and offered
- * it as a name for the box.
+ * deep the folding below it goes. Then it did again under a sole-occupancy
+ * condition, which is the rule these tests describe below and which survives
+ * intact: a parent absorbs only a folded child that is the one box in it and
+ * holds every card it holds, so that everything inside the frame really is
+ * inside the path written across it.
  *
- * So the condition is sole occupancy, tested against the drawing as it stands:
- * a parent absorbs a folded child only while that child is a box holding every
- * card the parent holds, so that everything inside the frame really is inside
- * the path on the bar. Two folded children is not an ambiguity to be resolved by
- * some rule the reader cannot see — which is what the first version needed and
- * had to prove stable over every order three boxes can arrive in — it is a frame
- * with two things in it, and it is declined for the same reason a stray card
- * declines it.
+ * What has been added is the fourth condition and it is about the reader rather
+ * than about the change. Absorbing regardless of scroll put `app / home` on one
+ * bar while `home`'s own header sat three lines below it saying `home`, which is
+ * what was reported: the same folder named twice, a few pixels apart, on a
+ * drawing the reader had collapsed a folder to quieten. The name only needs
+ * carrying up to the stack while it cannot be read where it belongs.
+ *
+ * So the tests here state the rule with the reader held still on either side of
+ * that threshold, and the describe after this one states the threshold itself.
  */
 describe("the name a bar reads", () => {
   /**
@@ -567,32 +671,49 @@ describe("the name a bar reads", () => {
    * `app` holds two cards and `app/home` holds the same two, so the frame
    * labelled `app` and the frame labelled `app/home` enclose exactly the same
    * drawing.
+   *
+   * The frames are given plausible geometry rather than left off, because the
+   * rule is now partly about where they are. `app` opens at nought and `home` a
+   * hundred and fifty units down it, which is the sort of gap the banding leaves
+   * for a pad and a header.
    */
   const sole: Barred[] = [
-    { path: "app", depth: 1, nodes: ["h1", "h2"] },
-    { path: "app/home", depth: 2, nodes: ["h1", "h2"] },
+    { path: "app", depth: 1, nodes: ["h1", "h2"], y: 0, height: 900 },
+    { path: "app/home", depth: 2, nodes: ["h1", "h2"], y: 150, height: 700 },
   ];
 
   /** The same, with a second folder standing beside the folded one. */
   const beside: Barred[] = [
-    { path: "src", depth: 1, nodes: ["h1", "h2", "p1", "p2"] },
-    { path: "src/home", depth: 2, nodes: ["h1", "h2"] },
-    { path: "src/pages", depth: 2, nodes: ["p1", "p2"] },
+    {
+      path: "src",
+      depth: 1,
+      nodes: ["h1", "h2", "p1", "p2"],
+      y: 0,
+      height: 1200,
+    },
+    { path: "src/home", depth: 2, nodes: ["h1", "h2"], y: 150, height: 400 },
+    { path: "src/pages", depth: 2, nodes: ["p1", "p2"], y: 700, height: 400 },
   ];
 
   /** And with one card of the parent's own, outside the folded folder. */
   const loose: Barred[] = [
-    { path: "src", depth: 1, nodes: ["h1", "h2", "readme"] },
-    { path: "src/home", depth: 2, nodes: ["h1", "h2"] },
+    { path: "src", depth: 1, nodes: ["h1", "h2", "readme"], y: 0, height: 900 },
+    { path: "src/home", depth: 2, nodes: ["h1", "h2"], y: 150, height: 700 },
   ];
+
+  /**
+   * Far enough down that every folded header in these fixtures has gone behind
+   * the stack, which is the half of the condition these tests are not about.
+   */
+  const PAST = looking(1, 5000);
 
   it("absorbs a folded child that is the whole of what the box holds", () => {
     // The reader's case, stated as the smallest fixture that can show it: fold
-    // `home` inside `app` where nothing else is in `app`, and one bar says
-    // `app/home` rather than a bar saying `app` with a stub on the frame below
-    // it saying `home`. Both frames are the same rectangle round the same two
-    // cards, so two labels for it is the drawing saying the same thing twice.
-    const bars = barsFor(sole, new Set(["app/home"]));
+    // `home` inside `app` where nothing else is in `app`, scroll until `home`'s
+    // own header has gone behind `app`'s bar, and one bar says `app/home`
+    // instead of the name disappearing. Both frames are the same rectangle round
+    // the same two cards, so the path is a true name for the whole of it.
+    const bars = barsFor(sole, new Set(["app/home"]), PAST);
 
     expect(bars.get("app")?.label).toBe("app/home");
     expect(bars.get("app")?.absorbed).toEqual(["app/home"]);
@@ -605,8 +726,10 @@ describe("the name a bar reads", () => {
     // `src` holds `home` and `pages`. A bar reading `src/home` across the whole
     // of `src` would be written over `pages`'s cards, which are in `src` and are
     // not in `src/home` — the reader is told what the frame is and then finds
-    // things in it the name does not cover.
-    const bars = barsFor(beside, new Set(["src/home"]));
+    // things in it the name does not cover. True at any scroll position, which
+    // is why this is asked well past the threshold: being unreadable is not on
+    // its own a reason for a name to go anywhere.
+    const bars = barsFor(beside, new Set(["src/home"]), PAST);
 
     expect(bars.get("src")?.label).toBe("src");
     expect(bars.get("src")?.absorbed).toEqual([]);
@@ -618,81 +741,21 @@ describe("the name a bar reads", () => {
     // And folding the sibling too is not a second question. There is no rule
     // here choosing between two names, which the first version of this needed
     // and could only answer by an accident of array order.
-    const both = barsFor(beside, new Set(["src/home", "src/pages"]));
+    const both = barsFor(beside, new Set(["src/home", "src/pages"]), PAST);
     expect(both.get("src")?.label).toBe("src");
     expect([...both.keys()]).toEqual(["src"]);
   });
 
   it("absorbs nothing when the box holds a card outside the folded one", () => {
-    // One child box and it is folded, so the first condition holds and the
-    // second is the whole of what refuses this. `src` has a file of its own
-    // sitting directly in it, and `src/home` is not where that file is.
-    const bars = barsFor(loose, new Set(["src/home"]));
+    // One child box and it is folded and out of sight, so two of the three
+    // conditions hold and the card count is the whole of what refuses this.
+    // `src` has a file of its own sitting directly in it, and `src/home` is not
+    // where that file is.
+    const bars = barsFor(loose, new Set(["src/home"]), PAST);
 
     expect(bars.get("src")?.label).toBe("src");
     expect(bars.get("src")?.absorbed).toEqual([]);
     expect(bars.has("src/home")).toBe(false);
-  });
-
-  it("walks a whole chain of sole occupants down to the last of them", () => {
-    // The label the second version of this was written to prevent, on the shape
-    // where it is not a complaint at all. Every box here holds the same two
-    // cards, so `src`, `src/app`, `src/app/profile` and the `laborer` inside it
-    // are four frames around one drawing, and the bar that says so is saying
-    // what the reader would otherwise have to read off four stubs.
-    const deep: Barred[] = [
-      { path: "src", depth: 1, nodes: ["one", "two"] },
-      { path: "src/app", depth: 2, nodes: ["one", "two"] },
-      { path: "src/app/profile", depth: 3, nodes: ["one", "two"] },
-      { path: "src/app/profile/laborer", depth: 4, nodes: ["one", "two"] },
-    ];
-    const bars = barsFor(
-      deep,
-      new Set(["src/app", "src/app/profile", "src/app/profile/laborer"]),
-    );
-
-    expect(bars.get("src")?.label).toBe("src/app/profile/laborer");
-    expect(bars.get("src")?.absorbed).toEqual([
-      "src/app",
-      "src/app/profile",
-      "src/app/profile/laborer",
-    ]);
-    // Said as the whole map so that a label arriving on some other bar instead
-    // would not pass quietly.
-    expect([...bars].map(([path, bar]) => [path, bar.label])).toEqual([
-      ["src", "src/app/profile/laborer"],
-    ]);
-    expect(bars.get("src")?.slot).toBe(1);
-  });
-
-  it("stops the walk at the first folder that is not the whole of its parent", () => {
-    // The same chain with one card left behind in `profile`, which is exactly
-    // the difference between the label above and the one that was reported. The
-    // walk takes `app` and `profile` and refuses `laborer`, so the bar says what
-    // is true of the frame and stops.
-    const deep: Barred[] = [
-      { path: "src", depth: 1, nodes: ["one", "two"] },
-      { path: "src/app", depth: 2, nodes: ["one", "two"] },
-      { path: "src/app/profile", depth: 3, nodes: ["one", "two"] },
-      { path: "src/app/profile/laborer", depth: 4, nodes: ["one"] },
-    ];
-    const bars = barsFor(
-      deep,
-      new Set(["src/app", "src/app/profile", "src/app/profile/laborer"]),
-    );
-
-    expect(bars.get("src")?.label).toBe("src/app/profile");
-    expect(bars.get("src")?.absorbed).toEqual(["src/app", "src/app/profile"]);
-    // And the folder the walk refused is not lost. It has no bar and no segment
-    // in anybody's label, which now means only that its own header stays on its
-    // own frame and out of the stack — where the reader can read it and press
-    // the chevron on it.
-    expect(bars.has("src/app/profile/laborer")).toBe(false);
-    expect(
-      [...bars.values()].some((bar) =>
-        bar.absorbed.includes("src/app/profile/laborer"),
-      ),
-    ).toBe(false);
   });
 
   it("absorbs nothing where two children could each claim the whole box", () => {
@@ -706,22 +769,27 @@ describe("the name a bar reads", () => {
     // one machine and `common/mediaGroup` on another with the same change in
     // front of it, and neither was wrong in a way anybody could report.
     const twins: Barred[] = [
-      { path: "a", depth: 1, nodes: ["x", "y"] },
-      { path: "a/b", depth: 2, nodes: ["x", "y"] },
-      { path: "a/c", depth: 2, nodes: ["x", "y"] },
+      { path: "a", depth: 1, nodes: ["x", "y"], y: 0, height: 900 },
+      { path: "a/b", depth: 2, nodes: ["x", "y"], y: 150, height: 300 },
+      { path: "a/c", depth: 2, nodes: ["x", "y"], y: 500, height: 300 },
     ];
-    for (const order of [twins, [twins[1]!, twins[2]!, twins[0]!], [twins[2]!, twins[0]!, twins[1]!]]) {
-      const bars = barsFor(order, new Set(["a/b", "a/c"]));
+    for (const order of [
+      twins,
+      [twins[1]!, twins[2]!, twins[0]!],
+      [twins[2]!, twins[0]!, twins[1]!],
+    ]) {
+      const bars = barsFor(order, new Set(["a/b", "a/c"]), PAST);
       expect(bars.get("a")?.label).toBe("a");
       expect(bars.get("a")?.absorbed).toEqual([]);
     }
   });
 
   it("absorbs nothing from a child that still draws its own bar", () => {
-    // An open folder is already saying its name a header lower, so there is
-    // nothing for the bar above to say on its behalf. Sole occupancy is not on
-    // its own a reason to concatenate — a fold is.
-    const bars = barsFor(sole, new Set());
+    // An open folder is already saying its name a header lower and holding it
+    // there, so there is nothing for the bar above to say on its behalf. Sole
+    // occupancy is not on its own a reason to concatenate, and neither is being
+    // scrolled past — a fold is.
+    const bars = barsFor(sole, new Set(), PAST);
 
     expect(bars.get("app")?.label).toBe("app");
     expect(bars.get("app")?.absorbed).toEqual([]);
@@ -731,11 +799,11 @@ describe("the name a bar reads", () => {
 
   it("gives every bar its own name when nothing is folded", () => {
     const chain: Barred[] = [
-      { path: "a", depth: 1, nodes: ["x", "y"] },
-      { path: "a/b", depth: 2, nodes: ["x", "y"] },
-      { path: "a/b/c", depth: 3, nodes: ["x", "y"] },
+      { path: "a", depth: 1, nodes: ["x", "y"], y: 0, height: 900 },
+      { path: "a/b", depth: 2, nodes: ["x", "y"], y: 150, height: 700 },
+      { path: "a/b/c", depth: 3, nodes: ["x", "y"], y: 300, height: 500 },
     ];
-    const bars = barsFor(chain, new Set());
+    const bars = barsFor(chain, new Set(), PAST);
     expect([...bars.keys()]).toEqual(["a", "a/b", "a/b/c"]);
     expect([...bars.values()].map((bar) => bar.label)).toEqual(["a", "b", "c"]);
     for (const box of chain) {
@@ -748,19 +816,208 @@ describe("the name a bar reads", () => {
 });
 
 /**
+ * And when it says it, which is the half of the rule the reader reported.
+ *
+ * A folded folder's name is handed up to the bar above for exactly as long as
+ * the folder's own header cannot be read where it belongs, and handed back the
+ * moment it can. So this is a claim about scroll and it is tested as one: the
+ * same drawing, the same fold, the reader in two places.
+ *
+ * Every assertion here is made at three zooms, and that is not ceremony. The two
+ * quantities in this decision are a bar measured in window pixels and a header
+ * measured in canvas units, and every fault this feature has produced has been a
+ * conversion between them that was exactly right at scale one — which is the
+ * only scale a screenshot shows, and the scale a developer happens to be at.
+ *
+ * The threshold is `pinHead`'s and the tests borrow it rather than restating it.
+ * `crossing` below finds the scroll position where the stack's own arithmetic
+ * changes its mind, by bisection, without writing down a formula of its own; so
+ * a test that passes is a test saying the label and the stack agree, rather than
+ * a test saying the label agrees with a number typed into this file.
+ */
+describe("when a folded folder's name moves up into the bar above it", () => {
+  /**
+   * The scroll position at which a folded box's own header would begin to pin.
+   *
+   * Found by asking `pinHead`, narrowing on the answer rather than solving for
+   * it. `pinHead` rises from nought as the reader scrolls and never falls, so
+   * there is one crossing and a bisection finds it; and the point of doing it
+   * this way is that nothing here knows what `headLine` computes. Somebody who
+   * changes the rounding inside `heading.ts` moves this and the page together,
+   * which is the only way the two can be checked against each other at all.
+   */
+  function crossing(
+    scale: number,
+    box: { y: number; height: number },
+    slot: number,
+  ): number {
+    let below = -100_000;
+    let above = 100_000;
+    for (let step = 0; step < 80; step += 1) {
+      const mid = (below + above) / 2;
+      const held = looking(scale, mid);
+      if (pinHead(held, { y: box.y, height: box.height, depth: slot }) > 0) {
+        above = mid;
+      } else {
+        below = mid;
+      }
+    }
+    return above;
+  }
+
+  it("reads only its own name while the folded header can still be read, at every zoom", () => {
+    // The reader sitting where `home`'s box begins. `home` says `home` on its
+    // own frame and `app` says `app` across the frame above it, and neither
+    // repeats the other. This is the state the report was about: absorbing here
+    // is the drawing saying `home` twice a few lines apart.
+    for (const scale of ZOOMS) {
+      const { boxes, app, home } = occupied();
+      const held = looking(scale, home.y - 100);
+      const bars = barsFor(boxes, new Set([home.path]), held);
+
+      // Said first, because everything below is worthless if the reader is
+      // actually on the far side of the threshold.
+      expect(outOfSight(boxes, bars, home.path, held)).toBe(false);
+      expect(pinOf(bars, home, held)).toBe(0);
+
+      expect(bars.get(app.path)?.label).toBe("app");
+      expect(bars.get(app.path)?.absorbed).toEqual([]);
+      // And `home`'s header is where `home` is, which is where it always is.
+      expect(headAt(held, bars, home)).toBeCloseTo(held.y + home.y * scale, 6);
+    }
+  });
+
+  it("reads the merged path once the folded header has gone behind the stack, at every zoom", () => {
+    // And the reader scrolled on. `home`'s header has passed behind `app`'s bar,
+    // so the name would be gone; it is on `app`'s bar instead, as a segment that
+    // presses back. This is the whole of what absorption is for.
+    for (const scale of ZOOMS) {
+      const { boxes, app, home } = occupied();
+      const held = looking(scale, home.y + 100);
+      const bars = barsFor(boxes, new Set([home.path]), held);
+
+      expect(outOfSight(boxes, bars, home.path, held)).toBe(true);
+      // Still not pinned, which is the promise folding made and which absorbing
+      // must not quietly undo by putting the header back in the stack.
+      expect(pinOf(bars, home, held)).toBe(0);
+
+      expect(bars.get(app.path)?.label).toBe("app/home");
+      expect(bars.get(app.path)?.absorbed).toEqual([home.path]);
+      // `app`'s bar has not moved down to make room for the longer name: the
+      // slot is the same number it was, because absorbing a name does not add a
+      // bar to the stack.
+      expect(bars.get(app.path)?.slot).toBe(2);
+    }
+  });
+
+  it("hands the name back when the reader scrolls up again, at every zoom", () => {
+    // The reverse transition, which is the thing a one-way implementation would
+    // pass the two tests above and fail. Scrolled down, scrolled back, and the
+    // drawing is exactly the drawing it was — the same label, the same empty
+    // absorbed list, and `home` saying its own name on its own frame again.
+    for (const scale of ZOOMS) {
+      const { boxes, app, home } = occupied();
+      const folded = new Set([home.path]);
+      const near = looking(scale, home.y - 100);
+      const far = looking(scale, home.y + 400);
+
+      const there = barsFor(boxes, folded, near);
+      const gone = barsFor(boxes, folded, far);
+      const back = barsFor(boxes, folded, near);
+
+      expect(there.get(app.path)?.label).toBe("app");
+      expect(gone.get(app.path)?.label).toBe("app/home");
+      expect(back.get(app.path)?.label).toBe("app");
+      expect(back.get(app.path)?.absorbed).toEqual([]);
+      // Nothing was remembered between the calls, which is the failure this
+      // shape of code invites: a walk that appended to a list held outside the
+      // loop would come back from `far` with `home` still on it.
+      expect([...back].map(([path, bar]) => [path, bar.label])).toEqual(
+        [...there].map(([path, bar]) => [path, bar.label]),
+      );
+    }
+  });
+
+  it("changes its mind exactly where the stack changes its, at every zoom", () => {
+    // The claim the whole design rests on: one threshold, not two. The label
+    // flips on the same side of the same line that `pinHead` flips on, so there
+    // is no stretch of scroll where `app` reads `app / home` over a legible
+    // `home`, and none where `home` has gone behind the bar with its name
+    // nowhere. A second opinion about the line would show up here as a gap of a
+    // fraction of a header, which is a fraction of a pixel pulled back and
+    // several pixels zoomed in.
+    for (const scale of ZOOMS) {
+      const { boxes, app, home } = occupied();
+      const folded = new Set([home.path]);
+      const anywhere = barsFor(boxes, folded, UNSCROLLED);
+      const slot = wouldSit(boxes, anywhere, home.path);
+      // The line under `app`'s bar, which is where `home` would have been held.
+      expect(slot).toBe((anywhere.get(app.path)?.slot ?? 0) + 1);
+
+      const line = crossing(scale, home, slot);
+      const hair = 1e-6;
+
+      const just = barsFor(boxes, folded, looking(scale, line - hair));
+      const over = barsFor(boxes, folded, looking(scale, line + hair));
+
+      expect(just.get(app.path)?.label).toBe("app");
+      expect(over.get(app.path)?.label).toBe("app/home");
+    }
+  });
+
+  it("deepens the path one folder at a time as the reader scrolls, at every zoom", () => {
+    // A chain of sole occupants does not arrive all at once. `b` goes behind the
+    // stack before `c` does, because `c`'s box begins further down, so the bar
+    // reads `a`, then `a/b`, then `a/b/c` as the reader goes — each name handed
+    // up at the moment it stops being readable and not before. The unconditional
+    // version of this drew `a/b/c` from the first frame, with `b` and `c` both
+    // legible underneath it.
+    const chain: Barred[] = [
+      { path: "a", depth: 1, nodes: ["x", "y"], y: 0, height: 900 },
+      { path: "a/b", depth: 2, nodes: ["x", "y"], y: 150, height: 700 },
+      { path: "a/b/c", depth: 3, nodes: ["x", "y"], y: 300, height: 500 },
+    ];
+    const folded = new Set(["a/b", "a/b/c"]);
+    for (const scale of ZOOMS) {
+      const read = (at: number) =>
+        barsFor(chain, folded, looking(scale, at)).get("a")?.label;
+
+      // `b` and `c` both draw their headers where their boxes are.
+      expect(read(0)).toBe("a");
+      // `b` has gone behind `a`'s bar; `c`'s box has not reached it yet.
+      expect(read(200)).toBe("a/b");
+      // And now both have.
+      expect(read(600)).toBe("a/b/c");
+
+      // Stated once more as the three crossings in order, so that a fixture
+      // which stopped producing the staggering could not turn the three
+      // assertions above into three readings of the same position.
+      const bars = barsFor(chain, folded, UNSCROLLED);
+      const atB = crossing(scale, chain[1]!, wouldSit(chain, bars, "a/b"));
+      const atC = crossing(scale, chain[2]!, wouldSit(chain, bars, "a/b/c"));
+      expect(atB).toBeLessThan(atC);
+    }
+  });
+});
+
+/**
  * The same rule again, read off a drawing rather than off a fixture.
  *
- * Everything above hands `barsFor` `Barred` literals, which is the right way to
- * state a rule and no way at all to claim that a real change ever produces the
- * shape the rule is about. A hand-built parent and child can be given any
- * relationship somebody types. So this asks `place()` for a drawing and then
- * asks whether the boxes it actually drew are in the position the rule
- * describes, which is the part that would quietly stop being true if the
- * placement's idea of which folders are worth a box ever moved.
+ * Everything above hands `barsFor` `Barred` literals for the shape of the rule,
+ * which is the right way to state a rule and no way at all to claim that a real
+ * change ever produces the shape the rule is about. A hand-built parent and
+ * child can be given any relationship somebody types, and can be given any
+ * geometry too. So this asks `place()` for a drawing and then asks whether the
+ * boxes it actually drew are in the position the rule describes, which is the
+ * part that would quietly stop being true if the placement's idea of which
+ * folders are worth a box ever moved.
  *
  * It is also the reader's own example: `app` whose only content is `home`.
  */
 describe("a bar reading a path off a drawing that was really placed", () => {
+  /** Scrolled past every header in this fixture. */
+  const PAST = looking(1, 5000);
+
   it("absorbs the sole occupant and leaves the crowded box alone", () => {
     const { boxes, root, app, home, media } = occupied();
 
@@ -771,7 +1028,7 @@ describe("a bar reading a path off a drawing that was really placed", () => {
     expect(root.nodes.length).toBeGreaterThan(app.nodes.length);
     expect(media.nodes.length).toBeLessThan(home.nodes.length);
 
-    const bars = barsFor(boxes, new Set([home.path]));
+    const bars = barsFor(boxes, new Set([home.path]), PAST);
 
     // `app` is `app/home` and says so.
     expect(bars.get(app.path)?.label).toBe("app/home");
@@ -792,7 +1049,7 @@ describe("a bar reading a path off a drawing that was really placed", () => {
     // `home`'s four cards, so `app/home/media` across that frame would be a name
     // for half of it.
     const { boxes, app, home, media } = occupied();
-    const bars = barsFor(boxes, new Set([home.path, media.path]));
+    const bars = barsFor(boxes, new Set([home.path, media.path]), PAST);
 
     expect(bars.get(app.path)?.label).toBe("app/home");
     expect(bars.get(app.path)?.absorbed).toEqual([home.path]);
@@ -826,7 +1083,7 @@ describe("a bar reading a path off a drawing that was really placed", () => {
 describe("the number a folder box's header arithmetic is fed", () => {
   it("answers with the box's slot and never with its depth", () => {
     const { boxes, outer, middle, inner } = nested();
-    const bars = barsFor(boxes, new Set([MIDDLE]));
+    const bars = barsFor(boxes, new Set([MIDDLE]), UNSCROLLED);
 
     // Three boxes enclose the innermost one and only two bars stand above it,
     // because the middle folder's bar is not drawn. Said as two separate
@@ -853,8 +1110,8 @@ describe("the number a folder box's header arithmetic is fed", () => {
   it("holds the bar one header higher than its depth would, at every zoom", () => {
     for (const scale of ZOOMS) {
       const { boxes, inner } = nested();
-      const bars = barsFor(boxes, new Set([MIDDLE]));
       const held = looking(scale, inner.y);
+      const bars = barsFor(boxes, new Set([MIDDLE]), held);
 
       // Where the page actually holds it.
       const fed = headOnScreen(held, headOf(bars, inner)!);
@@ -884,7 +1141,7 @@ describe("the number a folder box's header arithmetic is fed", () => {
     // screen by as many headers as the folder was deep and sat in the middle of
     // the cards it was meant to be labelling.
     const { boxes, middle, inner } = nested();
-    const bars = barsFor(boxes, new Set([MIDDLE, inner.path]));
+    const bars = barsFor(boxes, new Set([MIDDLE, inner.path]), UNSCROLLED);
 
     expect(headOf(bars, middle)).toBeUndefined();
     expect(headOf(bars, inner)).toBeUndefined();
@@ -917,8 +1174,8 @@ describe("the number a folder box's header arithmetic is fed", () => {
 describe("how many bars stand above a card, as the canvas counts them", () => {
   it("counts the boxes that draw a bar and not the boxes that hold the card", () => {
     const { boxes } = nested();
-    const open = barsFor(boxes, new Set());
-    const shut = barsFor(boxes, new Set([MIDDLE]));
+    const open = barsFor(boxes, new Set(), UNSCROLLED);
+    const shut = barsFor(boxes, new Set([MIDDLE]), UNSCROLLED);
 
     // `m1` lives in the innermost folder, so three boxes hold it whatever the
     // reader has folded — that is what `depth` means and it does not move.
@@ -936,54 +1193,57 @@ describe("how many bars stand above a card, as the canvas counts them", () => {
     // `a1` is in `labura/app`, which is beside `common` rather than inside it.
     // Somebody else's fold is not a reason to move its name.
     const { boxes } = nested();
-    expect(barsAbove(boxes, barsFor(boxes, new Set())).get("a1")).toBe(2);
-    expect(barsAbove(boxes, barsFor(boxes, new Set([MIDDLE]))).get("a1")).toBe(2);
+    expect(barsAbove(boxes, barsFor(boxes, new Set(), UNSCROLLED)).get("a1")).toBe(2);
+    expect(
+      barsAbove(boxes, barsFor(boxes, new Set([MIDDLE]), UNSCROLLED)).get("a1"),
+    ).toBe(2);
   });
 
   it("gives no entry to a card no box holds, which the caller reads as nought", () => {
     const { boxes } = nested();
-    const above = barsAbove(boxes, barsFor(boxes, new Set()));
+    const above = barsAbove(boxes, barsFor(boxes, new Set(), UNSCROLLED));
     expect(above.has("nobody")).toBe(false);
     expect(above.get("nobody") ?? 0).toBe(0);
   });
 });
 
 /**
- * The way back out of a fold, which every folded box now carries itself.
+ * The way back out of a fold, which is what makes all of this safe to ship.
  *
- * A folded folder has to be openable again, and for a while the arrangement was
- * delicate: a folded box had a name in one of two places — a pressable segment
- * of the bar that absorbed it, or a small stub on its own frame where no bar
- * did — and the tests here asserted that it was always in exactly one of them,
- * never both and never neither. That was the right invariant for that design and
- * it is the wrong one for this. Every box draws its own header now, folded or
- * not, so a folded folder's name is always on its own frame with a chevron on it
- * that opens the folder; the parent's bar may say the name a second time where
- * the folder is the whole of what that box holds, and two true statements about
- * one folder is not a contradiction to be broken by choosing one of them.
+ * A folded folder has to be openable again, and this feature has already shipped
+ * once without that being true: two folded siblings under a parent that could
+ * absorb neither left two folders with no bar, no way back and nothing anywhere
+ * that undid the gesture which removed them. The reader had lost two folders.
  *
- * The failure being guarded against is still the same failure, and it is not
- * hypothetical: this feature shipped once with two folded siblings under a
- * parent that could absorb neither, which left two folders with no bar, no
- * segment and nothing anywhere that undid the gesture that removed them. What
- * has changed is that the guard no longer has to be a rule about balancing two
- * places. It is the one place: the header on the box. So what is asserted below,
- * exhaustively over every folded subset of a couple of shapes, is the pair of
- * facts the component turns into that header — that no box ever disappears from
- * the drawing, and that a folded box is exactly a box with no bar, which is what
- * makes its chevron read the other way round.
+ * So the arrangement is two states and a single threshold between them. While a
+ * folded box's own header can be read where it belongs, that header carries a
+ * chevron which unfolds the folder. Once it has gone behind the stack, its name
+ * is a pressable segment of the bar above. The threshold is one comparison, so
+ * the two cannot both be false — which is the property the old design could not
+ * state, because it balanced two conditions that could both decline.
+ *
+ * That holds for a folder the bar above is able to absorb, which is a folded
+ * sole occupant. The honest limit is written down here rather than left to be
+ * discovered: a folded folder that is *not* the whole of its parent's frame is
+ * named by its own header and by nothing else, so scrolling past its top leaves
+ * it named nowhere until the reader scrolls back. That is not new and it is not
+ * a fold-specific failure — an open folder's header leaves the same way once the
+ * reader passes the foot of its box — and the only way to change it would be to
+ * absorb a name that is false of the frame it would be written across, which is
+ * the `src / app / profile / laborer` complaint this rule exists to refuse. It
+ * is recorded so that the next person weighing the two knows both were weighed.
  */
-describe("the way back from a fold, which every folded box carries on its own header", () => {
+describe("the way back from a fold, which is a chevron or a segment and never neither", () => {
   const chain: Barred[] = [
-    { path: "a", depth: 1, nodes: ["x", "y"] },
-    { path: "a/b", depth: 2, nodes: ["x", "y"] },
-    { path: "a/b/c", depth: 3, nodes: ["x", "y"] },
+    { path: "a", depth: 1, nodes: ["x", "y"], y: 0, height: 900 },
+    { path: "a/b", depth: 2, nodes: ["x", "y"], y: 150, height: 700 },
+    { path: "a/b/c", depth: 3, nodes: ["x", "y"], y: 300, height: 500 },
   ];
 
   const siblings: Barred[] = [
-    { path: "a", depth: 1, nodes: ["x", "y", "z"] },
-    { path: "a/b", depth: 2, nodes: ["x", "y"] },
-    { path: "a/c", depth: 2, nodes: ["z"] },
+    { path: "a", depth: 1, nodes: ["x", "y", "z"], y: 0, height: 900 },
+    { path: "a/b", depth: 2, nodes: ["x", "y"], y: 150, height: 300 },
+    { path: "a/c", depth: 2, nodes: ["z"], y: 550, height: 300 },
   ];
 
   /** Every order the boxes could have been built in. */
@@ -1011,19 +1271,31 @@ describe("the way back from a fold, which every folded box carries on its own he
     return out;
   }
 
+  /** A sweep of the drawing from above it to well past the end of it. */
+  const SCROLLS = [-500, 0, 100, 200, 300, 400, 600, 900, 2000];
+
   /**
-   * Where a box's name is said, which is what the component draws.
+   * Where a folder's name can actually be read and pressed, as things stand.
    *
-   * Every box gets a header on its own frame, so the first answer is never
-   * absent; what varies is whether that header is held against the top of the
-   * window. The rest is the bars above, each of which may say the name again as
-   * a segment the reader can press. This used to be able to return nothing at
-   * all, and returning nothing at all was the bug.
+   * Three possibilities and they are meant to be mutually exclusive: its own bar
+   * while it is in the stack, its own header in place while it is folded and
+   * still visible, and a segment of somebody's bar once it is folded and is not.
+   * This used to be able to return nothing at all, and returning nothing at all
+   * was the bug.
    */
-  function saidOn(bars: ReturnType<typeof barsFor>, path: string): string[] {
-    const where = [bars.has(path) ? "pinned header" : "header out of the stack"];
+  function namedAt(
+    boxes: readonly Barred[],
+    bars: ReturnType<typeof barsFor>,
+    path: string,
+    held: Held,
+  ): string[] {
+    const where: string[] = [];
+    if (bars.has(path)) where.push("its own bar, in the stack");
+    else if (!outOfSight(boxes, bars, path, held)) {
+      where.push("its own header, in place");
+    }
     for (const [owner, bar] of bars) {
-      if (bar.absorbed.includes(path)) where.push(`segment of ${owner}`);
+      if (bar.absorbed.includes(path)) where.push(`a segment of ${owner}`);
     }
     return where;
   }
@@ -1032,53 +1304,84 @@ describe("the way back from a fold, which every folded box carries on its own he
     // Which is the state the reader starts in, and the one where a header
     // sitting outside the stack would be a fold nobody asked for.
     for (const boxes of [chain, siblings]) {
-      const bars = barsFor(boxes, new Set());
-      expect(boxes.filter((box) => !bars.has(box.path))).toEqual([]);
-      for (const box of boxes) {
-        expect(saidOn(bars, box.path)).toEqual(["pinned header"]);
-      }
-    }
-  });
-
-  it("names every folded folder on its own header, whatever is folded", () => {
-    // The invariant, over every fold of both shapes. It used to read "in exactly
-    // one place", which was a rule about a stub and a segment balancing each
-    // other; it is now the plainer thing that rule was trying to buy — the
-    // folder is named where the folder is, and it is never named nowhere.
-    for (const boxes of [chain, siblings]) {
-      for (const folded of everyFold(boxes)) {
-        const bars = barsFor(boxes, folded);
+      for (const at of SCROLLS) {
+        const held = looking(1, at);
+        const bars = barsFor(boxes, new Set(), held);
+        expect(boxes.filter((box) => !bars.has(box.path))).toEqual([]);
         for (const box of boxes) {
-          const where = saidOn(bars, box.path);
-          // The outermost box never leaves the stack, whatever the reader
-          // folded, so it is the one place folding and the bar come apart.
-          const pinned = box.depth === 1 || !folded.has(box.path);
-          expect({ path: box.path, folded: [...folded], head: where[0] }).toEqual({
-            path: box.path,
-            folded: [...folded],
-            head: pinned ? "pinned header" : "header out of the stack",
-          });
+          expect(namedAt(boxes, bars, box.path, held)).toEqual([
+            "its own bar, in the stack",
+          ]);
         }
       }
     }
   });
 
-  it("may also say a folded folder's name in the bar above, which is two ways back", () => {
-    // The claim that replaces "exactly one place". `a/b` folded inside a `a`
-    // that holds nothing else is a segment of `a`'s bar and has a header of its
-    // own, and both presses open the same folder. Beside an open sibling it is
-    // simply not absorbed, and the header is the only way back — which is the
-    // ordinary case and the one the stub existed for.
-    const together = barsFor(chain, new Set(["a/b"]));
-    expect(saidOn(together, "a/b")).toEqual([
-      "header out of the stack",
-      "segment of a",
-    ]);
-    expect(together.get("a")?.label).toBe("a/b");
+  it("names a folded sole occupant in exactly one place, at every fold and every scroll", () => {
+    // The invariant, over every fold of the chain and the whole sweep down it.
+    // Exactly one: never nowhere, which is the folder the reader has lost, and
+    // never twice, which is the folder named on its own header and again on the
+    // bar three lines above it — the thing that was reported.
+    for (const folded of everyFold(chain)) {
+      for (const at of SCROLLS) {
+        for (const scale of ZOOMS) {
+          const held = looking(scale, at);
+          const bars = barsFor(chain, folded, held);
+          for (const box of chain) {
+            const where = namedAt(chain, bars, box.path, held);
+            expect({
+              path: box.path,
+              folded: [...folded],
+              at,
+              scale,
+              where,
+            }).toEqual({
+              path: box.path,
+              folded: [...folded],
+              at,
+              scale,
+              where: [where[0]],
+            });
+            expect(where).toHaveLength(1);
+          }
+        }
+      }
+    }
+  });
 
-    const apart = barsFor(siblings, new Set(["a/b"]));
-    expect(saidOn(apart, "a/b")).toEqual(["header out of the stack"]);
-    expect(apart.get("a")?.label).toBe("a");
+  it("keeps a folded box out of the stack however it is named", () => {
+    // Absorbing a name is not a way back into the stack. `a/b` folded has no
+    // entry in the map at any scroll position, so the chrome the reader bought
+    // stays bought whether or not its name has been handed up to `a`.
+    for (const at of SCROLLS) {
+      for (const scale of ZOOMS) {
+        const held = looking(scale, at);
+        const bars = barsFor(chain, new Set(["a/b"]), held);
+        expect(bars.has("a/b")).toBe(false);
+        expect(bars.get("a")?.slot).toBe(1);
+        expect(bars.get("a/b/c")?.slot).toBe(2);
+      }
+    }
+  });
+
+  it("names a folded folder that cannot be absorbed on its own header", () => {
+    // The other shape, and the limit written down. `a/b` sits beside `a/c`, so
+    // `a` can never absorb it — the label would be false of the frame. While its
+    // header is visible that header is the way back, which is the ordinary case
+    // and the one the whole design is built for.
+    const held = looking(1, 0);
+    const bars = barsFor(siblings, new Set(["a/b"]), held);
+    expect(namedAt(siblings, bars, "a/b", held)).toEqual([
+      "its own header, in place",
+    ]);
+    expect(bars.get("a")?.label).toBe("a");
+    // And scrolled past it the header goes with its box, which is what an open
+    // folder's header does too once the reader passes the foot of it. Recorded
+    // rather than asserted as desirable: the alternative is writing `a/b` across
+    // a frame that also holds `a/c`.
+    const past = looking(1, 900);
+    const gone = barsFor(siblings, new Set(["a/b"]), past);
+    expect(namedAt(siblings, gone, "a/b", past)).toEqual([]);
   });
 
   it("keeps every box in the drawing, so there is always a header to press", () => {
@@ -1090,7 +1393,7 @@ describe("the way back from a fold, which every folded box carries on its own he
     for (const boxes of [chain, siblings]) {
       const paths = boxes.map((box) => box.path);
       for (const folded of everyFold(boxes)) {
-        const bars = barsFor(boxes, folded);
+        const bars = barsFor(boxes, folded, UNSCROLLED);
         expect([...bars.keys()].every((path) => paths.includes(path))).toBe(true);
         expect(boxes.map((box) => box.path)).toEqual(paths);
       }
@@ -1101,11 +1404,11 @@ describe("the way back from a fold, which every folded box carries on its own he
     // Which is what pressing the chevron on a folded box's own header does, and
     // what pressing the segment that says its name does: the way back lands the
     // reader exactly where they were.
-    const bars = barsFor(siblings, new Set(["a/b", "a/c"]));
+    const bars = barsFor(siblings, new Set(["a/b", "a/c"]), UNSCROLLED);
     expect([...bars.keys()]).toEqual(["a"]);
     expect(bars.get("a")?.absorbed).toEqual([]);
 
-    const after = barsFor(siblings, new Set(["a/c"]));
+    const after = barsFor(siblings, new Set(["a/c"]), UNSCROLLED);
     expect(after.get("a/b")?.label).toBe("b");
     expect(after.get("a/b")?.slot).toBe(2);
     expect(after.has("a/c")).toBe(false);
@@ -1114,12 +1417,13 @@ describe("the way back from a fold, which every folded box carries on its own he
   it("answers the same way in every order the boxes may arrive in", () => {
     // The property that would fail silently: nothing here may depend on where a
     // box sits in the array it arrived in, and the slot loop, the folded lookup
-    // and now the walk that looks for an only child are all positioned to make
-    // that easy to break. The walk is the newest of the three and the most
-    // exposed, since `childrenOf` filters an array and then asks how long the
-    // answer is.
+    // and the walk that looks for an only child are all positioned to make that
+    // easy to break. The walk is the most exposed, since `childrenOf` filters an
+    // array and then asks how long the answer is — and the slot it now asks for
+    // on a folded box is counted by a second pass over the same array.
+    const past = looking(1, 5000);
     for (const order of orders(siblings)) {
-      const bars = barsFor(order, new Set(["a/b", "a/c"]));
+      const bars = barsFor(order, new Set(["a/b", "a/c"]), past);
       expect([...bars.keys()]).toEqual(["a"]);
       expect(bars.get("a")?.label).toBe("a");
       expect(bars.get("a")?.absorbed).toEqual([]);
@@ -1127,7 +1431,7 @@ describe("the way back from a fold, which every folded box carries on its own he
     }
 
     for (const order of orders(chain)) {
-      const bars = barsFor(order, new Set(["a/b"]));
+      const bars = barsFor(order, new Set(["a/b"]), past);
       expect([...bars.keys()].sort()).toEqual(["a", "a/b/c"]);
       // The absorbing one, which is the reading that has an order to be
       // unstable about: `a` has one child here and the walk has to find it
@@ -1136,7 +1440,7 @@ describe("the way back from a fold, which every folded box carries on its own he
       expect(bars.get("a")?.absorbed).toEqual(["a/b"]);
       expect(bars.get("a/b/c")?.slot).toBe(2);
 
-      const both = barsFor(order, new Set(["a/b", "a/b/c"]));
+      const both = barsFor(order, new Set(["a/b", "a/b/c"]), past);
       expect(both.get("a")?.label).toBe("a/b/c");
       expect(both.get("a")?.absorbed).toEqual(["a/b", "a/b/c"]);
     }
@@ -1147,10 +1451,13 @@ describe("the way back from a fold, which every folded box carries on its own he
     // absorbed into anything. There is no bar above it, and a drawing whose
     // top-level frames all sat outside the stack would be a change nobody could
     // say the shape of at a glance.
-    const bars = barsFor(chain, new Set(["a", "a/b"]));
+    const past = looking(1, 5000);
+    const bars = barsFor(chain, new Set(["a", "a/b"]), past);
     expect(bars.get("a")?.slot).toBe(1);
     expect(bars.get("a")?.label).toBe("a/b");
     expect(bars.has("a/b")).toBe(false);
-    expect(saidOn(bars, "a")).toEqual(["pinned header"]);
+    expect(namedAt(chain, bars, "a", past)).toEqual([
+      "its own bar, in the stack",
+    ]);
   });
 });

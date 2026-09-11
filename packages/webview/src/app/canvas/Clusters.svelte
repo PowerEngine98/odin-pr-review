@@ -291,13 +291,16 @@
   about which chevron the header carries and whether the header may pin, and
   everything either sort of box has in common is written once.
 
-  The bar above may still say a folded folder's name as well, where that folder
-  turned out to be the whole of what the bar's own box contains. That is not the
-  same name twice over in the way it would once have been: the parent's bar
-  reads `app/home` across the frame that really is `app/home`, and `home`'s own
-  header sits on `home`'s frame saying where `home` is. Both are true, and the
-  reader has two ways back out of the fold rather than a puzzle about which of
-  two shapes in one corner means what.
+  The bar above may say a folded folder's name as well, where that folder is the
+  whole of what the bar's own box contains — but only once the folded folder's
+  own header has gone behind the stack, which is `bars.ts`'s decision and is made
+  with the same arithmetic that decides whether a header pins. So the two are
+  never on screen together. Scrolled to where `home`'s box begins, the bar above
+  reads `app` and `home`'s header reads `home`, each naming its own frame;
+  scrolled past it, `home`'s header has passed behind the bar and the bar reads
+  `app / home`, which is the name being handed upwards rather than a second copy
+  of it appearing. A version that absorbed regardless of scroll drew both at once
+  a few lines apart, and that is the thing the reader reported.
 -->
 {#each folders as box (box.path)}
   <!--
@@ -449,12 +452,17 @@
           Drawn as separate presses rather than as one string, which is what
           makes an absorbed fold reversible from up here. A bar reading
           `app/home` is two things the reader can point at, and pressing the half
-          that says `home` gives `home` its place in the stack back — the gesture
-          undoes itself in the place it was made, rather than sending the reader
-          off to look for whatever they did it with. `home`'s own header offers
-          the same way back a little lower down, and that is a convenience rather
-          than a contradiction: the two presses do the same thing to the same
-          folder, and the reader may press whichever they are nearer.
+          that says `home` gives `home` its place in the stack back.
+
+          It is not a convenience and there is no second way back while a name is
+          up here. A folder's name is only absorbed once its own header has gone
+          behind the stack, so at that moment the chevron on `home`'s header is
+          off the top of the window with the header it sits on, and this segment
+          is the only thing anywhere that unfolds `home`. That is the half of the
+          reachability rule the ancestor's bar is responsible for: the header
+          carries it while the header can be seen, and this carries it while the
+          header cannot, and the threshold between the two is one comparison so
+          that there is no stretch of scroll belonging to neither.
 
           Empty for a folded box, which has absorbed nothing and has no bar to
           have absorbed it with.

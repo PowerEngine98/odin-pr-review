@@ -33,11 +33,54 @@
  * tested alongside the first. The header is what belongs on a box, so a folded
  * box gets a header.
  *
- * ## When a bar may say two folders' names, which took three goes to get right
+ * ## When a bar says two folders' names, which turned out to be about scroll
  *
- * The record of the two wrong answers is here because the third one only makes
- * sense against them, and because both of the wrong ones are things somebody
- * would arrive at again from first principles.
+ * A folded folder's name is written into the bar of the nearest ancestor that
+ * pins, for exactly as long as the folded folder's own header cannot be seen —
+ * and not otherwise.
+ *
+ * So there are two states and the reader moves between them by scrolling.
+ * `home`, folded inside an `app` that holds nothing else: while `home`'s header
+ * is still down the page where `home`'s box begins, `app`'s bar reads `app` and
+ * `home`'s header reads `home`, each naming its own frame and neither repeating
+ * the other. Scroll on, and there comes a point where `home`'s header would have
+ * had to start sliding down to stay under the chrome — where an open header
+ * pins. A folded one does not pin, so from that point the name would simply pass
+ * behind the bar and be gone. That is the moment `app`'s bar starts reading `app
+ * / home`. Scroll back up and it reverts: `app` again, with `home`'s own header
+ * reappearing at the top of `home`'s box.
+ *
+ * Said as the reader said it: once we would stack `home`, as it is collapsed and
+ * the only sibling at sight, we absorb `home` in that moment — but going back,
+ * the header returns from `app / home` to `app`, and `home`'s header appears
+ * again.
+ *
+ * This is what collapsing is for, stated exactly rather than approximately.
+ * `home` costs no line of chrome at any scroll position, which is the saving the
+ * reader pressed the chevron for. And `home` is named at every scroll position:
+ * by its own header while that header can be read, and by its ancestor's bar for
+ * precisely the stretch when it cannot. Neither name is ever a second copy of the
+ * other, because the two are never on screen at once.
+ *
+ * ### Which threshold, and why it must be borrowed rather than written
+ *
+ * "The header would have pinned" is not a rough stand-in for "the header has
+ * gone off the top". It is the stack's own decision, and it is asked of the stack
+ * rather than restated here: `pinHead` is the function that decides an open
+ * header must slide, and a folded box is handed to it with the slot it would
+ * have occupied had it drawn a bar, and a positive answer is the whole of the
+ * test. Two spellings of one threshold is how a label comes to disagree with the
+ * stack it is describing — the bar would say `app / home` while `home`'s header
+ * was still plainly visible a few lines below it, or say `app` with nothing
+ * anywhere naming the folder — and the disagreement would be a fraction of a
+ * header wide, so it would be invisible at one zoom and obvious at another.
+ * `heading.ts` owns that arithmetic and is not touched.
+ *
+ * The slot it would have occupied is the same count the drawn bars use, which is
+ * why there is one function for it below. Folding a box does not change how many
+ * of its ancestors draw, so the number is well defined for a box that has no bar.
+ *
+ * ### The three earlier answers, because every one of them is arrived at again
  *
  * It was built first so that a folded folder's name went into its parent's bar
  * unconditionally, which then read as a path — `common` became
@@ -63,24 +106,43 @@
  * If `app` holds exactly one box, `home`, and `home` holds every card `app`
  * holds, then everything inside that frame is inside `app/home`, and `app/home`
  * is simply what the frame is — two words for one rectangle rather than one word
- * for a rectangle and another for a corner of it. So that is the rule: a parent
- * absorbs a folded child's name only while the child is the sole occupant of the
- * parent as the drawing currently stands, and the walk stops at the first step
- * where it is not. `src` in the case above has a second child and cards of its
- * own, so it stops immediately and reads `src`.
+ * for a rectangle and another for a corner of it. So the third answer was that
+ * rule: a parent absorbs a folded child's name only while the child is the sole
+ * occupant of the parent as the drawing currently stands, and the walk stops at
+ * the first step where it is not. That condition survives unchanged and is still
+ * both halves of a conjunction below.
+ *
+ * What the third answer got wrong was smaller and only visible on a real page. It
+ * absorbed whether or not the folded header could be seen, so the reader sitting
+ * at the top of `app` was shown `app / home` on one bar and `home` on the header
+ * three lines beneath it, and reported exactly that — the same folder named twice
+ * over, a few pixels apart, when they had asked for less rather than more. The
+ * name only needs carrying up to the stack while it cannot be read where it
+ * belongs, which is the condition this module now applies.
  *
  * "As the drawing currently stands" means the boxes that were built, which is
  * after the reader's filters and after the part on screen — `FolderBox.nodes`
  * holds the cards that survived, which is why the count of them is what answers
- * the question. It does not mean the viewport, and must not: a label that
- * changed as the reader panned would be worse than either of the two behaviours
- * above, because neither of those ever moved under somebody's eye.
+ * the sole-occupancy half. That half does not depend on the viewport and must
+ * not: which folder may be absorbed is a fact about the change, and only whether
+ * it is absorbed yet is a fact about where the reader is.
  *
  * The full path is still the hover tip's answer, and the tip answers with the
  * deepest name on the bar rather than the box's own, since the deepest name is
  * what a reader hovering `app/home` is asking about.
  *
- * ## Nothing here is geometry, and that is the whole point
+ * ### A folded folder is reachable at every scroll position, and that is the rule
+ *
+ * This is the failure the feature has already sprung once, when two folded
+ * siblings under a parent that could absorb neither left two folders with no bar,
+ * no segment and nothing anywhere that undid the gesture which removed them. The
+ * two states above are exhaustive on purpose: while the header can be seen it
+ * carries a chevron that unfolds the folder, and while it cannot the segment in
+ * the ancestor's bar is a press that unfolds the same folder. There is no third
+ * state, and the threshold that separates them is a single comparison rather than
+ * two conditions that could both come out false.
+ *
+ * ## This now reads geometry, and still never writes it
  *
  * The box is still drawn. Every card is where it was, every box edge is where
  * it was, and `bandsFor` still reserves a pad and a header for every box that
@@ -90,10 +152,17 @@
  * watched the entire picture re-flow underneath them would have been given a
  * much worse thing than the one they asked for, and would never press it again.
  *
+ * What has changed is that a box's `y` and `height` are now read here, because a
+ * label that depends on where the reader has scrolled to cannot be worked out
+ * without them. Read is the whole of it. Nothing in this module returns a
+ * geometry it was handed, altered — `headOf` passes two numbers straight through
+ * and the walk below only compares them — and that restriction is the thing to
+ * keep, because moving a box is the one thing collapsing must never do.
+ *
  * That is also why this is a module of its own rather than an argument to
  * `place()`. Threading the folded set through the placement would re-run the
  * whole layout on every press, which is exactly the machinery that moves cards.
- * Here it cannot: this reads two fields off a box and answers a question about
+ * Here it cannot: this reads four fields off a box and answers a question about
  * labels.
  *
  * ## Why a second number, and not a smaller `depth`
@@ -145,16 +214,38 @@
 import { pinHead, type Headed, type Held } from "./heading.js";
 
 /**
+ * Enough of a folder box to say where the bar across its top is drawn.
+ *
+ * `headOf` reads these two numbers and hands them straight on without touching
+ * them, because the thing it is deciding is the third number beside them. What
+ * is forbidden is a function in this module that *changes* a `y` or a `height`,
+ * since moving a box is the one thing collapsing must never do, and that remains
+ * forbidden however much of the geometry is read.
+ */
+export interface Framed {
+  /** The folder, as a path. */
+  path: string;
+  /** The top of the box, in canvas units. */
+  y: number;
+  /** How tall it is, in canvas units. */
+  height: number;
+}
+
+/**
  * Enough of a folder box to say whose bar is whose, and what it may say.
  *
- * Deliberately not `FolderBox` itself. Everything about where a box is drawn is
- * irrelevant here, and a function that could see the geometry is a function that
- * could be tempted to adjust it — which is the one thing collapsing must never
- * do.
+ * Deliberately not `FolderBox` itself, and still deliberately so now that the
+ * frame is part of it. The original argument was that everything about where a
+ * box is drawn is irrelevant here, and a function that could see the geometry is
+ * a function that could be tempted to adjust it. The first half of that has
+ * stopped being true — a label that changes with the scroll has to know where the
+ * box is before it can know whether the reader has gone past it — and the second
+ * half has not stopped being true at all, which is why this is still the
+ * narrowest thing that answers the question rather than the box the placement
+ * built. There is no width here and no `x`, because nothing about a label is
+ * horizontal; there is no list of card ids, only a count.
  */
-export interface Barred {
-  /** The folder, as a path — `src/components/media`. Never empty. */
-  path: string;
+export interface Barred extends Framed {
   /** How many boxes enclose it, counting itself. One for an outermost box. */
   depth: number;
   /**
@@ -174,25 +265,6 @@ export interface Barred {
    * would be an invitation to start deciding something about particular cards.
    */
   nodes: { readonly length: number };
-}
-
-/**
- * Enough of a folder box to say where the bar across its top is drawn.
- *
- * The geometry the doc-comment above says is irrelevant here, and it still is:
- * `headOf` reads these two numbers and hands them straight on without touching
- * them, because the thing it is deciding is the third number beside them. What
- * is forbidden is a function in this module that *changes* a `y` or a `height`,
- * since moving a box is the one thing collapsing must never do, and that remains
- * forbidden.
- */
-export interface Framed {
-  /** The folder, as a path. */
-  path: string;
-  /** The top of the box, in canvas units. */
-  y: number;
-  /** How tall it is, in canvas units. */
-  height: number;
 }
 
 /** Enough of a folder box to say which cards have its bar above them. */
@@ -220,18 +292,32 @@ export interface Bar {
    * The twin of `depth` and not the same number: it counts only the bars that
    * are actually drawn, so folding a middle folder moves every bar below it up
    * by one without any box having moved at all.
+   *
+   * It does not depend on the scroll, unlike the label beside it. Where a bar
+   * sits in the stack is a fact about what is folded; what it says is a fact
+   * about what the reader can currently see. Keeping the two apart is what lets
+   * the whole of `headOf`, `pinOf` and `barsAbove` below carry on being
+   * arithmetic about folding with no view in them at all.
    */
   slot: number;
   /**
    * What the bar says: its own folder's name, and then the name of every folded
-   * folder that turned out to be the whole of what this box contains.
+   * folder whose own header has gone behind the stack and which turned out to be
+   * the whole of what this box contains.
    *
    * A single name on nearly every bar, because nearly every box holds more than
    * one thing. A path — `app/home` — only where the walk below could say the
-   * path is a true name for the entire frame, which the module doc-comment
-   * argues at the length the argument deserves. Said as a field rather than left
-   * to the component to take off the box it happens to have, so that what a bar
-   * reads is decided in the one place that decides whether it is drawn at all.
+   * path is a true name for the entire frame *and* `home`'s own header is no
+   * longer readable where it belongs, which the module doc-comment argues at the
+   * length the argument deserves.
+   *
+   * So this changes as the reader scrolls, and that is the one thing about it
+   * that is genuinely surprising. It is not a label moving under somebody's eye:
+   * the extra segment appears at the moment the name it duplicates disappears
+   * behind the chrome, so what the reader sees is one name being handed upwards
+   * rather than a second name arriving. Said as a field rather than left to the
+   * component to take off the box it happens to have, so that what a bar reads
+   * is decided in the one place that decides whether it is drawn at all.
    */
   label: string;
   /**
@@ -242,19 +328,12 @@ export interface Bar {
    * has to say which folder to unfold, which a bare name cannot — a change with
    * `src/hooks` and `test/hooks` in it has two folders called `hooks`.
    *
-   * Empty on a bar that absorbed nothing, which is most of them. It used to be
-   * load-bearing in a way it no longer is, and the correction matters because
-   * the old reading is still the intuitive one: a name in this list meant the
-   * folder was pressable up here and therefore must not be pressable anywhere
-   * else, exactly one of the two places, never both and never neither. That was
-   * a rule about reachability at a time when a folded box had a name in only one
-   * place. It has a header of its own now, always, with a chevron on it that
-   * opens it, so reachability is not in question and a name appearing twice is
-   * not a contradiction — the parent's bar says `app/home` while `home`'s own
-   * header sits on `home`'s frame, and both are true of the folder they name.
-   * What this list is still needed for is the press: the segments are drawn
-   * separately so that the half of `app/home` that says `home` unfolds `home`,
-   * which a bare name could not say.
+   * Empty on a bar that absorbed nothing, which is most of them at most scroll
+   * positions. What is in here is load-bearing for reachability and is the
+   * second of exactly two ways a folded folder is ever named: while its own
+   * header can be read it carries a chevron of its own, and while it cannot its
+   * name is a segment up here. The two states are separated by a single
+   * comparison, so there is no arrangement in which a folder is in neither.
    *
    * The last of them is also the deepest, which is what the hover tip shows: a
    * bar reading `app/home` is asked "where is this" and the honest answer is
@@ -286,10 +365,20 @@ function nameOf(path: string): string {
  * the only one that says what the change is in. The component offers no chevron
  * on one for the same reason, and this says it again where a fold stored by an
  * older reading, or by a version of this that allowed it, cannot get round it.
+ *
+ * `held` is where the reader is, and it is required rather than optional on
+ * purpose. It only affects the labels — every slot, every entry in the map and
+ * therefore every number the arithmetic downstream is fed is the same whatever
+ * is passed — so an optional view would be a parameter that could be left off
+ * with no test failing and no error thrown, and the only symptom would be a
+ * folded folder whose name never went anywhere as the reader scrolled past it.
+ * That is precisely the class of fault this feature keeps producing, so the
+ * caller is made to say where the reader is.
  */
 export function barsFor(
   boxes: readonly Barred[],
   folded: ReadonlySet<string>,
+  held: Held,
 ): Map<string, Bar> {
   const draws = (box: Barred): boolean =>
     box.depth === 1 || !folded.has(box.path);
@@ -315,46 +404,78 @@ export function barsFor(
         other.depth === box.depth + 1 && other.path.startsWith(`${box.path}/`),
     );
 
+  /*
+   * How far down the stack a box's header sits, or would sit.
+   *
+   * Counted over the boxes that draw rather than over all of them, which is the
+   * entire saving: fold the middle of a three-deep nest and the innermost bar is
+   * handed slot two instead of slot three, so it is held one header higher
+   * against the chrome. Its box has not moved by a unit.
+   *
+   * Asked of folded boxes too, which is why it is a function rather than a loop
+   * inline below. A folded box has no slot in the sense of occupying one, but it
+   * has a perfectly well defined answer to "which line would you be held on" —
+   * folding a box does not change how many of its ancestors draw — and that line
+   * is what decides whether its own header has gone behind the stack.
+   */
+  const slotOf = (box: Barred): number => {
+    let slot = 1;
+    for (const other of boxes) {
+      if (box.path.startsWith(`${other.path}/`) && draws(other)) slot += 1;
+    }
+    return slot;
+  };
+
+  /*
+   * Whether a box's header can no longer be read where it belongs.
+   *
+   * The stack's own threshold, asked of the stack. `pinHead` is what decides an
+   * open header must start sliding down its box to stay under the chrome; a
+   * positive answer for a folded box is the statement that an open header in
+   * this position would be sliding, which is exactly the position in which a
+   * folded one — which never slides — has passed behind the bar above it and
+   * stopped being a name the reader can see or press.
+   *
+   * Written out here instead as some comparison of a box's top against
+   * `chromeBottom`, it would be a second opinion about a line the stack already
+   * has an opinion about, and the two would differ by the fraction of a header
+   * that the rounding inside `headLine` accounts for. A label that flipped a few
+   * pixels early would put `app / home` on a bar while `home` was still legible
+   * underneath it; a label that flipped a few pixels late would leave a stretch
+   * with the folder named nowhere. Both are invisible at one zoom.
+   */
+  const behindTheStack = (box: Barred): boolean =>
+    pinHead(held, { y: box.y, height: box.height, depth: slotOf(box) }) > 0;
+
   const bars = new Map<string, Bar>();
 
   for (const box of boxes) {
     if (!draws(box)) continue;
 
-    /*
-     * How far down the stack this bar sits, counted in bars above it.
-     *
-     * Counted over the boxes that draw rather than over all of them, which is
-     * the entire saving: fold the middle of a three-deep nest and the innermost
-     * bar is handed slot two instead of slot three, so it is held one header
-     * higher against the chrome. Its box has not moved by a unit.
-     */
-    let slot = 1;
-    for (const other of boxes) {
-      if (box.path.startsWith(`${other.path}/`) && draws(other)) slot += 1;
-    }
+    const slot = slotOf(box);
 
     /*
      * And what it says, walked down through the folded folders that are the
-     * whole of what this box turns out to contain.
+     * whole of what this box turns out to contain and whose own headers have
+     * gone behind the stack.
      *
-     * Two conditions per step and the walk stops the moment either fails, which
-     * is the entire refinement and the thing to leave alone. The first is that
-     * there is exactly one box inside this one and it draws no bar: more than
-     * one and there is no single name to append, none and there is nothing
-     * below to say anything about, and one that draws its own bar is already
-     * saying its name for itself a header lower. The second is that the child
-     * holds every card the parent holds, which is the condition the two earlier
-     * versions of this were missing in opposite directions.
+     * Three conditions per step and the walk stops the moment any fails. The
+     * first is that there is exactly one box inside this one and it draws no
+     * bar: more than one and there is no single name to append, none and there
+     * is nothing below to say anything about, and one that draws its own bar is
+     * already saying its name for itself a header lower. The second is that the
+     * child holds every card the parent holds, which is what makes the label a
+     * true statement about the frame rather than a true statement about a thread
+     * running through it — absorb `home` into `app` while `app` also holds a
+     * card of its own and the bar across the whole rectangle reads `app/home`
+     * over cards that are in neither, which is the `src / app / profile /
+     * laborer` failure with fewer words in it.
      *
-     * That second one is what makes the label a true statement about the frame
-     * rather than a true statement about a thread running through it. Absorb
-     * `home` into `app` while `app` also holds a card of its own, or a second
-     * folder, and the bar across the whole rectangle reads `app/home` over cards
-     * that are in neither — the reader is told the frame is `app/home` and then
-     * finds things in it that `app/home` does not contain. That is exactly the
-     * `src / app / profile / laborer` failure with fewer words in it, and it is
-     * why the counts are compared rather than the walk simply being allowed to
-     * run as far as the folding goes.
+     * The third is the new one and it is the reader's complaint: the child's own
+     * header must have gone behind the stack. While it has not, the child is
+     * saying its own name on its own frame perfectly legibly a few lines down the
+     * page, and a segment up here is the same word twice a few pixels apart on a
+     * drawing the reader collapsed a folder to quieten.
      *
      * There is nothing here that has to choose between two children, which the
      * first version of this needed a degradation rule for and had to have proved
@@ -371,6 +492,7 @@ export function barsFor(
       const only = inside[0]!;
       if (draws(only)) break;
       if (only.nodes.length !== at.nodes.length) break;
+      if (!behindTheStack(only)) break;
       at = only;
       absorbed.push(at.path);
       parts.push(nameOf(at.path));
@@ -429,6 +551,11 @@ export function headOf(
  * header stays where the box is, and when the box has scrolled by, it goes with
  * it. Nought here is the whole of what the reader bought.
  *
+ * It is also the moment the name goes up to the bar above, where the folder is
+ * that bar's sole occupant — `barsFor` asks `pinHead` the same question about
+ * the same box to decide that, so the two cannot come apart. What is nought here
+ * is exactly what is absorbed there.
+ *
  * It is a function in this module rather than four lines in the component for
  * the reason the two above it are, and it is the strongest case of the three.
  * Written inline it read `const head = headOf(bars, box); if (!head) return 0;`
@@ -468,6 +595,10 @@ export function pinOf(
  * higher up. The two have to agree exactly: a card begins under the last bar
  * above it, so two opinions about how many bars that is put a file's name on a
  * folder's.
+ *
+ * Unaffected by the scroll, which is worth saying because the labels next door
+ * are not. Absorbing a name into a bar does not add a bar, so no card's title
+ * moves when the reader crosses the threshold that changes what a bar says.
  *
  * A card with no entry has no bar above it at all, which is not the same as not
  * having been asked, so the caller reads a missing entry as nought.

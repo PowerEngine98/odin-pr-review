@@ -83,13 +83,35 @@ import Pinned from "./Pinned.svelte";
    * wholesale on every press, and reading its keys here is what makes this
    * recompute.
    *
+   * Where the reader is goes in too, which is the part that looks wrong and is
+   * not. A folded folder's name is carried by the bar above it for exactly as
+   * long as the folder's own header has gone behind that bar, so what a bar says
+   * is a question about the scroll and cannot be answered without it. The same
+   * three numbers are built into a `Held` a few lines below for the card titles,
+   * which is the arrangement the page already had — this is one more reader of
+   * the view rather than a new source of it.
+   *
+   * What that costs is a recompute on every frame of a pan, since `view.y` moves
+   * throughout one. It is worth being clear-eyed about: this is a loop over the
+   * folder boxes, of which a large change has a few dozen, and the same derived
+   * value was already being rebuilt whenever the folded record changed. What it
+   * must never become is a recompute of the placement, which is why the folded
+   * set still does not reach `place()`.
+   *
    * Note what is *not* here: the placement. `place()` is never told what is
    * folded, which is what guarantees no card moves. Threading it through would
    * re-run the whole layout on every press, and the reader would collapse a
    * folder to save a strip of chrome and watch the entire drawing rearrange
-   * itself underneath them.
+   * itself underneath them. Nor is it told where the reader has scrolled to, for
+   * the same reason twice over.
    */
-  const bars = $derived(barsFor(boxed, new Set(Object.keys(ui.folded))));
+  const bars = $derived(
+    barsFor(boxed, new Set(Object.keys(ui.folded)), {
+      chromeBottom,
+      y: view.y,
+      scale: view.scale,
+    }),
+  );
 
   /**
    * How far down the window a card's own title has to start.

@@ -114,9 +114,13 @@ let origin: { x: number; y: number } | null = null;
  * `.cluster-act` is the same deal made a second time, for the controls a folder
  * box carries — the chevron on its header, which takes that header out of the
  * pinned stack or puts it back, and the segments of a bar that has absorbed a
- * folded name, which bring that folder back. The chevron is how a folded folder
- * is unfolded, so a press swallowed here is a folder the reader cannot open
- * again. Every one of these sits in a layer that is `pointer-events: none` the
+ * folded name, which bring that folder back. Between them they are the whole of
+ * how a folded folder is unfolded — the chevron while the folder's own header
+ * can still be seen, the segment once it has gone behind the stack and its name
+ * has been handed up to the bar above — so a press swallowed here is a folder
+ * the reader cannot open again, and it is swallowed at exactly one of the two
+ * scroll positions, which is the sort of fault that gets reported as intermittent.
+ * Every one of these sits in a layer that is `pointer-events: none` the
  * whole way down, so that dragging anywhere on a folder pans the drawing.
  * Being `pointer-events: auto` is not enough
  * on its own and looks as though it ought to be: the press lands on the button,
