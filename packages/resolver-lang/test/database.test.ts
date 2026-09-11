@@ -133,6 +133,97 @@ describe("drawing the schema as a vertex of its own", () => {
 });
 
 /**
+ * The half of this that has nothing to do with SQL files.
+ *
+ * A migration in the diff is one way a change reaches the database. A query
+ * written against the generated classes is the other, and the second is the
+ * reason any of this exists: the link a reviewer cannot see is exactly the one
+ * whose two ends are in different languages under different spellings. The pass
+ * judged the change by its file extensions instead and turned away anything
+ * with no `.sql` in it, which is most of the branches a backend produces — so
+ * the schema card never appeared, the arrows from the code had nowhere to land
+ * and were never drawn, and the database switch was missing from the settings
+ * because there was nothing on the canvas for it to govern.
+ *
+ * The same mistake wearing different clothes is a migration that only creates
+ * things. It names nothing, so it produced no SQL reference, so the pass gave
+ * up a second time — and a new table with the code that reads it is the
+ * commonest shape a database change has.
+ */
+describe("a change that reaches the schema without one migration naming another", () => {
+  const CHECKOUT = {
+    "db/001_schema.sql": "CREATE TABLE labor (id uuid);",
+    // The import is what makes a capitalised word a schema object rather than
+    // an ordinary class name, so the file on disk has to carry it.
+    "src/Projection.kt": [
+      "import com.labura.jooq.generated.Tables",
+      "fun rows(labor: LaborRecord) = labor",
+    ].join("\n"),
+  };
+
+  /** A Kotlin file whose one changed line names a generated class. */
+  const projection = (): FileNode => ({
+    id: "n:code",
+    path: "src/Projection.kt",
+    status: "modified",
+    language: "kotlin",
+    binary: false,
+    stats: { additions: 1, deletions: 0 },
+    hunks: [
+      {
+        header: "",
+        oldStart: 2,
+        oldLines: 0,
+        newStart: 2,
+        newLines: 1,
+        lines: [{ kind: "add", text: "fun rows(labor: LaborRecord) = labor", newLine: 2 }],
+      },
+    ],
+    symbols: [],
+  });
+
+  it("draws the schema for a change that only edits the queries", () => {
+    const graph: ChangeGraph = { ...graphOf(), nodes: [projection()], edges: [] };
+    const drawn = withDatabase(graph, { root: workspace(CHECKOUT) });
+    const database = drawn.nodes.find((n) => n.kind === "database");
+
+    // The objects are read out of the checkout, which holds the whole schema
+    // whether or not this change touched any of it.
+    expect(database?.hunks[0]?.lines.map((l) => l.text)).toEqual(["table labor"]);
+    expect(
+      drawn.edges
+        .filter((e) => e.to.nodeId === database?.id)
+        .map((e) => e.to.symbolName),
+    ).toEqual(["labor"]);
+  });
+
+  it("draws it for a new table and the code that reads it", () => {
+    const graph: ChangeGraph = {
+      ...graphOf(),
+      nodes: [node("n:migration", "db/001_schema.sql"), projection()],
+      edges: [],
+    };
+    const drawn = withDatabase(graph, { root: workspace(CHECKOUT) });
+    const database = drawn.nodes.find((n) => n.kind === "database")!;
+
+    // Both ends of the story: what made the table, and what reads it.
+    const reaching = drawn.edges
+      .filter((e) => e.to.nodeId === database.id)
+      .map((e) => e.from.nodeId);
+    expect(reaching.sort()).toEqual(["n:code", "n:migration"]);
+  });
+
+  it("still leaves a change that never mentions the database alone", () => {
+    // The gate is worth keeping rather than merely moving: behind it is a walk
+    // of the whole checkout for SQL, and a repository with no database in it
+    // should not pay for one on every rebuild.
+    const plain: ChangeGraph = { ...graphOf(), nodes: [projection()], edges: [] };
+    const root = workspace({ ...CHECKOUT, "src/Projection.kt": "fun rows() = 1" });
+    expect(withDatabase(plain, { root })).toBe(plain);
+  });
+});
+
+/**
  * Two arrows that are not the same arrow.
  *
  * A line that was changed carries its references twice: once removed from the

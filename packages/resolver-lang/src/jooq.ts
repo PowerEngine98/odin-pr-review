@@ -46,6 +46,29 @@ const GENERATED_FOR = new Set(["kotlin", "java", "scala", "groovy"]);
  */
 const IMPORTS_JOOQ = /(^|\n)\s*import\s+[\w.]*jooq[\w.]*/i;
 
+/**
+ * Whether anything in the change is talking to the database this way at all.
+ *
+ * Asked before the schema index is built, because building it is a walk of the
+ * whole checkout and a repository with no database in it should not pay for one
+ * on every rebuild. The pass used to answer the same question by looking at the
+ * diff's file extensions — no `.sql` in the change, no schema — and that is a
+ * different question with a different answer: a branch that only edits the
+ * queries carries no SQL file, which is most of the branches a backend
+ * produces. This asks the change instead, at the cost of one read per changed
+ * file in a language jOOQ generates for, against the cache the pass already
+ * keeps for reading them properly a moment later.
+ */
+export function usesJooq(
+  nodes: readonly FileNode[],
+  read: (path: string) => string | undefined,
+): boolean {
+  return nodes.some(
+    (node) =>
+      GENERATED_FOR.has(node.language) && IMPORTS_JOOQ.test(read(node.path) ?? ""),
+  );
+}
+
 /** `LaborNotificationType` and `LABOR_NOTIFICATION` both mean the same table. */
 function snake(name: string): string {
   // Already shouted: the generator's own spelling for a table constant.

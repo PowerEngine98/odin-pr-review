@@ -6,7 +6,7 @@ import { edgeId } from "@odin/core";
 import type { ChangeGraph, Edge, FileNode, Hunk } from "@odin/core";
 
 import { buildIndex } from "./index-build.js";
-import { jooqReferences, type JooqReference } from "./jooq.js";
+import { jooqReferences, usesJooq, type JooqReference } from "./jooq.js";
 import { POSTGRES } from "./sql.js";
 import type { Declaration } from "./types.js";
 
@@ -39,13 +39,6 @@ export function withDatabase(
   graph: ChangeGraph,
   options: DatabaseOptions,
 ): ChangeGraph {
-  const sql = new Set(
-    graph.nodes
-      .filter((n) => n.language === "sql" || n.language === "postgres")
-      .map((n) => n.id),
-  );
-  if (sql.size === 0) return graph;
-
   // Read once per file and kept, since a file is asked about as many times as
   // it has lines that name something.
   const texts = new Map<string, string | undefined>();
@@ -61,6 +54,33 @@ export function withDatabase(
     return text;
   };
 
+  const sql = new Set(
+    graph.nodes
+      .filter((n) => n.language === "sql" || n.language === "postgres")
+      .map((n) => n.id),
+  );
+
+  /*
+   * The other way a change reaches the database.
+   *
+   * There are two, and for a long time only one of them was let past the door.
+   * A migration in the diff is the obvious one; a query written against the
+   * generated classes is the other, and the second is the reason this pass
+   * exists at all — the link a reviewer cannot see is precisely the one whose
+   * ends are in different languages under different spellings. Yet the change
+   * was judged by its file extensions, so a branch that edits the projections
+   * and leaves the schema alone was turned away before anything had looked at
+   * it, and what the reader got was no schema card, no rows, and no database
+   * switch in the settings, because there was nothing on the canvas for the
+   * switch to govern.
+   *
+   * The objects themselves never needed a migration in the diff either: they
+   * are read out of the checkout, which holds the whole schema whether or not
+   * this change touched any of it.
+   */
+  const generatedCode = usesJooq(graph.nodes, read);
+  if (sql.size === 0 && !generatedCode) return graph;
+
   // Only the edges SQL produced: an arrow between two TypeScript files that
   // happens to end in a `.sql` name is not a schema reference.
   const schemaEdges = graph.edges.filter(
@@ -69,7 +89,17 @@ export function withDatabase(
       sql.has(e.to.nodeId) &&
       e.to.symbolName,
   );
-  if (schemaEdges.length === 0) return graph;
+  /*
+   * And a migration that only creates things references nothing.
+   *
+   * Which is the commonest shape a database change has: one file, a new table,
+   * and the code that reads it. Read as "no SQL reference, nothing to draw",
+   * that change came out as an ordinary file card with no schema anywhere near
+   * it — the arrows from the code had nowhere to land, so they were never drawn
+   * either. Nothing at all to work with is still worth leaving early for, since
+   * what is behind this is a walk of the whole checkout.
+   */
+  if (schemaEdges.length === 0 && !generatedCode) return graph;
 
   const index = buildIndex(options.root, POSTGRES);
   const byPath = new Map(graph.nodes.map((n) => [n.path, n]));
