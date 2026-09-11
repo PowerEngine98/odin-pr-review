@@ -12,7 +12,7 @@
   import { arriving } from "../hud/arriving.js";
   import { landed } from "../hud/boot.svelte.js";
   import { travel, ui, view } from "../state.svelte.js";
-  import { barsAbove, barsFor } from "./bars.js";
+  import { barsAbove, barsFor, type Seen } from "./bars.js";
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
@@ -66,6 +66,43 @@ import Pinned from "./Pinned.svelte";
   const boxed = $derived(camera.folders());
 
   /**
+   * Where the cards actually ended up, for everything drawn against them.
+   *
+   * The arrows, the dots and the schema marks each work out their own geometry
+   * from the same numbers rather than being handed shapes, but none of them can
+   * know about a part being closed up or a card that measured taller than it was
+   * counted at. That is this pass's answer, and it is handed over.
+   *
+   * It is also what tells the folder bars which cards are on screen, which is
+   * why it is worked out here rather than further down the file: a bar may only
+   * absorb a folded folder's name while nothing else in its frame can be seen,
+   * and a card sitting directly in the folder is in none of the boxes and has
+   * only this to say where it is. One derivation for both readers, because two
+   * would be two opinions about where a card is.
+   */
+  const boxes = $derived<Record<string, Box>>(
+    Object.fromEntries(cards.map((placed) => [placed.node.id, placed])),
+  );
+
+  /**
+   * What the reader can presently see, in the drawing's own units.
+   *
+   * Asked of the camera, which is the one thing that knows both the transform
+   * and how large a hole the drawing is being looked at through. The page above
+   * asks the same function for the same numbers and hands this component the
+   * left and right of them, so that a wide folder's name and a wide card's name
+   * slide together; what is wanted here is the whole rectangle, and taking it
+   * from the camera rather than widening the props is one reader of one answer
+   * rather than a second route for the same numbers to arrive by.
+   *
+   * A window nobody has measured comes back as nought by nought — no canvas has
+   * mounted, or this is Node rendering the page to a string — and `barsFor`
+   * reads that as the whole drawing being in sight, which is the reading that
+   * absorbs nothing it could not have absorbed before.
+   */
+  const seen = $derived<Seen>({ ...camera.onScreen(), cards: boxes });
+
+  /**
    * Which folder boxes draw a bar, and what each of those bars says.
    *
    * Derived once here and used twice — handed to the boxes, which draw the
@@ -83,13 +120,15 @@ import Pinned from "./Pinned.svelte";
    * wholesale on every press, and reading its keys here is what makes this
    * recompute.
    *
-   * Where the reader is goes in too, which is the part that looks wrong and is
-   * not. A folded folder's name is carried by the bar above it for exactly as
-   * long as the folder's own header has gone behind that bar, so what a bar says
-   * is a question about the scroll and cannot be answered without it. The same
-   * three numbers are built into a `Held` a few lines below for the card titles,
-   * which is the arrangement the page already had — this is one more reader of
-   * the view rather than a new source of it.
+   * Where the reader is goes in too, and what they can see of the drawing, which
+   * is the part that looks wrong and is not. A folded folder's name is carried by
+   * the bar above it for exactly as long as the folder's own header has gone
+   * behind that bar *and* nothing else in that bar's frame is on screen to make
+   * the path a lie, so what a bar says is a question about the view and cannot be
+   * answered without it. The same three numbers are built into a `Held` a few
+   * lines below for the card titles and the same rectangle is handed to the cards
+   * by the page above — this is one more reader of the view rather than a new
+   * source of it.
    *
    * What that costs is a recompute on every frame of a pan, since `view.y` moves
    * throughout one. It is worth being clear-eyed about: this is a loop over the
@@ -102,15 +141,16 @@ import Pinned from "./Pinned.svelte";
    * folded, which is what guarantees no card moves. Threading it through would
    * re-run the whole layout on every press, and the reader would collapse a
    * folder to save a strip of chrome and watch the entire drawing rearrange
-   * itself underneath them. Nor is it told where the reader has scrolled to, for
-   * the same reason twice over.
+   * itself underneath them. Nor is it told where the reader has scrolled to or
+   * what is on screen, for the same reason three times over.
    */
   const bars = $derived(
-    barsFor(boxed, new Set(Object.keys(ui.folded)), {
-      chromeBottom,
-      y: view.y,
-      scale: view.scale,
-    }),
+    barsFor(
+      boxed,
+      new Set(Object.keys(ui.folded)),
+      { chromeBottom, y: view.y, scale: view.scale },
+      seen,
+    ),
   );
 
   /**
@@ -153,18 +193,6 @@ import Pinned from "./Pinned.svelte";
       );
   });
   const size = $derived(camera.extent());
-
-  /**
-   * Where the cards actually ended up, for everything drawn against them.
-   *
-   * The arrows, the dots and the schema marks each work out their own geometry
-   * from the same numbers rather than being handed shapes, but none of them can
-   * know about a part being closed up or a card that measured taller than it was
-   * counted at. That is this pass's answer, and it is handed over.
-   */
-  const boxes = $derived<Record<string, Box>>(
-    Object.fromEntries(cards.map((placed) => [placed.node.id, placed])),
-  );
 
   /**
    * Which cards are on the canvas, said once for everyone who asks.

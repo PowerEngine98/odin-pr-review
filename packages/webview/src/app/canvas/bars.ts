@@ -53,7 +53,8 @@
  * Said as the reader said it: once we would stack `home`, as it is collapsed and
  * the only sibling at sight, we absorb `home` in that moment — but going back,
  * the header returns from `app / home` to `app`, and `home`'s header appears
- * again.
+ * again. Every word of that sentence is load-bearing, and "at sight" is the one
+ * this module has had to be corrected about; see below.
  *
  * This is what collapsing is for, stated exactly rather than approximately.
  * `home` costs no line of chrome at any scroll position, which is the saving the
@@ -80,7 +81,7 @@
  * why there is one function for it below. Folding a box does not change how many
  * of its ancestors draw, so the number is well defined for a box that has no bar.
  *
- * ### The three earlier answers, because every one of them is arrived at again
+ * ### The four earlier answers, because every one of them is arrived at again
  *
  * It was built first so that a folded folder's name went into its parent's bar
  * unconditionally, which then read as a path — `common` became
@@ -107,10 +108,9 @@
  * holds, then everything inside that frame is inside `app/home`, and `app/home`
  * is simply what the frame is — two words for one rectangle rather than one word
  * for a rectangle and another for a corner of it. So the third answer was that
- * rule: a parent absorbs a folded child's name only while the child is the sole
- * occupant of the parent as the drawing currently stands, and the walk stops at
- * the first step where it is not. That condition survives unchanged and is still
- * both halves of a conjunction below.
+ * rule stated over the whole drawing: a parent absorbs a folded child's name only
+ * while the child is the sole occupant of the parent as the boxes were built, and
+ * the walk stops at the first step where it is not.
  *
  * What the third answer got wrong was smaller and only visible on a real page. It
  * absorbed whether or not the folded header could be seen, so the reader sitting
@@ -118,14 +118,103 @@
  * three lines beneath it, and reported exactly that — the same folder named twice
  * over, a few pixels apart, when they had asked for less rather than more. The
  * name only needs carrying up to the stack while it cannot be read where it
- * belongs, which is the condition this module now applies.
+ * belongs, which is the fourth answer and is the condition this module still
+ * applies.
+ *
+ * ### Sole occupancy, asked of what is in sight rather than of the drawing
+ *
+ * This is the fifth reading and it is a correction to the fourth, reported off a
+ * recording rather than reasoned out here, so the reasoning it corrects is left
+ * standing next to it.
+ *
+ * A reader had `frontend` holding three folder chains — `common/src/components/
+ * mui`, `pages/app/home` and `web/src` — and scrolled down through the middle
+ * one until `app`'s header and `home`'s header had both gone behind the stack.
+ * Neither name was anywhere on the screen. `frontend`'s bar, the only one left,
+ * said `frontend`, because `frontend` holds three children and sole occupancy is
+ * false of that drawing however far anybody scrolls. Two folded folders were
+ * named nowhere at all, which is exactly the failure absorbing exists to prevent
+ * and exactly what the reader asked for: it should absorb the folders, as all of
+ * them are collapsed into `frontend`.
+ *
+ * It was argued here, at length, that sole occupancy must be a fact about the
+ * change and never about the viewport — that which folder *may* be absorbed
+ * belongs to the drawing and only *whether it is absorbed yet* belongs to the
+ * reader. That was wrong, and it is worth saying why rather than quietly
+ * deleting it, because it is a sensible-sounding rule that would be arrived at
+ * again. The reader's own phrase was "the only sibling at sight". And the design
+ * had already stopped being a fact about the drawing one answer earlier: what a
+ * bar says now changes as the reader scrolls, by construction, so the objection
+ * that a label following the viewport would move under somebody's eye was spent
+ * when the fourth condition went in. A viewport-dependent sole occupancy is
+ * consistent with that intent rather than a second kind of thing.
+ *
+ * More to the point, sole occupancy was never really a claim about the change.
+ * What made `src / app / profile / laborer` a lie was not that `app` had siblings
+ * in the repository. It was that those siblings sat plainly on the screen while
+ * the bar across the top said that everything in front of the reader was inside
+ * `laborer`. A label is a statement about what it is drawn over, so the question
+ * to ask is about what is drawn: of the things inside this frame that the reader
+ * can presently see, is the folded child the whole of them.
+ *
+ * ### What "in sight" is asked about, since three answers were available
+ *
+ * A rectangle against a rectangle, twice, and both halves are the old conditions
+ * transposed rather than new ones. First: of the boxes directly inside this one,
+ * exactly one is on screen, and it is the folded one. Second: every card this box
+ * holds that the folded one does not is off screen. Where nothing is off screen
+ * the two collapse into "one child box, holding every card", which is the third
+ * answer word for word — so a reader who can see the whole drawing, and a window
+ * nobody has measured, get precisely the behaviour that shipped.
+ *
+ * "No other child's header is on screen" was the cheapest answer and it is wrong.
+ * A header sits at the top of its own box, so a sibling chain whose top has
+ * scrolled by has no header anywhere while its cards fill half the window — and
+ * absorbing there writes `frontend/app/home` across a screen of `mui`'s files,
+ * which is `src / app / profile / laborer` again with the scroll doing the hiding
+ * instead of the nesting. A header is a label and not the thing labelled, and a
+ * test that asks after labels is a test that can be satisfied by hiding one.
+ *
+ * "No other child has a card on screen" is very nearly right and is most of what
+ * is written below. What it misses is a strip one header and one pad tall. A box
+ * is drawn as a frame with its name across the top, so a reader arriving at a
+ * sibling band sees a rectangle begin and a name appear — a name that is not on
+ * the path the bar above is claiming — while that box's first card is still below
+ * the fold. So the frame is asked as well as the cards. It costs one comparison,
+ * it can only ever refuse an absorption and never allow one, and it is the
+ * difference between a rule about files and a rule about what is drawn.
+ *
+ * The cards still have to be asked separately, because a card sitting directly in
+ * the parent is inside no child box and no frame would ever speak for it. That is
+ * half of the original complaint — "a card sitting directly in `src`, a second
+ * folder beside `app`" — and answering only the folder half would leave a bar
+ * reading `src/home` over a `readme` the reader is looking straight at.
+ *
+ * Everything here answers "out of sight" only on evidence. A window nobody has
+ * measured — no canvas mounted yet, a page rendered to text by Node — is not
+ * proof that anything has gone off it, so it is read as the whole drawing being
+ * in sight. A card the drawing cannot place is not proof either, so it is read as
+ * visible. Both fall back to refusing to absorb, and refusing is the direction in
+ * which the failure is a folder named on its own header instead of a bar telling
+ * the reader something false about the frame under it.
+ *
+ * That also settles which of two children gets absorbed, which the earlier rule
+ * needed a whole condition to decline. The child must be the one box in sight, so
+ * there is at most one candidate by construction and nothing anywhere chooses
+ * between two — the same guarantee the old "exactly one child" gave, made over a
+ * different set.
+ *
+ * "In sight" means the window, and not the window less the stack of bars across
+ * the top of it. A card half under the chrome is half on screen, and subtracting
+ * the stack's height here would be a second threshold spelled differently a few
+ * lines from `pinHead`'s, which is the fault the section above exists to refuse.
+ * Being generous about what counts as visible only ever refuses an absorption.
  *
  * "As the drawing currently stands" means the boxes that were built, which is
  * after the reader's filters and after the part on screen — `FolderBox.nodes`
- * holds the cards that survived, which is why the count of them is what answers
- * the sole-occupancy half. That half does not depend on the viewport and must
- * not: which folder may be absorbed is a fact about the change, and only whether
- * it is absorbed yet is a fact about where the reader is.
+ * holds the cards that survived. Those are still the cards asked about; what has
+ * changed is that each of them is now asked where it is as well as whether it
+ * exists.
  *
  * The full path is still the hover tip's answer, and the tip answers with the
  * deepest name on the bar rather than the box's own, since the deepest name is
@@ -142,6 +231,28 @@
  * state, and the threshold that separates them is a single comparison rather than
  * two conditions that could both come out false.
  *
+ * There is an honest limit around the edge of that, and the sight rule moves it
+ * rather than removing it, so it is worth being exact about where it now falls. A
+ * folded folder whose parent cannot absorb it is named on its own header and
+ * nowhere else, and scrolling past its top leaves it unnamed until the reader
+ * comes back. Before, "cannot absorb it" was a fact about the drawing: the set of
+ * folders that could be lost was fixed the moment the boxes were built, and every
+ * scroll position past such a folder's top lost every one of them. Now it is a
+ * fact about where the reader is, and the invariant is stated against that: a
+ * folded folder is named in exactly one place at every scroll position at which
+ * its own frame is on screen. A folder the reader can see the frame of is a
+ * folder they can reach, which is the whole of what reachability was ever about.
+ *
+ * Two stretches fall outside it and they are different in kind. The first is a
+ * sibling band coming into view, which takes the name off the bar above because
+ * the path has stopped being true of the screen — the reader is arriving at that
+ * sibling and leaving this one, and the price of keeping the name would be a bar
+ * describing a frame the reader can see it does not describe. The second is the
+ * folded box's own frame leaving the window altogether, at which point nothing
+ * inside this box is on screen, the walk has no child in sight to take a name
+ * from, and the bar that would have carried it is itself sliding out at the foot
+ * of its box. Nothing is lost there that anybody could have read.
+ *
  * ## This now reads geometry, and still never writes it
  *
  * The box is still drawn. Every card is where it was, every box edge is where
@@ -152,18 +263,19 @@
  * watched the entire picture re-flow underneath them would have been given a
  * much worse thing than the one they asked for, and would never press it again.
  *
- * What has changed is that a box's `y` and `height` are now read here, because a
- * label that depends on where the reader has scrolled to cannot be worked out
- * without them. Read is the whole of it. Nothing in this module returns a
- * geometry it was handed, altered — `headOf` passes two numbers straight through
- * and the walk below only compares them — and that restriction is the thing to
- * keep, because moving a box is the one thing collapsing must never do.
+ * What has changed is that a box's whole rectangle is now read here, and every
+ * card's, because a label that depends on where the reader has scrolled to and on
+ * what is beside them cannot be worked out without them. Read is the whole of it.
+ * Nothing in this module returns a geometry it was handed, altered — `headOf`
+ * passes two numbers straight through and the walk below only compares them — and
+ * that restriction is the thing to keep, because moving a box is the one thing
+ * collapsing must never do.
  *
  * That is also why this is a module of its own rather than an argument to
  * `place()`. Threading the folded set through the placement would re-run the
  * whole layout on every press, which is exactly the machinery that moves cards.
- * Here it cannot: this reads four fields off a box and answers a question about
- * labels.
+ * Here it cannot: this compares rectangles that somebody else worked out and
+ * answers a question about labels.
  *
  * ## Why a second number, and not a smaller `depth`
  *
@@ -232,39 +344,97 @@ export interface Framed {
 }
 
 /**
+ * A rectangle of canvas, which is what both a folder box and a card are to the
+ * one question this module asks of the geometry: can the reader see it.
+ *
+ * Its own type rather than two nearly identical ones, because the answer must not
+ * depend on which sort of thing is being asked about. A box whose frame is on
+ * screen and a card that is on screen are the same kind of evidence that the bar
+ * above is about to say something false, and a module that had a `boxInSight` and
+ * a `cardInSight` would be a module where the two could come to differ by an
+ * inequality.
+ */
+export interface Spread {
+  /** The left edge, in canvas units. */
+  x: number;
+  /** The top edge, in canvas units. */
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * What the reader can presently see, and where the things they might see are.
+ *
+ * Required rather than optional, on the same argument the view is: it only
+ * affects the labels, so an optional one could be left off with nothing throwing
+ * and no test failing, and the only symptom would be a folded chain that went on
+ * being named nowhere as the reader scrolled through it. That is the fault this
+ * parameter exists to fix, so the caller is made to say what is on screen.
+ *
+ * A rectangle with no width or no height means nobody has measured the window —
+ * no canvas has mounted, or the page is being rendered to text by Node — and is
+ * read as the whole drawing being in sight rather than none of it. An unmeasured
+ * window is not evidence that anything has gone off it, and reading it the other
+ * way would make a server-rendered page absorb everything it could reach.
+ */
+export interface Seen {
+  /** The left edge of the window over the canvas, in canvas units. */
+  left: number;
+  /** The top edge of the window over the canvas, in canvas units. */
+  top: number;
+  /** How much canvas the window is over, in canvas units. Nought for unmeasured. */
+  width: number;
+  height: number;
+  /**
+   * Where each card on the canvas ended up, by its id.
+   *
+   * Needed because a card sitting directly in a folder — in none of the boxes
+   * drawn inside it — has no frame that could answer for it, and such a card is
+   * half of what made `src / app / profile / laborer` a false statement about the
+   * frame it was written across.
+   *
+   * A card the caller has no entry for is treated as being in sight, which is the
+   * conservative direction: it refuses an absorption rather than permitting one
+   * on the strength of a lookup that missed.
+   */
+  cards: Readonly<Record<string, Spread>>;
+}
+
+/**
  * Enough of a folder box to say whose bar is whose, and what it may say.
  *
  * Deliberately not `FolderBox` itself, and still deliberately so now that the
- * frame is part of it. The original argument was that everything about where a
- * box is drawn is irrelevant here, and a function that could see the geometry is
- * a function that could be tempted to adjust it. The first half of that has
- * stopped being true — a label that changes with the scroll has to know where the
- * box is before it can know whether the reader has gone past it — and the second
- * half has not stopped being true at all, which is why this is still the
- * narrowest thing that answers the question rather than the box the placement
- * built. There is no width here and no `x`, because nothing about a label is
- * horizontal; there is no list of card ids, only a count.
+ * whole frame is part of it. The original argument was that everything about
+ * where a box is drawn is irrelevant here, and a function that could see the
+ * geometry is a function that could be tempted to adjust it. The first half of
+ * that has stopped being true twice over — a label that changes with the scroll
+ * has to know where the box is before it can know whether the reader has gone
+ * past it, and a label that is only honest while its siblings are off screen has
+ * to know where the siblings are — and the second half has not stopped being true
+ * at all, which is why this is still the narrowest thing that answers the
+ * question rather than the box the placement built.
  */
-export interface Barred extends Framed {
+export interface Barred extends Framed, Spread {
   /** How many boxes enclose it, counting itself. One for an outermost box. */
   depth: number;
   /**
-   * The cards in it, and only how many of them there are.
+   * The cards in it, by id, at whatever depth they sit.
    *
-   * Absorbing a folded child's name into its parent's bar is allowed exactly
-   * while the child holds everything the parent holds, so what is needed here is
-   * the comparison of two counts. A child's cards are a subset of its parent's
-   * by construction — a box is the cards under a path — so equal counts is the
-   * same statement as "the parent has nothing of its own outside the child", and
-   * it is the cheap way to say it.
+   * This was a count and not a list, on the argument that absorbing turns on
+   * whether the child holds everything the parent holds and that two lengths
+   * answer it — a child's cards are a subset of its parent's by construction, so
+   * equal counts said "the parent has nothing of its own outside the child"
+   * cheaply. It also said, in the comment where the count was declared, that a
+   * list of ids here would be an invitation to start deciding something about
+   * particular cards.
    *
-   * Typed as the length alone rather than as the ids, which a `string[]`
-   * satisfies without anybody having to convert one. It is the same argument the
-   * rest of this interface makes: this module decides what a label reads, so it
-   * is handed the least that can answer that, and a list of ids sitting here
-   * would be an invitation to start deciding something about particular cards.
+   * It is now exactly that invitation, accepted. The question is no longer how
+   * many cards the parent has outside the child but whether any of them is on
+   * screen, and that cannot be asked of a number. The ids are what `Seen.cards`
+   * is keyed by, so this is the join between the two.
    */
-  nodes: { readonly length: number };
+  nodes: readonly string[];
 }
 
 /** Enough of a folder box to say which cards have its bar above them. */
@@ -302,20 +472,23 @@ export interface Bar {
   slot: number;
   /**
    * What the bar says: its own folder's name, and then the name of every folded
-   * folder whose own header has gone behind the stack and which turned out to be
-   * the whole of what this box contains.
+   * folder whose own header has gone behind the stack and which is the whole of
+   * what this box contains as far as the reader can presently see.
    *
-   * A single name on nearly every bar, because nearly every box holds more than
-   * one thing. A path — `app/home` — only where the walk below could say the
-   * path is a true name for the entire frame *and* `home`'s own header is no
-   * longer readable where it belongs, which the module doc-comment argues at the
-   * length the argument deserves.
+   * A single name on most bars, because most boxes have something else in the
+   * frame. A path — `app/home` — only where the walk below could say the path is
+   * a true name for everything in this frame that is on screen *and* `home`'s own
+   * header is no longer readable where it belongs, which the module doc-comment
+   * argues at the length the argument deserves.
    *
-   * So this changes as the reader scrolls, and that is the one thing about it
-   * that is genuinely surprising. It is not a label moving under somebody's eye:
-   * the extra segment appears at the moment the name it duplicates disappears
-   * behind the chrome, so what the reader sees is one name being handed upwards
-   * rather than a second name arriving. Said as a field rather than left to the
+   * So this changes as the reader moves, and that is the one thing about it that
+   * is genuinely surprising. It is not a label moving under somebody's eye: the
+   * extra segment appears at the moment the name it duplicates disappears behind
+   * the chrome, so what the reader sees is one name being handed upwards rather
+   * than a second name arriving. It is handed back the same way, either by
+   * scrolling up until the folded header can be read again or by scrolling on
+   * until a sibling band arrives and the path stops being true of the screen.
+   * Said as a field rather than left to the
    * component to take off the box it happens to have, so that what a bar reads
    * is decided in the one place that decides whether it is drawn at all.
    */
@@ -366,19 +539,20 @@ function nameOf(path: string): string {
  * on one for the same reason, and this says it again where a fold stored by an
  * older reading, or by a version of this that allowed it, cannot get round it.
  *
- * `held` is where the reader is, and it is required rather than optional on
- * purpose. It only affects the labels — every slot, every entry in the map and
- * therefore every number the arithmetic downstream is fed is the same whatever
- * is passed — so an optional view would be a parameter that could be left off
- * with no test failing and no error thrown, and the only symptom would be a
- * folded folder whose name never went anywhere as the reader scrolled past it.
- * That is precisely the class of fault this feature keeps producing, so the
- * caller is made to say where the reader is.
+ * `held` is where the reader is and `seen` is what they can see, and both are
+ * required rather than optional on purpose. They only affect the labels — every
+ * slot, every entry in the map and therefore every number the arithmetic
+ * downstream is fed is the same whatever is passed — so an optional view would be
+ * a parameter that could be left off with no test failing and no error thrown,
+ * and the only symptom would be a folded folder whose name never went anywhere as
+ * the reader scrolled past it. That is precisely the class of fault this feature
+ * keeps producing, so the caller is made to say both.
  */
 export function barsFor(
   boxes: readonly Barred[],
   folded: ReadonlySet<string>,
   held: Held,
+  seen: Seen,
 ): Map<string, Bar> {
   const draws = (box: Barred): boolean =>
     box.depth === 1 || !folded.has(box.path);
@@ -447,6 +621,56 @@ export function barsFor(
   const behindTheStack = (box: Barred): boolean =>
     pinHead(held, { y: box.y, height: box.height, depth: slotOf(box) }) > 0;
 
+  /*
+   * Whether the window is over a rectangle of the canvas at all.
+   *
+   * Overlap and not containment, because a box half off the bottom of the screen
+   * is a box the reader is looking at, and a rule that only counted a frame it
+   * could see all of would call a folder chain filling the entire window "not in
+   * sight" for precisely as long as it was the only thing the reader could see.
+   *
+   * The edges are open: a rectangle that stops exactly where the window starts is
+   * on the far side of it and contributes no pixel. That only matters at one
+   * position of a continuous scroll and it is chosen to agree with itself — the
+   * same comparison answers for a card and for a frame, so nothing can be out of
+   * sight as a rectangle and in sight as the box around it.
+   *
+   * An unmeasured window means the whole drawing, which is the fallback the type
+   * above argues for. A rectangle nobody handed over means the same thing for the
+   * same reason: the absence of a lookup is not evidence of an absence on screen.
+   */
+  const measured = seen.width > 0 && seen.height > 0;
+  const inSight = (spread: Spread | undefined): boolean => {
+    if (!measured || !spread) return true;
+    return (
+      spread.x < seen.left + seen.width &&
+      spread.x + spread.width > seen.left &&
+      spread.y < seen.top + seen.height &&
+      spread.y + spread.height > seen.top
+    );
+  };
+
+  /*
+   * Whether a folded child is the whole of what its parent holds, as far as the
+   * reader can see.
+   *
+   * The card half of the sole-occupancy test, transposed from the drawing to the
+   * screen. A child's cards are a subset of its parent's by construction, so what
+   * is being asked is about the difference: every card the parent holds and the
+   * child does not has to be off screen, or the bar would write a path across a
+   * frame over a file that is nowhere in it.
+   *
+   * With nothing off screen this is the old equality of counts exactly — the
+   * difference must be empty — which is why an unmeasured window gets the
+   * behaviour that shipped rather than a new one.
+   */
+  const wholeInSight = (parent: Barred, child: Barred): boolean => {
+    const inside = new Set(child.nodes);
+    return parent.nodes.every(
+      (id) => inside.has(id) || !inSight(seen.cards[id]),
+    );
+  };
+
   const bars = new Map<string, Bar>();
 
   for (const box of boxes) {
@@ -456,42 +680,47 @@ export function barsFor(
 
     /*
      * And what it says, walked down through the folded folders that are the
-     * whole of what this box turns out to contain and whose own headers have
-     * gone behind the stack.
+     * whole of what this box contains as far as the reader can see, and whose own
+     * headers have gone behind the stack.
      *
-     * Three conditions per step and the walk stops the moment any fails. The
-     * first is that there is exactly one box inside this one and it draws no
-     * bar: more than one and there is no single name to append, none and there
-     * is nothing below to say anything about, and one that draws its own bar is
-     * already saying its name for itself a header lower. The second is that the
-     * child holds every card the parent holds, which is what makes the label a
-     * true statement about the frame rather than a true statement about a thread
-     * running through it — absorb `home` into `app` while `app` also holds a
-     * card of its own and the bar across the whole rectangle reads `app/home`
-     * over cards that are in neither, which is the `src / app / profile /
-     * laborer` failure with fewer words in it.
+     * Four conditions per step and the walk stops the moment any fails. The first
+     * is that exactly one of the boxes inside this one is on screen: more than
+     * one and there is no single name to append and two frames the label would
+     * have to be true of, none and there is nothing in front of the reader to say
+     * anything about. The second is that that box draws no bar, since one that
+     * draws its own is already saying its name for itself a header lower.
      *
-     * The third is the new one and it is the reader's complaint: the child's own
-     * header must have gone behind the stack. While it has not, the child is
-     * saying its own name on its own frame perfectly legibly a few lines down the
-     * page, and a segment up here is the same word twice a few pixels apart on a
-     * drawing the reader collapsed a folder to quieten.
+     * The third is the card half of the same question — every card this box holds
+     * and that one does not must be off screen — which is what makes the label a
+     * true statement about what is in the frame rather than a true statement
+     * about a thread running through it. Absorb `home` into `app` while a card of
+     * `app`'s own sits on screen outside it and the bar across the whole
+     * rectangle reads `app/home` over a file that is nowhere in that path, which
+     * is the `src / app / profile / laborer` failure with fewer words in it.
      *
-     * There is nothing here that has to choose between two children, which the
-     * first version of this needed a degradation rule for and had to have proved
-     * deterministic over every order the boxes might arrive in. Two children is
-     * not an ambiguity to resolve now; it is a frame with two things in it, and
-     * the rule above declines it for the same reason it declines a stray card.
+     * The fourth is the reader's earlier complaint: the child's own header must
+     * have gone behind the stack. While it has not, the child is saying its own
+     * name on its own frame perfectly legibly a few lines down the page, and a
+     * segment up here is the same word twice a few pixels apart on a drawing the
+     * reader collapsed a folder to quieten.
+     *
+     * The first two conditions used to be one — exactly one child box in the
+     * whole drawing — and the change from "in the drawing" to "on screen" is the
+     * fifth reading of this rule, argued at the top. What it does not change is
+     * that nothing here ever chooses between two children. The absorbed child has
+     * to be the one box in sight, so there is at most one candidate however the
+     * boxes arrived in the array, which is the same guarantee the old count gave
+     * over a different set.
      */
     const absorbed: string[] = [];
     const parts = [nameOf(box.path)];
     let at = box;
     for (;;) {
-      const inside = childrenOf(at);
+      const inside = childrenOf(at).filter((child) => inSight(child));
       if (inside.length !== 1) break;
       const only = inside[0]!;
       if (draws(only)) break;
-      if (only.nodes.length !== at.nodes.length) break;
+      if (!wholeInSight(at, only)) break;
       if (!behindTheStack(only)) break;
       at = only;
       absorbed.push(at.path);
@@ -552,9 +781,9 @@ export function headOf(
  * it. Nought here is the whole of what the reader bought.
  *
  * It is also the moment the name goes up to the bar above, where the folder is
- * that bar's sole occupant — `barsFor` asks `pinHead` the same question about
- * the same box to decide that, so the two cannot come apart. What is nought here
- * is exactly what is absorbed there.
+ * the whole of what that bar's box has on screen — `barsFor` asks `pinHead` the
+ * same question about the same box to decide that, so the two cannot come apart.
+ * What is nought here is exactly what may be absorbed there.
  *
  * It is a function in this module rather than four lines in the component for
  * the reason the two above it are, and it is the strongest case of the three.

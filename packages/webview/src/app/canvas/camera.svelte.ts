@@ -853,6 +853,21 @@ export function fitNow(): void {
  * The map draws this as the window over the change, and it is the one thing
  * the map cannot work out for itself: it knows the shape of the drawing and
  * the camera, but not how large a hole it is being looked at through.
+ *
+ * The folder bars read it too, and for a reason worth recording because it made
+ * this function load-bearing for something other than a picture. A bar may take a
+ * folded folder's name up into itself only while nothing else inside its frame is
+ * on screen — otherwise the reader is shown a path across a rectangle that holds
+ * things the path says nothing about — so "which folders are on screen" decides
+ * what a label reads, and this is what answers it. Both readers ask the same
+ * function rather than each converting the camera themselves, since two spellings
+ * of "what is visible" is how a name comes to describe a window nobody is at.
+ *
+ * Nought by nought before a canvas has mounted, and on the server. That is not a
+ * window with nothing in it; it is the absence of a window, and every caller has
+ * to read it that way — the bars treat it as the whole drawing being in sight,
+ * which is the reading under which they absorb nothing they could not otherwise
+ * have absorbed.
  */
 export function onScreen(): { left: number; top: number; width: number; height: number } {
   if (!framedIn) return { left: 0, top: 0, width: 0, height: 0 };

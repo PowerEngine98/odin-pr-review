@@ -292,15 +292,24 @@
   everything either sort of box has in common is written once.
 
   The bar above may say a folded folder's name as well, where that folder is the
-  whole of what the bar's own box contains — but only once the folded folder's
-  own header has gone behind the stack, which is `bars.ts`'s decision and is made
-  with the same arithmetic that decides whether a header pins. So the two are
-  never on screen together. Scrolled to where `home`'s box begins, the bar above
-  reads `app` and `home`'s header reads `home`, each naming its own frame;
+  whole of what the bar's own box has on screen — but only once the folded
+  folder's own header has gone behind the stack, which is `bars.ts`'s decision and
+  is made with the same arithmetic that decides whether a header pins. So the two
+  are never on screen together. Scrolled to where `home`'s box begins, the bar
+  above reads `app` and `home`'s header reads `home`, each naming its own frame;
   scrolled past it, `home`'s header has passed behind the bar and the bar reads
   `app / home`, which is the name being handed upwards rather than a second copy
   of it appearing. A version that absorbed regardless of scroll drew both at once
-  a few lines apart, and that is the thing the reader reported.
+  a few lines apart, and that is the thing the reader reported first.
+
+  "On screen" and not "in the drawing", which is the thing the reader reported
+  second. A parent holding three folder chains used to absorb none of them at any
+  scroll position, because two of them existed — so a reader who had scrolled deep
+  into one chain, with the other two nowhere near the window, was shown a single
+  bar saying `frontend` and two folded folders named nowhere at all. The path is
+  honest exactly while the things it fails to describe are not in front of the
+  reader, so that is what `bars.ts` asks, and the bar hands the names back as a
+  sibling band comes into view in the same way it hands them back on the way up.
 -->
 {#each folders as box (box.path)}
   <!--
@@ -463,6 +472,11 @@
           carries it while the header can be seen, and this carries it while the
           header cannot, and the threshold between the two is one comparison so
           that there is no stretch of scroll belonging to neither.
+
+          The one stretch that belongs to neither is a folder its parent cannot
+          absorb because something else in that parent's frame is on screen, and
+          that is the honest limit `bars.ts` records: the alternative is a path
+          written across a rectangle the reader can see does not match it.
 
           Empty for a folded box, which has absorbed nothing and has no bar to
           have absorbed it with.
