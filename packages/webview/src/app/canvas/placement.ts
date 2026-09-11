@@ -303,14 +303,14 @@ export interface Layout {
  * and fifty, which is plainly stepped beside the two hundred going across and
  * still leaves the overview legible.
  *
- * One thing it does not buy, which is worth knowing before anybody raises it
- * again expecting more: this only opens the gap at the *top* of a nested box.
- * Where a child holds the last card in its parent, the two boxes' bottom edges
- * are drawn flush and stay flush at any value of this, because `boxesFor`
- * measures both from that same last card. The room is reserved below — the
- * slab's closing pad is real — it is simply not what the drawn rectangle is
- * measured from. Making the bottom edge use it is a change to how a box is
- * measured rather than to this number.
+ * For a long time this only opened the gap at the *top* of a nested box, and
+ * the paragraph that said so outlived the repair, so it is worth saying where
+ * things now stand. Where a child held the last card in its parent the two
+ * bottom edges were drawn flush and stayed flush at any value of this, because
+ * `boxesFor` measured both from that same last card; the room below was reserved
+ * all along and simply was not what the rectangle was measured from. The foot is
+ * measured from the reservation now, so it steps like the head does, and this
+ * number moves both ends.
  */
 const CLUSTER_PAD = 120;
 
@@ -889,8 +889,30 @@ function bandsFor(
  * and the height; what is left is how far the folder reaches across the
  * drawing, which is a question about which columns its files landed in — and a
  * box that is measured cannot disagree with the cards it is drawn around.
+ *
+ * `clear` is how much daylight a border keeps between itself and a card that is
+ * not inside it, and it is the drawing's own clearance between two neighbouring
+ * cards because there is no other figure a reader could be comparing it against.
+ * A border that stops nearer to a foreign card than two cards ever stand to each
+ * other reads as the card belonging to the box, which is the one thing a box is
+ * drawn to say and the one thing this one is not saying.
+ *
+ * It is the same figure on the foot and on both sides, so that a card outside a
+ * box stands the same distance clear of it whichever side of it the card is on,
+ * and it replaces the two units the corridor used to stand off by. Two units was
+ * the right thought at a size nobody can see, and it was not a floor that
+ * practice cleared comfortably: a box charged for the deepest nesting in the
+ * drawing takes every unit of the room worked out below, so two units was the
+ * answer exactly, every time a nest stood beside a card it did not hold.
+ * Sideways the raise is free — the corridor is invented room taken from whatever
+ * gap happens to be there, so leaving more of that gap alone costs no width and
+ * only ever makes a box narrower.
  */
-function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
+function boxesFor(
+  bands: Bands,
+  placed: Map<string, Placed>,
+  clear: number,
+): FolderBox[] {
   const boxes: FolderBox[] = [];
 
   for (const band of bands.real) {
@@ -974,9 +996,36 @@ function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
      * a box whose contents have grown is drawn round them as it was before. The
      * step goes when that happens, which is the honest answer: there is no room
      * left to step into.
+     *
+     * Short of the reservation by a clearance, which is the whole of the repair
+     * to what drawing down to it caused. A slab's reservation ends exactly where
+     * the next slab begins — that is what a skyline is — so a border drawn at
+     * the end of its own reservation is drawn on the line the next thing starts
+     * at, and the next thing is very often a bare band. A band pays no pad of
+     * its own, so its first card began flush against the border of a box it is
+     * not in, with no daylight whatever between the two. A reader cannot tell
+     * that from the card being inside the box and touching its edge, which is a
+     * box saying something false about where a file lives.
+     *
+     * It costs no height, and it costs no step either, which is the part worth
+     * saying because it is not obvious. Every box's border comes up by the same
+     * clearance, so the gap between a box and the box inside it is the same
+     * number it was — a uniform shift of two edges does not move the distance
+     * between them — and the foot still matches the head exactly.
+     *
+     * And the clearance has to be the row gap rather than anything larger,
+     * which is the one figure here that is forced rather than chosen. The last
+     * card in a box is followed by its band's own trailing row gap and then by
+     * the closing allowance, so the lower of the two figures below is already a
+     * row gap short of the reservation: ask for more than that and a box whose
+     * last child is a band would be held at the row gap while a box whose last
+     * child is another box came up the full amount, and the two would stop
+     * stepping by the same distance at the foot as at the head. Asking for
+     * exactly the row gap is the most that can be had with both edges still
+     * agreeing.
      */
     const bottom = Math.max(
-      band.bottom,
+      band.bottom - clear,
       ...inside.map((card) => card.y + card.height),
     );
 
@@ -1032,9 +1081,6 @@ function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
   const nested = (a: string, b: string) =>
     a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 
-  /** So that a border is never drawn flush against what it had to stop at. */
-  const HAIR = 2;
-
   /*
    * How far each box may grow before it reaches something that is not its own.
    *
@@ -1073,7 +1119,7 @@ function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
 
     for (const other of boxes) {
       if (nested(box.path, other.path) || !level(box, other)) continue;
-      const share = (gap: number) => Math.floor(gap / 2) - HAIR;
+      const share = (gap: number) => Math.floor(gap / 2) - clear;
       if (other.x + other.width <= box.x) {
         left = Math.min(left, share(box.x - other.x - other.width));
       }
@@ -1085,10 +1131,10 @@ function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
     for (const card of placed.values()) {
       if (box.nodes.includes(card.node.id) || !level(box, card)) continue;
       if (card.x + card.width <= box.x) {
-        left = Math.min(left, box.x - card.x - card.width - HAIR);
+        left = Math.min(left, box.x - card.x - card.width - clear);
       }
       if (card.x >= box.x + box.width) {
-        right = Math.min(right, card.x - box.x - box.width - HAIR);
+        right = Math.min(right, card.x - box.x - box.width - clear);
       }
     }
 
@@ -1373,7 +1419,7 @@ export function place(
   // Room past the last card on each side. Nothing on the canvas is a drawing
   // with no extent — it is a drawing that has not arrived — so the model's own
   // figures stand in rather than a canvas of two margins.
-  const folders = bands ? boxesFor(bands, placed) : undefined;
+  const folders = bands ? boxesFor(bands, placed, data.rowGap) : undefined;
 
   return {
     cards,

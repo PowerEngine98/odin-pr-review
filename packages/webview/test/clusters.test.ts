@@ -1216,6 +1216,189 @@ describe("the room between a box and the box nested inside it, down the page", (
 });
 
 /**
+ * A card outside a box, and how near the border is allowed to come to it.
+ *
+ * The near miss of the fault every other measurement here is about. A box drawn
+ * over a card it does not hold says the file is in a folder it is not in; a box
+ * drawn up against that card says the same thing a hair more quietly, and a
+ * reader at the zoom a whole change is looked at from cannot tell the two apart
+ * — the card is touching the frame, so the card reads as being in it.
+ *
+ * It arrived from two directions at once, and the tests that should have caught
+ * it were all asking about overlap, which is a strict inequality and is satisfied
+ * by a gap of nothing. Down the page a slab's reservation ends exactly where the
+ * next slab begins, because that is what a skyline is, and the foot was drawn at
+ * the end of the reservation; a bare band — a folder that got no box, or the
+ * loose files at the top of a project — pays no opening pad, so its first card
+ * began on the very line the border was drawn on. Sideways the stand-off was two
+ * units, which is the right idea at a size nobody can see: a box charged for the
+ * deepest nesting in the drawing takes every unit of the room it is allowed, so
+ * two units is not a floor that practice clears comfortably but the answer
+ * itself, every time a nest stands beside a card it does not hold.
+ *
+ * Measured before the repair, on the shapes below: nothing at all below, two
+ * units to the left and two to the right, and a hundred and thirty above — the
+ * top was never at risk, because a box's own opening pad is drawn outside its
+ * border and the band above leaves its own trailing gap on top of that.
+ *
+ * What is asked for is the drawing's own clearance between two neighbouring
+ * cards, and that is a statement rather than a constant: a border that stops
+ * nearer to a foreign card than two cards ever stand to each other is a border
+ * inside the run of canvas that card was given. It is also the most that can be
+ * asked for down the page without the foot ceasing to step by the same distance
+ * as the head, which is measured in the describe above.
+ */
+describe("the room between a box and a card that is not inside it", () => {
+  /** A two-level nest with a loose file standing in the very next column. */
+  function beside(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("a1", "src/alpha/inner/one.ts", 0, 0),
+      card("a2", "src/alpha/inner/two.ts", 1, 0),
+      card("a3", "src/alpha/x.ts", 0, 200),
+      card("a4", "src/alpha/y.ts", 1, 200),
+      card("loose", "root.ts", 2, 0),
+    ];
+    return data;
+  }
+
+  /** The same nest, with the loose file on the other side of it. */
+  function besideLeft(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("loose", "root.ts", 0, 0),
+      card("a1", "src/alpha/inner/one.ts", 1, 0),
+      card("a2", "src/alpha/inner/two.ts", 2, 0),
+      card("a3", "src/alpha/x.ts", 1, 200),
+      card("a4", "src/alpha/y.ts", 2, 200),
+    ];
+    return data;
+  }
+
+  /** A bare band standing above a box rather than below it. */
+  function above(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("l1", "root.ts", 0, 0),
+      card("l2", "readme.ts", 1, 0),
+      card("a1", "src/alpha/one.ts", 0, 200),
+      card("a2", "src/alpha/two.ts", 1, 200),
+      card("a3", "src/alpha/three.ts", 0, 400),
+    ];
+    return data;
+  }
+
+  /**
+   * The narrowest daylight between any border and any card it does not hold,
+   * side by side, counting only the cards that are actually level with it.
+   */
+  const daylight = (data: ViewModel) => {
+    const drawn = grouped(data);
+    const gaps = { above: Infinity, below: Infinity, left: Infinity, right: Infinity };
+
+    for (const box of drawn.folders ?? []) {
+      for (const placed of drawn.cards) {
+        if (box.nodes.includes(placed.node.id)) continue;
+        // A card off to one side is not in front of the foot however near the
+        // two numbers come, so each side is only asked about the cards that
+        // stand across it.
+        const across =
+          placed.x < box.x + box.width && box.x < placed.x + placed.width;
+        const down = placed.y < box.y + box.height && box.y < placed.y + placed.height;
+
+        if (across) {
+          const below = placed.y - (box.y + box.height);
+          const over = box.y - (placed.y + placed.height);
+          if (below >= 0) gaps.below = Math.min(gaps.below, below);
+          if (over >= 0) gaps.above = Math.min(gaps.above, over);
+        }
+        if (down) {
+          const right = placed.x - (box.x + box.width);
+          const left = box.x - (placed.x + placed.width);
+          if (right >= 0) gaps.right = Math.min(gaps.right, right);
+          if (left >= 0) gaps.left = Math.min(gaps.left, left);
+        }
+      }
+    }
+
+    return gaps;
+  };
+
+  it("leaves a card below a box clear of its foot", () => {
+    // Nothing whatever before the repair: the border was drawn at the end of a
+    // reservation the next slab starts at, and a bare band's first card starts
+    // at the top of its slab.
+    const data = model();
+    expect(daylight(data).below).toBeGreaterThanOrEqual(data.rowGap);
+  });
+
+  it("leaves a card beside a box clear of either edge", () => {
+    // Two units before the repair, on both sides, which is a border and a card
+    // touching as far as a reader is concerned.
+    for (const data of [beside(), besideLeft()]) {
+      const gaps = daylight(data);
+      expect(gaps.left).toBeGreaterThanOrEqual(data.rowGap);
+      expect(gaps.right).toBeGreaterThanOrEqual(data.rowGap);
+    }
+  });
+
+  it("leaves a card above a box clear of its head", () => {
+    // The side that was never at risk, measured so that it stays that way: a
+    // box's opening pad is mostly drawn outside its own border, and the band
+    // above it leaves its own trailing gap as well.
+    for (const data of [model(), above()]) {
+      expect(daylight(data).above).toBeGreaterThanOrEqual(data.rowGap);
+    }
+  });
+
+  it("does not buy any of it with height", () => {
+    // The lever this must not reach for. The clearance below comes out of room
+    // the slab had already reserved and drawn a border at the end of, so the
+    // canvas is the last card and a margin exactly as it was before.
+    for (const data of [model(), beside(), besideLeft(), above()]) {
+      const drawn = grouped(data);
+      const last = Math.max(...drawn.cards.map((placed) => placed.y + placed.height));
+      expect(drawn.height).toBe(last + data.margin);
+    }
+  });
+
+  it("still keeps every card of a folder inside that folder's box", () => {
+    // Both edges came inwards, and an edge that came in too far would leave a
+    // card hanging out of the frame that names it.
+    for (const data of [model(), beside(), besideLeft(), above()]) {
+      const drawn = grouped(data);
+      for (const box of drawn.folders ?? []) {
+        for (const placed of drawn.cards) {
+          if (!box.nodes.includes(placed.node.id)) continue;
+          expect(placed.x).toBeGreaterThanOrEqual(box.x);
+          expect(placed.y).toBeGreaterThanOrEqual(box.y);
+          expect(placed.x + placed.width).toBeLessThanOrEqual(box.x + box.width);
+          expect(placed.y + placed.height).toBeLessThanOrEqual(box.y + box.height);
+        }
+      }
+    }
+  });
+
+  it("still keeps a folder's box inside its parent's on all four sides", () => {
+    // Every border moved, so a child whose edges moved less than its parent's
+    // would now be drawn through the box it sits in.
+    for (const data of [model(), beside(), besideLeft(), above()]) {
+      const boxes = grouped(data).folders ?? [];
+      const held = (a: string, b: string) => a.startsWith(`${b}/`);
+
+      for (const child of boxes) {
+        for (const parent of boxes.filter((box) => held(child.path, box.path))) {
+          expect(child.x).toBeGreaterThanOrEqual(parent.x);
+          expect(child.y).toBeGreaterThanOrEqual(parent.y);
+          expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+          expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
+        }
+      }
+    }
+  });
+});
+
+/**
  * The database card, and the folder that reads it.
  *
  * With the cards grouped into their folders the schema card was landing at the
