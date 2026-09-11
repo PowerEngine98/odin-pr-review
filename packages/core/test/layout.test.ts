@@ -193,11 +193,30 @@ describe("layoutGraph", () => {
     expect(caller.x).toBeLessThan(target.x);
   });
 
-  it("parks files with no references in a trailing column", () => {
+  it("keeps a file with no references in a column its own folder already has", () => {
+    /*
+     * This used to say the opposite — that such a file is parked in a trailing
+     * column past everything else — and it was right until a folder's box
+     * started being something a reader looks at. `src/lonely.ts` shares `src`
+     * with the two files that do reference each other, so parking it away to
+     * the right made the box around `src` span the whole drawing to hold one
+     * card at each end, with nothing in between and no room beside it for any
+     * other folder to stand. The file has no arrow either way, so no claim about
+     * call order is being made about it and none is disturbed by putting it
+     * where the rest of its folder is.
+     *
+     * What is still true, and is asserted in "the lanes the unreferenced files
+     * are dealt into" below, is that a file whose folder has nothing whatever in
+     * the chain does go past everything — there is no folder of its own for it
+     * to be near, so the trailing lanes are still where it belongs.
+     */
     const layout = layoutGraph(graph());
     const lonely = layout.nodes.find((n) => n.path === "src/lonely.ts")!;
-    const others = layout.nodes.filter((n) => n.path !== "src/lonely.ts");
-    expect(others.every((n) => n.rank < lonely.rank)).toBe(true);
+    const kin = layout.nodes.filter(
+      (n) => n.path !== "src/lonely.ts" && n.path.startsWith("src/"),
+    );
+    expect(kin.some((n) => n.rank === lonely.rank)).toBe(true);
+    expect(lonely.rank).toBeLessThanOrEqual(Math.max(...kin.map((n) => n.rank)));
   });
 
   it("anchors each arrow to the row holding its line", () => {
@@ -691,6 +710,51 @@ describe("the lanes the unreferenced files are dealt into", () => {
     const lanes = (layout: ReturnType<typeof layoutGraph>) =>
       layout.nodes.map((node) => [node.path, node.rank] as const).sort();
     expect(lanes(after)).toEqual(lanes(before));
+  });
+
+  it("stacks renames into one column rather than spreading them", () => {
+    /*
+     * A rename with no content change is a card with a title and nothing under
+     * it, and six of them spread across a folder's columns to balance a height
+     * they do not have gave that folder a box most of the width of the drawing
+     * with almost nothing in it. Spreading is worth its width only when there is
+     * height to take off.
+     */
+    const chain = ["Grid.tsx", "Item.tsx"].flatMap((name) => [
+      `diff --git a/src/media/${name} b/src/media/${name}`,
+      "new file mode 100644",
+      "--- /dev/null",
+      `+++ b/src/media/${name}`,
+      "@@ -0,0 +1,2 @@",
+      "+const a = 1;",
+      "+const b = 2;",
+    ]);
+    const renames = ["Audio", "Clip", "Video", "Image"].flatMap((name) => [
+      `diff --git a/src/media/Old${name}.tsx b/src/media/${name}Preview.tsx`,
+      "similarity index 100%",
+      `rename from src/media/Old${name}.tsx`,
+      `rename to src/media/${name}Preview.tsx`,
+    ]);
+    const base = buildGraph(parseUnifiedDiff([...chain, ...renames, ""].join("\n")), {
+      meta: META,
+    });
+    const at = (path: string) => base.nodes.find((n) => n.path === path)!;
+    const from = { nodeId: at("src/media/Grid.tsx").id, side: "head" as const, line: 1 };
+    const to = { nodeId: at("src/media/Item.tsx").id, side: "head" as const, line: 1 };
+    const layout = layoutGraph(
+      sortGraph({ ...base, edges: [edge(from, to, "added")] }),
+    );
+
+    // The two that reference each other take a column each, as they must.
+    const grid = layout.nodes.find((n) => n.path === "src/media/Grid.tsx")!;
+    const item = layout.nodes.find((n) => n.path === "src/media/Item.tsx")!;
+    expect(grid.rank).toBeLessThan(item.rank);
+
+    // The four slivers share one, and it is one the folder already had.
+    const slivers = layout.nodes.filter((n) => n.path.endsWith("Preview.tsx"));
+    expect(slivers).toHaveLength(4);
+    expect(new Set(slivers.map((n) => n.rank)).size).toBe(1);
+    expect([grid.rank, item.rank]).toContain(slivers[0]!.rank);
   });
 
   it("keeps a folder's own files together in one lane", () => {

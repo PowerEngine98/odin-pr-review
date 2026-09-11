@@ -488,11 +488,22 @@ function assignRanks(
    * the files, so an agent adding thirty lines to one file re-deals the entire
    * drawing underneath a reader who is looking at it. Measured, that moved some
    * other card two hundred and fifty-one thousand units, against five hundred
-   * and forty for the same edit today. A deal that reads only the paths cannot
-   * be disturbed by an edit at all, and it came in at exactly five hundred and
-   * forty — the same as today, and better than today on how many cards move at
-   * all, because folders spread across lanes means an edit disturbs fewer cards
+   * and forty for the same edit today. What is balanced instead is how many
+   * files each folder holds, which is a fact about the change and not about its
+   * contents: adding thirty lines to a file does not add a file, so the deal
+   * comes out the same and the figure stays at exactly five hundred and forty —
+   * the same as today, and better than today on how many cards move at all,
+   * because folders spread across lanes means an edit disturbs fewer cards
    * below it.
+   *
+   * Counting rather than dealing them round in path order, which is what this
+   * did first. Round-robin is stable in the same way and balances worse, and it
+   * is brittle in a way that is easy to miss: the lane a folder lands in is its
+   * position in the list, so a folder dropping out of the list moves every
+   * folder after it by one and re-deals the whole drawing. That happens for real
+   * — the mixed folders below leave the list — and on one change it put a third
+   * back onto the height. Balancing by weight, a folder leaving takes only its
+   * own weight with it.
    *
    * A folder at a time rather than a file at a time, because the point of the
    * exercise is that a folder's box can stand beside another one. Scattering a
@@ -501,10 +512,106 @@ function assignRanks(
    */
   const laneKey = (node: PlacedNode) => folderOf(node.path) ?? "";
   const loose = parked.filter((node) => !touched.has(node.id));
-  const folders = [...new Set(loose.map(laneKey))].sort();
-  const lanes = new Map(folders.map((folder, at) => [folder, at % TRAILING_LANES]));
+
+  /*
+   * Where each folder already stands in the chain, for the folders that do.
+   *
+   * A folder is very often a mixture: one file in it calls something, and the
+   * three beside it call nothing at all. Dealing the three off to a lane of
+   * their own was answering the question "where do the files nobody references
+   * go" without noticing that it had also answered "how wide is this folder's
+   * box", and the second answer was much the worse of the two. A box is drawn
+   * from its leftmost card to its rightmost, so a folder with one file in the
+   * first column and one dealt to the last was drawn as a box straddling the
+   * whole drawing — and a box that wide overlaps every other box there is, so
+   * nothing could stand beside it and everything queued underneath it. A reader
+   * saw two files with no arrow between them placed side by side as though the
+   * drawing were claiming a relationship, a sibling folder pushed below one it
+   * is not downstream of, and most of the width of its own box standing empty
+   * between the two cards that defined it.
+   *
+   * So a loose file whose folder is already somewhere goes there instead. It
+   * costs nothing to put it there: the box already reaches that column, so the
+   * drawing gets no wider, and the file has no arrow so no claim about call
+   * order is touched. What it buys is a box that is the width of its own
+   * contents again.
+   */
+  const chainAt = new Map<string, number[]>();
+  for (const node of nodes) {
+    if (!connected.has(node.id)) continue;
+    const key = laneKey(node);
+    const seen = chainAt.get(key);
+    if (seen) seen.push(node.rank);
+    else chainAt.set(key, [node.rank]);
+  }
+  for (const [key, ranks] of chainAt) {
+    chainAt.set(key, [...new Set(ranks)].sort((a, b) => a - b));
+  }
+
+  /*
+   * Spread over the columns the folder already occupies, rather than all piled
+   * into the first of them.
+   *
+   * Free, for the same reason the whole of this is free: the box reaches every
+   * one of those columns whether or not anything of ours is standing in them,
+   * so using them costs no width at all and saves the height of stacking five
+   * loose files under one card. Dealt by path order, because the alternative is
+   * to deal by how tall each file is and that is the deal that re-lays the
+   * drawing every time somebody types.
+   */
+  const spread = new Map<string, number>();
+  for (const node of [...loose].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    const home = chainAt.get(laneKey(node));
+    if (!home) continue;
+    /*
+     * A file the change did not write a line of goes in the first column and is
+     * not spread at all.
+     *
+     * Which is almost always a rename. Git reports one as a file with a new
+     * path and no hunks, so the card has a title and nothing under it — a
+     * sliver a few lines high. Six of them spread across three columns for the
+     * sake of balancing height that none of them has, and the folder's box was
+     * then drawn from the first to the last: a rectangle most of the width of
+     * the drawing, holding six slivers and, by area, almost nothing. A reader
+     * called it a huge folder made for no reason, and was right.
+     *
+     * The spreading below is worth its width when the cards being spread are
+     * tall, because that is height coming off the drawing. Here there is no
+     * height to take off, so the width buys nothing and costs the box.
+     *
+     * Asked as "did the change write any lines into this file" rather than as
+     * "is this card short", and the difference matters more than it looks. How
+     * tall a card is depends on what is in it, so a rule reading that would
+     * re-lay the drawing the moment an agent typed into one of these files. How
+     * many hunks a file has is a fact about the change itself, and adding lines
+     * to a file that has none is not an edit, it is a different change.
+     */
+    if (node.node.hunks.length === 0) {
+      node.rank = home[0]!;
+      continue;
+    }
+    const seen = spread.get(laneKey(node)) ?? 0;
+    spread.set(laneKey(node), seen + 1);
+    node.rank = home[seen % home.length]!;
+  }
+
+  // Whatever is left is a folder with nothing in the chain at all, and those
+  // are the ones the lanes were made for.
+  const adrift = loose.filter((node) => !chainAt.has(laneKey(node)));
+  const weight = new Map<string, number>();
+  for (const node of adrift) weight.set(laneKey(node), (weight.get(laneKey(node)) ?? 0) + 1);
+  const folders = [...weight.keys()].sort((a, b) => weight.get(b)! - weight.get(a)! || a.localeCompare(b));
+  const load = new Array(TRAILING_LANES).fill(0) as number[];
+  const lanes = new Map<string, number>();
+  for (const folder of folders) {
+    let best = 0;
+    for (let i = 1; i < load.length; i++) if (load[i]! < load[best]!) best = i;
+    lanes.set(folder, best);
+    load[best] = load[best]! + weight.get(folder)!;
+  }
 
   for (const node of parked) {
+    if (!touched.has(node.id) && chainAt.has(laneKey(node))) continue;
     // A parked file that an arrow still touches stays in the first lane, which
     // is the column it has always been in.
     const lane = touched.has(node.id) ? 0 : (lanes.get(laneKey(node)) ?? 0);

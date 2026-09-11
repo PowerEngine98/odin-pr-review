@@ -1119,7 +1119,31 @@ function boxesFor(
 
     for (const other of boxes) {
       if (nested(box.path, other.path) || !level(box, other)) continue;
-      const share = (gap: number) => Math.floor(gap / 2) - clear;
+      /*
+       * The clearance is between the two borders, not demanded twice over.
+       *
+       * This used to take half the gap and then subtract a full clearance from
+       * that half — but the box on the other side of the gap is doing the very
+       * same arithmetic at the same moment, so the clearance came out of the
+       * room twice and the two borders ended up two clearances apart. Which is
+       * a strange thing for the drawing to believe: a border keeps one row gap
+       * from a foreign card, and there is no reason it should keep two from a
+       * foreign border. It was invisible for as long as folders could not stand
+       * beside each other, because the case never arose; the moment they could,
+       * it became the common case and the bill arrived.
+       *
+       * And it is a large bill at these numbers. A column gap is a hundred and
+       * forty and a clearance is fifty-six, so the old reading left each box
+       * fourteen units to put a border in, which is less than half the plain
+       * edge a box is supposed to have — and a reader saw a frame drawn hard up
+       * against its own card, with the file inside it apparently touching the
+       * wall, while the empty corridor beyond the frame was four times wider.
+       * Taking the clearance out once before halving gives each of them
+       * forty-two, which is enough for a plain edge with room to spare, and the
+       * two borders still end up a clearance apart in the worst case where both
+       * take everything they are allowed.
+       */
+      const share = (gap: number) => Math.floor((gap - clear) / 2);
       if (other.x + other.width <= box.x) {
         left = Math.min(left, share(box.x - other.x - other.width));
       }
