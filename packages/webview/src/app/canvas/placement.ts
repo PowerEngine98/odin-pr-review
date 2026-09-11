@@ -19,8 +19,9 @@ import { isSchema } from "./wire.js";
  * A folder, as a box drawn around the cards that live in it.
  *
  * Derived geometry rather than a node of its own: nothing is placed here. The
- * banding keeps a folder's cards in the same run of canvas in every column,
- * which makes them a rectangle, and this is the rectangle they occupy.
+ * banding keeps a folder's cards in the same run of canvas across every column
+ * the folder reaches into, which makes them a rectangle, and this is the
+ * rectangle they occupy.
  */
 export interface FolderBox {
   /** The folder, as a path — `src/components/media`. Never empty. */
@@ -89,8 +90,10 @@ export interface Standing {
    * Draw the cards grouped by the folder they live in.
    *
    * A reading choice rather than a property of the change, and one that costs
-   * height: the same run of canvas is reserved in every column so that a folder
-   * is one rectangle rather than a clump per column.
+   * height: a folder reserves the same run of canvas in every column it reaches
+   * into, so that it is one rectangle rather than a clump per column. What keeps
+   * that cost down is that two folders standing over different columns are not
+   * in each other's way, and share the run rather than queueing for it.
    */
   clusters: boolean;
   /** What a card turned out to be, where a browser has drawn one. */
@@ -286,19 +289,113 @@ function ancestry(folder: string): string[] {
 }
 
 /**
+ * One thing that wants a run of canvas: a folder's cards, or a folder's box.
+ *
+ * The two are laid out by the same arithmetic because they are the same
+ * question — how much height does this need, and how far across the drawing
+ * does it stand — and a box is only the recursion of it. A box holds the bands
+ * of the files directly in it, the boxes of the folders beneath it, and any
+ * band whose own folder was not worth a box of its own; nothing else can be
+ * inside it, so nothing else can be over its cards.
+ *
+ * `first` and `last` are columns and not pixels. Columns are the dependency
+ * chain read left to right by call order, which is the one thing clustering
+ * must not touch, so they are the only horizontal fact this side is allowed to
+ * reason from — and they are enough, because a card never leaves the lane its
+ * column gives it.
+ */
+interface Slab {
+  /** The folder it stands for, or `LOOSE` for the files at the top of a project. */
+  key: string;
+  /** A drawn box, rather than a run of cards. */
+  box: boolean;
+  /** The leftmost column anything inside it landed in, and the rightmost. */
+  first: number;
+  last: number;
+  /** The height it takes, its own frame and the clearance after it included. */
+  extent: number;
+  /** For a box, what it holds, packed into rows. Empty for a band. */
+  rows: Slab[][];
+}
+
+/**
+ * Which things can stand side by side, and which have to queue.
+ *
+ * The fix for the drawing's worst habit. A folder whose files are purely
+ * downstream — components that are called and never call back — has every one
+ * of its cards in a column to the right of the folder that uses them, and the
+ * old banding still gave it a run of canvas of its own below, because a band
+ * was a full-width stripe whether or not anything else was standing in it. Two
+ * screens of vertical nothing to say something the columns had already said.
+ *
+ * Two slabs whose column ranges do not touch cannot overlap horizontally, so
+ * they cannot be drawn over each other and neither can swallow the other's
+ * cards. That is the whole of the rule: sort by the leftmost column, and drop
+ * each slab into the first row whose occupants all end before it begins.
+ * Strictly before, and no clearance column demanded — the case this is for is
+ * exactly the one where the downstream folder starts in the very next column,
+ * and asking for a gap would refuse it. What keeps the two boxes off each
+ * other's edges is the corridor in `boxesFor`, which is capped at half a
+ * column gap for this reason.
+ *
+ * Packing slabs rather than bands is what keeps the nesting honest. A parent is
+ * packed against its siblings as one thing, with the column range of everything
+ * beneath it, so its descendants can never be split across a row that something
+ * foreign is also standing in — which would put that foreign card inside the
+ * parent's rectangle. Within a parent the same rule runs again on its children,
+ * where every card in the row is the parent's own and there is nothing to
+ * swallow.
+ */
+function pack(slabs: Slab[]): Slab[][] {
+  const rows: { held: Slab[]; reach: number }[] = [];
+
+  /*
+   * Leftmost first, and the odds and ends at the top of a project last.
+   *
+   * Leftmost first is what makes one pass enough: a row's occupants are added
+   * in the order they stand, so the rightmost edge of the row is the last thing
+   * put in it and a single running figure answers the question. The loose files
+   * go at the end rather than by their column because a drawing that opens with
+   * them buries the part somebody came to read — they still land beside
+   * something if they fit, which costs nothing and is no longer a stripe.
+   */
+  const order = [...slabs].sort(
+    (a, b) =>
+      Number(a.key === LOOSE) - Number(b.key === LOOSE) ||
+      a.first - b.first ||
+      a.last - b.last ||
+      a.key.localeCompare(b.key),
+  );
+
+  for (const slab of order) {
+    const row = rows.find((held) => slab.first > held.reach);
+    if (row) {
+      row.held.push(slab);
+      row.reach = Math.max(row.reach, slab.last);
+    } else {
+      rows.push({ held: [slab], reach: slab.last });
+    }
+  }
+
+  return rows.map((row) => row.held);
+}
+
+/**
  * Where each folder's band sits, decided across every column at once.
  *
  * Across every column, and that is the whole of it. A band given whatever room
  * each column happened to need would be a different height in each, and a box
  * drawn round it would cut through the cards of the column next door. Reserving
- * the same run of canvas in every column costs height — a column with nothing
- * in a band leaves that band's room empty — and is what makes the box a
- * rectangle that contains its own files and nobody else's.
+ * the same run of canvas in every column a folder reaches into costs height — a
+ * column inside that reach with nothing in the band leaves the band's room
+ * empty — and is what makes the box a rectangle that contains its own files and
+ * nobody else's.
  *
- * Alphabetical, because it is stable, needs nothing from the graph, and is the
- * order the file list beside the drawing is already in. Files with no folder go
- * last: they are the odds and ends at the top of a project, and a drawing that
- * opens with them buries the part somebody came to read.
+ * What it does not cost is a full-width stripe per folder. A folder only stands
+ * in the columns its own cards landed in, so two folders standing over
+ * different columns share one run of canvas and are drawn side by side; see
+ * `pack`, which is where the argument for that is written down. Folders whose
+ * columns do overlap still queue, in the order their leftmost column comes in.
  */
 function bandsFor(
   columns: Map<number, { node: NodeView; spot: Spot }[]>,
@@ -308,8 +405,10 @@ function bandsFor(
   const needed = new Map<string, number>();
   /** How many files each band holds, so a folder of one draws no box. */
   const held = new Map<string, Set<string>>();
+  /** How far across the drawing each band stands, in columns. */
+  const reach = new Map<string, { first: number; last: number }>();
 
-  for (const bucket of columns.values()) {
+  for (const [column, bucket] of columns) {
     const run = new Map<string, number>();
     for (const { node, spot } of bucket) {
       const key = bandKey(node.path);
@@ -318,6 +417,11 @@ function bandsFor(
       const files = held.get(key);
       if (files) files.add(node.path);
       else held.set(key, new Set([node.path]));
+      const span = reach.get(key);
+      if (span) {
+        span.first = Math.min(span.first, column);
+        span.last = Math.max(span.last, column);
+      } else reach.set(key, { first: column, last: column });
     }
     for (const [key, height] of run) {
       needed.set(key, Math.max(needed.get(key) ?? 0, height));
@@ -366,51 +470,132 @@ function bandsFor(
     folder !== LOOSE &&
     ((under.get(folder)?.size ?? 0) > 1 || (held.get(folder)?.size ?? 0) > 1);
 
+  /*
+   * The folders as a tree of slabs, one level of nesting per drawn box.
+   *
+   * Drawn boxes and not path segments, which is the same distinction the depth
+   * of a box is careful about: a folder nobody would draw a frame around is not
+   * a level, so the bands beneath it hang off whichever box does get drawn. A
+   * folder that is both worth a box and holds files of its own appears twice —
+   * once as the box and once as the band of those files, which is the band's
+   * own first child — because they are two different runs of canvas and only
+   * one of them has a header.
+   */
+  const boxed = [...new Set(keys.filter((key) => key !== LOOSE).flatMap(ancestry))]
+    .filter(boxedFolder)
+    .sort();
+
+  const slabs = new Map<string, Slab>();
+  const roots: Slab[] = [];
+  for (const folder of boxed) {
+    slabs.set(folder, {
+      key: folder,
+      box: true,
+      first: Infinity,
+      last: -Infinity,
+      extent: 0,
+      rows: [],
+    });
+  }
+
+  /** What a slab hangs off, before the rows are worked out. */
+  const kin = new Map<string, Slab[]>();
+  const hang = (parent: string | undefined, slab: Slab) => {
+    if (!parent) {
+      roots.push(slab);
+      return;
+    }
+    const brood = kin.get(parent);
+    if (brood) brood.push(slab);
+    else kin.set(parent, [slab]);
+  };
+
+  for (const folder of boxed) {
+    const chain = ancestry(folder).filter(boxedFolder);
+    hang(chain[chain.length - 2], slabs.get(folder)!);
+  }
+  for (const key of keys) {
+    const chain = key === LOOSE ? [] : ancestry(key).filter(boxedFolder);
+    const span = reach.get(key) ?? { first: 0, last: 0 };
+    hang(chain[chain.length - 1], {
+      key,
+      box: false,
+      first: span.first,
+      last: span.last,
+      // The clearance after the last card of a band is part of what the band
+      // takes: without it the first card of whatever follows sits against it.
+      extent: (needed.get(key) ?? 0) + data.rowGap,
+      rows: [],
+    });
+  }
+
+  /*
+   * How tall each slab is and how far it reaches, worked out from the bottom.
+   *
+   * A box cannot say how much room it wants until its children have been packed
+   * into rows, and they cannot be packed until each of them knows how far it
+   * reaches — so the answer is built upwards and the positions handed down
+   * afterwards. A box's reach is the reach of everything beneath it, which is
+   * what lets it be packed against its siblings as one thing.
+   */
+  const settle = (slab: Slab): Slab => {
+    if (!slab.box) return slab;
+    const brood = (kin.get(slab.key) ?? []).map((child) => settle(child));
+    for (const child of brood) {
+      slab.first = Math.min(slab.first, child.first);
+      slab.last = Math.max(slab.last, child.last);
+    }
+    slab.rows = pack(brood);
+    const inside = slab.rows.reduce(
+      (total, row) => total + Math.max(...row.map((child) => child.extent)),
+      0,
+    );
+    // A pad and a header to open it, and a pad to close it. They nest, so three
+    // levels of folder put three headers above the first card.
+    slab.extent = CLUSTER_PAD + CLUSTER_HEAD + inside + CLUSTER_PAD;
+    return slab;
+  };
+
   const tops = new Map<string, number>();
-  const ranks = new Map<string, number>();
-  const opens = new Map<string, { key: string; top: number; depth: number }>();
   const real: { key: string; top: number; bottom: number; depth: number }[] = [];
 
-  let at = 0;
-  let standing: string[] = [];
-
-  keys.forEach((key, order) => {
-    ranks.set(key, order);
-    const wanted = (key === LOOSE ? [] : ancestry(key)).filter(boxedFolder);
-
-    /*
-     * Room for the frames that end here and the ones that begin.
-     *
-     * A box is drawn outside the cards it holds, so the canvas has to be given
-     * that room rather than have the box drawn over the band above. Closing
-     * costs one pad per box that ends; opening costs a pad and a header each,
-     * and they nest, so three levels of folder mean three headers stacked above
-     * the first card.
-     */
-    const closing = standing.filter((folder) => !wanted.includes(folder));
-    for (const folder of closing) {
-      const open = opens.get(folder);
-      if (open) real.push({ ...open, bottom: at });
-      opens.delete(folder);
-      at += CLUSTER_PAD;
+  function put(slab: Slab, top: number): void {
+    if (!slab.box) {
+      tops.set(slab.key, top);
+      return;
     }
+    real.push({
+      key: slab.key,
+      top: top + CLUSTER_PAD,
+      bottom: top + slab.extent - CLUSTER_PAD,
+      depth: ancestry(slab.key).length,
+    });
+    lay(slab.rows, top + CLUSTER_PAD + CLUSTER_HEAD);
+  }
 
-    const opening = wanted.filter((folder) => !standing.includes(folder));
-    for (const folder of opening) {
-      at += CLUSTER_PAD + CLUSTER_HEAD;
-      opens.set(folder, { key: folder, top: at - CLUSTER_HEAD, depth: ancestry(folder).length });
+  /** A row is as tall as the tallest thing in it, and they all start level. */
+  function lay(rows: Slab[][], from: number): void {
+    let at = from;
+    for (const row of rows) {
+      for (const slab of row) put(slab, at);
+      at += Math.max(...row.map((slab) => slab.extent));
     }
-    standing = wanted;
+  }
 
-    tops.set(key, at);
-    at += (needed.get(key) ?? 0) + data.rowGap;
-  });
-
-  for (const open of opens.values()) real.push({ ...open, bottom: at });
+  lay(pack(roots.map((slab) => settle(slab))), 0);
 
   return {
     of: (path) => tops.get(bandKey(path)),
-    rank: (path) => ranks.get(bandKey(path)) ?? keys.length,
+    /*
+     * Where the band starts, which is all a column needs to know.
+     *
+     * It used to be the band's place in the alphabet, which stopped being an
+     * order the moment two folders could share a run of canvas. The top is an
+     * order again, and a true one within a column: two bands sharing a row have
+     * column ranges that do not touch, so no column ever holds cards from both
+     * and no two cards in a column are ever asked to compare equal.
+     */
+    rank: (path) => tops.get(bandKey(path)) ?? Number.MAX_SAFE_INTEGER,
     // Outermost first, so whatever draws them draws a parent before its child.
     real: real.sort((a, b) => a.depth - b.depth || a.top - b.top),
   };
@@ -492,6 +677,29 @@ function boxesFor(
    * else's cards.
    */
   const deepest = Math.max(1, ...boxes.map((box) => box.depth));
+  /*
+   * Never so far out that a box reaches into the lane beside it.
+   *
+   * Two folders standing over different columns share a run of canvas now, so
+   * for the first time there can be somebody else's card immediately to the
+   * right of a box at the same height. The corridor is measured outwards from
+   * the cards, and the only thing between two neighbouring lanes is one column
+   * gap, so two boxes facing each other across it may have half of it each and
+   * no more — otherwise a folder four levels deep grows a border straight
+   * through the leftmost card of the folder to its right.
+   */
+  const corridor = Math.max(0, Math.floor(data.columnGap / 2) - 2);
+  const edge = Math.min(CLUSTER_EDGE, corridor);
+  /*
+   * Squeezed to fit rather than clipped to fit.
+   *
+   * Clipping would stop the outermost levels at the same figure and give a box
+   * and the box inside it the same border, which is the very fault the corridor
+   * is here to prevent. Narrowing the step keeps every level a visibly
+   * different distance out, and only nesting deep enough to run out of room
+   * ever notices.
+   */
+  const step = Math.min(CLUSTER_STEP, (corridor - edge) / Math.max(1, deepest - 1));
   for (const box of boxes) {
     /*
      * A corridor, and no more than a corridor.
@@ -502,12 +710,11 @@ function boxesFor(
      * A box needs enough room that its edge is plainly not its child's edge,
      * which is a step rather than a margin.
      */
-    const room = CLUSTER_EDGE + CLUSTER_STEP * (deepest - box.depth);
+    const room = Math.round(edge + step * (deepest - box.depth));
     box.x -= room;
     box.width += room * 2;
   }
 
-  void data;
   // Outermost first, so whatever draws them draws a parent before its child.
   return boxes.sort((a, b) => a.depth - b.depth || a.y - b.y);
 }
@@ -545,9 +752,11 @@ export function place(
    *
    * The bands are worked out across every column at once and given the same
    * height in each, which is the only way a folder comes out as one rectangle
-   * rather than as a clump per column. It costs height — a column with nothing
-   * in a band leaves that band's room empty — and buys a box that cannot be
-   * drawn over somebody else's card, which is the whole point of drawing one.
+   * rather than as a clump per column. It costs height — a column inside a
+   * folder's reach with nothing in the band leaves that band's room empty — and
+   * buys a box that cannot be drawn over somebody else's card, which is the
+   * whole point of drawing one. What it does not cost is a stripe per folder:
+   * two folders standing over columns that do not touch share the run.
    *
    * Columns are untouched. A card's x is the arrangement's, and the arrangement
    * is the dependency chain read left to right by call order; clustering is

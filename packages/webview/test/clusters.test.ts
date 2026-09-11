@@ -17,7 +17,14 @@ import type { Arrangement, ViewModel } from "../src/app/model.js";
  * are ordered the same way in every column — but a column holding no card for
  * some folder would pack the rest tighter, and a box spanning several columns
  * would then swallow a card belonging to somebody else. That is why the bands
- * reserve the same run of canvas in every column, and this is what says they do.
+ * reserve the same run of canvas in every column a folder reaches into, and
+ * this is what says they do.
+ *
+ * A folder only reaches into the columns its own cards landed in, so two
+ * folders standing over columns that do not touch share one run of canvas and
+ * are drawn side by side. Every measurement below has to survive that: sharing
+ * a row is the one thing that can put somebody else's card at the same height
+ * as a box and within reach of its border.
  */
 function card(id: string, path: string, column: number, y: number) {
   return {
@@ -308,6 +315,126 @@ describe("how far a name sits below the bar", () => {
     const boxes = grouped(model()).folders ?? [];
     const at = (path: string) => boxes.findIndex((box) => box.path === path);
     expect(at("src")).toBeLessThan(at("src/alpha"));
+  });
+});
+
+/**
+ * A folder that is only ever called, drawn to the right of the folder calling it.
+ *
+ * The failure this guards against is the one that made clustering expensive
+ * enough to turn off. A folder of components that are called and never call back
+ * — a wrapper round a UI library is the usual one — has every one of its cards
+ * in a column to the right of the folder that uses them, because that is what
+ * the column means. The old banding still gave it a full-width stripe of its own
+ * below, so a reader scrolled past two screens of empty canvas to be told
+ * something the columns had already said by standing the cards further right.
+ *
+ * Sharing is allowed exactly when it cannot lie: two folders whose column ranges
+ * do not touch cannot overlap horizontally, so neither box can be drawn over the
+ * other or swallow its cards. Folders that do share columns still queue, and the
+ * second half of this says so — a rule that shared everything would put a box
+ * over a card the very first time two folders met in one column.
+ */
+describe("two folders that stand over different columns", () => {
+  /** A folder used in the left columns, and one only ever called from it. */
+  function downstream(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("p1", "src/page/one.ts", 0, 0),
+      card("p2", "src/page/two.ts", 1, 0),
+      card("m1", "src/mui/one.ts", 2, 0),
+      card("m2", "src/mui/two.ts", 3, 0),
+    ];
+    return data;
+  }
+
+  /** The same two folders, with each one reaching into the other's columns. */
+  function tangled(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("p1", "src/page/one.ts", 0, 0),
+      card("p2", "src/page/two.ts", 2, 0),
+      card("m1", "src/mui/one.ts", 1, 0),
+      card("m2", "src/mui/two.ts", 3, 0),
+    ];
+    return data;
+  }
+
+  it("puts the downstream folder to the right rather than below", () => {
+    const boxes = grouped(downstream()).folders ?? [];
+    const page = boxes.find((box) => box.path === "src/page")!;
+    const mui = boxes.find((box) => box.path === "src/mui")!;
+
+    // The same run of canvas, which is what makes it a row rather than a queue.
+    expect(mui.y).toBe(page.y);
+    expect(mui.x).toBeGreaterThan(page.x + page.width);
+  });
+
+  it("stacks two folders that do share a column", () => {
+    /*
+     * The half of the rule that says no. These two interleave — one has cards in
+     * columns 0 and 2, the other in 1 and 3 — so a box round either spans the
+     * lanes the other is standing in, and drawing them level would be drawing
+     * each of them over the other's cards.
+     */
+    const boxes = grouped(tangled()).folders ?? [];
+    const page = boxes.find((box) => box.path === "src/page")!;
+    const mui = boxes.find((box) => box.path === "src/mui")!;
+
+    const [first, second] = page.y <= mui.y ? [page, mui] : [mui, page];
+    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
+  });
+
+  it("spends less height on the same cards when they can share a row", () => {
+    // The whole of the point, said as the number a reader actually feels.
+    expect(grouped(downstream()).height).toBeLessThan(grouped(tangled()).height);
+  });
+
+  it("still draws no box over a card that is not its own", () => {
+    /*
+     * The invariant the sharing puts most at risk, measured again on a drawing
+     * that shares. Two boxes at the same height are separated by one column gap
+     * and nothing else, and each of them grows a corridor outwards from its own
+     * cards — so a corridor wide enough would put a folder's border straight
+     * through the leftmost card of the folder beside it.
+     */
+    const drawn = grouped(downstream());
+    const trespass: string[] = [];
+
+    for (const box of drawn.folders ?? []) {
+      for (const placed of drawn.cards) {
+        if (box.nodes.includes(placed.node.id)) continue;
+        if (overlaps(box, placed)) trespass.push(`${box.path} over ${placed.node.path}`);
+      }
+    }
+
+    expect(trespass).toEqual([]);
+  });
+
+  it("still keeps a folder's box inside its parent's on all four sides", () => {
+    // The parent holds children in two lanes of one row now rather than in two
+    // stripes, and a rectangle worked out from the wrong half of that would cut
+    // one of them in two.
+    const boxes = grouped(downstream()).folders ?? [];
+    const parent = boxes.find((box) => box.path === "src")!;
+    for (const child of boxes.filter((box) => box.path !== "src")) {
+      expect(child.x).toBeGreaterThanOrEqual(parent.x);
+      expect(child.y).toBeGreaterThanOrEqual(parent.y);
+      expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+      expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
+    }
+  });
+
+  it("still leaves every card in the column its chain put it in", () => {
+    // Sharing a row is a claim about height. A drawing that bought it by moving
+    // a card sideways would have changed what the arrows mean.
+    const data = downstream();
+    const plain = place(data, arrangement(data), STANDING);
+    const shared = grouped(data);
+
+    const columns = (drawn: typeof plain) =>
+      drawn.cards.map((placed) => [placed.node.id, placed.x] as const);
+    expect(columns(shared)).toEqual(columns(plain));
   });
 });
 
