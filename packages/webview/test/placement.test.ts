@@ -81,6 +81,7 @@ const OPEN: Standing = {
   hideViewed: false,
   viewed: new Set(),
   stranded: new Set(),
+  clusters: false,
   measured: () => undefined,
 };
 

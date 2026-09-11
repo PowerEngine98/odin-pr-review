@@ -310,7 +310,7 @@
        rather than being looked up here: by the time the camera has moved, the
        numbers that described where it was going are describing where it has
        been. -->
-  <Canvas onfollow={(journey) => {
+  <Canvas {chromeBottom} onfollow={(journey) => {
     ui.activeNode = journey.nodeId;
     ui.activeEdge = journey.edge.id;
     camera.centreOn(journey.x, journey.y);

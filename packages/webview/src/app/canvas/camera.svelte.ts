@@ -14,7 +14,7 @@ import { onApple } from "./apple.js";
 import { aimFor, type Spot } from "./keys.js";
 import { heightOf, lineAt } from "./measured.svelte.js";
 import { pinHere, pinnedHere } from "./pins.js";
-import { place, type Layout, type Placed } from "./placement.js";
+import { place, type FolderBox, type Layout, type Placed } from "./placement.js";
 import {
   arrangementFor,
   arrows,
@@ -260,6 +260,7 @@ function laid(): Layout {
     hideViewed: settings.hideViewed,
     viewed: ui.viewed,
     stranded,
+    clusters: settings.clusters === true,
     measured: heightOf,
   });
 }
@@ -276,6 +277,16 @@ export function shown(): Placed[] {
  * of the change's extent, and a card that measured taller than it was counted at
  * can reach past it.
  */
+/**
+ * The folder boxes, when the reader has asked for them.
+ *
+ * Empty rather than absent when they have not, so whatever draws them draws
+ * nothing rather than having to know whether clustering is on.
+ */
+export function folders(): FolderBox[] {
+  return laid().folders ?? [];
+}
+
 export function extent(): { width: number; height: number } {
   const { width, height } = laid();
   return { width, height };

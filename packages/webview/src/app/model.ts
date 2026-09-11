@@ -325,6 +325,18 @@ export interface ReaderSettings {
   showUnchanged: boolean;
   hideViewed: boolean;
   showInfra: boolean;
+  /**
+   * Draw the cards grouped into a box per folder.
+   *
+   * Off by default. It costs height — the same run of canvas is reserved for a
+   * folder in every column, so that the folder is one rectangle rather than a
+   * clump per column — and it is bought by a reader who is looking for where a
+   * change sits in the shape of the project rather than for how it flows. What
+   * it never costs is the columns: those are the dependency chain read left to
+   * right by call order, and clustering only ever decides the order of cards
+   * within one.
+   */
+  clusters: boolean;
   hud: {
     reviewers: boolean;
     comments: boolean;

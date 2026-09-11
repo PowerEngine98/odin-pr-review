@@ -273,6 +273,7 @@ const DEFAULTS: ReaderSettings = {
   showUnchanged: false,
   hideViewed: false,
   showInfra: true,
+  clusters: false,
   hud: {
     reviewers: true,
     comments: true,

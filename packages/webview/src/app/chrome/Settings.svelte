@@ -275,6 +275,14 @@
           />
         {/if}
 
+        <!-- Not beside the filters above, which take things away. This adds a
+             shape: the same cards, gathered into the folders they live in. -->
+        <Viewed
+          label="Folder clusters"
+          title="Group the cards into a box per folder. Columns stay as they are — those are the call order."
+          bind:checked={settings.clusters}
+        />
+
         <span class="settings-rule"></span>
         <span class="settings-group">View</span>
         <Viewed label="Reviewers" bind:checked={settings.hud.reviewers} />

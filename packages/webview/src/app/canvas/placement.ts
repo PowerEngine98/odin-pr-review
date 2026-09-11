@@ -10,8 +10,30 @@
  * desk. Held in the camera module it could only be exercised by mounting a page.
  */
 
+import { folderOf } from "@odin/core/layout/folders.js";
+
 import type { Arrangement, NodeView, ViewModel } from "../model.js";
 import { isSchema } from "./wire.js";
+
+/**
+ * A folder, as a box drawn around the cards that live in it.
+ *
+ * Derived geometry rather than a node of its own: nothing is placed here. The
+ * banding keeps a folder's cards in the same run of canvas in every column,
+ * which makes them a rectangle, and this is the rectangle they occupy.
+ */
+export interface FolderBox {
+  /** The folder, as a path — `src/components/media`. Never empty. */
+  path: string;
+  /** What the header says, which is the last segment of that path. */
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** The cards inside it, by id. */
+  nodes: string[];
+}
 
 /** A card, at the coordinates the arrangement in force gives it. */
 export interface Placed {
@@ -52,6 +74,14 @@ export interface Standing {
    * a card surviving a filter its own arrow did not.
    */
   stranded: ReadonlySet<string>;
+  /**
+   * Draw the cards grouped by the folder they live in.
+   *
+   * A reading choice rather than a property of the change, and one that costs
+   * height: the same run of canvas is reserved in every column so that a folder
+   * is one rectangle rather than a clump per column.
+   */
+  clusters: boolean;
   /** What a card turned out to be, where a browser has drawn one. */
   measured: (id: string) => number | undefined;
 }
@@ -170,6 +200,8 @@ export interface Layout {
   cards: Placed[];
   width: number;
   height: number;
+  /** The folder boxes, when the cards were asked to be grouped into them. */
+  folders?: FolderBox[];
 }
 
 /**
@@ -203,6 +235,149 @@ export interface Layout {
  * reproduces the engine's own figure exactly when nothing has been filtered,
  * which is the case it was ever right in.
  */
+/**
+ * Room between a folder's box and the cards inside it, and the height of its
+ * own header above them.
+ *
+ * Kept here rather than in the engine's metrics because nothing the engine does
+ * depends on them: the bands are worked out on this side, where the cards' real
+ * heights are known.
+ */
+const CLUSTER_PAD = 22;
+const CLUSTER_HEAD = 30;
+
+/** The band a file belongs to, which is the folder it lives in. */
+const LOOSE = "\u0000loose";
+
+function bandKey(path: string): string {
+  return folderOf(path) ?? LOOSE;
+}
+
+interface Bands {
+  /** Where this file's band begins, in canvas units. */
+  of(path: string): number | undefined;
+  /** Which band it is, so a column can be put in band order. */
+  rank(path: string): number;
+  /** Every band that is a real folder with more than one file in it. */
+  real: { key: string; top: number; height: number }[];
+}
+
+/**
+ * Where each folder's band sits, decided across every column at once.
+ *
+ * Across every column, and that is the whole of it. A band given whatever room
+ * each column happened to need would be a different height in each, and a box
+ * drawn round it would cut through the cards of the column next door. Reserving
+ * the same run of canvas in every column costs height — a column with nothing
+ * in a band leaves that band's room empty — and is what makes the box a
+ * rectangle that contains its own files and nobody else's.
+ *
+ * Alphabetical, because it is stable, needs nothing from the graph, and is the
+ * order the file list beside the drawing is already in. Files with no folder go
+ * last: they are the odds and ends at the top of a project, and a drawing that
+ * opens with them buries the part somebody came to read.
+ */
+function bandsFor(
+  columns: Map<number, { node: NodeView; spot: Spot }[]>,
+  data: ViewModel,
+): Bands {
+  /** How much room each band needs, which is the worst any column needs. */
+  const needed = new Map<string, number>();
+  /** How many files each band holds, so a folder of one draws no box. */
+  const held = new Map<string, Set<string>>();
+
+  for (const bucket of columns.values()) {
+    const run = new Map<string, number>();
+    for (const { node, spot } of bucket) {
+      const key = bandKey(node.path);
+      const height = spot.height || node.height;
+      run.set(key, (run.get(key) ?? -data.rowGap) + height + data.rowGap);
+      const files = held.get(key);
+      if (files) files.add(node.path);
+      else held.set(key, new Set([node.path]));
+    }
+    for (const [key, height] of run) {
+      needed.set(key, Math.max(needed.get(key) ?? 0, height));
+    }
+  }
+
+  const keys = [...needed.keys()]
+    .filter((key) => key !== LOOSE)
+    .sort()
+    .concat(needed.has(LOOSE) ? [LOOSE] : []);
+
+  const tops = new Map<string, number>();
+  const ranks = new Map<string, number>();
+  const real: { key: string; top: number; height: number }[] = [];
+
+  let at = 0;
+  keys.forEach((key, order) => {
+    ranks.set(key, order);
+    /*
+     * A folder with one file in it gets no box, and so needs no padding.
+     *
+     * A box around a single card is a second frame a few pixels outside the
+     * first: it reads as a rendering fault rather than as a grouping, and says
+     * nothing the card does not already say with its own path.
+     */
+    const boxed = key !== LOOSE && (held.get(key)?.size ?? 0) > 1;
+    const top = at + (boxed ? CLUSTER_HEAD + CLUSTER_PAD : 0);
+    tops.set(key, top);
+
+    const height = needed.get(key) ?? 0;
+    if (boxed) real.push({ key, top, height });
+    at = top + height + (boxed ? CLUSTER_PAD : 0) + data.rowGap;
+  });
+
+  return {
+    of: (path) => tops.get(bandKey(path)),
+    rank: (path) => ranks.get(bandKey(path)) ?? keys.length,
+    real,
+  };
+}
+
+/**
+ * The rectangle each folder's cards ended up occupying.
+ *
+ * Read off the placement rather than reserved in it. The band decided the top
+ * and the height; what is left is how far the folder reaches across the
+ * drawing, which is a question about which columns its files landed in — and a
+ * box that is measured cannot disagree with the cards it is drawn around.
+ */
+function boxesFor(
+  bands: Bands,
+  placed: Map<string, Placed>,
+  data: ViewModel,
+): FolderBox[] {
+  const boxes: FolderBox[] = [];
+
+  for (const band of bands.real) {
+    const inside = [...placed.values()].filter(
+      (card) => bandKey(card.node.path) === band.key,
+    );
+    // Every file in it was filtered away — tests hidden, a part opened, files
+    // ticked off. A box around nothing is a box that is lying.
+    if (inside.length < 2) continue;
+
+    const left = Math.min(...inside.map((card) => card.x));
+    const right = Math.max(...inside.map((card) => card.x + card.width));
+    const bottom = Math.max(...inside.map((card) => card.y + card.height));
+
+    boxes.push({
+      path: band.key,
+      label: band.key.slice(band.key.lastIndexOf("/") + 1),
+      x: left - CLUSTER_PAD,
+      y: band.top - CLUSTER_HEAD - CLUSTER_PAD,
+      width: right - left + CLUSTER_PAD * 2,
+      height: bottom - band.top + CLUSTER_HEAD + CLUSTER_PAD * 2,
+      nodes: inside.map((card) => card.node.id),
+    });
+  }
+
+  void data;
+  return boxes;
+}
+
 export function place(
   data: ViewModel,
   whole: Arrangement,
@@ -231,8 +406,30 @@ export function place(
   let tallest = 0;
   let widest = 0;
 
+  /*
+   * Grouped by the folder each file lives in, when the reader asks for it.
+   *
+   * The bands are worked out across every column at once and given the same
+   * height in each, which is the only way a folder comes out as one rectangle
+   * rather than as a clump per column. It costs height — a column with nothing
+   * in a band leaves that band's room empty — and buys a box that cannot be
+   * drawn over somebody else's card, which is the whole point of drawing one.
+   *
+   * Columns are untouched. A card's x is the arrangement's, and the arrangement
+   * is the dependency chain read left to right by call order; clustering is
+   * only ever a question about the order of cards *within* a column.
+   */
+  const bands = standing.clusters ? bandsFor(columns, data) : undefined;
+
   for (const bucket of columns.values()) {
-    bucket.sort((a, b) => a.spot.y - b.spot.y);
+    // Band first, then the order the engine settled on. Without the band the
+    // monotonic floor below would place whichever card came first and push the
+    // bands into each other, which is the one thing the reserved room is for.
+    bucket.sort(
+      (a, b) =>
+        (bands ? bands.rank(a.node.path) - bands.rank(b.node.path) : 0) ||
+        a.spot.y - b.spot.y,
+    );
 
     let shift = 0;
     let floor = -Infinity;
@@ -261,7 +458,18 @@ export function place(
       }
 
       const height = measured(node.id) ?? estimate;
-      const y = Math.max(spot.y + shift, floor);
+      /*
+       * Inside its band, or wherever the column had it.
+       *
+       * The floor still applies either way: two cards in one column may not
+       * overlap whatever anything else says, and a band whose contents have
+       * grown past the room reserved for them pushes down rather than through.
+       */
+      const band = bands?.of(node.path);
+      const y =
+        band === undefined
+          ? Math.max(spot.y + shift, floor)
+          : Math.max(band, floor);
       floor = y + height + data.rowGap;
       shift += height - estimate;
 
@@ -288,9 +496,12 @@ export function place(
   // Room past the last card on each side. Nothing on the canvas is a drawing
   // with no extent — it is a drawing that has not arrived — so the model's own
   // figures stand in rather than a canvas of two margins.
+  const folders = bands ? boxesFor(bands, placed, data) : undefined;
+
   return {
     cards,
     width: cards.length ? Math.round(widest + data.margin) : data.width,
     height: tallest > 0 ? Math.round(tallest + data.margin) : data.height,
+    ...(folders ? { folders } : {}),
   };
 }

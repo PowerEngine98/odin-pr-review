@@ -15,7 +15,8 @@
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
-  import Pinned from "./Pinned.svelte";
+  import Clusters from "./Clusters.svelte";
+import Pinned from "./Pinned.svelte";
   import { wheelGesture } from "./gestures.js";
   import { listen as listenForKeys } from "./keyboard.svelte.js";
   import { lineAt } from "./measured.svelte.js";
@@ -37,14 +38,25 @@
     card = undefined,
     /** Following an arrow: where the camera is moved from is not this layer. */
     onfollow = undefined,
+    /**
+     * The bottom of the bar across the top, in window pixels.
+     *
+     * Passed through to the folder boxes, whose headers keep themselves under
+     * it the way a card's title does — there is no scrolling ancestor here for
+     * anything to be sticky inside.
+     */
+    chromeBottom = 0,
   }: {
     card?: Snippet<[Placed]>;
     onfollow?: (journey: Journey) => void;
+    chromeBottom?: number;
   } = $props();
 
   let viewport: HTMLDivElement;
 
   const cards = $derived(camera.shown());
+  // Behind the cards, because a box is a place the cards are in.
+  const boxed = $derived(camera.folders());
   const size = $derived(camera.extent());
 
   /**
@@ -261,6 +273,13 @@
       so they belong inside this layer and nowhere else — placed anywhere above
       it they would stand still while the drawing moved under them.
     -->
+    <!--
+      The folders, under everything. A box is a place the cards are in, so it is
+      behind them and behind the arrows between them — drawn over either, it
+      would be a pane of glass across the thing the reader came to look at.
+    -->
+    <Clusters folders={boxed} {chromeBottom} />
+
     <EdgeLayer {size} {boxes} {lineAt} {onfollow} />
 
     <!--

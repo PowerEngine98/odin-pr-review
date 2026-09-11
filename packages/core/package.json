@@ -18,6 +18,10 @@
       "types": "./dist/agents/marks.d.ts",
       "default": "./dist/agents/marks.js"
     },
+    "./layout/folders.js": {
+      "types": "./dist/layout/folders.d.ts",
+      "default": "./dist/layout/folders.js"
+    },
     "./layout/curves.js": {
       "types": "./dist/layout/curves.d.ts",
       "default": "./dist/layout/curves.js"
