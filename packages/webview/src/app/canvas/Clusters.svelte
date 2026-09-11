@@ -94,9 +94,16 @@
      * once, and pinned to the same line they land on the same row and read as
      * one illegible name. A folder's name sits below its parent's, in the order
      * they nest, which is the order the path reads in.
+     *
+     * The step is added after the scale has been divided out, not before, and
+     * that is not a detail. A header is thirty canvas units tall, so at any
+     * zoom but one a step measured in window pixels is a different size from
+     * the thing it is stepping over — the names drifted apart as the reader
+     * zoomed in and overlapped as they zoomed out, which looked like the
+     * stacking being wrong rather than the units being.
      */
     const line =
-      (chromeBottom - 1 + (box.depth - 1) * CLUSTER_HEAD - view.y) / view.scale;
+      (chromeBottom - 1 - view.y) / view.scale + (box.depth - 1) * CLUSTER_HEAD;
     const offset = Math.floor(line - box.y);
     if (offset <= 0 || box.height <= CLUSTER_HEAD) return 0;
     return Math.min(offset, box.height - CLUSTER_HEAD);

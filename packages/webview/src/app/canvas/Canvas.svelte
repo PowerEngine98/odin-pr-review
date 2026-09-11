@@ -80,7 +80,14 @@ import Pinned from "./Pinned.svelte";
     for (const box of boxed) {
       for (const id of box.nodes) held.set(id, (held.get(id) ?? 0) + 1);
     }
-    return (id: string) => chromeBottom + (held.get(id) ?? 0) * CLUSTER_HEAD;
+    /*
+     * Scaled, because the card divides this by the zoom to reach canvas units
+     * and a header is thirty of those tall. Handed over unscaled it pushed the
+     * title by a different amount than the headers actually occupy, so a card's
+     * name sat in its own code at one zoom and under a folder's name at another.
+     */
+    return (id: string) =>
+      chromeBottom + (held.get(id) ?? 0) * CLUSTER_HEAD * view.scale;
   });
   const size = $derived(camera.extent());
 
