@@ -2,10 +2,9 @@
   The folders, drawn as boxes around the cards that live in them.
 
   Behind everything: a box is a place the cards are in, and one drawn over them
-  would be a pane of glass across the thing the reader came to look at. Dotted,
-  because a folder is not a file — a solid border would read as one more card,
-  larger and empty, and the drawing already spends its solid lines on the things
-  that hold code.
+  would be a pane of glass across the thing the reader came to look at. It is
+  told apart from a card by being fainter and by holding others, rather than by
+  being drawn in a different kind of line.
 
   Nothing here is placed. The banding puts a folder's cards in the same run of
   canvas in every column, which is what makes a folder a rectangle at all, and
@@ -150,11 +149,16 @@
   .cluster {
     position: absolute;
     /*
-     * Dotted, and a folder rather than a file. A solid border here reads as one
-     * more card — larger, emptier — and the drawing spends its solid lines on
-     * the things that hold code.
+     * Solid, and quieter than a card's.
+     *
+     * Dotted read as provisional — a selection, or something still being
+     * dragged — rather than as a container, and against a drawing of dotted
+     * gap-bands and dashed marks it was one more broken line among several. A
+     * box is a real thing the cards are in, so it gets a real edge, and it is
+     * told apart from a card by being fainter and by holding others rather than
+     * by being made of a different kind of line.
      */
-    border: 1.5px dotted color-mix(in srgb, var(--text) 30%, transparent);
+    border: 1.5px solid color-mix(in srgb, var(--text) 26%, transparent);
     border-radius: 10px;
     /*
      * The corners belong to the box, so the box is what cuts them.
@@ -193,7 +197,7 @@
      */
     background: var(--card-bg);
     background: color-mix(in srgb, var(--text) 10%, var(--card-bg));
-    border-bottom: 1px dotted color-mix(in srgb, var(--text) 24%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
     color: var(--muted);
     font-family: var(--mono);
     font-size: 11px;
