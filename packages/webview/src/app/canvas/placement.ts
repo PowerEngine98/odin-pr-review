@@ -255,6 +255,12 @@ export interface Layout {
  * heights are known.
  */
 const CLUSTER_PAD = 30;
+
+/** Room between a box's own edge and what it holds. */
+const CLUSTER_EDGE = 14;
+
+/** And how much further out each enclosing box sits than the one inside it. */
+const CLUSTER_STEP = 16;
 const CLUSTER_HEAD = 30;
 
 /** The band a file belongs to, which is the folder it lives in. */
@@ -487,7 +493,16 @@ function boxesFor(
    */
   const deepest = Math.max(1, ...boxes.map((box) => box.depth));
   for (const box of boxes) {
-    const room = CLUSTER_PAD * (1 + deepest - box.depth);
+    /*
+     * A corridor, and no more than a corridor.
+     *
+     * The first version paid a full pad per level, so a folder three deep put
+     * ninety pixels of nothing down each side of the outermost box — a gap wide
+     * enough to read as a column with no cards in it rather than as a border.
+     * A box needs enough room that its edge is plainly not its child's edge,
+     * which is a step rather than a margin.
+     */
+    const room = CLUSTER_EDGE + CLUSTER_STEP * (deepest - box.depth);
     box.x -= room;
     box.width += room * 2;
   }

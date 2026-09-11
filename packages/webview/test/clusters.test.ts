@@ -324,8 +324,14 @@ describe("the room between one box and the next", () => {
     const parent = boxes.find((box) => box.path === "src")!;
     const child = boxes.find((box) => box.path === "src/alpha")!;
 
-    expect(child.x - parent.x).toBeGreaterThan(20);
-    expect(parent.x + parent.width - (child.x + child.width)).toBeGreaterThan(20);
+    /*
+     * Enough to read as a corridor rather than as a thick edge. Deliberately a
+     * floor and not the step itself: what matters is that a reader can see
+     * which box a card is in, and pinning the exact number here would make this
+     * a test of a constant rather than of the thing the constant is for.
+     */
+    expect(child.x - parent.x).toBeGreaterThan(10);
+    expect(parent.x + parent.width - (child.x + child.width)).toBeGreaterThan(10);
   });
 
   it("does not take that room out of the band below", () => {

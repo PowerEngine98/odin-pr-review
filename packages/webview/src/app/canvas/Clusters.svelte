@@ -111,6 +111,7 @@
     style:top="{box.y}px"
     style:width="{box.width}px"
     style:height="{box.height}px"
+    style:z-index={40 - box.depth}
   >
     <!--
       A bar across the whole box, as a card's title is across the whole card.
@@ -136,6 +137,16 @@
 {/each}
 
 <style>
+  /*
+   * An outer box's name sits over an inner one's.
+   *
+   * They are stacked by how deep they are, so a parent's bar is drawn above its
+   * children's rather than under them. Held against the top of the window they
+   * are a few pixels apart, and a child's bar drawn over its parent's leaves the
+   * outer folder's name half covered by the inner one's — which is the wrong way
+   * round: the outer name is the one that is about to go off screen, and the one
+   * a reader has the least other way of recovering.
+   */
   .cluster {
     position: absolute;
     /*
@@ -145,6 +156,17 @@
      */
     border: 1.5px dotted color-mix(in srgb, var(--text) 30%, transparent);
     border-radius: 10px;
+    /*
+     * The corners belong to the box, so the box is what cuts them.
+     *
+     * The header drew its own rounded top, which is right only while it is
+     * sitting at the top. Slid down to stay under the bar it took its corners
+     * with it, so a bar with two curves in the middle of a folder sat inside
+     * square walls — the shape saying "a box begins here" in a place where
+     * nothing began. Clipped here instead, the header is square, and where it
+     * happens to meet a corner the corner is the one the box already has.
+     */
+    overflow: hidden;
     background: color-mix(in srgb, var(--text) 3%, transparent);
     /* Behind the cards, and out of the way of every gesture aimed at them: a
        box is a place, not a thing to be clicked. */
@@ -160,8 +182,16 @@
     align-items: center;
     height: 30px;
     padding: 0 10px;
-    border-radius: 9px 9px 0 0;
     /* Solid, because cards pass under it as the folder scrolls. */
+    /*
+     * Opaque, and said twice on purpose.
+     *
+     * Cards pass under this bar as the folder scrolls, and a header one can
+     * read code through is a header that is illegible exactly when it is
+     * needed. The mix is against the card background rather than against
+     * nothing, so it is solid whatever the theme makes of it.
+     */
+    background: var(--card-bg);
     background: color-mix(in srgb, var(--text) 10%, var(--card-bg));
     border-bottom: 1px dotted color-mix(in srgb, var(--text) 24%, transparent);
     color: var(--muted);
