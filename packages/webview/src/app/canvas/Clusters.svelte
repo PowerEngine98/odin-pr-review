@@ -255,7 +255,21 @@
      */
     border: 1.5px solid color-mix(in srgb, var(--text) 26%, transparent);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--text) 3%, transparent);
+    /*
+     * No fill, and the fill is what had to go.
+     *
+     * Three per cent of the text colour is nothing on its own, but the boxes
+     * nest: six frames around one card painted that wash six times over the
+     * same patch of canvas, which is nearer a fifth than a twentieth. An
+     * untouched card hid all of it, being opaque — but a card the reader has
+     * ticked off is drawn at just under half opacity, so most of that stack
+     * came through it and the code inside a deeply nested folder read as
+     * fogged. The fog was worst exactly where the reader had already done the
+     * work of reading, which is the last place to put a veil.
+     *
+     * A box says what it is with its border and its bar, both of which are
+     * drawn once however deep the nesting goes.
+     */
     /* Behind the cards, and out of the way of every gesture aimed at them: a
        box is a place, not a thing to be clicked. */
     pointer-events: none;

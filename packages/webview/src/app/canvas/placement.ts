@@ -281,8 +281,24 @@ const CLUSTER_PAD = 44;
  */
 const CLUSTER_EDGE = 30;
 
-/** And how much further out each enclosing box sits than the one inside it. */
-const CLUSTER_STEP = 16;
+/**
+ * And how much further out each enclosing box sits than the one inside it.
+ *
+ * A whole card's width of it, because a nest of folders has to be readable as a
+ * nest. Five boxes around one run of cards — `frontend`, `common`, `src`,
+ * `components`, `interfaces`, which is an ordinary enough path — were coming out
+ * with their left edges ten units apart, so at any zoom a reader is actually
+ * reading code at they were five lines ruled together and the reader could not
+ * say which of them any card was in. The step is what says how deep a thing is,
+ * and a step the thickness of a border says nothing.
+ *
+ * Affordable because it is a ceiling rather than a reservation: what a box
+ * actually takes is worked out side by side in `boxesFor` from the room that is
+ * really there, so a box with a neighbour beside it takes what fits and a box
+ * with open canvas beside it takes all of this. A folder only ever pays for the
+ * levels drawn inside it, so a box holding no other box pays nothing at all.
+ */
+const CLUSTER_STEP = 200;
 
 /** The band a file belongs to, which is the folder it lives in. */
 const LOOSE = "\u0000loose";
@@ -627,11 +643,7 @@ function bandsFor(
  * drawing, which is a question about which columns its files landed in — and a
  * box that is measured cannot disagree with the cards it is drawn around.
  */
-function boxesFor(
-  bands: Bands,
-  placed: Map<string, Placed>,
-  data: ViewModel,
-): FolderBox[] {
+function boxesFor(bands: Bands, placed: Map<string, Placed>): FolderBox[] {
   const boxes: FolderBox[] = [];
 
   for (const band of bands.real) {
@@ -695,19 +707,91 @@ function boxesFor(
    * else's cards.
    */
   const deepest = Math.max(1, ...boxes.map((box) => box.depth));
+  // Outermost first, because what a box may take depends on what the box it
+  // sits inside was allowed, and that has to be settled before it is asked.
+  boxes.sort((a, b) => a.depth - b.depth);
+
+  /** Whether two things are standing in the same run of canvas at all. */
+  type Span = { x: number; y: number; width: number; height: number };
+  const level = (a: Span, b: Span) =>
+    a.y < b.y + b.height && b.y < a.y + a.height;
+  /** A box and the boxes it holds, which are never in each other's way. */
+  const nested = (a: string, b: string) =>
+    a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+
+  /** So that a border is never drawn flush against what it had to stop at. */
+  const HAIR = 2;
+
   /*
-   * Never so far out that a box reaches into the lane beside it.
+   * How far each box may grow before it reaches something that is not its own.
    *
-   * Two folders standing over different columns share a run of canvas now, so
-   * for the first time there can be somebody else's card immediately to the
-   * right of a box at the same height. The corridor is measured outwards from
-   * the cards, and the only thing between two neighbouring lanes is one column
-   * gap, so two boxes facing each other across it may have half of it each and
-   * no more — otherwise a folder four levels deep grows a border straight
-   * through the leftmost card of the folder to its right.
+   * Per box and per side, which is the whole of the repair. This used to be one
+   * figure for the entire drawing: half a column gap, on the grounds that two
+   * folders sharing a run of canvas are separated by one column gap and each may
+   * have half of it. That is true of a box with a neighbour beside it and it is
+   * true of nothing else — and it was being charged to every box in the drawing,
+   * including the ones standing at the edge of it with open canvas on both sides
+   * and nothing whatever to collide with. A nest five deep then had sixty-eight
+   * units to share between five levels and drew them ten units apart.
+   *
+   * What is in a box's way is a card it does not hold, or a box it is neither
+   * inside nor holds, and only where the two are level with each other — a
+   * folder further down the drawing is not a neighbour however wide it is. A
+   * card does not grow, so the gap up to one is the box's to take. Another box
+   * is measuring this same gap from its own side at this same moment, so they
+   * have half each and meet in the middle, which is the argument the column gap
+   * was standing in for all along, now made about the gap that is actually
+   * there.
+   *
+   * A card that belongs to some other box needs no case of its own: that box's
+   * own rectangle reaches at least as far as its cards do, so it is the nearer
+   * obstacle and the halving is what applies.
+   *
+   * And never further out than the box this one sits inside was allowed, which
+   * is what keeps a child within its parent when the two are given different
+   * room. Without it a parent hemmed in by a sibling and a child with clear
+   * canvas beneath it would have the child growing out through the parent's
+   * own edge.
    */
-  const corridor = Math.max(0, Math.floor(data.columnGap / 2) - 2);
-  const edge = Math.min(CLUSTER_EDGE, corridor);
+  const allowed = new Map<string, { left: number; right: number }>();
+  for (const box of boxes) {
+    let left = Infinity;
+    let right = Infinity;
+
+    for (const other of boxes) {
+      if (nested(box.path, other.path) || !level(box, other)) continue;
+      const share = (gap: number) => Math.floor(gap / 2) - HAIR;
+      if (other.x + other.width <= box.x) {
+        left = Math.min(left, share(box.x - other.x - other.width));
+      }
+      if (other.x >= box.x + box.width) {
+        right = Math.min(right, share(other.x - box.x - box.width));
+      }
+    }
+
+    for (const card of placed.values()) {
+      if (box.nodes.includes(card.node.id) || !level(box, card)) continue;
+      if (card.x + card.width <= box.x) {
+        left = Math.min(left, box.x - card.x - card.width - HAIR);
+      }
+      if (card.x >= box.x + box.width) {
+        right = Math.min(right, card.x - box.x - box.width - HAIR);
+      }
+    }
+
+    const parent = boxes.find(
+      (other) =>
+        other.depth === box.depth - 1 && box.path.startsWith(`${other.path}/`),
+    );
+    const outer = parent
+      ? allowed.get(parent.path)!
+      : { left: Infinity, right: Infinity };
+    allowed.set(box.path, {
+      left: Math.max(0, Math.min(left, outer.left)),
+      right: Math.max(0, Math.min(right, outer.right)),
+    });
+  }
+
   /*
    * Squeezed to fit rather than clipped to fit.
    *
@@ -716,21 +800,105 @@ function boxesFor(
    * is here to prevent. Narrowing the step keeps every level a visibly
    * different distance out, and only nesting deep enough to run out of room
    * ever notices.
+   *
+   * The room is shared out over the deepest nesting in the drawing rather than
+   * over this box's own, which is the conservative of the two and the one that
+   * keeps the arithmetic honest: a box's own share is never more than its own
+   * room, because it is never asked for more levels than the figure was divided
+   * by. What it is asked for is the levels actually drawn inside it, so a box
+   * holding no other box sits a plain edge away from its cards however deep the
+   * rest of the drawing goes — charged the full step for levels it does not
+   * have, an ordinary folder standing on its own would have grown a border two
+   * columns wide the moment the step became generous enough to see.
    */
-  const step = Math.min(CLUSTER_STEP, (corridor - edge) / Math.max(1, deepest - 1));
+  const reach = (room: number, levels: number) => {
+    const edge = Math.min(CLUSTER_EDGE, room);
+    const step = Math.min(CLUSTER_STEP, (room - edge) / Math.max(1, deepest - 1));
+    return Math.round(edge + step * levels);
+  };
+
+  /** Where each box stood before any of this, which the tightening needs. */
+  const raw = new Map(
+    boxes.map((box) => [box.path, { left: box.x, right: box.x + box.width }]),
+  );
+
   for (const box of boxes) {
+    // How far the nesting goes below this box, counting itself.
+    const under = boxes.reduce(
+      (deep, other) =>
+        other.path.startsWith(`${box.path}/`)
+          ? Math.max(deep, other.depth)
+          : deep,
+      box.depth,
+    );
+    const room = allowed.get(box.path)!;
     /*
-     * A corridor, and no more than a corridor.
+     * A corridor, and no more than the room there is for one.
      *
      * The first version paid a full pad per level, so a folder three deep put
      * ninety pixels of nothing down each side of the outermost box — a gap wide
      * enough to read as a column with no cards in it rather than as a border.
      * A box needs enough room that its edge is plainly not its child's edge,
      * which is a step rather than a margin.
+     *
+     * The two sides are asked separately and routinely answer differently. A
+     * nest at the left edge of the drawing has a sibling's cards a column away
+     * on one side and the whole empty canvas on the other, and there is no
+     * reason for the open side to be charged for the crowded one — a box that
+     * had to be symmetrical would be held to the worse of its two neighbours
+     * everywhere, which is the drawing-wide figure again in miniature.
      */
-    const room = Math.round(edge + step * (deepest - box.depth));
-    box.x -= room;
-    box.width += room * 2;
+    const left = reach(room.left, under - box.depth);
+    const right = reach(room.right, under - box.depth);
+    box.x -= left;
+    box.width += left + right;
+  }
+
+  /*
+   * And back in again on any side where there was nothing to stand clear of.
+   *
+   * How many levels a box is charged for is how deep the nesting goes anywhere
+   * inside it, which is the only figure that can be worked out without knowing
+   * which side each of those levels ends up on — and it is charged to both
+   * sides. A folder holding a deep branch on its right and a shallow one on its
+   * left was paying four steps on the left to stand clear of a single box that
+   * was thirty units out, so the outermost frame opened with eight hundred
+   * units of empty canvas down one side and the reader was looking at a border
+   * with nothing on the far side of it.
+   *
+   * The step is only ever there to hold a box off the boxes inside it, so one
+   * step beyond the outermost of them is the whole of what it is for. Worked
+   * from the inside out, so that a box that has just been brought in lets the
+   * box around it come in too. Only ever inwards: a box that was clear of
+   * somebody else's cards before this stays clear of them, since nothing here
+   * moves an edge further out, and no box crosses a box it holds, since every
+   * edge stops a full step short of its children's.
+   */
+  for (const box of [...boxes].reverse()) {
+    const brood = boxes.filter(
+      (other) =>
+        other.depth === box.depth + 1 && other.path.startsWith(`${box.path}/`),
+    );
+    if (!brood.length) continue;
+    const room = allowed.get(box.path)!;
+    const own = raw.get(box.path)!;
+    // Never nearer its own cards than a plain edge, whatever it holds.
+    const left = Math.max(
+      box.x,
+      Math.min(
+        own.left - Math.min(CLUSTER_EDGE, room.left),
+        ...brood.map((other) => other.x - CLUSTER_STEP),
+      ),
+    );
+    const right = Math.min(
+      box.x + box.width,
+      Math.max(
+        own.right + Math.min(CLUSTER_EDGE, room.right),
+        ...brood.map((other) => other.x + other.width + CLUSTER_STEP),
+      ),
+    );
+    box.x = left;
+    box.width = right - left;
   }
 
   // Outermost first, so whatever draws them draws a parent before its child.
@@ -761,6 +929,37 @@ export function place(
     else columns.set(spot.column, [{ node, spot }]);
   }
 
+  /*
+   * Whether a card is going to be on the canvas at all, asked before anything
+   * is worked out from where the cards are.
+   *
+   * A file the change touched stays on the canvas whatever happens to it. It
+   * goes quiet when it has been read — dimmed, its box ticked — but it does not
+   * leave: the picture is of this change, and a change with its read files
+   * removed is a picture of something else. What the switches take away is the
+   * untouched files, which are only here because something pointed at them, and
+   * which have nothing left to say once that has been read or once the last
+   * arrow to them has gone.
+   *
+   * It used to be asked halfway down the placement loop, by which time the
+   * bands had already been settled from a set of columns that still held every
+   * one of these cards — and a band is the one thing on this side that is
+   * worked out from all the columns at once, so a card nobody would ever see
+   * still widened its folder's reach and still reserved a run of canvas for
+   * itself. That is how a folder of leaf components ended up queueing for a row
+   * of its own behind a folder that, once the drawing was made, stood nowhere
+   * near it: an untouched type module in a far-left column, dropped before it
+   * was drawn but counted when the rows were packed, made its folder span most
+   * of the width of the change and turned a row that three folders could have
+   * shared into three rows stacked down the page.
+   */
+  const shown = (node: NodeView): boolean =>
+    !node.untouched ||
+    !(
+      (standing.hideViewed && standing.viewed.has(node.path)) ||
+      standing.stranded.has(node.id)
+    );
+
   const placed = new Map<string, Placed>();
   let tallest = 0;
   let widest = 0;
@@ -779,8 +978,25 @@ export function place(
    * Columns are untouched. A card's x is the arrangement's, and the arrangement
    * is the dependency chain read left to right by call order; clustering is
    * only ever a question about the order of cards *within* a column.
+   *
+   * Worked out from the cards that are going to be drawn and no others. The
+   * loop below still walks the whole bucket, because a card leaving has to
+   * close its column up behind it and that is an accumulator down the column
+   * rather than a filter — but a band answers a question about every column at
+   * once, and answering it from cards that will not be there gives a folder a
+   * reach and a height it does not have.
    */
-  const bands = standing.clusters ? bandsFor(columns, data) : undefined;
+  const bands = standing.clusters
+    ? bandsFor(
+        new Map(
+          [...columns].map(([column, bucket]) => [
+            column,
+            bucket.filter(({ node }) => shown(node)),
+          ]),
+        ),
+        data,
+      )
+    : undefined;
 
   for (const bucket of columns.values()) {
     // Band first, then the order the engine settled on. Without the band the
@@ -796,24 +1012,10 @@ export function place(
     let floor = -Infinity;
     for (const { node, spot } of bucket) {
       const estimate = spot.height || node.height;
-      // A file the change touched stays on the canvas whatever happens to it. It
-      // goes quiet when it has been read — dimmed, its box ticked — but it does
-      // not leave: the picture is of this change, and a change with its read
-      // files removed is a picture of something else. What the switch takes away
-      // is the untouched files, which are only here because something pointed at
-      // them, and which have nothing left to say once that has been read.
-      if (standing.hideViewed && node.untouched && standing.viewed.has(node.path)) {
-        shift -= estimate + data.rowGap;
-        continue;
-      }
-
-      // And the same for one nothing points at any more. Its column closes up
-      // behind it exactly as above, so the rest of the drawing does not sit
-      // around a hole where a card used to be.
-      // Untouched, and only untouched. A file the change did touch is part of
-      // what was changed whether or not anything still points at it, and the
-      // picture is of the change.
-      if (node.untouched && standing.stranded.has(node.id)) {
+      // Its column closes up behind it, so the rest of the drawing does not sit
+      // around a hole where a card used to be. Which cards these are is decided
+      // above, where the bands can be asked the same question.
+      if (!shown(node)) {
         shift -= estimate + data.rowGap;
         continue;
       }
@@ -857,7 +1059,7 @@ export function place(
   // Room past the last card on each side. Nothing on the canvas is a drawing
   // with no extent — it is a drawing that has not arrived — so the model's own
   // figures stand in rather than a canvas of two margins.
-  const folders = bands ? boxesFor(bands, placed, data) : undefined;
+  const folders = bands ? boxesFor(bands, placed) : undefined;
 
   return {
     cards,

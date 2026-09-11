@@ -107,8 +107,10 @@ const STANDING: Standing = {
   measured: () => undefined,
 };
 
-const grouped = (data: ViewModel) =>
-  place(data, arrangement(data), { ...STANDING, clusters: true });
+const groupedWith = (data: ViewModel, extra: Partial<Standing> = {}) =>
+  place(data, arrangement(data), { ...STANDING, clusters: true, ...extra });
+
+const grouped = (data: ViewModel) => groupedWith(data);
 
 const overlaps = (
   a: { x: number; y: number; width: number; height: number },
@@ -435,6 +437,382 @@ describe("two folders that stand over different columns", () => {
     const columns = (drawn: typeof plain) =>
       drawn.cards.map((placed) => [placed.node.id, placed.x] as const);
     expect(columns(shared)).toEqual(columns(plain));
+  });
+});
+
+/**
+ * A folder made to queue by a card that is not on the canvas.
+ *
+ * The fault a reader saw as a column of folder boxes marching down the drawing,
+ * each one starting a little further right than the one above it, where the
+ * columns had already said they could stand side by side. Two of the switches on
+ * the page take cards away — an untouched file that has been read, and an
+ * untouched file with no arrow left pointing at it — and they take them away by
+ * skipping them as the column is placed. The bands were settled before that, off
+ * a set of columns that still held every one of them.
+ *
+ * A band is the one thing on this side worked out from every column at once, so
+ * a card nobody was ever going to see still widened its folder's reach and still
+ * reserved a run of canvas for itself. One untouched type module in a far-left
+ * column was enough to make a folder of leaf components span most of the width
+ * of the change, and everything that would have shared its row queued behind it
+ * instead.
+ */
+describe("a card the drawing is going to leave out", () => {
+  const untouched = (id: string, path: string, column: number, y: number) => ({
+    ...card(id, path, column, y),
+    untouched: true,
+  });
+
+  /** A downstream folder, haunted by one of its own files in column zero. */
+  function haunted(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("p1", "src/page/one.ts", 0, 0),
+      card("p2", "src/page/two.ts", 1, 0),
+      card("m1", "src/mui/one.ts", 2, 0),
+      card("m2", "src/mui/two.ts", 3, 0),
+      untouched("ghost", "src/mui/legacy.ts", 0, 400),
+    ];
+    return data;
+  }
+
+  const gone = { stranded: new Set(["ghost"]) };
+  const read = { hideViewed: true, viewed: new Set(["src/mui/legacy.ts"]) };
+
+  it("still queues while the card is really there", () => {
+    /*
+     * The control, and the half of the rule that has to keep saying no. With
+     * the file on the canvas the folder genuinely does stand in column zero,
+     * so a box round it genuinely does span the lane the other folder is in.
+     */
+    const boxes = grouped(haunted()).folders ?? [];
+    const page = boxes.find((box) => box.path === "src/page")!;
+    const mui = boxes.find((box) => box.path === "src/mui")!;
+
+    const [first, second] = page.y <= mui.y ? [page, mui] : [mui, page];
+    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
+  });
+
+  it("does not widen a folder's reach once the card has gone", () => {
+    for (const away of [gone, read]) {
+      const boxes = groupedWith(haunted(), away).folders ?? [];
+      const page = boxes.find((box) => box.path === "src/page")!;
+      const mui = boxes.find((box) => box.path === "src/mui")!;
+
+      // The same run of canvas, because the only thing that ever put the two
+      // folders in one another's way is not being drawn.
+      expect(mui.y).toBe(page.y);
+      expect(mui.x).toBeGreaterThan(page.x + page.width);
+    }
+  });
+
+  it("spends less height than it did when it counted the card", () => {
+    // Said as the number a reader feels: a row shared rather than queued for,
+    // and no run of canvas reserved for something that is not there.
+    for (const away of [gone, read]) {
+      expect(groupedWith(haunted(), away).height).toBeLessThan(grouped(haunted()).height);
+    }
+  });
+
+  it("still draws no box over a card that is not its own", () => {
+    // Narrowing a band is exactly the move that puts a box within reach of
+    // somebody else's cards, so the invariant is measured again on the drawing
+    // the narrowing produced.
+    for (const away of [gone, read]) {
+      const drawn = groupedWith(haunted(), away);
+      const trespass: string[] = [];
+
+      for (const box of drawn.folders ?? []) {
+        for (const placed of drawn.cards) {
+          if (box.nodes.includes(placed.node.id)) continue;
+          if (overlaps(box, placed)) trespass.push(`${box.path} over ${placed.node.path}`);
+        }
+      }
+
+      expect(trespass).toEqual([]);
+    }
+  });
+
+  it("still leaves every card in the column its chain put it in", () => {
+    for (const away of [gone, read]) {
+      const data = haunted();
+      const plain = place(data, arrangement(data), { ...STANDING, ...away });
+      const bands = groupedWith(data, away);
+
+      const columns = (drawn: typeof plain) =>
+        drawn.cards.map((placed) => [placed.node.id, placed.x] as const);
+      expect(columns(bands)).toEqual(columns(plain));
+    }
+  });
+});
+
+/**
+ * Two folders that are nowhere near each other and still cannot share a row.
+ *
+ * Written down as a refusal rather than as a fault, because the obvious repair
+ * is wrong and somebody will try it. A folder whose cards land in columns nought,
+ * one and three does not have a card in column two — so a rule that packed on
+ * the columns a folder actually occupies would happily stand a folder living
+ * only in column two beside it, and save a row.
+ *
+ * It cannot. A box is a rectangle drawn from the leftmost card of the folder to
+ * the rightmost, and a rectangle from column nought to column three covers
+ * column two whether or not the folder has anything in it. Level with each
+ * other, the wider folder's box would be drawn straight across the other
+ * folder's cards. The gap in a folder's columns is a hole in the set and not a
+ * hole in the rectangle, so the reach a row is packed on has to be the whole
+ * span — and the only ways out of that are drawing a box as something other
+ * than a rectangle, or moving a card into another column, which is the one
+ * thing clustering may never do.
+ */
+describe("a folder with a gap in the columns it stands over", () => {
+  /** One folder in columns 0, 1 and 3; another in column 2 alone. */
+  function sparse(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("g1", "src/grid/one.ts", 0, 0),
+      card("g2", "src/grid/two.ts", 1, 0),
+      card("g3", "src/grid/types.ts", 3, 0),
+      card("m1", "src/mui/one.ts", 2, 0),
+      card("m2", "src/mui/two.ts", 2, 200),
+    ];
+    return data;
+  }
+
+  it("queues behind it even though no column holds both", () => {
+    const drawn = grouped(sparse());
+    const boxes = drawn.folders ?? [];
+    const grid = boxes.find((box) => box.path === "src/grid")!;
+    const mui = boxes.find((box) => box.path === "src/mui")!;
+
+    // No column is in both folders, which is what makes the repair tempting.
+    const columns = (box: typeof grid) =>
+      new Set(
+        drawn.cards
+          .filter((placed) => box.nodes.includes(placed.node.id))
+          .map((placed) => placed.node.column),
+      );
+    for (const column of columns(mui)) expect(columns(grid).has(column)).toBe(false);
+
+    const [first, second] = grid.y <= mui.y ? [grid, mui] : [mui, grid];
+    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
+  });
+
+  it("would be drawn over the other folder's cards if it did not", () => {
+    // The reason, measured rather than asserted: the wider box's rectangle
+    // reaches across the whole of the lane the narrower folder is standing in.
+    const drawn = grouped(sparse());
+    const grid = (drawn.folders ?? []).find((box) => box.path === "src/grid")!;
+
+    const theirs = drawn.cards.filter((placed) => placed.node.path.startsWith("src/mui/"));
+    expect(theirs.length).toBeGreaterThan(0);
+    for (const placed of theirs) {
+      expect(overlaps(grid, { ...placed, y: grid.y })).toBe(true);
+    }
+  });
+});
+
+/**
+ * How much room a box may take, asked of the room that is actually beside it.
+ *
+ * A reader looking at five boxes around one run of cards — `frontend`, `common`,
+ * `src`, `components`, `interfaces`, which is an ordinary enough path — saw five
+ * borders ten units apart and could not say which of them any card was in. The
+ * step said how deep a thing was, and a step the thickness of a border said
+ * nothing.
+ *
+ * It was tiny because it was worked out once for the whole drawing and then
+ * charged to every box in it. Two folders sharing a run of canvas are separated
+ * by one column gap and may have half of it each, which is true of a box with a
+ * neighbour beside it and true of nothing else — so a nest standing at the edge
+ * of the drawing, with open canvas on one side and a sibling a column away on
+ * the other, was held to the sibling on both sides and then had the sixty-eight
+ * units that were left divided between its five levels.
+ *
+ * Asked per box and per side, the same drawing gives the deep nest its whole
+ * step everywhere the room is really there and holds it off the neighbour only
+ * where the neighbour really is. A box therefore comes out lopsided, and that is
+ * the answer rather than a fault in it: a border is drawn where there was space
+ * to draw it. What is not allowed to come out of this is a box over a card that
+ * is not inside it, and that is measured again here on drawings whose boxes are
+ * now many times wider than the ones it was first measured on.
+ */
+describe("how far a box may grow beside its neighbours", () => {
+  /** The reader's screenshot: five boxes, one inside the next. */
+  function nest(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("a1", "frontend/app/main.ts", 0, 0),
+      card("a2", "frontend/app/routes.ts", 0, 200),
+      card("c1", "frontend/common/index.ts", 1, 0),
+      card("s1", "frontend/common/src/setup.ts", 1, 200),
+      card("k1", "frontend/common/src/components/Button.tsx", 2, 0),
+      card("i1", "frontend/common/src/components/interfaces/Props.ts", 3, 0),
+      card("i2", "frontend/common/src/components/interfaces/Theme.ts", 3, 200),
+    ];
+    return data;
+  }
+
+  /** Two folders sharing a row with one column gap between their cards. */
+  function facing(): ViewModel {
+    const data = model();
+    data.nodes = [
+      card("p1", "src/page/one.ts", 0, 0),
+      card("p2", "src/page/two.ts", 1, 0),
+      card("m1", "src/mui/one.ts", 2, 0),
+      card("m2", "src/mui/two.ts", 3, 0),
+    ];
+    return data;
+  }
+
+  const chain = [
+    "frontend",
+    "frontend/common",
+    "frontend/common/src",
+    "frontend/common/src/components",
+    "frontend/common/src/components/interfaces",
+  ];
+
+  /** What a box was measured from, before it grew: its own cards. */
+  const around = (drawn: ReturnType<typeof grouped>, box: { nodes: string[] }) => {
+    const mine = drawn.cards.filter((placed) => box.nodes.includes(placed.node.id));
+    return {
+      left: Math.min(...mine.map((placed) => placed.x)),
+      right: Math.max(...mine.map((placed) => placed.x + placed.width)),
+    };
+  };
+
+  it("gives each level a step a reader can see, where there is room for one", () => {
+    /*
+     * Measured on the side the room is on. Deliberately a floor rather than the
+     * step itself: what matters is that a reader can tell five nested borders
+     * apart at the zoom they are reading code at, and pinning the constant here
+     * would make this a test of the constant rather than of what it is for.
+     */
+    const boxes = grouped(nest()).folders ?? [];
+    const nested = chain.map((path) => boxes.find((box) => box.path === path)!);
+    for (const box of nested) expect(box).toBeDefined();
+
+    for (let at = 1; at < nested.length; at++) {
+      const outer = nested[at - 1]!;
+      const inner = nested[at]!;
+      expect(outer.x + outer.width - (inner.x + inner.width)).toBeGreaterThan(150);
+    }
+  });
+
+  it("asks the two sides separately rather than the worse of them", () => {
+    /*
+     * The whole of the repair. This nest has a sibling's cards one column to
+     * its left and the rest of the canvas to its right, and a box that had to
+     * be symmetrical would be held to the sibling on both sides — which is the
+     * drawing-wide figure again, in miniature.
+     */
+    const drawn = grouped(nest());
+    const common = (drawn.folders ?? []).find((box) => box.path === "frontend/common")!;
+    const cards = around(drawn, common);
+
+    const open = common.x + common.width - cards.right;
+    const crowded = cards.left - common.x;
+    expect(open).toBeGreaterThan(crowded);
+  });
+
+  it("charges a folder only for the levels drawn inside it", () => {
+    /*
+     * `frontend/app` holds no other folder, so there is nothing for it to stand
+     * clear of and a plain edge is the whole of what it needs. Charged for the
+     * deepest nesting anywhere in the drawing it would have grown a border two
+     * columns wide to say nothing at all, and it sits beside the nest that is
+     * five levels deep, so that is exactly what it would have been charged.
+     */
+    const drawn = grouped(nest());
+    const app = (drawn.folders ?? []).find((box) => box.path === "frontend/app")!;
+    const cards = around(drawn, app);
+
+    expect(cards.left - app.x).toBeLessThan(60);
+    expect(app.x + app.width - cards.right).toBeLessThan(60);
+  });
+
+  it("draws no box over a card that is not inside it", () => {
+    // The invariant the generous step puts most at risk, measured on both the
+    // deep nest and the two folders sharing a row.
+    for (const data of [nest(), facing()]) {
+      const drawn = grouped(data);
+      const trespass: string[] = [];
+
+      for (const box of drawn.folders ?? []) {
+        for (const placed of drawn.cards) {
+          if (box.nodes.includes(placed.node.id)) continue;
+          if (overlaps(box, placed)) trespass.push(`${box.path} over ${placed.node.path}`);
+        }
+      }
+
+      expect(trespass).toEqual([]);
+    }
+  });
+
+  it("leaves two folders facing each other half the gap each", () => {
+    /*
+     * Neither may have all of it. Both are measuring the same gap outwards from
+     * their own cards at the same moment, so a rule that let either take the
+     * whole of it would draw one of them through the other's border the first
+     * time two folders shared a row.
+     */
+    const boxes = grouped(facing()).folders ?? [];
+    const page = boxes.find((box) => box.path === "src/page")!;
+    const mui = boxes.find((box) => box.path === "src/mui")!;
+
+    expect(page.y).toBe(mui.y);
+    expect(mui.x).toBeGreaterThan(page.x + page.width);
+  });
+
+  it("keeps a folder's box inside its parent's on all four sides", () => {
+    // Five levels of it, with every level given a different allowance on every
+    // side. A child granted more room than the box around it would grow out
+    // through its parent's own border.
+    const boxes = grouped(nest()).folders ?? [];
+    const inside = (a: string, b: string) => a.startsWith(`${b}/`);
+
+    for (const child of boxes) {
+      for (const parent of boxes.filter((box) => inside(child.path, box.path))) {
+        expect(child.x).toBeGreaterThanOrEqual(parent.x);
+        expect(child.y).toBeGreaterThanOrEqual(parent.y);
+        expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+        expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
+      }
+    }
+  });
+
+  it("draws no box over a box it is not inside", () => {
+    // Boxes many times wider than they were is exactly the way two unrelated
+    // folders come to cross, and a reader cannot tell which box a card is in
+    // when they do.
+    const boxes = grouped(nest()).folders ?? [];
+    const kin = (a: string, b: string) =>
+      a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+
+    const clashes: string[] = [];
+    for (let a = 0; a < boxes.length; a++) {
+      for (let b = a + 1; b < boxes.length; b++) {
+        if (kin(boxes[a]!.path, boxes[b]!.path)) continue;
+        if (overlaps(boxes[a]!, boxes[b]!)) {
+          clashes.push(`${boxes[a]!.path} / ${boxes[b]!.path}`);
+        }
+      }
+    }
+    expect(clashes).toEqual([]);
+  });
+
+  it("still leaves every card in the column its chain put it in", () => {
+    // The room a box takes is a claim about empty canvas. A drawing that bought
+    // it by moving a card sideways would have changed what the arrows mean.
+    const data = nest();
+    const plain = place(data, arrangement(data), STANDING);
+    const boxed = grouped(data);
+
+    const columns = (drawn: typeof plain) =>
+      drawn.cards.map((placed) => [placed.node.id, placed.x] as const);
+    expect(columns(boxed)).toEqual(columns(plain));
   });
 });
 
