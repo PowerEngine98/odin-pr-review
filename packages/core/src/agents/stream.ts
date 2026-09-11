@@ -70,9 +70,18 @@ export function readClaude(line: string): Said | undefined {
          * at the top is one marked line followed by a dozen that look exactly
          * like the answer, and whatever reads this back has no way to tell
          * where the thinking stopped.
+         *
+         * Blank lines are not marked, because a mark on a blank line is a log
+         * entry carrying nothing. Reasoning arrives with the paragraph breaks
+         * still in it, and interleaved turns emit thinking blocks that are
+         * whitespace and nothing else, so marking every line without asking
+         * whether there was a line produced exactly what the panel was showing:
+         * runs of entries reading `…` and no more, one after another, between
+         * the tool calls that were the only things left saying anything. The
+         * break is a thing a paragraph has, not a thing an agent thought.
          */
         for (const line of part.thinking.trim().split("\n")) {
-          said.push(`… ${line}`);
+          if (line.trim()) said.push(`… ${line}`);
         }
       } else if (part.type === "tool_use") {
         said.push(`→ ${describeTool(part)}`);
@@ -119,10 +128,39 @@ function describeTool(part: Record<string, unknown>): string {
   return command ? `${name}(${short(gist(command))})` : name;
 }
 
-/** Long enough to recognise, short enough for one line of a log. */
+/**
+ * How much of a command or an argument reaches the log.
+ *
+ * It was eighty, which is the width of a terminal and has nothing to do with
+ * the box these lines are actually drawn in — that box wraps, and has done
+ * since it was written. What eighty bought instead was a panel in which three
+ * consecutive commands all read `Bash(cd age…)`: the walk to the worktree used
+ * the whole allowance on its own, the cut landed three letters into a folder
+ * name, and the path-shortening that runs when the line is drawn then threw
+ * away everything in front of that folder — so what survived of the command
+ * was three characters of the boilerplate that was supposed to be removed.
+ *
+ * So it is far enough out now that an ordinary command reaches the reader
+ * whole, which is the point of a log: it is consulted precisely when the detail
+ * is what is wanted. What is left is a guard against the one shape that has no
+ * bound at all — a heredoc with a file inside it, or a base64 blob pasted as an
+ * argument — where the line is not a line and would push everything else off
+ * the screen. Anything that long is being cut at the end, with its beginning
+ * intact, so what a reader loses is the tail of something they can already
+ * recognise rather than the whole of something they cannot.
+ */
+const ROOM = 400;
+
+/** One line of a log: whitespace flattened, and only the runaways cut. */
 function short(text: string): string {
+  /*
+   * Flattened because the transcript is line-based all the way to the page —
+   * a newline inside one of these becomes a second entry, drawn as though the
+   * agent had done a second thing, and the tail of a multi-line command loses
+   * the tool name that said what it was.
+   */
   const one = text.replace(/\s+/g, " ").trim();
-  return one.length <= 80 ? one : `${one.slice(0, 80)}…`;
+  return one.length <= ROOM ? one : `${one.slice(0, ROOM)}…`;
 }
 
 /**
@@ -145,16 +183,47 @@ function place(path: string): string {
 }
 
 /**
+ * One walk to a directory, in the shapes a shell actually writes it.
+ *
+ * The path is a bare word most of the time, and the three ways it stops being
+ * one all turn up in practice: quoted with double quotes because the checkout
+ * is under a folder with a space in its name, quoted with single quotes for the
+ * same reason by a tool that prefers them, and left bare with the spaces
+ * escaped one at a time. The bare alternative reads backslash-escapes as part
+ * of the word for that last case — without it, a walk to `/Users/marco\
+ * acosta/thing` matched as far as the backslash, failed to find the `&&`, and
+ * the whole line was left with its boilerplate on.
+ *
+ * `;` as well as `&&` because both are written, and the difference between them
+ * is about what happens when the walk fails rather than about what was run.
+ */
+const WALK = /^\s*cd\s+(?:"[^"]*"|'[^']*'|(?:\\.|[^\s\\])+)\s*(?:&&|;)\s*([\s\S]+)$/;
+
+/**
  * A command with the walk to it taken off.
  *
  * These tools are handed a working directory rather than inheriting one, so
  * almost every command they run begins by walking to it: `cd <forty characters
  * of path> && the thing they actually ran`. Truncated from the front, the log
  * showed the walk and hid the command.
+ *
+ * Repeatedly, because one walk is not always all there is. A command that goes
+ * to the checkout and then down into a package writes both — `cd <repo> && cd
+ * packages/core && yarn build` — and taking off only the first left a line that
+ * still opened with a `cd`, which was indistinguishable from the fault this
+ * exists to fix. Each pass takes a strictly shorter tail than it was given, so
+ * this stops.
+ *
+ * What is never returned is nothing. A command that is only a walk — `cd
+ * somewhere`, with nothing after it — is still the thing the agent ran, and a
+ * log entry reading `Bash()` says less than one that admits it was a walk.
  */
 function gist(command: string): string {
-  const walked = command.match(/^\s*cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*&&\s*([\s\S]+)$/);
-  return walked?.[1] ?? command;
+  let rest = command;
+  for (let walked = rest.match(WALK); walked; walked = rest.match(WALK)) {
+    rest = walked[1]!;
+  }
+  return rest.trim() || command;
 }
 
 /**
@@ -181,8 +250,11 @@ export function readOpencode(line: string): Said | undefined {
 
     const tool = plain.match(TOOL);
     if (tool) {
+      // Walked off here too. This tool is handed a working directory the same
+      // way, so its commands carry the same prefix, and a reader of this log is
+      // no more interested in it than a reader of the other one.
       const about = (tool[2] ?? "").trim().replace(/^["']|["']$/g, "");
-      said.push(about ? `→ ${tool[1]}(${short(about)})` : `→ ${tool[1]}`);
+      said.push(about ? `→ ${tool[1]}(${short(gist(about))})` : `→ ${tool[1]}`);
       continue;
     }
 

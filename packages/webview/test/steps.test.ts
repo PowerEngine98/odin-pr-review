@@ -120,4 +120,23 @@ describe("saying a path the way a person would", () => {
      */
     expect(tidy(old)).toBe("(agent-…)");
   });
+
+  it("leaves a command that arrived whole whole", () => {
+    /*
+     * The other half of the fault the panel showed, and the reason the cut in
+     * the stream reader had to move rather than this having to become cleverer.
+     * Two shortenings were compounding: the line was cut to eighty characters
+     * as it was written, which on a Bash call spent the whole allowance on the
+     * walk to the worktree and landed the cut three letters inside a folder
+     * name, and then this — doing exactly what it is meant to do — kept only
+     * that folder. What the reader saw was `Bash(cd age…)`, three times over,
+     * with nothing of any of the three commands left in it.
+     *
+     * A command that reaches here intact must leave intact. There is no
+     * absolute path in it to shorten, and nothing else here is allowed to
+     * shorten anything.
+     */
+    const whole = "(yarn workspace @thing/backend run build --incremental --reporter=verbose)";
+    expect(tidy(whole)).toBe(whole);
+  });
 });

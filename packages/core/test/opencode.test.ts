@@ -96,10 +96,31 @@ describe("reading what opencode prints", () => {
     expect(said?.show).toBe("→ Read(/src/components/TagChip.tsx)");
   });
 
-  it("shortens an argument that would take the whole line", () => {
-    const long = `/very/long/path/${"section/".repeat(20)}file.tsx`;
-    const said = readOpencode(`${E}[0mRead ${long}${E}[0m`);
-    expect(said?.show?.length).toBeLessThan(120);
+  it("shows the command rather than the walk to it", () => {
+    // Handed a working directory the same way the others are, so its commands
+    // carry the same prefix — and a reader of this log is no more interested in
+    // the walk than a reader of the other one.
+    const said = readOpencode(
+      `${E}[0mBash cd /Users/somebody/workspace/thinginc/thing && ./gradlew compileKotlin${E}[0m`,
+    );
+    expect(said?.show).toBe("→ Bash(./gradlew compileKotlin)");
+  });
+
+  it("shortens only an argument with no bound at all", () => {
+    /*
+     * The cut is far enough out that an ordinary command or path arrives whole,
+     * because the box these are drawn in wraps and a log is consulted precisely
+     * when the detail is what is wanted. What is guarded against is the shape
+     * that has no length at all — a blob pasted as an argument — and even then
+     * the beginning, which is what a reader recognises it by, is kept.
+     */
+    const ordinary = `/very/long/path/${"section/".repeat(20)}file.tsx`;
+    expect(readOpencode(`${E}[0mRead ${ordinary}${E}[0m`)?.show).toBe(`→ Read(${ordinary})`);
+
+    const runaway = `/very/long/path/${"section/".repeat(200)}file.tsx`;
+    const said = readOpencode(`${E}[0mRead ${runaway}${E}[0m`);
+    expect(said?.show?.length).toBeLessThan(500);
+    expect(said?.show?.startsWith("→ Read(/very/long/path/section/")).toBe(true);
     expect(said?.show).toContain("…");
   });
 });

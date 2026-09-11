@@ -474,11 +474,17 @@ describe("pairing with an agent", () => {
     // A page of reasoning marked once at the top is one marked line followed by
     // a dozen that look exactly like the answer, and nothing reading it back
     // can tell where the thinking stopped.
+    //
+    // Every line that says something, which is not quite every line. This used
+    // to mark them all, and a paragraph break in a thought is a line with
+    // nothing on it — so the log filled with entries that were a marker and no
+    // words, saying only that something had been thought and not what. An
+    // interleaved turn that thinks in whitespace produced a run of them.
     const stream = readFileSync(
       new URL("../../core/src/agents/stream.ts", import.meta.url),
       "utf8",
     );
-    expect(stream).toMatch(/for \(const line of part\.thinking\.trim\(\)\.split\("\\n"\)\) \{\s*\n\s*said\.push\(`… \$\{line\}`\)/);
+    expect(stream).toMatch(/for \(const line of part\.thinking\.trim\(\)\.split\("\\n"\)\) \{\s*\n\s*if \(line\.trim\(\)\) said\.push\(`… \$\{line\}`\);/);
   });
 
   it("opens the conversation a line of the log came from, from any tab", () => {
