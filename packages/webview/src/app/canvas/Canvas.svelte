@@ -15,7 +15,7 @@
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
   import EdgeLayer from "./EdgeLayer.svelte";
-  import Clusters from "./Clusters.svelte";
+  import Clusters, { CLUSTER_HEAD } from "./Clusters.svelte";
 import Pinned from "./Pinned.svelte";
   import { wheelGesture } from "./gestures.js";
   import { listen as listenForKeys } from "./keyboard.svelte.js";
@@ -47,7 +47,7 @@ import Pinned from "./Pinned.svelte";
      */
     chromeBottom = 0,
   }: {
-    card?: Snippet<[Placed]>;
+    card?: Snippet<[Placed, number]>;
     onfollow?: (journey: Journey) => void;
     chromeBottom?: number;
   } = $props();
@@ -57,6 +57,24 @@ import Pinned from "./Pinned.svelte";
   const cards = $derived(camera.shown());
   // Behind the cards, because a box is a place the cards are in.
   const boxed = $derived(camera.folders());
+
+  /**
+   * How far down the window a card's own title has to start.
+   *
+   * The card slides its title down to stay under the bar, and so does every
+   * folder box it is inside. Given the same line they all land on it, and the
+   * reader gets a folder's name written over a file's. A card is told about the
+   * headers stacked above it instead, and starts below the last of them.
+   */
+  const titleLine = $derived.by(() => {
+    const deepest = new Map<string, number>();
+    for (const box of boxed) {
+      for (const id of box.nodes) {
+        deepest.set(id, Math.max(deepest.get(id) ?? 0, box.depth));
+      }
+    }
+    return (id: string) => chromeBottom + (deepest.get(id) ?? 0) * CLUSTER_HEAD;
+  });
   const size = $derived(camera.extent());
 
   /**
@@ -317,7 +335,7 @@ import Pinned from "./Pinned.svelte";
           tone: toneOf(placed.node.status),
         }}
       >
-        {@render card?.(placed)}
+        {@render card?.(placed, titleLine(placed.node.id))}
       </div>
     {/each}
 

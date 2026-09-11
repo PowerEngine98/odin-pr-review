@@ -315,7 +315,10 @@
     ui.activeEdge = journey.edge.id;
     camera.centreOn(journey.x, journey.y);
   }}>
-    {#snippet card(placed)}
+    <!-- The second argument is where this card's own title may start: the bar,
+         plus a header for every folder box the card is inside, so a folder's
+         name and a file's never land on the same line. -->
+    {#snippet card(placed, titleTop)}
       <Card
         node={placed.node}
         left={placed.x}
@@ -327,7 +330,7 @@
         unifiedCap={placed.node.unifiedCap}
         single={placed.node.single}
         top={placed.y}
-        {chromeBottom}
+        chromeBottom={titleTop}
       />
     {/snippet}
   </Canvas>

@@ -121,9 +121,28 @@ describe("asking for the cards to be grouped by folder", () => {
     expect(place(data, arrangement(data), STANDING).folders).toBeUndefined();
   });
 
-  it("names one box per folder holding more than one file", () => {
+  it("names a box at every level that holds more than one thing", () => {
+    /*
+     * `src/media/grid` living inside `src/media` is a fact about the project,
+     * and a drawing that flattened it into two boxes side by side would be
+     * saying something untrue about where the code is.
+     */
     const named = (grouped(model()).folders ?? []).map((box) => box.path).sort();
-    expect(named).toEqual(["src/alpha", "src/beta", "src/gamma"]);
+    expect(named).toEqual(["src", "src/alpha", "src/beta", "src/gamma"]);
+  });
+
+  it("puts a folder's box inside its parent's", () => {
+    const boxes = grouped(model()).folders ?? [];
+    const parent = boxes.find((box) => box.path === "src")!;
+    for (const child of boxes.filter((box) => box.path !== "src")) {
+      expect(child.x).toBeGreaterThanOrEqual(parent.x);
+      expect(child.y).toBeGreaterThanOrEqual(parent.y);
+      expect(child.x + child.width).toBeLessThanOrEqual(parent.x + parent.width);
+      expect(child.y + child.height).toBeLessThanOrEqual(parent.y + parent.height);
+      // And it says how deep it is, which is what stacks the headers rather
+      // than piling them on one line.
+      expect(child.depth).toBeGreaterThan(parent.depth);
+    }
   });
 
   it("leaves a folder holding one file alone", () => {
@@ -174,6 +193,7 @@ describe("asking for the cards to be grouped by folder", () => {
 
     for (const box of drawn.folders ?? []) {
       for (const placed of drawn.cards) {
+        // Its own, at any depth: a box around `src` holds `src/alpha`'s cards.
         if (box.nodes.includes(placed.node.id)) continue;
         if (overlaps(box, placed)) trespass.push(`${box.path} over ${placed.node.path}`);
       }
@@ -182,11 +202,20 @@ describe("asking for the cards to be grouped by folder", () => {
     expect(trespass).toEqual([]);
   });
 
-  it("draws no box over another box", () => {
+  it("draws no box over a box it is not inside", () => {
+    /*
+     * A parent overlapping its children is the whole point of nesting. Two
+     * folders that are not related overlapping is the fault — a reader cannot
+     * tell which box a card is in when two of them cross.
+     */
     const boxes = grouped(model()).folders ?? [];
+    const kin = (a: string, b: string) =>
+      a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+
     const clashes: string[] = [];
     for (let a = 0; a < boxes.length; a++) {
       for (let b = a + 1; b < boxes.length; b++) {
+        if (kin(boxes[a]!.path, boxes[b]!.path)) continue;
         if (overlaps(boxes[a]!, boxes[b]!)) {
           clashes.push(`${boxes[a]!.path} / ${boxes[b]!.path}`);
         }

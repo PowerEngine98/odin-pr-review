@@ -27,6 +27,14 @@ export interface FolderBox {
   path: string;
   /** What the header says, which is the last segment of that path. */
   label: string;
+  /**
+   * How many folders deep this one is, counting from the top of the project.
+   *
+   * Drawn with rather than worked out again: it decides how far the header sits
+   * below the bar, so that a folder inside a folder has both names on screen
+   * and in the order they nest instead of one on top of the other.
+   */
+  depth: number;
   x: number;
   y: number;
   width: number;
@@ -258,8 +266,14 @@ interface Bands {
   of(path: string): number | undefined;
   /** Which band it is, so a column can be put in band order. */
   rank(path: string): number;
-  /** Every band that is a real folder with more than one file in it. */
-  real: { key: string; top: number; height: number }[];
+  /** Every folder worth a box, innermost last. */
+  real: { key: string; top: number; bottom: number; depth: number }[];
+}
+
+/** Every folder on the way down to a file, outermost first. */
+function ancestry(folder: string): string[] {
+  const parts = folder.split("/");
+  return parts.map((_, at) => parts.slice(0, at + 1).join("/"));
 }
 
 /**
@@ -301,38 +315,95 @@ function bandsFor(
     }
   }
 
+  /*
+   * Sorted by their whole path, which is what makes the boxes nest.
+   *
+   * `src/media` sorts before `src/media/grid`, and both before `src/mediaOther`
+   * — a plain string comparison already puts every band under a folder next to
+   * each other, because `/` sorts below every character a folder name starts
+   * with. So a folder's descendants are one unbroken run, and the rectangle
+   * around them is a rectangle rather than a guess.
+   */
   const keys = [...needed.keys()]
     .filter((key) => key !== LOOSE)
     .sort()
     .concat(needed.has(LOOSE) ? [LOOSE] : []);
 
+  /*
+   * Which folders are worth a box, at every level rather than only the last.
+   *
+   * `src/media/grid` living inside `src/media` is a fact about the project, and
+   * a drawing that flattened it into two boxes side by side would be saying
+   * something untrue about where the code is. So every folder on the way down
+   * counts its own files, and one that holds more than one thing gets a box
+   * around everything beneath it.
+   *
+   * More than one *thing*, not more than one file: a folder whose only content
+   * is a single sub-folder adds a frame around a frame and says nothing, which
+   * is the same objection as a box around a single card.
+   */
+  const under = new Map<string, Set<string>>();
+  for (const key of keys) {
+    if (key === LOOSE) continue;
+    for (const folder of ancestry(key)) {
+      const kin = under.get(folder);
+      // What it holds directly: the next segment down, or the band itself.
+      const child = key === folder ? key : key.slice(0, key.indexOf("/", folder.length + 1)) || key;
+      if (kin) kin.add(child);
+      else under.set(folder, new Set([child]));
+    }
+  }
+  const boxedFolder = (folder: string) =>
+    folder !== LOOSE &&
+    ((under.get(folder)?.size ?? 0) > 1 || (held.get(folder)?.size ?? 0) > 1);
+
   const tops = new Map<string, number>();
   const ranks = new Map<string, number>();
-  const real: { key: string; top: number; height: number }[] = [];
+  const opens = new Map<string, { key: string; top: number; depth: number }>();
+  const real: { key: string; top: number; bottom: number; depth: number }[] = [];
 
   let at = 0;
+  let standing: string[] = [];
+
   keys.forEach((key, order) => {
     ranks.set(key, order);
-    /*
-     * A folder with one file in it gets no box, and so needs no padding.
-     *
-     * A box around a single card is a second frame a few pixels outside the
-     * first: it reads as a rendering fault rather than as a grouping, and says
-     * nothing the card does not already say with its own path.
-     */
-    const boxed = key !== LOOSE && (held.get(key)?.size ?? 0) > 1;
-    const top = at + (boxed ? CLUSTER_HEAD + CLUSTER_PAD : 0);
-    tops.set(key, top);
+    const wanted = (key === LOOSE ? [] : ancestry(key)).filter(boxedFolder);
 
-    const height = needed.get(key) ?? 0;
-    if (boxed) real.push({ key, top, height });
-    at = top + height + (boxed ? CLUSTER_PAD : 0) + data.rowGap;
+    /*
+     * Room for the frames that end here and the ones that begin.
+     *
+     * A box is drawn outside the cards it holds, so the canvas has to be given
+     * that room rather than have the box drawn over the band above. Closing
+     * costs one pad per box that ends; opening costs a pad and a header each,
+     * and they nest, so three levels of folder mean three headers stacked above
+     * the first card.
+     */
+    const closing = standing.filter((folder) => !wanted.includes(folder));
+    for (const folder of closing) {
+      const open = opens.get(folder);
+      if (open) real.push({ ...open, bottom: at });
+      opens.delete(folder);
+      at += CLUSTER_PAD;
+    }
+
+    const opening = wanted.filter((folder) => !standing.includes(folder));
+    for (const folder of opening) {
+      at += CLUSTER_PAD + CLUSTER_HEAD;
+      opens.set(folder, { key: folder, top: at - CLUSTER_HEAD, depth: ancestry(folder).length });
+    }
+    standing = wanted;
+
+    tops.set(key, at);
+    at += (needed.get(key) ?? 0) + data.rowGap;
   });
+
+  for (const open of opens.values()) real.push({ ...open, bottom: at });
 
   return {
     of: (path) => tops.get(bandKey(path)),
     rank: (path) => ranks.get(bandKey(path)) ?? keys.length,
-    real,
+    // Outermost first, so whatever draws them draws a parent before its child.
+    real: real.sort((a, b) => a.depth - b.depth || a.top - b.top),
   };
 }
 
@@ -352,8 +423,17 @@ function boxesFor(
   const boxes: FolderBox[] = [];
 
   for (const band of bands.real) {
+    /*
+     * Everything beneath this folder, not only what sits directly in it.
+     *
+     * A box around `src/media` has to hold `src/media/grid` as well, or the
+     * nesting the ordering went to the trouble of producing is drawn as two
+     * boxes that happen to be near each other.
+     */
     const inside = [...placed.values()].filter(
-      (card) => bandKey(card.node.path) === band.key,
+      (card) =>
+        card.node.path.startsWith(`${band.key}/`) &&
+        bandKey(card.node.path).startsWith(band.key),
     );
     // Every file in it was filtered away — tests hidden, a part opened, files
     // ticked off. A box around nothing is a box that is lying.
@@ -366,10 +446,11 @@ function boxesFor(
     boxes.push({
       path: band.key,
       label: band.key.slice(band.key.lastIndexOf("/") + 1),
+      depth: band.depth,
       x: left - CLUSTER_PAD,
-      y: band.top - CLUSTER_HEAD - CLUSTER_PAD,
+      y: band.top - CLUSTER_HEAD,
       width: right - left + CLUSTER_PAD * 2,
-      height: bottom - band.top + CLUSTER_HEAD + CLUSTER_PAD * 2,
+      height: bottom - band.top + CLUSTER_HEAD + CLUSTER_PAD,
       nodes: inside.map((card) => card.node.id),
     });
   }

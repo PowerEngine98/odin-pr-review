@@ -12,6 +12,15 @@
   these are the rectangles they came out as. A box with a position of its own
   would be a second opinion about where a folder is.
 -->
+<script module lang="ts">
+  /**
+   * How tall a folder's own header is, and how far each nested one sits below
+   * the one above it. Matches `CLUSTER_HEAD` in the placement, which reserves
+   * the room for it.
+   */
+  export const CLUSTER_HEAD = 30;
+</script>
+
 <script lang="ts">
   import { view } from "../state.svelte.js";
 
@@ -28,9 +37,6 @@
     chromeBottom = 0,
   }: { folders?: FolderBox[]; chromeBottom?: number } = $props();
 
-  /** How tall a folder's own header is. Matches `CLUSTER_HEAD` in placement. */
-  const HEAD = 30;
-
   /**
    * How far a header slides down its own box to stay in view.
    *
@@ -45,13 +51,20 @@
    * header slides out with it and the next folder's takes over.
    */
   function pin(box: FolderBox): number {
-    // A pixel above the bar rather than level with it: level leaves a hairline
-    // showing between the two once the canvas scale turns whole pixels into
-    // fractions.
-    const line = (chromeBottom - 1 - view.y) / view.scale;
+    /*
+     * A pixel above the bar rather than level with it, and one header lower per
+     * folder deep.
+     *
+     * `media` and `media/grid` are both held against the top of the window at
+     * once, and pinned to the same line they land on the same row and read as
+     * one illegible name. A folder's name sits below its parent's, in the order
+     * they nest, which is the order the path reads in.
+     */
+    const line =
+      (chromeBottom - 1 + (box.depth - 1) * CLUSTER_HEAD - view.y) / view.scale;
     const offset = Math.floor(line - box.y);
-    if (offset <= 0 || box.height <= HEAD) return 0;
-    return Math.min(offset, box.height - HEAD);
+    if (offset <= 0 || box.height <= CLUSTER_HEAD) return 0;
+    return Math.min(offset, box.height - CLUSTER_HEAD);
   }
 </script>
 
