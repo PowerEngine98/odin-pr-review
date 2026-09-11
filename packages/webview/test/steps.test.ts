@@ -75,7 +75,7 @@ describe("saying a path the way a person would", () => {
       tidy(
         "(/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/worktrees/agent-a45/backend/MediaType.kt)",
       ),
-    ).toBe("(…/backend/MediaType.kt)");
+    ).toBe("(MediaType.kt)");
   });
 
   it("leaves a path written relative to the project", () => {
@@ -102,7 +102,7 @@ describe("saying a path the way a person would", () => {
   it("tidies a command without taking the command apart", () => {
     const said = tidy("(JAVA_HOME=~/.sdkman/candidates/java/21.0.2-open ./gradlew boot)");
     expect(said).toContain("./gradlew boot");
-    expect(said).toContain("…/java/21.0.2-open");
+    expect(said).toContain("21.0.2-open");
   });
 
   it("fixes the lines already written down", () => {
@@ -113,6 +113,11 @@ describe("saying a path the way a person would", () => {
      * written leaves every earlier line exactly as unreadable as it was.
      */
     const old = "(/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/worktrees/agent-…)";
-    expect(tidy(old)).toBe("(…/worktrees/agent-…)");
+    /*
+     * All that is left. The filename was cut off before the line was stored, so
+     * there is nothing to recover — what this can still do is stop a column of
+     * identical prefixes from pretending to say something.
+     */
+    expect(tidy(old)).toBe("(agent-…)");
   });
 });

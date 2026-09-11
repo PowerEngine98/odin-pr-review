@@ -1036,7 +1036,10 @@
                   category, and colouring it too turns the whole box into a
                   highlight.
                 -->
-                <p class="step step-act">
+                <!-- The line as it was written, one hover away. Two files
+                     called `index.ts` are two lines that read the same, and the
+                     path is the only thing that tells them apart. -->
+                <p class="step step-act" title={line.trim()}>
                   <span class="act act-{act.kind}" title={act.tool}>
                     {#if act.kind === "read"}
                       <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">

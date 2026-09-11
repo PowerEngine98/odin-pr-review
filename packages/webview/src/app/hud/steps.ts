@@ -119,7 +119,9 @@ export function tidy(text: string): string {
 
     const parts = token.split("/").filter(Boolean);
     if (parts.length < DEEP) return token;
-    return `…/${parts.slice(-2).join("/")}`;
+    // The last segment, which is the part that differs from line to line. See
+    // `place` in the stream reader for why the parent folder is not kept.
+    return parts[parts.length - 1] ?? token;
   });
 }
 

@@ -126,19 +126,22 @@ function short(text: string): string {
 }
 
 /**
- * A path as somebody would say it out loud.
+ * A path as somebody would say it out loud, which is the filename.
  *
- * Cut from the front, which is the whole point. A log of a turn in a worktree
- * reads `Read(/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/…)`
- * over and over — eighty characters of prefix that is the same on every line,
- * and the filename, which is the only part anybody is reading for, truncated
- * off the end. The last couple of segments say which file and roughly where;
- * the rest is the same directory the reader is already sitting in.
+ * A log of a turn in a worktree reads `/Users/somebody/workspace/thinginc/
+ * thinglabs/thing/.claude/worktrees/agent-a45/…` on every line — the same
+ * prefix every time, and the filename, the only part anybody is reading for,
+ * cut off the end by a truncation that ran from the front.
+ *
+ * Keeping the parent folder as well was the first attempt and it was still the
+ * wrong shape: in a worktree the parent is `agent-a45` or `worktrees` as often
+ * as it is anything meaningful, so what a reader got was a column of identical
+ * `…/worktrees/agent-…`. The filename is the part that differs from line to
+ * line, and difference is the whole of what a log is scanned for.
  */
 function place(path: string): string {
   const parts = path.split("/").filter(Boolean);
-  if (parts.length <= 2) return path;
-  return `…/${parts.slice(-2).join("/")}`;
+  return parts[parts.length - 1] ?? path;
 }
 
 /**

@@ -45,7 +45,7 @@ describe("reading a narrated turn", () => {
           message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "src/one.ts" } }] },
         }),
       )?.show,
-    ).toBe("→ Read(src/one.ts)");
+    ).toBe("→ Read(one.ts)");
 
     expect(
       readClaude(
@@ -122,11 +122,13 @@ describe("a tool call worth reading at a glance", () => {
       file_path:
         "/Users/somebody/workspace/thinginc/thinglabs/thing/.claude/worktrees/agent-a45/frontend/common/src/pages/app/laborPost/LaborMediaIntro.tsx",
     });
-    expect(said).toBe("→ Read(…/laborPost/LaborMediaIntro.tsx)");
+    expect(said).toBe("→ Read(LaborMediaIntro.tsx)");
   });
 
-  it("leaves a short path alone", () => {
-    expect(call("Read", { file_path: "src/one.ts" })).toBe("→ Read(src/one.ts)");
+  it("names the file however short the path was", () => {
+    // The filename is what differs from line to line, and difference is the
+    // whole of what a log is scanned for.
+    expect(call("Read", { file_path: "src/one.ts" })).toBe("→ Read(one.ts)");
   });
 
   it("shows the command rather than the walk to it", () => {
