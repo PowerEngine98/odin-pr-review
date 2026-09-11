@@ -178,6 +178,31 @@
   const lost = $derived(stranded(folders, bars));
 
   /**
+   * The strip at the top of a box that nothing is going to be drawn in.
+   *
+   * Every box is given a header's worth of canvas above its first card,
+   * reserved by the banding before any card is placed and kept reserved whether
+   * a bar is drawn in it or not — because the alternative is that folding a
+   * folder re-places every card in the drawing, and a reader who pressed a
+   * chevron to recover a strip of chrome would watch the whole picture move
+   * under them. That reservation is not negotiable and nothing here touches it.
+   *
+   * What the frame is drawn around is another matter. A box whose name went
+   * into its parent's bar draws neither a bar nor a stub, so the strip stands
+   * empty and the frame was being drawn around it: a rectangle opening a header
+   * above its own contents, with a band of nothing between its top edge and the
+   * first thing inside. It read as a box that had lost its label rather than as
+   * one whose label is up in the bar above.
+   *
+   * So a frame with nothing in that strip begins below it. The room stays
+   * reserved and every card stays exactly where it was — only the border moves,
+   * which is the one thing here that is safe to move.
+   */
+  function bare(box: FolderBox): number {
+    return bars.has(box.path) || lost.has(box.path) ? 0 : CLUSTER_HEAD;
+  }
+
+  /**
    * Which folder a bar is really about, for the tip under it.
    *
    * The deepest name written on it, and not the box's own path. A bar reading
@@ -295,9 +320,9 @@
   <div
     class="cluster"
     style:left="{box.x}px"
-    style:top="{box.y}px"
+    style:top="{box.y + bare(box)}px"
     style:width="{box.width}px"
-    style:height="{box.height}px"
+    style:height="{box.height - bare(box)}px"
   ></div>
 {/each}
 
