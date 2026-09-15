@@ -8,6 +8,12 @@
   opens it here, where it is as large as the window allows and can be zoomed
   past that.
 
+  A drawing an agent made is shown here too, and by the same argument: a mermaid
+  graph in a console four hundred pixels wide is a page of boxes at a fifth of
+  the size the boxes were laid out at. It is redrawn at this size rather than
+  scaled up from the small one — the source is what was kept, so the picture is
+  made again, with room this time.
+
   Over everything, deliberately. The console it was opened from is a panel and
   panels stack; a viewer that a tab could cover would be a viewer the reader has
   to arrange around. It takes every press for the same reason the settling cover
@@ -18,9 +24,13 @@
 -->
 <script lang="ts">
   import { wheelZooms } from "../canvas/apple.js";
-  import { hidePicture, shownPicture } from "./picture.svelte.js";
+  import Diagram from "../panels/Diagram.svelte";
+  import { hidePicture, shownDrawing, shownPicture } from "./picture.svelte.js";
 
   const shown = $derived(shownPicture());
+  const drawing = $derived(shownDrawing());
+  /** Whether the viewer is up at all, which either of the two makes true. */
+  const open = $derived(shown !== null || drawing !== null);
 
   /** How far in and out it goes. Past four the pixels are the subject. */
   const MIN = 0.2;
@@ -111,6 +121,7 @@
    */
   $effect(() => {
     void shown?.src;
+    void drawing?.code;
     scale = 1;
     x = 0;
     y = 0;
@@ -185,7 +196,7 @@
   }
 
   function keys(event: KeyboardEvent): void {
-    if (!shown) return;
+    if (!open) return;
     if (event.key === "Escape") {
       event.stopPropagation();
       hidePicture();
@@ -195,14 +206,14 @@
 
 <svelte:window onkeydown={keys} />
 
-{#if shown}
+{#if open}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     class="viewer"
     role="dialog"
     aria-modal="true"
-    aria-label={shown.alt || "Picture"}
+    aria-label={shown?.alt || (drawing ? "Diagram" : "Picture")}
     onwheel={wheel}
     onclick={(event) => {
       // The backdrop puts it away; the picture itself does not, or a reader who
@@ -225,20 +236,46 @@
         the reader last saw it.
       -->
       <div class="frame" bind:this={frame}>
-        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-        <img
-          class="shown"
-          class:dragging
-          src={shown.src}
-          alt={shown.alt}
-          draggable="false"
-          style="transform: translate({x}px, {y}px) scale({scale})"
-          onpointerdown={grab}
-          onpointermove={move}
-          onpointerup={drop}
-          onpointercancel={drop}
-          ondblclick={fit}
-        />
+        {#if shown}
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <img
+            class="shown"
+            class:dragging
+            src={shown.src}
+            alt={shown.alt}
+            draggable="false"
+            style="transform: translate({x}px, {y}px) scale({scale})"
+            onpointerdown={grab}
+            onpointermove={move}
+            onpointerup={drop}
+            onpointercancel={drop}
+            ondblclick={fit}
+          />
+        {:else if drawing}
+          <!--
+            Drawn again rather than magnified. What was kept is the source, so
+            the picture is made at this size and its text is laid out for it —
+            magnifying the console's copy would enlarge the decisions mermaid
+            made about a four-hundred-pixel box along with everything else.
+
+            Not liftable and not openable: there is nothing to drag it onto from
+            here, and a press on the thing already open should not open it
+            again.
+          -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="drawn"
+            class:dragging
+            style="transform: translate({x}px, {y}px) scale({scale})"
+            onpointerdown={grab}
+            onpointermove={move}
+            onpointerup={drop}
+            onpointercancel={drop}
+            ondblclick={fit}
+          >
+            <Diagram code={drawing.code} openable={false} />
+          </div>
+        {/if}
       </div>
     </div>
 
@@ -256,7 +293,7 @@
     </button>
 
     <div class="said">
-      <span class="what">{shown.alt || "Picture"}</span>
+      <span class="what">{shown?.alt || (drawing ? "Diagram" : "Picture")}</span>
       <span class="how">{Math.round(scale * 100)}%</span>
       <button class="reset" type="button" onclick={fit}>Fit</button>
     </div>
@@ -324,6 +361,26 @@
   }
 
   .shown.dragging { cursor: grabbing; }
+
+  /* A drawing gets the same frame as a picture and the same limits on it: as
+     large as the window allows, and moved about by the same drag. The surface
+     under it is the panel's rather than nothing, because a mermaid graph is
+     drawn in lines and a line over the veil with the change showing through is
+     a line nobody can follow. */
+  .drawn {
+    max-width: 92vw;
+    max-height: 88vh;
+    overflow: auto;
+    padding: 8px 12px;
+    border: 1px solid var(--panel-edge);
+    border-radius: 6px;
+    background: var(--panel);
+    box-shadow: 0 18px 60px color-mix(in srgb, #000 60%, transparent);
+    cursor: grab;
+    transform-origin: center center;
+  }
+
+  .drawn.dragging { cursor: grabbing; }
 
   /* On the picture's own corner, wherever that has got to: the coordinates are
      worked out from the zoom and the drag, and held inside the window at both

@@ -11,6 +11,7 @@ import {
   view,
 } from "../state.svelte.js";
 import { onApple } from "./apple.js";
+import { pinBox, type Drawn } from "./drawn.js";
 import { aimFor, type Spot } from "./keys.js";
 import { heightOf, lineAt } from "./measured.svelte.js";
 import { pinHere, pinnedHere } from "./pins.js";
@@ -412,28 +413,31 @@ export function reframe(viewport: HTMLElement): void {
  * afterwards. This is the one place that conversion belongs: the camera is what
  * knows the transform.
  *
- * A size in canvas units rather than pixels, worked out from the zoom, so a
- * drawing dropped while zoomed out is not a postage stamp among the cards.
+ * The size is not converted, and that is the correction. It is how big the
+ * drawing measured in the panel it was dragged out of, and a pinned box is laid
+ * out in canvas units — so the number arrives in the units it is wanted in and
+ * dividing it by the zoom, as this did, made the box a size that had nothing to
+ * do with the picture in it. `drawn.ts` has the argument in full.
  */
-export function pin(code: string, clientX: number, clientY: number): void {
-  const x = Math.round((clientX - view.x) / view.scale);
-  const y = Math.round((clientY - view.y) / view.scale);
-  const width = Math.round(360 / view.scale);
-  const height = Math.round(260 / view.scale);
+export function pin(
+  code: string,
+  clientX: number,
+  clientY: number,
+  drawn?: Drawn | null,
+): void {
+  const box = pinBox(
+    { x: (clientX - view.x) / view.scale, y: (clientY - view.y) / view.scale },
+    drawn,
+  );
 
   pinHere([
     ...pinnedHere(),
     {
       // Ours, and unique without a clock: two identical drawings pinned in the
       // same millisecond are still two drawings.
-      id: `d${pinnedHere().length + 1}-${Math.round(x)}-${Math.round(y)}`,
+      id: `d${pinnedHere().length + 1}-${box.x}-${box.y}`,
       code,
-      // Dropped by its middle rather than by its corner, which is where the
-      // reader was actually pointing.
-      x: x - Math.round(width / 2),
-      y: y - Math.round(height / 4),
-      width,
-      height,
+      ...box,
     },
   ]);
 }

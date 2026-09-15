@@ -256,9 +256,11 @@ describe("pairing with an agent", () => {
     expect(canvas).toMatch(/ondragover[\s\S]{0,400}?event\.preventDefault\(\)/);
 
     // The camera does the conversion, because the camera is what knows the
-    // transform: a drop at a window point is a place in the drawing.
-    expect(camera).toMatch(/export function pin\(code: string, clientX: number, clientY: number\)/);
-    expect(camera).toMatch(/const x = Math\.round\(\(clientX - view\.x\) \/ view\.scale\)/);
+    // transform: a drop at a window point is a place in the drawing. The point
+    // is converted and the size is not — see the test below, which is about
+    // exactly that difference.
+    expect(camera).toMatch(/export function pin\([\s\S]{0,140}?clientY: number,/);
+    expect(camera).toMatch(/x: \(clientX - view\.x\) \/ view\.scale/);
 
     // Moving and stretching are in canvas units too, or a drag at a tenth of
     // life size would move it a tenth as far as the pointer went.
@@ -290,6 +292,153 @@ describe("pairing with an agent", () => {
      */
     expect(pinned).toMatch(/let live = \$state<\{ x: number; y: number; width: number; height: number \} \| null>/);
     expect(pinned).toMatch(/if \(live\) change\(holding\.id, live\)/);
+  });
+
+  it("pins a drawing at the size the drawing is", () => {
+    /*
+     * The box was `360 / view.scale` by `260 / view.scale`, which is two
+     * mistakes at once and neither of them is the drawing's size. It is a
+     * constant, so every picture got the same rectangle whatever it was a
+     * picture of; and it is a window-pixel length divided into canvas units,
+     * while everything laid out inside the box — the SVG mermaid produced, at
+     * the size mermaid decided the diagram was — is in canvas units already. So
+     * a drawing pinned while zoomed out landed in a box several times too big
+     * with the picture adrift in a corner of it, and one pinned while zoomed in
+     * landed in a box too small and scrolled inside it.
+     *
+     * The size now travels with the source, because the panel has the drawing
+     * on the screen at that moment and the canvas never will: what is dropped
+     * is a few lines of mermaid, and the picture does not exist at the far end
+     * until something has drawn it.
+     */
+    const diagram = source("panels/Diagram.svelte");
+    const canvas = source("canvas/Canvas.svelte");
+    const camera = source("canvas/camera.svelte.ts");
+
+    // The `viewBox` rather than the element, which is only ever as wide as the
+    // panel allowed: a wide diagram in a narrow console reports the console.
+    expect(diagram).toMatch(/sizeFromViewBox\(svg\?\.getAttribute\("viewBox"\)\)/);
+    expect(diagram).toMatch(
+      /setData\("application\/odin-diagram-size", sizeOnScreen\(\)\)/,
+    );
+    expect(canvas).toMatch(/readSize\(event\.dataTransfer\?\.getData\("application\/odin-diagram-size"\)\)/);
+    expect(canvas).toMatch(/camera\.pin\(code, event\.clientX, event\.clientY, drawn\)/);
+
+    // And the arithmetic is the module's, where it can be exercised at more
+    // than the one zoom a screenshot shows.
+    expect(camera).toMatch(/pinBox\(/);
+    // The size is never put through the zoom. This is the line that was wrong,
+    // and it is worth naming: it is the same fault `heading.ts` was split out
+    // over, a length measured in one coordinate system used in another.
+    expect(camera).not.toMatch(/360 \/ view\.scale/);
+    expect(camera).not.toMatch(/(?:width|height) = Math\.round\(\d+ \/ view\.scale\)/);
+  });
+
+  it("measures a drawing in its own units, not the screen's", () => {
+    /*
+     * The one that cut the labels off. Mermaid does not know how wide a label
+     * is until it has put it in the document and asked: it appends the text
+     * into a `foreignObject` inside the SVG it is building, takes
+     * `getBoundingClientRect`, and makes the node box that wide. The rect is
+     * the screen's, with every transform above the element already in it; the
+     * box it writes is in the SVG's own user units.
+     *
+     * A pinned drawing lives inside the canvas layer, which is scaled. Pinned
+     * at a fifth of life size, every label measured a fifth of its width, every
+     * node was built a fifth as wide as its own text, and the text was then
+     * painted at full size and ran out of the box — `Notificati`,
+     * `LaborNotific`, `labor_r`. The copy in the panel beside it was correct in
+     * the same instant, which is the whole proof: same source, same fonts, same
+     * renderer, no transform.
+     *
+     * So the box is counter-scaled for the length of the render and the
+     * transforms above it multiply out to one. Measured rather than read off
+     * the camera, because this component belongs to the panels and is only a
+     * guest on the canvas — and because it is then right inside the picture
+     * viewer's own zoom as well.
+     */
+    const diagram = source("panels/Diagram.svelte");
+    expect(diagram).toMatch(
+      /zoomOf\(element\.getBoundingClientRect\(\)\.width, element\.offsetWidth\)/,
+    );
+    expect(diagram).toMatch(/element\.style\.transform = `scale\(\$\{1 \/ zoom\}\)`/);
+    // Put back afterwards, whatever happened, or the drawing stays at the
+    // inverse of the zoom it was drawn at.
+    expect(diagram).toMatch(/finally \{[\s\S]{0,120}?element\.style\.transform = ""/);
+    // And every render goes through it. A second call to `draw` that skipped
+    // the correction would be the bug back for whichever diagram used it.
+    expect(diagram).toMatch(/await drawUnscaled\(mermaid, element\)/);
+    expect(diagram.match(/await draw\(mermaid, element\)/g)).toHaveLength(2);
+  });
+
+  it("draws a diagram in a typeface the page has a name for", () => {
+    /*
+     * The other half of the cut-off labels, and it had nothing to do with the
+     * zoom. The renderer was told to set its labels in `var(--sans)`, and there
+     * is no `--sans` anywhere: the page names one family and it is `--mono`. An
+     * unresolvable `var()` does not leave the property alone — the declaration
+     * becomes unset, and an unset font-family inherits — so the label was
+     * painted in the monospace of whatever box it was in, while mermaid had
+     * measured it a moment earlier in its own Trebuchet fallback. Measured on a
+     * real renderer: the same label 146.5 wide when it was sized and 180.6 when
+     * it was drawn, which is a box twenty-three per cent too narrow for its own
+     * text.
+     *
+     * So the name the renderer is given has to be one this document defines,
+     * and that is what is checked — not the particular family, which may
+     * change, but that the token exists at all. A font named here and nowhere
+     * else is measured in one typeface and drawn in another, every time.
+     */
+    const asked = /themeVariables:\s*\{[^}]*fontFamily:\s*"var\(--([\w-]+)\)"/.exec(
+      source("panels/Diagram.svelte"),
+    );
+    expect(asked).not.toBeNull();
+    const vocabulary = readFileSync(
+      new URL("../src/tokens.ts", import.meta.url),
+      "utf8",
+    );
+    expect(vocabulary).toMatch(new RegExp(`--${asked![1]}:`));
+  });
+
+  it("opens a drawing full size when it is pressed rather than dragged", () => {
+    /*
+     * A diagram in a console four hundred pixels wide is a page of boxes at a
+     * fifth of the size they were laid out at, which is the complaint a
+     * screenshot already had an answer for. A reader could get a proper look at
+     * one only by dragging it onto the canvas and keeping it — a decision about
+     * the review, made in order to read something.
+     *
+     * The two gestures begin identically and the browser will not tell them
+     * apart for us: a drag the reader gives up on still ends in a release. So
+     * where the pointer went down is remembered and how far it had gone by the
+     * time it came up is what answers, with a drag that the browser took over
+     * counting as a drag whatever the distance says.
+     *
+     * The release is heard on the window rather than on the box, because a
+     * press on a pinned drawing bubbles to the viewport, which captures the
+     * pointer — after which nothing more is delivered to the element itself.
+     * That is the same capture the folder controls had to be excused from.
+     */
+    const diagram = source("panels/Diagram.svelte");
+    expect(diagram).toMatch(/window\.addEventListener\("pointerup", release\)/);
+    expect(diagram).toMatch(/if \(lifted \|\| wandered\(from, \{ x: up\.clientX, y: up\.clientY \}\)\) return;/);
+    expect(diagram).toMatch(/showDrawing\(code\)/);
+    // Pinning still wins where a drawing can be pinned: the drag says so
+    // itself, so a gesture the browser has turned into a drag never opens
+    // anything.
+    expect(diagram).toMatch(/ondragstart=\{\(event\) => \{\s*\n\s*\/\/[^\n]*\n\s*lifted = true;/);
+
+    // The same viewer a screenshot opens in, on the same layer, put away the
+    // same ways. A second full-window viewer would be a second thing to learn
+    // and a second thing to get out from under.
+    const viewer = source("hud/Picture.svelte");
+    expect(viewer).toMatch(/z-index: var\(--z-picture/);
+    expect(viewer).toMatch(/<Diagram code=\{drawing\.code\} openable=\{false\} \/>/);
+    expect(viewer).toMatch(/if \(!open\) return;[\s\S]{0,200}?hidePicture\(\)/);
+    // One field for both, or the viewer is asked to show two things at once.
+    const held = source("hud/picture.svelte.ts");
+    expect(held).toMatch(/export function showDrawing\(code: string\): void \{[\s\S]{0,140}?state\.shown = null;/);
+    expect(held).toMatch(/export function showPicture\([\s\S]{0,140}?state\.drawn = null;/);
   });
 
   it("draws what an agent draws, and only when there is something to draw it with", () => {

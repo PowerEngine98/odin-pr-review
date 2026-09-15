@@ -15,10 +15,11 @@
   import { barsAbove, barsFor, type Seen } from "./bars.js";
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
+  import { readSize } from "./drawn.js";
   import EdgeLayer from "./EdgeLayer.svelte";
   import Clusters from "./Clusters.svelte";
   import { titleLine as titleLineFor } from "./heading.js";
-import Pinned from "./Pinned.svelte";
+  import Pinned from "./Pinned.svelte";
   import { wheelGesture } from "./gestures.js";
   import { listen as listenForKeys } from "./keyboard.svelte.js";
   import { lineAt } from "./measured.svelte.js";
@@ -373,7 +374,18 @@ import Pinned from "./Pinned.svelte";
     const code = event.dataTransfer?.getData("application/odin-diagram");
     if (!code) return;
     event.preventDefault();
-    camera.pin(code, event.clientX, event.clientY);
+    /*
+     * How big the thing being dropped is, said by the panel that had it on the
+     * screen a moment ago.
+     *
+     * Nothing here can work it out. What is dropped is a few lines of mermaid,
+     * and the drawing they become does not exist until it has been drawn — so a
+     * box sized at this instant is a box sized before there is anything to size
+     * it to, which is how every pinned diagram came to be the same 360 by 260
+     * whatever it was a picture of.
+     */
+    const drawn = readSize(event.dataTransfer?.getData("application/odin-diagram-size"));
+    camera.pin(code, event.clientX, event.clientY, drawn);
   }}
   onpointerdown={(event) => camera.beginPan(event, viewport)}
   onpointermove={camera.dragPan}
