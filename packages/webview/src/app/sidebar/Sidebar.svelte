@@ -11,7 +11,7 @@
   import Changes from "./Changes.svelte";
   import type { SidebarModel } from "./model.js";
   import Picker from "./Picker.svelte";
-  import { model as page, ui } from "./state.svelte.js";
+  import { goTo, model as page, ui } from "./state.svelte.js";
 
   let {
     model,
@@ -43,6 +43,13 @@
     if (ssr && model) {
       page.current = model;
       ui.loading = model.loading;
+      // Where the reader was standing when this was drawn, so the markup comes
+      // out of Node with the row already marked and the folders over it already
+      // open. On this side there is no window for the state module to have found
+      // the payload on, so it starts empty and has to be told — the same reason
+      // the two lines above exist. Without it the mark would appear a frame
+      // after the strip did, every time the list was rebuilt.
+      goTo(model.change?.here ?? "");
     }
   });
 

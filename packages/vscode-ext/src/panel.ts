@@ -242,6 +242,17 @@ interface PartMessage {
 }
 
 /**
+ * Which file the reader is standing on, as the middle of the canvas decides it.
+ *
+ * The same answer the map in the corner outlines, sent so the file list can mark
+ * the same row. Empty when the middle of the view has never fallen on a card.
+ */
+interface HereMessage {
+  type: "here";
+  payload: { path: string };
+}
+
+/**
  * Asking for the ledger of what the agents have written.
  *
  * Carries nothing: the whole of it comes back, because the answer is short and
@@ -293,6 +304,7 @@ type Message =
   | RerunMessage
   | SettingsMessage
   | PartMessage
+  | HereMessage
   | NavigateMessage
   | OpenMessage
   | ViewedMessage
@@ -1718,6 +1730,14 @@ export class GraphPanel {
   static onPart: ((paths: string[] | undefined) => void) | undefined;
 
   /**
+   * Told which file the reader has come to rest over, as they move about.
+   *
+   * Wired the same way and for the same reason: the panel has no idea the file
+   * list exists, and either can be present without the other.
+   */
+  static onHere: ((path: string) => void) | undefined;
+
+  /**
    * Where the reader's own choices are kept between pages.
    *
    * Static because they belong to the reader rather than to any one review: a
@@ -2576,6 +2596,10 @@ export class GraphPanel {
     try {
       if (message.type === "part") {
         GraphPanel.onPart?.(message.payload.paths ?? undefined);
+        return;
+      }
+      if (message.type === "here") {
+        GraphPanel.onHere?.(message.payload.path);
         return;
       }
       if (message.type === "navigate") {

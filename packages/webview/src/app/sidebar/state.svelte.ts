@@ -1,9 +1,8 @@
 import type { Query, SidebarModel } from "./model.js";
+import { folded, movedTo, showing, type Folds } from "./reveal.js";
 import {
-  isOpen,
   readShut,
   SHUT_KEY,
-  toggled,
   writeShut,
   type Shut,
 } from "./shut.js";
@@ -108,29 +107,71 @@ function setViewed(paths: string[], viewed: boolean): void {
 }
 
 /**
- * The shut folders, as one reactive value.
+ * What the tree has folded, and what the reveal is holding open on top of it.
  *
- * The reading, the writing and the keying live in `shut.ts`, which is plain and
- * can be exercised; this is the part that has to be reactive so that every
- * folder in the tree redraws when one of them is pressed.
+ * The reading, the writing and the keying live in `shut.ts`, and every rule
+ * about what a reveal may and may not shut again lives in `reveal.ts`. Both are
+ * plain and can be exercised; this is only the part that has to be reactive, so
+ * that every folder in the tree redraws when one of them moves — and so that
+ * both halves move in one assignment, because a tree that has shut the last
+ * reveal without yet opening the next has the reader's own file hidden.
  *
- * An object rather than a `Set`: a plain Set inside reactive state is not
- * watched from the inside, so adding to one changes nothing anybody can see —
- * a fault this repository has already had once.
+ * Objects rather than `Set`s: a plain Set inside reactive state is not watched
+ * from the inside, so adding to one changes nothing anybody can see — a fault
+ * this repository has already had once. They are replaced whole for the same
+ * reason.
  */
-export const folders = $state<{ shut: Shut }>({
-  shut: readShut(remembered(SHUT_KEY)),
+export const folders = $state<{ folds: Folds }>({
+  folds: {
+    shut: readShut(remembered(SHUT_KEY)),
+    opened: {},
+    path: "",
+  },
 });
+
+// Where the reader was standing when the host drew this, if it said. Done as a
+// move rather than as part of the value above so that the folders hiding that
+// file are opened by the same rule that opens them for every later move.
+folders.folds = movedTo(
+  folders.folds,
+  model.current.change?.tree,
+  embedded().change?.here ?? "",
+);
+
+/** The file the reader is standing on in the drawing, for the row to mark. */
+export function here(): string {
+  return folders.folds.path;
+}
+
+/**
+ * The reader has come to rest over another file, so the tree follows them.
+ *
+ * Exactly the folders the last reveal opened are shut again, and the ones hiding
+ * the new file are opened. A tree the reader left fully collapsed is therefore
+ * fully collapsed again afterwards, with only the path to wherever they are now
+ * showing, rather than a trail of directories hanging ajar behind them.
+ */
+export function goTo(path: string): void {
+  folders.folds = movedTo(folders.folds, model.current.change?.tree, path);
+}
 
 /** Whether a folder is showing what is under it. */
 export function folderOpen(path: string): boolean {
-  return isOpen(folders.shut, path);
+  return showing(folders.folds.shut, folders.folds.opened, path);
 }
 
-/** Opens a shut folder, or shuts an open one, and remembers which. */
+/**
+ * Opens a shut folder, or shuts an open one, and remembers which.
+ *
+ * Folding anything hands the whole of the current reveal to the reader first, so
+ * what was opened to show them their file stays open and is written down as
+ * open. Only what is written down is remembered, which is the point: the
+ * reveal's own openings are never persisted, so a reader who never touches a
+ * folder finds the arrangement they left.
+ */
 export function toggleFolder(path: string): void {
-  folders.shut = toggled(folders.shut, path);
-  remember(SHUT_KEY, writeShut(folders.shut));
+  folders.folds = folded(folders.folds, path);
+  remember(SHUT_KEY, writeShut(folders.folds.shut));
 }
 
 /** Asks the host for a different set of pull requests. */
@@ -184,12 +225,26 @@ export function forget(key: string): void {
 export function listen(): void {
   window.addEventListener("message", (event: MessageEvent) => {
     const message = event.data as
-      | { type?: string; value?: boolean; paths?: string[]; viewed?: boolean }
+      | {
+          type?: string;
+          value?: boolean;
+          paths?: string[];
+          viewed?: boolean;
+          path?: string;
+        }
       | undefined;
     if (!message || typeof message.type !== "string") return;
 
     if (message.type === "loading") {
       ui.loading = message.value === true;
+      return;
+    }
+    // Where the reader has got to in the drawing. Sent rather than redrawn for
+    // the same reason the marks are: this changes every time a card passes
+    // under the middle of the canvas, and rebuilding the document for it would
+    // throw away the reader's scroll and whatever they had typed.
+    if (message.type === "here") {
+      goTo(message.path ?? "");
       return;
     }
     if (message.type === "setViewed") {

@@ -35,6 +35,16 @@ export interface ChangeView {
   totals: TotalsView;
   /** Which reading this is, and whether it is of the files on disk. */
   reading: ReadingView;
+  /**
+   * The file the reader is standing on in the drawing, when the panel has said.
+   *
+   * Carried in the payload as well as sent as a message, because the document is
+   * rebuilt whole for anything structural — opening a part of the change, say —
+   * and the reader has not moved on the canvas while that happens, so no message
+   * follows to say where they are. Without this the mark would simply vanish at
+   * the rebuild and stay vanished until they next panned.
+   */
+  here?: string;
 }
 
 /**

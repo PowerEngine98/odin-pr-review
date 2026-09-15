@@ -76,6 +76,15 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private loading = false;
   /** The part of the change the panel is showing, when it is showing one. */
   private part: Set<string> | undefined;
+  /**
+   * The file the reader is standing on in the drawing, as the panel reports it.
+   *
+   * Kept here as well as sent across, because the document is rebuilt whole for
+   * anything structural and the reader has not moved on the canvas while that
+   * happens — so nothing would follow to say where they are, and the mark would
+   * go missing until they next panned.
+   */
+  private here = "";
   /** Whether the list of pull requests is showing over the change list. */
   private chooser = false;
   /**
@@ -297,6 +306,20 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Where the reader has got to in the drawing, so the list can mark the row.
+   *
+   * Sent rather than redrawn, and that is the whole reason this is a message at
+   * all: it changes every time a card passes under the middle of the canvas, and
+   * rebuilding the document for each would throw away the reader's scroll and
+   * whatever they had typed in the filter, several times a gesture.
+   */
+  setHere(path: string): void {
+    if (path === this.here) return;
+    this.here = path;
+    void this.view?.webview.postMessage({ type: "here", path });
+  }
+
+  /**
    * The change as the list should show it: all of it, or one part.
    *
    * An edge is kept only when both of its ends are in the part, so the
@@ -313,7 +336,9 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     const graph = this.showing();
     return {
       loading: this.loading,
-      ...(graph ? { change: changeView(graph, (path) => this.viewed.has(path)) } : {}),
+      ...(graph
+        ? { change: changeView(graph, (path) => this.viewed.has(path), this.here) }
+        : {}),
       picker: pickerView(
         this.pulls,
         this.branch,
@@ -349,11 +374,22 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
 export function changeView(
   graph: ChangeGraph,
   isViewed: (path: string) => boolean,
+  /**
+   * The file the reader is standing on in the drawing, when the panel has said.
+   *
+   * Only ever a file that is in this graph. A part of the change on screen and a
+   * reader standing outside it is a real situation — they opened the part after
+   * arriving — and a mark naming a file the list is not showing would have the
+   * tree opening folders to reveal a row that is not there.
+   */
+  here = "",
 ): ChangeView {
   const totals = progressOf(graph, isViewed);
+  const known = here !== "" && graph.nodes.some((node) => node.path === here);
 
   return {
     tree: folderView(buildTree(graph.nodes), graph, isViewed),
+    ...(known ? { here } : {}),
     totals: {
       additions: totals.additions,
       deletions: totals.deletions,

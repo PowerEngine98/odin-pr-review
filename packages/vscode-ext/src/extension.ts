@@ -1504,6 +1504,9 @@ async function present(
 
   // The list follows whichever part the panel is showing.
   GraphPanel.onPart = (paths) => sidebar.setPart(paths);
+  // And marks the row the reader is standing on, the way the map in the corner
+  // outlines the card. One answer to where they are, drawn in two places.
+  GraphPanel.onHere = (path) => sidebar.setHere(path);
 
   const pull = graph.meta.pullRequest;
 

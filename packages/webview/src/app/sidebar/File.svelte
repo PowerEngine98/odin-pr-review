@@ -14,9 +14,48 @@
   import Hit from "./Hit.svelte";
   import type { FileView } from "./model.js";
   import Ref from "./Ref.svelte";
-  import { mark, notify, ui } from "./state.svelte.js";
+  import { here as readerAt, mark, notify, ui } from "./state.svelte.js";
 
   let { file, depth }: { file: FileView; depth: number } = $props();
+
+  /**
+   * Whether this is the file the reader is standing on in the drawing.
+   *
+   * The same answer the map in the corner marks, rather than a second one worked
+   * out here: the page decides which card is under the middle of the view and
+   * tells the host, and the host tells this list. Two answers to that would drift
+   * apart, and the way a reader finds that out is the map and the list pointing
+   * at different files in front of them.
+   */
+  const here = $derived(readerAt() !== "" && readerAt() === file.path);
+
+  /**
+   * The row itself, so it can be brought into view when it becomes the one.
+   *
+   * A mark on a row three hundred pixels below the fold is a mark nobody can
+   * see, and being easy to find was the whole of what was asked for.
+   */
+  let row: HTMLElement | undefined = $state();
+
+  /*
+   * Scrolled to only when it is not already showing.
+   *
+   * `nearest` is the whole of that: a row already in the strip does not move at
+   * all, and one just off the edge comes in by the least it can. The reader is
+   * panning a canvas while this happens, and a list that re-centred itself on
+   * every file they crossed would be a column of text sliding about in the
+   * corner of their eye for the entire gesture.
+   *
+   * Instantly rather than smoothly, which sounds like the harsher choice and is
+   * the gentler one. The current file can change several times in a second while
+   * the reader pans; smooth scrolls queued behind one another carry on moving
+   * after the reader has stopped, and overshoot a row that was only ever one
+   * line out of view.
+   */
+  $effect(() => {
+    if (!here) return;
+    row?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
 
   /** What the reader last did to the fold, when nothing is being searched. */
   let unfolded = $state(false);
@@ -65,8 +104,10 @@
 </script>
 
 <div
+  bind:this={row}
   class="row status-{file.status}"
   class:seen-marked={file.viewed}
+  class:here
   hidden={!survives}
   style:padding-left="{indent}px"
   title={file.path}
@@ -130,6 +171,41 @@
   .row:hover {
     background: var(--vscode-list-hoverBackground);
     --viewed-quiet: 1;
+  }
+
+  /*
+   * Where the reader is standing, which is what the map in the corner outlines.
+   *
+   * A wash and an edge rather than a wash alone. The hover is already a wash —
+   * the editor's own, a neutral grey — and a second one a shade off it would be
+   * a mark the reader could only read by moving the pointer away to check. The
+   * edge is the part that cannot be mistaken for anything else in this strip:
+   * nothing else here is outlined.
+   *
+   * Drawn as an inset shadow and not as a border. A border is a box the row has
+   * to grow by two pixels to hold, so every row below it would step down as the
+   * reader panned past a file and step back up as they left — the whole list
+   * twitching once per card. A shadow occupies no space at all.
+   *
+   * Loud enough to find by scrolling past it and quiet enough to read the name
+   * through, which is why the wash is a fraction of the colour rather than the
+   * colour. It keeps its contrast in both themes because the blue it is mixed
+   * from is the editor's own link colour, which every theme that ships has an
+   * opinion about and every one of those opinions is legible on that theme's own
+   * background.
+   */
+  .row.here {
+    background: var(--here-wash);
+    box-shadow: inset 0 0 0 1px var(--here-edge);
+    border-radius: 3px;
+    --viewed-quiet: 1;
+  }
+
+  /* Pointed at as well as stood on. The hover's wash would otherwise replace the
+     mark's and the row would look like it had stopped being the current one at
+     the moment the reader reached for it. */
+  .row.here:hover {
+    background: color-mix(in srgb, var(--here-wash) 70%, var(--vscode-list-hoverBackground));
   }
 
   /* The badge takes `currentColor`, so the row says what colour this file is

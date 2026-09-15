@@ -30,6 +30,7 @@
   import Pairing from "./hud/Pairing.svelte";
   import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
+  import { cardUnderCentre } from "./hud/here.js";
   import Rebuilding from "./hud/Rebuilding.svelte";
   import Booting from "./hud/Booting.svelte";
   import Picture from "./hud/Picture.svelte";
@@ -158,24 +159,48 @@
    * The card under the centre wins outright; when the centre falls in the gap
    * between cards nothing is marked, because guessing at the nearest one makes
    * the highlight jump about as the reader crosses open canvas.
+   *
+   * The geometry is `hud/here.ts` rather than a few lines here, because the file
+   * list marks the same card and two derivations of "where is the reader" will
+   * drift apart — in front of a reader who can see both at once. The chrome's
+   * height is handed over in the drawing's units, which is the form the
+   * arithmetic wants it in.
    */
   const centred = $derived.by(() => {
-    const win = onScreen;
-    if (!win.width || !win.height) return ui.activeNode;
-    const x = win.left + win.width / 2;
-    // The middle of what can be seen, not of the element. The chrome covers the
-    // top of the viewport, so the geometric centre sits above the reader's own
-    // — and the card marked "you are here" was the one about forty pixels over
-    // their eye line rather than the one they were reading.
-    const hidden = chromeBottom / view.scale;
-    const y = win.top + hidden + (win.height - hidden) / 2;
-    const on = camera
-      .shown()
-      .find((c) => x >= c.x && x <= c.x + c.width && y >= c.y && y <= c.y + c.height);
+    const on = cardUnderCentre(onScreen, chromeBottom / view.scale, camera.shown());
     // Nothing under the middle: keep whatever the reader last arrived at, so a
     // pan across empty canvas does not clear the one mark that says where they
     // came from.
     return on ? on.node.id : ui.activeNode;
+  });
+
+  /**
+   * The same card, named the way everything outside this page names a file.
+   *
+   * The drawing works in node identifiers and the file list works in paths, and
+   * the message between them has to be in the list's language: the host looks
+   * the row up by path, and a node identifier means nothing to it.
+   */
+  const herePath = $derived(
+    page.current.nodes.find((node) => node.id === centred)?.path ?? "",
+  );
+
+  /*
+   * Telling the host where the reader is, so the file list can mark the row.
+   *
+   * Sent rather than rendered: the side bar is a separate document that the
+   * host rebuilds whole, and rebuilding it every time a card passes under the
+   * middle of the screen would throw away the reader's scroll and whatever they
+   * had typed in the filter, sixty times a pan. The same route the reviewed
+   * marks take.
+   *
+   * Only when it changes, which is what a derived value costs nothing to give:
+   * `centred` is recomputed on every frame of every drag and is the same answer
+   * for all of them but the few where a different card crosses the middle, so
+   * this effect runs once per card rather than once per frame.
+   */
+  $effect(() => {
+    notify("here", { path: herePath });
   });
 
   /**

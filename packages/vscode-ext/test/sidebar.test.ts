@@ -279,3 +279,42 @@ describe("saying which reading the list belongs to", () => {
     expect(view.reading.branch).toBe("feat/x");
   });
 });
+
+/**
+ * Where the reader is standing, carried across to the list.
+ *
+ * The panel works out which card is under the middle of the canvas and the list
+ * marks the same file, so the map in the corner and the tree down the side agree
+ * about it. Most of the time that arrives as a message, because the reader moves
+ * constantly and rebuilding the document for each step would throw away their
+ * scroll — but the payload has to carry it too, or every rebuild loses the mark
+ * until the next time they happen to pan.
+ */
+describe("the file the reader is standing on", () => {
+  it("carries it in the payload, so a rebuilt list comes up already marked", () => {
+    // Opening a part of the change rebuilds the document while the reader has
+    // not moved an inch on the canvas, so no message follows to say where they
+    // are. Without this the mark would vanish at the rebuild and stay gone.
+    const graph = graphOf([withStatus("src/a.ts", "modified")]);
+    expect(changeView(graph, () => false, "src/a.ts").here).toBe("src/a.ts");
+  });
+
+  it("says nothing when the panel has not said", () => {
+    // The list is drawn before any page has been opened on the change. A mark
+    // defaulting to the first file would be the list asserting what it does not
+    // know.
+    const graph = graphOf([withStatus("src/a.ts", "modified")]);
+    expect(changeView(graph, () => false).here).toBeUndefined();
+  });
+
+  it("drops a file this list is not showing", () => {
+    /*
+     * A reader can open one part of the change while standing on a card that is
+     * not in it — they arrived first and opened the part afterwards. The list
+     * would then be told to mark a row it has not drawn, and the tree would open
+     * folders on the way to a file that is not there.
+     */
+    const part = graphOf([withStatus("src/a.ts", "modified")]);
+    expect(changeView(part, () => false, "somewhere/else.ts").here).toBeUndefined();
+  });
+});

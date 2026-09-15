@@ -312,6 +312,28 @@ export function sidebarTokens(theme: Theme): string {
   --box-set: var(--vscode-button-background, #0a84ff);
   --action: var(--vscode-button-background, #0a84ff);
   --action-ink: var(--vscode-button-foreground, #ffffff);
+
+  /*
+   * The row the reader is standing on, which the map in the corner also marks.
+   *
+   * Blue because it is the one thing in this list that is not about the change:
+   * green, red, tan and grey are already spoken for by what happened to a file,
+   * and a fifth of those would read as a fifth thing that can happen to one. The
+   * editor's link colour rather than its button colour — the button is what
+   * "press me" looks like, and this row is not asking to be pressed — and rather
+   * than the renamed status's blue, which is a file's colour and is sitting in
+   * the badge two inches to the left.
+   *
+   * Taken from the theme so it holds its contrast in the light one as well as
+   * the dark, and falling back to the palette's own blue where there is no
+   * editor to ask — rendering to text in Node, or a page opened in a browser.
+   *
+   * The wash and the edge are mixed from the one colour rather than named
+   * separately, so there is a single thing to move if it turns out too loud.
+   */
+  --here: var(--vscode-textLink-foreground, ${theme.status.renamed});
+  --here-wash: color-mix(in srgb, var(--here) 16%, transparent);
+  --here-edge: color-mix(in srgb, var(--here) 58%, transparent);
 }
 
 /* ------------------------------------------------------------- the document */
