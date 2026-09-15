@@ -77,19 +77,89 @@ let session: SessionStore;
 let chosenBase: BaseStore;
 
 /**
- * The whole question the last review answered, so it can be asked again.
+ * A review as it was asked for, which is not how it came back.
  *
- * All of it, not just the base. `odin.refresh` replays this, and while it kept
- * only the repository and the base it silently replayed a *different* question:
- * a reader who had asked for the local reading — the files on disk, uncommitted
- * work included — got the last commit back instead. The card reverted to
- * committed text, and because `armLive` watches nothing but a working-tree
- * reading, the live updating stopped with it. Both looked like the watcher
- * being broken; neither was.
+ * All of it, not just the base. `odin.refresh` replays one of these, and while
+ * it kept only the repository and the base it silently replayed a *different*
+ * question: a reader who had asked for the local reading — the files on disk,
+ * uncommitted work included — got the last commit back instead. The card
+ * reverted to committed text, and because `armLive` watches nothing but a
+ * working-tree reading, the live updating stopped with it. Both looked like the
+ * watcher being broken; neither was.
+ *
+ * The number is here because a reading is not always reachable by its refs: a
+ * branch is deleted the moment its change merges, and the head the forge kept
+ * is only findable through the pull request it belonged to.
  */
-let last:
-  | { repo: string; baseRef?: string; headRef?: string; worktree?: boolean }
-  | undefined;
+interface Question {
+  repo: string;
+  baseRef?: string;
+  headRef?: string;
+  worktree?: boolean;
+  number?: number;
+}
+
+/** The question the most recently opened review answered. */
+let last: Question | undefined;
+
+/**
+ * The question each reading on screen was asked, by the name it is filed under.
+ *
+ * A reading is registered under the refs the reader asked for, and the graph
+ * that comes back says what those refs turned out to be. The two disagree
+ * routinely — `development` goes in and `origin/development` comes out, because
+ * the base only exists as a tracking ref here — and everything that replays a
+ * reading used to replay the second of those. Asking again under the resolved
+ * name found no tab under it and opened another, so a reader who pressed
+ * refresh ended up with their change drawn twice, under two names for one
+ * thing, with no way to tell the two tabs apart.
+ *
+ * Kept beside the watchers and for the same reason: which reading owns a thing
+ * is a question that only has an answer while there is a name to ask it under.
+ */
+const askedFor = new Map<string, Question>();
+
+/**
+ * The tab showing this pull request, read the way that is asked for.
+ *
+ * By the change rather than by the refs, because the refs are exactly what
+ * cannot be relied on here. One pull request answers to a handful of names —
+ * `topic`, `origin/topic`, the sha the forge last saw, and no head at all once
+ * it is read from a working tree — so a caller holding one of those has no way
+ * to ask "is this change already open" and get a true answer. A number is the
+ * same number however the change is being read, and a different pull request
+ * has a different number and keeps its own tab.
+ *
+ * Asked of what the reader asked for rather than of the graphs on screen. The
+ * graph carries the pull request the forge described, which is absent whenever
+ * `gh` is signed out or slow — and a promotion that quietly stops promoting
+ * because a network call failed is the original fault wearing a new coat.
+ *
+ * `live` tells the two readings of one change apart, which is the whole point
+ * of asking: the committed reading and the reading of the files on disk are
+ * both legitimate and both wanted, and swapping between them is a replacement
+ * rather than a second tab.
+ */
+function readingOf(number: number, live: boolean): string | undefined {
+  for (const [key, question] of askedFor) {
+    if (question.number !== number) continue;
+    if ((question.worktree === true) !== live) continue;
+    return key;
+  }
+  return undefined;
+}
+
+/**
+ * The question in front of the reader, as they asked it.
+ *
+ * The reading's own record first, then what the graph says it resolved to, then
+ * whatever was opened last. Each fallback is a step further from what was asked
+ * and closer to a guess, which is the order they belong in.
+ */
+function questionInFront(): Question | undefined {
+  const key = GraphPanel.currentReading();
+  return (key ? askedFor.get(key) : undefined) ?? GraphPanel.current() ?? last;
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   // The graph's tab wears the extension's own mark, which is a file on disk:
@@ -127,9 +197,11 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   // The live reading of whatever is on screen, for the places that can only ask
   // for it: a file the current reading is too old to contain.
-  GraphPanel.onLocal = () => {
-    const here = GraphPanel.current() ?? last;
-    if (here) void review(here.baseRef, here.headRef, true);
+  GraphPanel.onLocal = (insteadOf) => {
+    const here = questionInFront();
+    if (here) {
+      void review(here.baseRef, here.headRef, true, undefined, undefined, insteadOf);
+    }
   };
 
   // The list belongs to whichever reading is in front. Its marks are stored per
@@ -151,6 +223,9 @@ export function activate(context: vscode.ExtensionContext): void {
     live.delete(key);
     localWatch.get(key)?.dispose();
     localWatch.delete(key);
+    // And the question it answered, which is of no use to anybody once there
+    // is no tab left to ask it again for.
+    askedFor.delete(key);
     // Closed on purpose is not the same as lost to a reload, and the next one
     // should not bring it back.
     session.forget(key);
@@ -225,8 +300,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("odin.refresh", async () => {
       await refreshPullRequests();
       // The reading in front of the reader, asked of the panel showing it.
-      // "The last review" is the wrong tab the moment there is more than one.
-      const here = GraphPanel.current() ?? last;
+      // "The last review" is the wrong tab the moment there is more than one,
+      // and the refs the graph resolved to are the wrong question: both of
+      // those opened a second tab of the change already in front of them.
+      const here = questionInFront();
       if (here) {
         await review(
           here.baseRef,
@@ -604,11 +681,26 @@ async function readLocal(number: number): Promise<void> {
   const pull = known.get(number);
   if (!pull) return;
 
+  /*
+   * The forge's copy of this change, if the reader already has it open.
+   *
+   * Picking "Local" for a change on screen is not asking for a second tab of
+   * it. It is the same change read the other way — the files on disk instead of
+   * the commits — and what the reader wants at the end of it is the live one,
+   * which is exactly what the offer under the drawing has always meant and what
+   * this route silently did not do. Found by number rather than by refs,
+   * because one change answers to several names and none of them is reliable
+   * here; a different pull request has a different number and keeps its tab.
+   */
+  const going = readingOf(number, false);
+
   const local = localState.get(pull.branch);
   const here = local?.worktree === repo;
   if (here) {
     // The reader is on it. This checkout is the live reading of that branch.
-    await review(pull.baseRef, undefined, true);
+    // The number travels with it so that picking "Origin" afterwards can find
+    // this tab again and swap back into it rather than opening a third.
+    await review(pull.baseRef, undefined, true, undefined, pull.number, going);
     return;
   }
 
@@ -628,7 +720,7 @@ async function readLocal(number: number): Promise<void> {
    * progress.
    */
   const already = local?.worktree;
-  const asked = await vscode.window.showInformationMessage(
+  const answer = await vscode.window.showInformationMessage(
     already
       ? `Odin: ${pull.branch} is checked out at ${already}.`
       : `Odin: ${pull.branch} is not checked out here.`,
@@ -642,8 +734,8 @@ async function readLocal(number: number): Promise<void> {
     "Show its commits",
   );
 
-  if (asked === "Show its commits" || asked === undefined) {
-    await review(pull.baseRef, pull.branch, false, undefined, pull.number);
+  if (answer === "Show its commits" || answer === undefined) {
+    await review(pull.baseRef, pull.branch, false, undefined, pull.number, going);
     return;
   }
 
@@ -652,7 +744,7 @@ async function readLocal(number: number): Promise<void> {
       `Preparing a checkout of ${pull.branch}`,
       () => readableCheckout(pull.branch, { cwd: repo }),
     );
-    await review(pull.baseRef, undefined, true, checkout.path, pull.number);
+    await review(pull.baseRef, undefined, true, checkout.path, pull.number, going);
   } catch (error) {
     /*
      * Every way this fails is worth saying rather than driving through: the
@@ -691,6 +783,12 @@ async function readOrigin(number: number): Promise<void> {
   const pull = known.get(number);
   if (!pull) return;
 
+  // The same swap the other way round, and for the same reason: a reader who
+  // has the working tree on screen and picks "Origin" is asking to see this
+  // change as the forge has it, not to have both at once. Their live reading
+  // goes once the forge's copy is drawn.
+  const going = readingOf(number, true);
+
   await GraphPanel.showLoading(`Fetching #${number}`);
   await git(["fetch", "--quiet", "origin", pull.branch], { cwd: repo })
     .catch(() => "");
@@ -716,7 +814,7 @@ async function readOrigin(number: number): Promise<void> {
     return;
   }
 
-  await review(pull.baseRef, head, false, undefined, pull.number);
+  await review(pull.baseRef, head, false, undefined, pull.number, going);
 }
 
 async function checkout(number: number): Promise<void> {
@@ -1080,6 +1178,22 @@ async function review(
    * than in anything a signed-out `gh` could tell us.
    */
   is?: number,
+  /**
+   * The reading this one replaces, when it is the same change read the other
+   * way.
+   *
+   * A promotion rather than a second tab. Which tab is being replaced is
+   * something only the caller knows — it is the one the reader pressed, or the
+   * one the offer was made from — so it travels with the request, and the field
+   * the panel closes by is written here and nowhere else.
+   *
+   * That is the whole of why this is a parameter. It used to be a static the
+   * two callers who happened to think of it assigned before calling, and the
+   * plainest route of all did not: picking "Local" out of the list is the
+   * deliberate way to ask for the live reading of a change already on screen,
+   * and it opened one beside the forge's copy instead of in place of it.
+   */
+  insteadOf?: string,
 ): Promise<void> {
   const repo = at ?? (await repositoryRoot());
   if (!repo) return;
@@ -1137,6 +1251,18 @@ async function review(
         headRef: head,
         ...(worktree ? { worktree: true } : {}),
       });
+
+      /*
+       * Said before the wait, and only when it is a different tab.
+       *
+       * The panel closes the promoted tab once its replacement is drawn, which
+       * is several seconds after this — so it has to be told now, while the
+       * request that knows about it is still in hand. Asking for the reading
+       * that is already there is not a promotion of anything, and saying it was
+       * would close the tab the reader is looking at to put the same picture
+       * back into a new one.
+       */
+      if (insteadOf && insteadOf !== where) GraphPanel.promoting = insteadOf;
 
       await GraphPanel.showLoading("Reading the change", where);
       try {
@@ -1202,7 +1328,7 @@ async function review(
         const graph = built.graph;
 
         progress.report({ message: "colouring" });
-        const reading = await present(built, repo, base, headRef, false, step, where);
+        const reading = await present(built, repo, base, headRef, false, step, where, is);
         drawn = true;
 
         // The expensive half, over the picture the reader already has. The
@@ -1213,7 +1339,7 @@ async function review(
           GraphPanel.setRefreshing(true, "Resolving references…");
           try {
             final = await staged.rest();
-            await present(final, repo, base, headRef, false, step, where);
+            await present(final, repo, base, headRef, false, step, where, is);
           } finally {
             GraphPanel.setRefreshing(false);
           }
@@ -1228,6 +1354,16 @@ async function review(
         // moved on since. The two never both apply.
         watchForLocalWork(repo, base, headRef, final, reading);
       } catch (error) {
+        /*
+         * Nothing arrived, so nothing replaced anything.
+         *
+         * The promotion is a standing instruction to close one tab as soon as
+         * the next reading is drawn, and a build that failed draws none. Left
+         * set, it would be carried out by whatever reading the reader opened
+         * next — closing a tab they had not asked to replace, minutes later,
+         * for a build that had already failed.
+         */
+        if (GraphPanel.promoting === insteadOf) GraphPanel.promoting = undefined;
         await GraphPanel.stopLoading(
           error instanceof Error ? error.message : String(error),
         );
@@ -1276,6 +1412,17 @@ async function present(
    * the panel is registered under whichever the reader's own page wrote down.
    */
   where?: string,
+  /**
+   * Which pull request this is, when the caller already knows.
+   *
+   * Passed rather than read off the graph, because the graph only carries one
+   * when the forge answered: a signed-out or slow `gh` leaves the metadata
+   * empty, and everything that looks a reading up by its change — the promotion
+   * that swaps the live reading for the committed one, the retry that reaches a
+   * deleted branch through `refs/pull` — would quietly stop working for the
+   * length of a network problem.
+   */
+  is?: number,
 ): Promise<void> {
   const { graph, shown, layout, layoutWithTests, unifiedLayout, unifiedWithTests } = built;
 
@@ -1389,7 +1536,13 @@ async function present(
     ...(base ? { baseRef: base } : {}),
     ...(headRef ? { headRef } : {}),
     ...(graph.meta.worktree ? { worktree: true } : {}),
+    ...(is !== undefined ? { number: is } : pull ? { number: pull.number } : {}),
   };
+  // And against the name this reading goes under, so that asking it again asks
+  // the same question rather than the one the refs turned out to be. `last`
+  // answers for whichever was opened most recently, which is the wrong tab the
+  // moment there are two.
+  if (where) askedFor.set(where, last);
   // What to come back to. Recorded from what was actually shown rather than
   // from what was asked for: the base may have been detected, and a reload
   // that reopened a different change from the one on screen would be worse
@@ -1535,9 +1688,10 @@ function watchForLocalWork(
           refused = true;
           return undefined;
         }
-        // The same change read the other way, not a second tab of it.
-        GraphPanel.promoting = key;
-        await review(base, headRef, true);
+        // The same change read the other way, not a second tab of it. Said as
+        // part of the request rather than into a field beside it, so that every
+        // route into a promotion behaves the same way.
+        await review(base, headRef, true, undefined, undefined, key);
         return undefined;
       },
       onChange: () => {},

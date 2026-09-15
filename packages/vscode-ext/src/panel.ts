@@ -443,7 +443,26 @@ export class GraphPanel {
     const going = GraphPanel.promoting;
     GraphPanel.promoting = undefined;
     if (!going || going === arrived) return;
-    GraphPanel.open.get(going)?.dispose();
+    const old = GraphPanel.open.get(going);
+    if (!old) return;
+
+    /*
+     * Never the frame the replacement is standing in.
+     *
+     * A reading whose graph never arrived — a build that is still running, or
+     * one that failed — has a frame the loader is willing to hand on, so the
+     * replacement can quite legitimately move into the very frame this is
+     * being asked to close. Closing it then would take the picture that has
+     * just been drawn off the screen to tidy away the picture it replaced, and
+     * what the reader would be left with is no tab at all. The registry entry
+     * goes, because there is only one reading in that frame now; the frame
+     * stays, because it is the one they are looking at.
+     */
+    if (old.panel === GraphPanel.open.get(arrived)?.panel) {
+      GraphPanel.open.delete(going);
+      return;
+    }
+    old.dispose();
   }
 
   /** Every reading on screen, oldest first. */
@@ -996,9 +1015,10 @@ export class GraphPanel {
       "Show local changes",
     );
     if (answer === "Show local changes") {
-      // Promoted rather than opened beside: see `promoting`.
-      GraphPanel.promoting = this.key;
-      GraphPanel.onLocal?.();
+      // Promoted rather than opened beside: this tab is the one being replaced,
+      // and it says so rather than writing it into a field of its own. See
+      // `promoting`.
+      GraphPanel.onLocal?.(this.key);
     }
   }
 
@@ -1012,6 +1032,13 @@ export class GraphPanel {
    * twice ends the afternoon with four tabs of one change and no way to tell
    * which of them follows their typing.
    *
+   * Written by the one place that builds a reading, out of what that request
+   * said it was replacing, and by nothing else. It used to be set by whichever
+   * caller happened to think of it, which is how the plainest route of all came
+   * to miss it: a reader who picked "Local" out of the list — the deliberate
+   * way to ask for exactly this — set nothing, so the close never ran and they
+   * got their live reading beside the forge's copy rather than in place of it.
+   *
    * Only for a promotion. Opening both deliberately is a thing people do — that
    * is why both exist — so nothing here closes a tab the reader did not just
    * ask to be replaced.
@@ -1022,9 +1049,11 @@ export class GraphPanel {
    * Asked for the live reading of what is on screen.
    *
    * The panel has no idea how a review is built; the extension wires the two
-   * together, the way it does for the file list.
+   * together, the way it does for the file list. What it does know is which tab
+   * the request came out of, so it says, and the reading that arrives replaces
+   * that one rather than joining it.
    */
-  static onLocal: (() => void) | undefined;
+  static onLocal: ((insteadOf?: string) => void) | undefined;
 
   /**
    * How the change stands against being merged, and what may be done about it.
@@ -2986,6 +3015,26 @@ export class GraphPanel {
   /** What this panel is a reading of, for whoever is keeping track. */
   get reading(): string {
     return this.key;
+  }
+
+  /**
+   * What the reading in front is filed under, rather than what it turned out
+   * to be.
+   *
+   * `current` below answers with the refs the build resolved, which is the
+   * honest answer to "what is on screen" and the wrong one to "ask this again".
+   * A reading is registered under the refs the reader asked for — `development`
+   * — and the graph comes back saying `origin/development`, because that is
+   * where the base actually was. Replaying the resolved answer asks a question
+   * nobody asked, finds no tab under that name, and opens a second one: the
+   * duplicate the reader sees is their own change, fetched twice, drawn twice,
+   * under two names for one thing.
+   *
+   * So the name goes out as well, and whoever is about to ask again looks the
+   * original question up by it.
+   */
+  static currentReading(): string | undefined {
+    return GraphPanel.active?.key;
   }
 
   /**
