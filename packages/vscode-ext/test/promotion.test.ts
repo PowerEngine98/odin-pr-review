@@ -541,6 +541,36 @@ describe("reading one change the other way", () => {
     expect(forgotten).toBe(false);
   }, 90_000);
 
+  it("leaves one tab when the change is checked out rather than merely read", async () => {
+    /*
+     * The same promotion, on the route that actually gets pressed.
+     *
+     * There are two ways to end up reading the files on disk, and they sit next
+     * to each other in the list: "Local", which reads the working tree where it
+     * is, and the checkout, which brings the branch onto this machine first and
+     * then reads it. The first was given the promotion and the second was not,
+     * so a reader who took the change onto their machine still finished with
+     * three tabs — and the test written for the fix drove the route that had
+     * been fixed, which is how it came to pass over a report that was still
+     * true.
+     *
+     * Reading is not the same act as checking out, but what the reader wants at
+     * the end of both is one tab showing the files on disk.
+     */
+    const editor = await opened(repo);
+
+    await editor.commands.get("odin.readOrigin")!(114);
+    await drawn(editor, 1);
+    expect(tabs(editor)).toHaveLength(1);
+
+    await editor.commands.get("odin.checkoutLocal")!(114);
+    await drawn(editor, 2);
+
+    const left = tabs(editor);
+    expect(left).toHaveLength(1);
+    expect(left[0]!.panel.title.startsWith("LIVE ")).toBe(true);
+  }, 30_000);
+
   it("leaves one tab going back the other way", async () => {
     const editor = await opened(repo);
 

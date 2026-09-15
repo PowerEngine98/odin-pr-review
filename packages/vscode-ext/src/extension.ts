@@ -974,7 +974,35 @@ async function checkoutLocal(number: number): Promise<void> {
   const wanted = known.get(number)?.branch;
   if (!now || (wanted && now !== wanted) || (!wanted && now === before)) return;
 
-  await review(undefined, undefined, true);
+  /*
+   * And the forge's copy of it goes, if the reader had it open.
+   *
+   * The same argument the "Local" row makes, on a route that was missed when it
+   * was made: taking a change onto this machine and then reading the files on
+   * disk is the same change read the other way, not a second tab of it. Left
+   * out, this was the route that still ended with three tabs — the original,
+   * the copy the refresh made of it, and the live one — because a fix written
+   * for the row beside it never reached the button that checks out.
+   *
+   * By number, for the reason the row gives: a change answers to several names
+   * and none of them survives a checkout, which is the one thing this route is
+   * certain to have done.
+   */
+  /*
+   * Against the base the change is actually proposed against.
+   *
+   * This asked for no base at all and let the reading fall back to whatever the
+   * settings name, which is right for a reader who opened a repository and
+   * wanted to see what they had been doing, and wrong for a change taken off
+   * the forge: a pull request says what it is proposed against, and that is
+   * knowledge this route has and was throwing away. Where the two disagree the
+   * fallback finds nothing, the live reading fails with a message about a base
+   * branch, and the tab it was to replace stays — which is the three-tab report
+   * arriving by way of a failure rather than by way of the promotion.
+   */
+  const against = known.get(number)?.baseRef;
+
+  await review(against, undefined, true, undefined, number, readingOf(number, false));
 }
 
 async function readFinished(pull: PullRequestSummary): Promise<void> {
