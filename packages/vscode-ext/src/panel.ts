@@ -24,6 +24,7 @@ import {
   setDraft,
   toggleReaction,
   submitReview,
+  FileCommentsNotPosted,
   type ChangeGraph,
   type DraftComment,
   type GraphLayout,
@@ -1949,10 +1950,18 @@ export class GraphPanel {
       REQUEST_CHANGES: "Request changes on",
     }[payload.event];
 
+    // Counted as comments rather than as line comments, and the ones about a
+    // whole file said separately. They are sent by a different call and they
+    // are the ones a reviewer is most likely to have forgotten writing, so the
+    // confirmation that names the verdict names them too.
+    const aboutFiles = payload.comments.filter((c) => c.line === undefined).length;
     const remarks =
-      payload.comments.length === 1
-        ? "1 line comment"
-        : `${payload.comments.length} line comments`;
+      (payload.comments.length === 1 ? "1 comment" : `${payload.comments.length} comments`) +
+      (aboutFiles === 0
+        ? ""
+        : aboutFiles === 1
+          ? ", one of them about a whole file"
+          : `, ${aboutFiles} of them about whole files`);
 
     const confirmed = await vscode.window.showWarningMessage(
       `${verdict} #${pull.number} with ${remarks}?`,
@@ -1961,6 +1970,20 @@ export class GraphPanel {
     );
     if (confirmed !== "Submit review") return;
 
+    /*
+     * A review that went out with a remark left behind.
+     *
+     * The verdict and its line comments are one request; a remark about a whole
+     * file is a second one, because the forge will not carry it inside a review.
+     * So half of this can succeed. When it does, the review is on the pull
+     * request and everything below has to run as though nothing went wrong —
+     * the marks, the refreshed comments, the standing — because all of that is
+     * now true. The only difference is what the reviewer is told, and that the
+     * remark which did not go out is put somewhere they can get it back from:
+     * the page clears its drafts the moment the review lands, and it clears all
+     * of them.
+     */
+    let leftBehind: FileCommentsNotPosted | undefined;
     try {
       await submitReview(
         {
@@ -1968,15 +1991,36 @@ export class GraphPanel {
           event: payload.event,
           body: payload.body,
           comments: payload.comments,
+          // What the drawing was built from, as a fallback for a forge that
+          // cannot be asked what its own head is.
+          ...(this.graph.meta.headSha ? { headSha: this.graph.meta.headSha } : {}),
         },
         { cwd: this.repo },
       );
     } catch (error) {
-      vscode.window.showErrorMessage(failedToPost(error, pull.number));
-      return;
+      if (!(error instanceof FileCommentsNotPosted)) {
+        vscode.window.showErrorMessage(failedToPost(error, pull.number));
+        return;
+      }
+      leftBehind = error;
     }
 
-    vscode.window.showInformationMessage(`Odin: review posted on #${pull.number}.`);
+    if (leftBehind) {
+      const unsent = leftBehind;
+      const copy = unsent.comments.length === 1 ? "Copy remark" : "Copy remarks";
+      void vscode.window
+        .showWarningMessage(failedToPost(unsent, pull.number), copy)
+        .then((chosen) => {
+          if (chosen !== copy) return;
+          const text = unsent.comments
+            .map((c) => `${c.path}\n\n${c.body}`)
+            .join("\n\n---\n\n");
+          void vscode.env?.clipboard?.writeText(text);
+        });
+    } else {
+      vscode.window.showInformationMessage(`Odin: review posted on #${pull.number}.`);
+    }
+
     const posted = await listReviewComments(pull.number, { cwd: this.repo });
     const threads = await listReviewThreads(pull.number, { cwd: this.repo }).catch(
       () => new Map<number, { threadId: string; resolved: boolean }>(),

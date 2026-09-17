@@ -83,6 +83,17 @@ export interface SubmitRequest {
   /** The review's summary. GitHub requires one for anything but an approval. */
   body: string;
   comments: DraftComment[];
+  /**
+   * The commit the reviewer was looking at, for remarks about a whole file.
+   *
+   * Only those need it: a comment sent inside the review is hung on whatever
+   * commit the forge decides the review belongs to, while a whole-file remark
+   * goes out on its own and has to name a commit of the pull request itself.
+   * Optional because the forge is asked for its own head first and this is only
+   * the fallback for when it cannot be reached; a caller that has already drawn
+   * the change knows the sha and can spare that question.
+   */
+  headSha?: string;
 }
 
 /**
@@ -194,8 +205,33 @@ export function parseComments(json: string): ReviewComment[] {
  * a single notification carrying a verdict, which is what a review is. Sending
  * each comment separately would spray notifications and leave the verdict
  * unattached to the remarks that justify it.
+ *
+ * A remark about a whole file cannot travel in that request, and one that tried
+ * to used to take the rest with it: the review endpoint accepts a path, a
+ * position, a line and a side and nothing else, so a comment with no line was
+ * refused, and because the review is a single request every other remark in it
+ * was refused along with it. A reviewer lost ten comments to one note about a
+ * file. So the whole-file remarks are lifted out and posted afterwards, one
+ * apiece, through the endpoint that genuinely takes them.
+ *
+ * The verdict goes first on purpose. If the forge refuses the review, the
+ * whole-file remarks are not sent at all and the caller still holds every draft
+ * it started with, so pressing send again puts the whole review out exactly
+ * once. Sending them first would leave them on the pull request with no verdict
+ * beside them and no way to retry that did not post them twice.
  */
 export async function submitReview(
+  request: SubmitRequest,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<void> {
+  await postReview(request, options);
+
+  const aboutFiles = request.comments.filter((c) => c.line === undefined);
+  if (aboutFiles.length > 0) await postFileComments(request, aboutFiles, options);
+}
+
+/** The review itself: the verdict, the summary, and every comment with a line. */
+async function postReview(
   request: SubmitRequest,
   options: GitOptions & { timeoutMs?: number },
 ): Promise<void> {
@@ -233,6 +269,148 @@ export async function submitReview(
 
       await pause(500 * (attempt + 1));
     }
+  }
+}
+
+/**
+ * Posts each remark about a whole file, on its own, after the review.
+ *
+ * One request per remark because that is the only shape the forge offers: the
+ * standalone review-comment endpoint is the one that understands a subject of
+ * `file`, and it takes a single comment. They are sent independently of one
+ * another too — a refusal of the remark on one path says nothing about the
+ * remark on the next, and stopping at the first would lose the rest for no
+ * reason.
+ *
+ * Whatever did not go out is gathered and thrown together, so the reviewer is
+ * told once, and told which files. The review is already on the pull request by
+ * the time any of this runs, which is the whole reason this failure has a type
+ * of its own.
+ */
+async function postFileComments(
+  request: SubmitRequest,
+  remarks: readonly DraftComment[],
+  options: GitOptions & { timeoutMs?: number },
+): Promise<void> {
+  const commit = await headCommit(request, options);
+  if (!commit) {
+    throw new FileCommentsNotPosted(
+      remarks,
+      "the commit the pull request is on could not be read, and a remark about a file has to name one",
+    );
+  }
+
+  const unsent: DraftComment[] = [];
+  let said = "";
+  for (const remark of remarks) {
+    try {
+      await write(
+        [
+          "api", "--method", "POST",
+          `repos/{owner}/{repo}/pulls/${request.number}/comments`,
+          "--input", "-",
+        ],
+        JSON.stringify(fileCommentPayload(remark, commit)),
+        options,
+      );
+    } catch (error) {
+      unsent.push(remark);
+      // The first refusal, kept whole. Two refusals of the same kind read as
+      // one repeated sentence, and the reviewer needs the reason once.
+      if (!said) said = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  if (unsent.length > 0) throw new FileCommentsNotPosted(unsent, said);
+}
+
+/**
+ * The commit a whole-file remark is hung on.
+ *
+ * The forge is asked first, because it is the one that knows: the sha the
+ * caller drew its graph from is whatever was checked out locally, which may be
+ * a commit the pull request has never had — a branch pushed nowhere, a
+ * materialised worktree — and a commit_id that is not on the pull request is
+ * refused. The caller's sha is the fallback for when the forge cannot be
+ * reached at all, where a commit that is probably right beats not sending the
+ * remark.
+ */
+async function headCommit(
+  request: SubmitRequest,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<string | undefined> {
+  const asked = await pullRequestHeadSha(request.number, options);
+  return asked ?? (request.headSha?.trim() || undefined);
+}
+
+/**
+ * The commit the pull request's branch is on, as the forge has it.
+ *
+ * Read the same way the node id is, and for the same reason: one field of the
+ * pull request, asked for by itself rather than by fetching the whole thing and
+ * picking through it.
+ */
+export async function pullRequestHeadSha(
+  number: number,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<string | undefined> {
+  const json = await read(
+    ["api", `repos/{owner}/{repo}/pulls/${number}`, "--jq", ".head.sha"],
+    options,
+  );
+  const sha = json?.trim();
+  return sha && sha !== "null" ? sha : undefined;
+}
+
+/**
+ * The body of a standalone comment about a whole file.
+ *
+ * `subject_type` belongs here and only here. It is documented on this endpoint
+ * and on the comments the forge hands back, and not on the comments carried
+ * inside a review — which is exactly the mistake this shape exists to keep from
+ * being made again.
+ */
+export function fileCommentPayload(
+  comment: DraftComment,
+  commitId: string,
+): Record<string, unknown> {
+  return {
+    path: comment.path,
+    commit_id: commitId,
+    subject_type: "file",
+    body: comment.body,
+  };
+}
+
+/**
+ * The review went out; one or more remarks about whole files did not.
+ *
+ * Deliberately not a `ReviewNotPosted`, and deliberately not a subclass of one:
+ * everything that reads that type says the review is not on the pull request,
+ * and saying that here would be the lie that matters most — a reviewer who
+ * believes it sends the same verdict a second time. This says the opposite half
+ * of the truth, and names the files whose remarks the reviewer still has to
+ * place.
+ */
+export class FileCommentsNotPosted extends Error {
+  /** The remarks that did not go out. Still the reviewer's to do something with. */
+  readonly comments: readonly DraftComment[];
+  /** Which files they were about, in the order they were written. */
+  readonly paths: readonly string[];
+  /** What the forge said about the first one it refused. */
+  readonly reason: string;
+
+  constructor(comments: readonly DraftComment[], reason: string) {
+    const paths = comments.map((c) => c.path);
+    const which =
+      paths.length === 1
+        ? `the remark on ${paths[0]} was not`
+        : `the remarks on ${paths.join(", ")} were not`;
+    super(`the review was posted, but ${which}: ${reason}`);
+    this.name = "FileCommentsNotPosted";
+    this.comments = comments;
+    this.paths = paths;
+    this.reason = reason;
   }
 }
 
@@ -352,29 +530,31 @@ function pause(ms: number): Promise<void> {
  * Separated from the call so the translation can be tested without a network
  * or a repository: the mistakes possible here — a span sent as a point, a
  * summary omitted where one is required — are all mistakes of shape.
+ *
+ * Only comments with a line are in it. The comments a review carries take a
+ * path, a body, a position or a line, and a side; there is no way to say "this
+ * is about the file" among them, and a comment sent without a line is refused
+ * — taking the whole review down with it, since it is all one request. The
+ * remarks about whole files are posted separately by `submitReview`, through
+ * the standalone endpoint that does understand a subject.
  */
 export function reviewPayload(request: SubmitRequest): Record<string, unknown> {
+  const onLines = request.comments.filter((c) => c.line !== undefined);
   return {
     event: request.event,
     ...(request.body ? { body: request.body } : {}),
-    ...(request.comments.length > 0
+    ...(onLines.length > 0
       ? {
-          comments: request.comments.map((c) => ({
+          comments: onLines.map((c) => ({
             path: c.path,
-            // A remark about the file carries no line and says so: the forge
-            // rejects a comment with neither a line nor a subject.
-            ...(c.line === undefined
-              ? { subject_type: "file" }
-              : {
-                  line: c.line,
-                  side: c.side,
-                  // Sent only for a real span. A start equal to the end is
-                  // rejected, so a one-line comment must carry no start at all
-                  // — and a start below the end would be a range backwards.
-                  ...(c.startLine !== undefined && c.startLine < c.line
-                    ? { start_line: c.startLine, start_side: c.side }
-                    : {}),
-                }),
+            line: c.line,
+            side: c.side,
+            // Sent only for a real span. A start equal to the end is rejected,
+            // so a one-line comment must carry no start at all — and a start
+            // below the end would be a range backwards.
+            ...(c.startLine !== undefined && c.line !== undefined && c.startLine < c.line
+              ? { start_line: c.startLine, start_side: c.side }
+              : {}),
             body: c.body,
           })),
         }
@@ -492,6 +672,122 @@ function read(
   });
 }
 
+/**
+ * What to say a failed `gh api` call failed with.
+ *
+ * The reason lives on standard output, not on standard error. `gh` prints a
+ * one-line summary of the status to stderr — "gh: Validation Failed (HTTP 422)"
+ * — and the forge's own answer, which is the part that says what was wrong with
+ * the request, to stdout. Reporting only the summary is how a reviewer ends up
+ * with "Unprocessable Entity" and nothing else, and how a five-second mistake
+ * becomes an afternoon of diagnosis.
+ *
+ * Both halves are kept: the summary is what names the status, and the detail is
+ * what names the field.
+ */
+export function failureMessage(
+  stderr: string | undefined,
+  stdout: string | undefined,
+  fallback: string,
+): string {
+  const summary = stderr?.trim() || fallback;
+  const detail = failureDetail(stdout);
+  return detail ? `${summary} — ${detail}` : summary;
+}
+
+/**
+ * The forge's answer to a refused request, rendered as a sentence.
+ *
+ * A validation failure comes back as a message and a list of faults, each
+ * naming a resource, a field and a code, and sometimes carrying wording of its
+ * own. Appending the raw json to an error is barely better than dropping it —
+ * nobody reads `documentation_url` — so the two useful parts are pulled out and
+ * the rest left behind.
+ *
+ * Nothing here may throw and nothing here may run away with the message. The
+ * body can be empty, can be an html error page from something sitting in front
+ * of the forge, and can be a megabyte of it, and all three arrive by the same
+ * path as the tidy json. Anything unreadable is clipped to a glimpse rather
+ * than discarded, because a glimpse of an html page at least says that is what
+ * happened.
+ */
+export function failureDetail(stdout: string | undefined): string | undefined {
+  const body = (stdout ?? "").trim();
+  if (!body) return undefined;
+  // Past this size it is not an error body, and parsing it would cost more than
+  // anything it could tell us is worth.
+  if (body.length > 64 * 1024) return glimpse(body);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return glimpse(body);
+  }
+  if (!parsed || typeof parsed !== "object") return glimpse(body);
+
+  const answer = parsed as { message?: unknown; errors?: unknown };
+  const said = typeof answer.message === "string" ? oneLine(answer.message) : "";
+  const faults = Array.isArray(answer.errors)
+    ? answer.errors.map(faultLine).filter(Boolean)
+    : [];
+
+  if (!said && faults.length === 0) return glimpse(body);
+  if (faults.length === 0) return clip(said);
+  return clip(said ? `${said}: ${faults.join("; ")}` : faults.join("; "));
+}
+
+/** The plain words for the codes the forge answers with. */
+const FAULTS: Record<string, string> = {
+  missing: "is missing",
+  missing_field: "is missing",
+  invalid: "is invalid",
+  already_exists: "already exists",
+  unprocessable: "cannot be processed",
+  custom: "was refused",
+};
+
+/** One fault from the forge's list, as a clause rather than a record. */
+function faultLine(fault: unknown): string {
+  if (typeof fault === "string") return oneLine(fault);
+  if (!fault || typeof fault !== "object") return "";
+
+  const one = fault as {
+    resource?: unknown;
+    field?: unknown;
+    code?: unknown;
+    message?: unknown;
+  };
+  const resource = typeof one.resource === "string" ? one.resource : "";
+  const field = typeof one.field === "string" ? one.field : "";
+  const where = [resource, field].filter(Boolean).join(".");
+
+  if (typeof one.message === "string" && one.message.trim()) {
+    const words = oneLine(one.message);
+    // The forge's own wording usually names the field already — "subject_type
+    // is not permitted" — and saying it twice reads as a stutter.
+    return where && !words.includes(field) ? `${where}: ${words}` : words;
+  }
+
+  const code = typeof one.code === "string" ? one.code : "";
+  const plain = FAULTS[code];
+  if (!where) return plain ? `something ${plain}` : code;
+  return plain ? `${where} ${plain}` : `${where}: ${code || "was refused"}`;
+}
+
+/** Enough of an unreadable body to recognise it by, and no more. */
+function glimpse(body: string): string {
+  return clip(oneLine(body.slice(0, 2000)), 300);
+}
+
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function clip(text: string, limit = 500): string {
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
 /** Write: reports failure, because silence would be mistaken for success. */
 function write(
   args: string[],
@@ -510,7 +806,7 @@ function write(
       },
       (error, stdout, stderr) => {
         if (error) {
-          reject(new Error(stderr?.trim() || error.message));
+          reject(new Error(failureMessage(stderr, stdout, error.message)));
           return;
         }
         resolve(stdout);
