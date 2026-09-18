@@ -850,6 +850,16 @@
     padding-left: 5px;
     flex: 0 0 auto;
     color: var(--gutter);
+    /*
+     * Not part of the code, so not part of a selection of it.
+     *
+     * The line numbers beside it have always opted out, and the sign did not:
+     * a reader dragging across three lines to copy them came away with a plus
+     * or a minus at the head of every one, and had to strip them out by hand
+     * before the code would compile. The sign says what happened to the line,
+     * which is a fact about the change and not a character of the file.
+     */
+    user-select: none;
   }
   /* The column the picking marks live in, kept clear of both its neighbours.
      Fixed rather than flexible: it is the engine's measurement, and a column

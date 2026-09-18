@@ -208,3 +208,28 @@ describe("the hunk header on a band", () => {
     expect(rule).toMatch(/min-width:\s*0/);
   });
 });
+
+/**
+ * What a reader copies when they select code on a card.
+ *
+ * The line numbers have always been left out of a selection. The column beside
+ * them carrying the plus or minus was not, so dragging across a few lines of a
+ * change and copying them brought a sign along at the head of every line — a
+ * paste that would not compile until someone stripped them out by hand. The
+ * sign is a fact about the change, not a character of the file.
+ */
+describe("the sign in front of a changed line", () => {
+  const row = readFileSync(
+    new URL("../src/app/canvas/Row.svelte", import.meta.url),
+    "utf8",
+  );
+
+  it("is left out of a selection, as the line number beside it is", () => {
+    // Checked as source because selection is the browser's to perform, and a
+    // rule's presence and its absence render identically until someone copies.
+    const marker = row.match(/\.row \.marker \{[^}]*\}/)?.[0] ?? "";
+    const number = row.match(/\.row \.num \{[^}]*\}/)?.[0] ?? "";
+    expect(number).toMatch(/user-select:\s*none/);
+    expect(marker).toMatch(/user-select:\s*none/);
+  });
+});
