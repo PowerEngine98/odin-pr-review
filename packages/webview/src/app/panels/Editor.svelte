@@ -69,6 +69,7 @@
     withMention,
     type Named,
   } from "../mentions.js";
+  import { menuPlace } from "./caret.js";
   import { pictured } from "../pictured.svelte.js";
   import Diagram from "./Diagram.svelte";
 
@@ -115,17 +116,77 @@
   let chosen = $state(0);
 
   /**
-   * Where the line being written is, so the menu opens under it.
+   * Where the list of names opens: under the `@` that summoned it.
    *
-   * A menu pinned to the foot of the box is a menu the eye has to go and find,
-   * and on a short comment it lands over the buttons. This follows the caret's
-   * line — measured by counting newlines rather than by mirroring the field,
-   * which is the usual trick and needs a second hidden copy of the box kept in
-   * step with the first. The column is left alone: a menu that also slid
-   * sideways with every keystroke would be harder to read than one that does
-   * not.
+   * It used to follow only the line, found by counting newlines, and stay at
+   * the left edge of the box. Both halves were wrong in front of the reader.
+   * Pinned to the left edge, the list opened a whole sentence away from the
+   * name being typed, so the eye had to leave what it was writing to find it.
+   * And a count of newlines is not a count of lines: a long remark that has run
+   * on to a second row without a newline was measured as still being on the
+   * first, and the list opened over the very text being written.
+   *
+   * So the `@` is measured where the field actually draws it, wrapping and all.
+   * Anchored to the `@` rather than the caret, because the caret moves with
+   * every letter of the name and a list that slid sideways a character at a time
+   * would be harder to read than one that stays put — which was the fair point
+   * behind leaving the column alone, kept without the cost of it.
    */
   let under = $state(0);
+  let across = $state(0);
+
+  /** How wide the list is drawn, so it can be kept inside the field. */
+  const MENU_WIDTH = 180;
+
+  /**
+   * The styles that decide where text in the field falls, copied onto the
+   * mirror so it wraps exactly as the field does.
+   */
+  const MIRRORED = [
+    "font-family", "font-size", "font-weight", "font-style", "font-variant",
+    "letter-spacing", "word-spacing", "line-height", "text-transform",
+    "text-indent", "tab-size", "padding-top", "padding-right", "padding-bottom",
+    "padding-left",
+  ];
+
+  /**
+   * Where a character of the field's text is drawn, measured on a copy.
+   *
+   * A textarea will not say where any character of its own text is, so a
+   * throwaway block is laid out the same way — same font, same padding, same
+   * width to wrap at — holding the text up to that character and a marker
+   * after it, and the marker is asked where it landed. Made and thrown away in
+   * the one call rather than kept beside the field, because a copy kept in step
+   * with the field is a second thing to keep in step. Measured from the
+   * field's border edge, which is what the field's own offsets are measured to.
+   */
+  function drawnAt(box: HTMLTextAreaElement, index: number): { top: number; left: number } {
+    const style = getComputedStyle(box);
+    const mirror = document.createElement("div");
+    for (const name of MIRRORED) mirror.style.setProperty(name, style.getPropertyValue(name));
+    mirror.style.position = "absolute";
+    mirror.style.visibility = "hidden";
+    mirror.style.top = "0";
+    mirror.style.left = "-9999px";
+    mirror.style.boxSizing = "border-box";
+    mirror.style.border = "0";
+    // The width the field wraps at: inside its border, less any scrollbar.
+    mirror.style.width = `${box.clientWidth}px`;
+    mirror.style.whiteSpace = "pre-wrap";
+    mirror.style.overflowWrap = "break-word";
+    mirror.textContent = box.value.slice(0, index);
+    const mark = document.createElement("span");
+    mark.textContent = "\u200b";
+    mirror.appendChild(mark);
+    document.body.appendChild(mirror);
+    const border = {
+      top: Number.parseFloat(style.borderTopWidth) || 0,
+      left: Number.parseFloat(style.borderLeftWidth) || 0,
+    };
+    const point = { top: mark.offsetTop + border.top, left: mark.offsetLeft + border.left };
+    mirror.remove();
+    return point;
+  }
 
   /**
    * Who the remark as it stands will reach, drawn under the field.
@@ -151,11 +212,20 @@
     if (!found) return;
 
     const style = getComputedStyle(box);
-    const line = Number.parseFloat(style.lineHeight) || 18;
-    const lines = box.value.slice(0, caret).split("\n").length;
-    // Under the line, not over it, and never above the top of the field when
-    // the box has been scrolled.
-    under = Math.max(0, box.offsetTop + lines * line - box.scrollTop + 4);
+    const place = menuPlace(
+      drawnAt(box, found.from),
+      {
+        offsetTop: box.offsetTop,
+        offsetLeft: box.offsetLeft,
+        scrollTop: box.scrollTop,
+        scrollLeft: box.scrollLeft,
+        clientWidth: box.clientWidth,
+        lineHeight: Number.parseFloat(style.lineHeight) || 18,
+      },
+      MENU_WIDTH,
+    );
+    under = place.top;
+    across = place.left;
   }
 
   /**
@@ -486,7 +556,7 @@
       ></textarea>
 
       {#if typing && choices.length > 0 && tab === "write"}
-        <ul class="mentions" role="listbox" aria-label="Agents" style="top:{under}px">
+        <ul class="mentions" role="listbox" aria-label="Agents" style="top:{under}px; left:{across}px">
           {#each choices as who, at (who.id)}
             {@const mark = markOf(who.id)}
             <li>
@@ -793,7 +863,6 @@
      the right place is not worth that. */
   .mentions {
     position: absolute;
-    left: 12px;
     z-index: var(--z-menu, 45);
     margin: 0;
     padding: 4px;
