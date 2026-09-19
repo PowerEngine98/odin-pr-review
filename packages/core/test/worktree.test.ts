@@ -12,7 +12,14 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { asPath, hideWorktrees, KEPT, readableCheckout, worktreeFor } from "../src/git/worktree.js";
+import {
+  asPath,
+  hideWorktrees,
+  historyFiles,
+  KEPT,
+  readableCheckout,
+  worktreeFor,
+} from "../src/git/worktree.js";
 import { graphFromRepo } from "../src/git/diff.js";
 
 const made: string[] = [];
@@ -137,5 +144,54 @@ describe("a checkout Odin can read a branch from", () => {
     expect(asPath("feat/lab-147")).toBe("feat-lab-147");
     expect(asPath("release/2.0")).toBe("release-2.0");
     expect(asPath("///")).toBe("branch");
+  });
+});
+
+/**
+ * Where a checkout's history is written, which is not always under it.
+ *
+ * A live reading has to hear `HEAD` move, and it was listening only to the
+ * working tree. The obvious repair — watch `<repo>/.git/HEAD` — is wrong in
+ * exactly the place the reader works: in a linked worktree `.git` is a file,
+ * `HEAD` and its reflog belong to a directory inside the main repository's
+ * `.git/worktrees`, and the branch refs to the main repository. A watch on the
+ * obvious path there hears nothing, for ever.
+ */
+describe("the files that say history moved", () => {
+  it("names the main checkout's own under its .git", async () => {
+    const dir = repo();
+    const files = await historyFiles({ cwd: dir });
+
+    expect(files).toContain(join(dir, ".git", "HEAD"));
+    expect(files).toContain(join(dir, ".git", "logs", "HEAD"));
+    expect(files).toContain(join(dir, ".git", "MERGE_HEAD"));
+    expect(files).toContain(join(dir, ".git", "refs", "heads", "main"));
+  });
+
+  it("names a linked worktree's in the main repository, not under the worktree", async () => {
+    const dir = repo();
+    const parent = realpathSync(mkdtempSync(join(tmpdir(), "odin-worktree-linked-")));
+    made.push(parent);
+    const tree = join(parent, "linked");
+    execFileSync("git", ["worktree", "add", "--quiet", tree, "feat/other"], {
+      cwd: dir,
+      stdio: "ignore",
+    });
+
+    const files = await historyFiles({ cwd: tree });
+
+    // Its own HEAD, kept by the main repository, and nothing under the tree.
+    expect(files).toContain(join(dir, ".git", "worktrees", "linked", "HEAD"));
+    expect(files).toContain(join(dir, ".git", "worktrees", "linked", "logs", "HEAD"));
+    expect(files.some((file) => file.startsWith(tree))).toBe(false);
+    // And the branch it holds, which lives with every other branch — a name
+    // with a slash in it being a directory on the way.
+    expect(files).toContain(join(dir, ".git", "refs", "heads", "feat", "other"));
+  });
+
+  it("answers nothing, rather than failing, outside a repository", async () => {
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), "odin-worktree-none-")));
+    made.push(outside);
+    await expect(historyFiles({ cwd: outside })).resolves.toEqual([]);
   });
 });

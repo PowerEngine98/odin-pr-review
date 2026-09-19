@@ -424,7 +424,7 @@ export async function stageGraphForRepo(
   if (rows) return { first: again(previous, fresh, rows) };
 
   return {
-    first: provisional(previous, fresh),
+    first: await provisional(previous, fresh, request.cwd),
     rest: () => buildGraphForRepo(request, previous),
   };
 }
@@ -443,7 +443,11 @@ export async function stageGraphForRepo(
  * — the reader would follow it to the wrong place. It comes back a moment later
  * with the right numbers on it.
  */
-function provisional(previous: BuiltGraph, fresh: ChangeGraph): BuiltGraph {
+async function provisional(
+  previous: BuiltGraph,
+  fresh: ChangeGraph,
+  cwd: string,
+): Promise<BuiltGraph> {
   const moved = new Set(movedNodes(previous.graph, fresh));
   const here = new Set(fresh.nodes.map((node) => node.id));
 
@@ -482,15 +486,57 @@ function provisional(previous: BuiltGraph, fresh: ChangeGraph): BuiltGraph {
     .filter((edge) => moved.has(edge.from.nodeId) || moved.has(edge.to.nodeId))
     .map((edge) => edge.id);
 
+  /*
+   * Whether the change is still made of the same files.
+   *
+   * The answer below is delivered as rows patched into cards the page already
+   * has, which is only a whole answer when the page already has every card. A
+   * file that joined the change has no card to patch, and one that left it is
+   * simply not mentioned — so the page kept a card for a file that was no
+   * longer part of the change, and the expensive half, being compared with
+   * this answer rather than with what the page was showing, found nothing new
+   * to say and said nothing. That is how a merged `development` stayed drawn
+   * inside a branch after the merge was committed, even once a rebuild had
+   * happened: the host knew the file had gone and the page was never told.
+   *
+   * So a change of files is a new model, which is what it is: the set of cards
+   * is what the arrangement is computed from, and a new set is a new picture
+   * whatever is done to keep the old one still. The arrows in doubt are left
+   * out of it rather than withdrawn, since a whole model has no way to carry
+   * the withdrawal and would otherwise draw them on the wrong lines.
+   */
+  const was = new Set(
+    previous.graph.nodes
+      .filter((node) => node.status !== "phantom" && node.kind !== "database")
+      .map((node) => node.id),
+  );
+  const reshaped = was.size !== here.size || [...here].some((id) => !was.has(id));
+  const doubted = new Set(withdrawn);
+
   const graph: ChangeGraph = {
     ...previous.graph,
     meta: fresh.meta,
     nodes: [...nodes, ...invented],
-    edges,
+    edges: reshaped ? edges.filter((edge) => !doubted.has(edge.id)) : edges,
   };
-  // The blobs are still the right blobs: nothing was committed, so every gap
-  // stands in front of the same bytes it did a moment ago.
-  return arrange(graph, previous.snippets, [...moved], withdrawn);
+
+  /*
+   * The blobs, which are still the right blobs only while nothing was
+   * committed. A commit, a merge or a rebase moves the merge base or the head,
+   * and every gap then stands in front of different bytes; carrying the old
+   * ones over drew a moment of the previous base's code inside the new
+   * picture. Read again in that case, and only then — it is the expensive part
+   * of this answer and an ordinary edit does not need it.
+   */
+  const committed =
+    previous.graph.meta.mergeBase !== fresh.meta.mergeBase ||
+    previous.graph.meta.headSha !== fresh.meta.headSha;
+  const snippets = committed
+    ? await freshSnippets(graph, previous, cwd)
+    : previous.snippets;
+
+  if (reshaped) return arrange(graph, snippets);
+  return arrange(graph, snippets, [...moved], withdrawn);
 }
 
 /**

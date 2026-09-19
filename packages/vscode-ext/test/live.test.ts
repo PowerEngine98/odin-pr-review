@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -202,5 +202,123 @@ describe("a rebuild that hangs", () => {
     live.dispose();
 
     expect(starts).toBeGreaterThan(1);
+  }, 20_000);
+});
+
+/**
+ * History, heard and settled.
+ *
+ * A live reading is a diff from the merge base, and committing a merge moves
+ * the merge base without writing one file of the project. The watcher threw
+ * everything under `.git` away as noise, so the commit was never heard and
+ * the files the merge had brought in stayed on the canvas as the branch's own
+ * until the reader reloaded by hand.
+ *
+ * Hearing it is only half of it. History moves in bursts — a pull is a fetch
+ * and a merge, a rebase moves `HEAD` once per commit it replays — and a full
+ * recompute per write would be felt at once. Nor may the rest of `.git` start
+ * counting: the index is rewritten whenever anything asks git for its status,
+ * and a background fetch moves remote refs every few minutes.
+ */
+describe("the branch's history moving", () => {
+  let home = "";
+  const git = (args: string[]) =>
+    run("git", args, {
+      cwd: home,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t",
+      },
+    });
+
+  beforeAll(async () => {
+    // The real path, because git answers with one and the history files are
+    // matched against what git said.
+    home = await realpath(await mkdtemp(join(tmpdir(), "odin-live-history-")));
+    await git(["init", "-b", "main"]);
+    await writeFile(join(home, "src.ts"), "export const a = 1;\n");
+    await git(["add", "-A"]);
+    await git(["commit", "-m", "first"]);
+  }, 30_000);
+  afterAll(async () => {
+    await rm(home, { recursive: true, force: true }).catch(() => undefined);
+  });
+
+  /** A watcher on `home` that counts, and the ledger it would have written. */
+  async function counting() {
+    const seen = { rebuilds: 0, history: [] as boolean[], ledger: [] as string[][] };
+    const live = new LiveGraph({
+      repo: home,
+      history: true,
+      settle: 20,
+      ceiling: 100,
+      historySettle: 150,
+      historyCeiling: 3000,
+      rebuild: async () => {
+        seen.rebuilds++;
+        return undefined;
+      },
+      onRebuilding: (_files, history) => seen.history.push(history),
+      onTouched: (paths) => void seen.ledger.push(paths),
+      onChange: () => {},
+    });
+    // Git is asked where the history lives before anything can be heard.
+    await new Promise((done) => setTimeout(done, 300));
+    return { live, seen };
+  }
+
+  it("rebuilds once for a burst of history, after it has finished", async () => {
+    const { live, seen } = await counting();
+
+    // A rebase's worth of writes, closer together than the history settle and
+    // lasting longer than an ordinary burst's ceiling. Each one on its own
+    // would be a full recompute.
+    const writes = [".git/logs/HEAD", ".git/ORIG_HEAD", ".git/refs/heads/main", ".git/HEAD"];
+    for (let i = 0; i < 20; i++) {
+      watched.change?.({ fsPath: join(home, writes[i % writes.length]!) });
+      await new Promise((done) => setTimeout(done, 30));
+    }
+    await new Promise((done) => setTimeout(done, 600));
+    live.dispose();
+
+    expect(seen.rebuilds).toBe(1);
+    expect(seen.history).toEqual([true]);
+    // `HEAD` is not one of the project's files, and the ledger is of those.
+    expect(seen.ledger).toEqual([]);
+  }, 20_000);
+
+  it("still takes no notice of the rest of git's bookkeeping", async () => {
+    const { live, seen } = await counting();
+
+    for (const path of [
+      ".git/index",
+      ".git/index.lock",
+      ".git/FETCH_HEAD",
+      ".git/refs/remotes/origin/main",
+      ".git/refs/heads/somebody-else",
+      ".git/worktrees/beside/HEAD",
+    ]) {
+      watched.change?.({ fsPath: join(home, path) });
+    }
+    await new Promise((done) => setTimeout(done, 500));
+    live.dispose();
+
+    expect(seen.rebuilds).toBe(0);
+  }, 20_000);
+
+  it("hears a commit that the editor never mentioned", async () => {
+    const { live, seen } = await counting();
+
+    // Nothing fired by hand: the only way to hear this is to be listening to
+    // git's own directory, which is what a linked worktree needs.
+    await git(["commit", "--allow-empty", "-m", "moved"]);
+    for (let i = 0; i < 60 && seen.rebuilds === 0; i++) {
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    live.dispose();
+
+    expect(seen.rebuilds).toBeGreaterThan(0);
+    expect(seen.history).toContain(true);
   }, 20_000);
 });

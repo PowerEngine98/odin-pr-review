@@ -1770,6 +1770,14 @@ function armLive(
     // root is its parent. Both are asked for; the editor is certain about the
     // one it opened.
     roots: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
+    /*
+     * And the branch's history, because this reading is measured from a merge
+     * base and a merge base moves with `HEAD`. Committing a merge of
+     * `development` writes no file of the project, and without this the files
+     * the merge brought in stayed on the canvas as the branch's own work until
+     * the reader reloaded Odin by hand.
+     */
+    history: true,
     rebuild: async () => {
       const request = {
         cwd: repo,
@@ -1805,12 +1813,16 @@ function armLive(
     // Said in the frame this watcher belongs to. The reader may be reading
     // something else by now, and a rebuild of what they left is not news about
     // what they are looking at.
-    onRebuilding: (files) =>
+    onRebuilding: (files, history) =>
       GraphPanel.setRefreshingIn(
         shown,
         repo,
         true,
-        `Rebuilding — ${files} file${files === 1 ? "" : "s"} changed`,
+        // A merge committed or a rebase finished may have touched no file at
+        // all, and "0 files changed" over a rebuild says the wrong thing.
+        history
+          ? "Rebuilding — the branch moved"
+          : `Rebuilding — ${files} file${files === 1 ? "" : "s"} changed`,
       ),
     // Cleared whatever came of it, including a rebuild that found nothing
     // worth redrawing. A spinner left running says the tool is still working

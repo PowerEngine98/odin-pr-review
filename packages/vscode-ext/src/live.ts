@@ -1,4 +1,14 @@
-import { git, graphDelta, unchanged, type ChangeGraph, type GraphDelta } from "@odin/core";
+import { watch, type FSWatcher } from "node:fs";
+import { dirname, join } from "node:path";
+
+import {
+  git,
+  graphDelta,
+  historyFiles,
+  unchanged,
+  type ChangeGraph,
+  type GraphDelta,
+} from "@odin/core";
 import * as vscode from "vscode";
 
 /**
@@ -109,8 +119,12 @@ export interface LiveOptions {
    * Called before the work rather than after, because the whole point of
    * saying so is to cover the seconds the work takes. Always paired with
    * `onSettled`, including when the rebuild throws or finds nothing.
+   *
+   * `history` says the branch itself moved — a merge committed, a rebase, a
+   * checkout — which is worth saying differently: a count of files changed is
+   * nonsense for a rebuild that no file provoked.
    */
-  onRebuilding?: (files: number) => void;
+  onRebuilding?: (files: number, history: boolean) => void;
   /** The rebuild is over, whatever came of it. */
   onSettled?: () => void;
   /** Called only when something a reader could see has actually moved. */
@@ -158,6 +172,38 @@ export interface LiveOptions {
    * plainly failed should say so and let go.
    */
   patience?: number;
+  /**
+   * Whether the branch's history is watched as well as its files.
+   *
+   * A live reading is a diff from the merge base, and the merge base moves
+   * when `HEAD` does. Committing a merge moves it without writing one file of
+   * the project, so a reading that heard only about files kept every file the
+   * merge had brought in — `development`'s work, drawn as the branch's own —
+   * until the reader reloaded by hand. With this on, a move of `HEAD` is a
+   * reason to rebuild in its own right. Off by default, because only a reading
+   * measured from a merge base has anything to learn from one.
+   */
+  history?: boolean;
+  /**
+   * How long history has to be quiet before a rebuild is worth doing.
+   *
+   * Longer than an edit's, because history moves in bursts: a pull is a fetch
+   * and then a merge, and a rebase moves `HEAD` once per commit it replays. A
+   * rebuild on each of those writes would be a full recompute per commit of
+   * somebody's rebase, which a reader notices at once; waiting for the burst
+   * to finish costs them well under a second.
+   */
+  historySettle?: number;
+  /**
+   * The longest a burst that moved history may be made to wait.
+   *
+   * The ordinary ceiling is there for repositories that are never quiet, and
+   * history is not what keeps a repository busy — nothing moves `HEAD` in the
+   * background. So a rebase gets longer to finish before the graph is rebuilt
+   * underneath it, and the half-rebased picture that would come of rebuilding
+   * midway is mostly not drawn at all.
+   */
+  historyCeiling?: number;
 }
 
 /**
@@ -187,6 +233,23 @@ export class LiveGraph implements vscode.Disposable {
   private readonly settle: number;
   private readonly ceiling: number;
   private readonly patience: number;
+  private readonly historySettle: number;
+  private readonly historyCeiling: number;
+  /**
+   * The files whose writes mean this checkout's history moved.
+   *
+   * Absolute, because in a linked worktree none of them is under the
+   * repository; and asked of git when the watching starts, and again after
+   * every move, because checking out another branch changes which ref is the
+   * one worth watching.
+   */
+  private history = new Set<string>();
+  /** The same, as the editor's own watcher would name them from the root. */
+  private historyWithin = new Set<string>();
+  /** Watching the directories those files live in, which is all `fs.watch` can do reliably. */
+  private historyWatchers: FSWatcher[] = [];
+  /** History moved since the last rebuild began, whatever else did. */
+  private moved = false;
   /**
    * Which rebuild is the current one.
    *
@@ -220,6 +283,9 @@ export class LiveGraph implements vscode.Disposable {
     this.settle = options.settle ?? 250;
     this.ceiling = options.ceiling ?? 1500;
     this.patience = options.patience ?? 90_000;
+    this.historySettle = options.historySettle ?? 600;
+    this.historyCeiling = options.historyCeiling ?? 4000;
+    if (options.history) void this.watchHistory();
 
     for (const root of new Set([options.repo, ...(options.roots ?? [])])) {
       const watcher = vscode.workspace.createFileSystemWatcher(
@@ -267,23 +333,93 @@ export class LiveGraph implements vscode.Disposable {
 
   private touch(path: string): void {
     if (this.disposed) return;
+    // Before the noise rule, which would otherwise throw it away with the rest
+    // of `.git`. The editor's own watcher does report these for a checkout
+    // whose `.git` is a directory under the workspace; a worktree's are heard
+    // by `watchHistory` instead.
+    if (this.history.has(path)) return this.historyMoved();
     if (!path.startsWith(this.options.repo)) return;
 
     const relative = path.slice(this.options.repo.length + 1);
+    if (this.historyWithin.has(relative)) return this.historyMoved();
     if (relative === "" || isNoise(relative)) return;
 
     this.touched.add(relative);
-    if (this.since === 0) this.since = Date.now();
+    this.arm();
+  }
 
-    // Waited for, but not indefinitely: whatever else is writing to this
-    // repository, the edit that arrived first gets looked at within the
-    // ceiling. Otherwise a project with a watcher-visible background process in
-    // it never rebuilds at all, and the reader has no way to tell that from a
-    // broken watcher.
+  /** History moved: the next rebuild has to happen even if no file did. */
+  private historyMoved(): void {
+    if (this.disposed) return;
+    this.moved = true;
+    this.arm();
+  }
+
+  /**
+   * Sets the timer for the burst now arriving.
+   *
+   * Waited for, but not indefinitely: whatever else is writing to this
+   * repository, the edit that arrived first gets looked at within the ceiling.
+   * Otherwise a project with a watcher-visible background process in it never
+   * rebuilds at all, and the reader has no way to tell that from a broken
+   * watcher. A burst in which history moved waits longer on both counts, for
+   * the reasons given where those two are declared.
+   */
+  private arm(): void {
+    if (this.since === 0) this.since = Date.now();
+    const settle = this.moved ? this.historySettle : this.settle;
+    const ceiling = this.moved ? Math.max(this.ceiling, this.historyCeiling) : this.ceiling;
     const waited = Date.now() - this.since;
-    const wait = Math.max(0, Math.min(this.settle, this.ceiling - waited));
+    const wait = Math.max(0, Math.min(settle, ceiling - waited));
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.fire(), wait);
+  }
+
+  /**
+   * Listens for this checkout's history moving, wherever git keeps it.
+   *
+   * With `fs.watch` on the directories rather than the editor's watcher,
+   * because the editor's watcher is for the workspace and a linked worktree's
+   * `HEAD` is not in it: it lives in the main repository's `.git/worktrees`,
+   * which the reader very often does not have open at all. What the editor
+   * cannot see it cannot report, and this was the case the reader was in.
+   *
+   * Directories rather than the files themselves, because git never writes
+   * one of these in place. It writes `HEAD.lock` and renames it over `HEAD`,
+   * and a watch on the old file is a watch on an inode that has just been
+   * thrown away — it fires once and never again. Only the reflog is appended
+   * to, and a watch on its directory hears that as well.
+   *
+   * Every failure here is swallowed. A directory that does not exist yet — no
+   * reflog, a branch whose ref has only ever been packed — is simply not
+   * watched, and the editor's watcher and the next edit are still there.
+   */
+  private async watchHistory(): Promise<void> {
+    const files = await historyFiles({ cwd: this.options.repo });
+    if (this.disposed) return;
+
+    for (const watcher of this.historyWatchers.splice(0)) watcher.close();
+    this.history = new Set(files);
+    const root = `${this.options.repo}/`;
+    this.historyWithin = new Set(
+      files.filter((file) => file.startsWith(root)).map((file) => file.slice(root.length)),
+    );
+
+    for (const dir of new Set(files.map((file) => dirname(file)))) {
+      try {
+        const watcher = watch(dir, { persistent: false }, (_event, name) => {
+          // No name is no way to tell `HEAD` from `index`, and `index` is
+          // rewritten every time anything asks git for its status. Treating the
+          // unknown as a move would rebuild on every one of those.
+          if (!name) return;
+          if (this.history.has(join(dir, name.toString()))) this.historyMoved();
+        });
+        watcher.on("error", () => watcher.close());
+        this.historyWatchers.push(watcher);
+      } catch {
+        // Not there, or not watchable. See above.
+      }
+    }
   }
 
   /**
@@ -304,7 +440,22 @@ export class LiveGraph implements vscode.Disposable {
     const arrived = [...this.touched];
     this.touched.clear();
     this.since = 0;
-    if (!(await this.worthRebuilding(arrived))) return;
+    const moved = this.moved;
+    this.moved = false;
+    /*
+     * A move of history is worth a rebuild by itself, whatever the files say.
+     *
+     * The case that has to work is the one where no file changed at all:
+     * committing a merge leaves the working tree as it was, and what it changes
+     * is the point the diff is measured from. The rebuild asks git for the
+     * merge base afresh, as it always has; it simply was never being asked.
+     *
+     * And the watch is renewed, because the move may have been a checkout of
+     * another branch, whose ref is now the one worth listening to.
+     */
+    if (moved) void this.watchHistory();
+    const worth = await this.worthRebuilding(arrived);
+    if (!worth && !moved) return;
 
     /*
      * What changed, told before the rebuild rather than after it.
@@ -317,7 +468,9 @@ export class LiveGraph implements vscode.Disposable {
      */
     const interesting = arrived.filter((path) => this.known.get(path) === false);
     try {
-      await this.options.onTouched?.(interesting);
+      // Nothing to write down for a move of history alone: the ledger is of
+      // files, and `HEAD` is not one of the project's.
+      if (interesting.length > 0) await this.options.onTouched?.(interesting);
     } catch {
       // A ledger that cannot write itself down is not worth losing a rebuild
       // over: the picture is what the reader is waiting for.
@@ -328,7 +481,7 @@ export class LiveGraph implements vscode.Disposable {
     /** Whether this rebuild is still the one the reader is waiting for. */
     const current = () => !this.disposed && this.run === mine;
 
-    this.options.onRebuilding?.(arrived.length);
+    this.options.onRebuilding?.(arrived.length, moved);
     try {
       const staged = await this.bounded(this.options.rebuild());
       if (!current() || !staged) return;
@@ -357,7 +510,10 @@ export class LiveGraph implements vscode.Disposable {
       // Edits that landed while that was running have not been looked at.
       if (this.again && !this.disposed) {
         this.again = false;
-        this.timer = setTimeout(() => void this.fire(), this.settle);
+        this.timer = setTimeout(
+          () => void this.fire(),
+          this.moved ? this.historySettle : this.settle,
+        );
       }
     }
   }
@@ -425,5 +581,6 @@ export class LiveGraph implements vscode.Disposable {
     this.disposed = true;
     if (this.timer) clearTimeout(this.timer);
     for (const watcher of this.watchers.splice(0)) watcher.dispose();
+    for (const watcher of this.historyWatchers.splice(0)) watcher.close();
   }
 }
