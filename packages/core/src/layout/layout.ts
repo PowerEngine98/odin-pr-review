@@ -237,11 +237,9 @@ function measureNodes(
       metrics.padding * 4 +
       TITLE_CONTROLS;
 
-    const width = clamp(
-      Math.max(contentWidth, titleWidth),
-      metrics.minCardWidth,
-      metrics.maxCardWidth,
-    );
+    // As wide as the widest thing on the card, and never narrower than a card
+    // is drawn. No upper bound: see `minCardWidth` for why there is not one.
+    const width = Math.max(contentWidth, titleWidth, metrics.minCardWidth);
     // The cap is for tails of unchanged context, and for nothing else. A line
     // the change touched must never be behind it — the card is a picture of
     // that change, and hiding part of it behind a bar the reader has to find is
@@ -1057,6 +1055,3 @@ function measureBounds(
   return { width: width + metrics.margin, height: height + metrics.margin };
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}

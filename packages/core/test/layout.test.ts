@@ -277,16 +277,13 @@ describe("layoutGraph", () => {
 
   it("sizes cards to their widest line plus both gutters", () => {
     const layout = layoutGraph(graph());
-    const { charWidth, gutterWidth, rightGutterWidth, padding, maxCardWidth } =
-      layout.metrics;
+    const { charWidth, gutterWidth, rightGutterWidth, padding } = layout.metrics;
 
     for (const node of layout.nodes) {
       const widest = node.rows.reduce((max, r) => Math.max(max, r.text.length), 0);
       const needed =
         widest * charWidth + gutterWidth + rightGutterWidth + padding * 2;
-      expect(node.width).toBeGreaterThanOrEqual(
-        Math.min(needed, maxCardWidth) - 1,
-      );
+      expect(node.width).toBeGreaterThanOrEqual(needed - 1);
     }
   });
 
@@ -1175,20 +1172,39 @@ describe("text that does not fit", () => {
     return buildGraph(parseUnifiedDiff(patch), { meta: META });
   }
 
-  it("widens the card rather than clipping, up to the maximum", () => {
-    const card = layoutGraph(graphWithLongLine()).nodes[0]!;
-    expect(card.width).toBeGreaterThan(DEFAULT_METRICS.minCardWidth);
-    expect(card.width).toBeLessThanOrEqual(DEFAULT_METRICS.maxCardWidth);
+  it("widens the card to its longest line, however long that is", () => {
+    // There used to be a widest card, and it cut lines the change had
+    // written. A line many times the old limit must still fit whole.
+    const huge = "x".repeat(900);
+    const patch = [
+      "diff --git a/src/wide.kt b/src/wide.kt",
+      "--- a/src/wide.kt",
+      "+++ b/src/wide.kt",
+      "@@ -1 +1 @@",
+      "-short",
+      `+${huge}`,
+      "",
+    ].join("\n");
+    const card = layoutGraph(buildGraph(parseUnifiedDiff(patch), { meta: META })).nodes[0]!;
+    const { charWidth, gutterWidth, pickColumn, padding } = DEFAULT_METRICS;
+    // The split reading gives each side a pane of its own, so the long side
+    // alone needs this much of the card.
+    expect(card.width).toBeGreaterThanOrEqual(
+      huge.length * charWidth + gutterWidth + pickColumn + padding * 2,
+    );
+    expect(textCapacity(card.width, DEFAULT_METRICS)).toBeGreaterThanOrEqual(huge.length);
   });
 
   it("reserves room for both gutters when measuring capacity", () => {
-    const capacity = textCapacity(DEFAULT_METRICS.maxCardWidth, DEFAULT_METRICS);
+    // Any width will do: this is about the arithmetic, not a particular card.
+    const width = 1900;
+    const capacity = textCapacity(width, DEFAULT_METRICS);
     const used =
       capacity * DEFAULT_METRICS.charWidth +
       DEFAULT_METRICS.gutterWidth +
       DEFAULT_METRICS.rightGutterWidth +
       DEFAULT_METRICS.padding * 2;
-    expect(used).toBeLessThanOrEqual(DEFAULT_METRICS.maxCardWidth);
+    expect(used).toBeLessThanOrEqual(width);
   });
 
   it("marks a line it had to cut", () => {

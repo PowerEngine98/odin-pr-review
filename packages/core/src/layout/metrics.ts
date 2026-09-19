@@ -44,8 +44,24 @@ export interface LayoutMetrics {
   lineNumberRight: number;
   /** Right gutter: the head-side line number, and the + beside it. */
   rightGutterWidth: number;
+  /**
+   * The narrowest a card is drawn, so that a file of three short lines still
+   * has room for its own title.
+   *
+   * There is no widest. There was: nineteen hundred, on the argument that a
+   * card past it stopped reading as a shape on the canvas. What it did in
+   * practice was cut lines the change had written, with an ellipsis and
+   * nothing to recover them by - the comment beside it promised the whole line
+   * was a hover away, and no hover ever showed it. And it bit far sooner than
+   * it looked, because the split reading shares one card between two panes: a
+   * changed line of a hundred and fifteen characters in a modified file was
+   * already past it. How wide a card should be is a fact about the file, not a
+   * number chosen in advance, so a card is as wide as its longest line.
+   *
+   * Which means a generated or minified file with one enormous line draws one
+   * enormous card. That is the file saying what it is.
+   */
   minCardWidth: number;
-  maxCardWidth: number;
   /** Horizontal space between columns. */
   columnGap: number;
   /** Vertical space between cards in a column. */
@@ -82,11 +98,6 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   lineNumberRight: 50,
   rightGutterWidth: 52,
   minCardWidth: 240,
-  // Wide enough that a changed line of ordinary length fits even in the split
-  // reading, where each pane gets half. Past this a card stops being readable
-  // as a shape on the canvas, and what is cut is context rather than anything
-  // the change touched — with the whole line a hover away wherever it is cut.
-  maxCardWidth: 1900,
   columnGap: 140,
   rowGap: 56,
   margin: 48,
