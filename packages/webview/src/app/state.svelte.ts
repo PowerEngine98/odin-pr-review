@@ -913,7 +913,24 @@ export function listen(): void {
          * twelve lines pushes every card under it down by twelve lines' worth.
          * The reader's numbers do not move and the drawing does.
          */
-        if (patches.length > 0) rebuilding.before?.();
+        if (patches.length > 0 || message.arrangements) rebuilding.before?.();
+
+        /*
+         * Where the cards now stand, when the edit moved any of them.
+         *
+         * A card is drawn at the width its arrangement gives it rather than the
+         * width written on the card, so rows that made a card wider — a line
+         * grown to a hundred and eleven characters — were drawn in the old box
+         * with the end of the line behind an ellipsis. The host sends all four
+         * arrangements whenever they differ from the ones this page holds, and
+         * never otherwise, so there is nothing to compare here: arriving is the
+         * news that they changed.
+         */
+        if (message.arrangements && typeof message.arrangements === "object") {
+          model.current.arrangements = message.arrangements;
+          if (typeof message.width === "number") model.current.width = message.width;
+          if (typeof message.height === "number") model.current.height = message.height;
+        }
 
         const deltas = new Map<string, Delta>();
         for (const patch of patches) {

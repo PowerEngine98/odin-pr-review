@@ -1071,7 +1071,10 @@ describe("what a frame remembers across a reload", () => {
     // every card under it. Taken before the model is assigned, because where
     // the reader is has to be read against the arrangement they were in.
     expect(state).toMatch(/rebuilding\.before\?\.\(\);\s*\n\s*model\.current = next/);
-    expect(state).toMatch(/if \(patches\.length > 0\) rebuilding\.before\?\.\(\)/);
+    // Or when the patch carries new arrangements, which move cards just as rows do.
+    expect(state).toMatch(
+      /if \(patches\.length > 0 \|\| message\.arrangements\) rebuilding\.before\?\.\(\)/,
+    );
     expect(camera).toMatch(/rebuilding\.before = holdPlace/);
     // And let go the moment the reader moves the drawing themselves.
     expect(camera).toMatch(/export function letGo/);

@@ -359,6 +359,11 @@ const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 interface Model {
   nodes: Record<string, unknown>[];
   edges: { id: string; toPath: string; kind: string }[];
+  unified?: boolean;
+  charWidth?: number;
+  textLeft?: number;
+  padding?: number;
+  arrangements?: Record<string, { nodes: Record<string, { width: number }> } | undefined>;
 }
 
 /** What the page was handed in the document it was handed. */
@@ -396,6 +401,11 @@ function showing(panel: ReturnType<typeof recorder>): Model {
       for (const patch of message["nodes"] as Record<string, unknown>[]) {
         const node = model.nodes.find((n) => n["id"] === patch["id"]);
         if (node) Object.assign(node, patch);
+      }
+      // Where the cards stand, when the edit moved any: the page takes all four
+      // arrangements whole, and the size of the drawing with them.
+      if (message["arrangements"]) {
+        model.arrangements = message["arrangements"] as Model["arrangements"];
       }
     }
   }
@@ -714,6 +724,70 @@ describe("a live reading of the working tree", () => {
     // And nothing the map reads has moved.
     expect(boxes(showing(panel))).toEqual(before);
   }, 120_000);
+
+  /**
+   * A line that grows past the edge of its card.
+   *
+   * The page draws a card at the width its arrangement gives it, and there are
+   * four arrangements — split and unified, with the tests and without — none of
+   * which is inside a card. An edit that only rewrote a line's text used to go
+   * to the page as a patch of rows, which rewrote the card and left the four
+   * arrangements as they were: an added file whose line grew from a short one
+   * to a hundred and eleven characters was measured again at the new width and
+   * drawn at the old one, with the end of the line behind an ellipsis. Nothing
+   * about the edit was structural, which is exactly why it took the shortcut.
+   *
+   * Asked of every arrangement for each reading, because the reader can switch
+   * to the other at any moment and the page will not ask the host again.
+   */
+  describe("a card whose longest line grows", () => {
+    const LONG =
+      '        resolver.resolveSchema(JwtClaims::class).addExtension("x-dependencies", listOf("Role", "AuthProvider"))';
+
+    /** The widths the page would draw `two.ts` at in one reading. */
+    function drawnAt(model: Model, unified: boolean): number[] {
+      const card = model.nodes.find((n) => n["path"] === "two.ts")!;
+      const primary = (model.unified === true) === unified;
+      const keys = primary
+        ? ["withTests", "withoutTests"]
+        : ["otherWithTests", "otherWithoutTests"];
+      return keys.map((key) => {
+        const spot = model.arrangements?.[key]?.nodes[card["id"] as string];
+        expect(spot, `no ${key} arrangement for the card`).toBeDefined();
+        return spot!.width;
+      });
+    }
+
+    /** The narrowest a card can be and still show the line whole. */
+    function room(model: Model): number {
+      // The code's left edge, the line, and the padding on the far side: the
+      // least any reading needs, and unified needs a gutter more than this.
+      return model.textLeft! + LONG.length * model.charWidth! + model.padding!;
+    }
+
+    for (const unified of [false, true]) {
+      it(`widens it in the ${unified ? "unified" : "split"} reading`, async () => {
+        restore();
+        const editor = stub(local(), { folder: repo, baseRef: "HEAD~1" });
+        const panel = await reading(editor);
+        // Too narrow to begin with, or the test would pass without the edit.
+        const first = showing(panel);
+        for (const width of drawnAt(first, unified)) {
+          expect(width).toBeLessThan(room(first));
+        }
+
+        // The same four lines, so the hunks cover what they covered and the
+        // arrows are where they were: the edit that takes the shortcut.
+        await save(editor, panel, ON_DISK.replace("// test x5", LONG));
+
+        const now = showing(panel);
+        expect(JSON.stringify(now.nodes)).toContain("x-dependencies");
+        for (const width of drawnAt(now, unified)) {
+          expect(width).toBeGreaterThanOrEqual(room(now));
+        }
+      }, 120_000);
+    }
+  });
 
   /*
    * Two answers to one save, in the order that helps.

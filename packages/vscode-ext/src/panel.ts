@@ -2416,6 +2416,18 @@ export class GraphPanel {
   private painted = false;
 
   /**
+   * Where the page has its cards, as it was last told.
+   *
+   * Every card's box — split and unified, tests in and tests out — together
+   * with the size of the drawing, written down each time any of it goes to the
+   * page. It is what says whether a patch of rows has to carry the boxes with
+   * it, and it has to be what the page holds rather than what the last build
+   * produced, because a patch sent without them leaves the page's boxes exactly
+   * where they were.
+   */
+  private drawn: string | undefined;
+
+  /**
    * The page's own view of the change, without a page around it.
    *
    * Rendered through the same function that builds the document, because the
@@ -2525,6 +2537,32 @@ export class GraphPanel {
     this.layout = layout;
     this.name();
 
+    /*
+     * Where the cards are, whenever that is not where the page has them.
+     *
+     * The patch writes into the cards and leaves everything else in the page
+     * alone, which is the point of it — but the page does not draw a card at the
+     * width the card carries. It draws it at the width its arrangement gives it,
+     * one of four held beside the cards (split and unified, with the tests and
+     * without), because the reader can be in any of them. A patch that left those
+     * as they were left every card at its old size: a live reading of an added
+     * file had one line grow to a hundred and eleven characters, the engine
+     * measured the card again at 929 and the page went on drawing it a few
+     * hundred pixels narrower, with the end of the line behind an ellipsis until
+     * something structural happened to send a whole model. Nothing about that
+     * edit was structural, which is exactly why it took the shortcut.
+     *
+     * So the boxes travel with the rows when they have moved, and only then.
+     * They are not a reason to send the whole model: the patch is also how the
+     * first of two answers withholds the arrows it cannot vouch for, and a model
+     * would bring them straight back. A card that widens moves its column's
+     * width and every column to its right, and a card that grows a row moves the
+     * cards under it, so what the page is given is all four arrangements whole.
+     */
+    const shape = geometry(model);
+    const moved = shape !== this.drawn;
+    this.drawn = shape;
+
     if (redrawn && redrawn.length > 0) {
       const wanted = new Set(redrawn);
       const nodes = model.nodes.filter((node) => wanted.has(node.id));
@@ -2536,6 +2574,13 @@ export class GraphPanel {
           type: "rows",
           nodes,
           ...(withdrawn && withdrawn.length > 0 ? { withdraw: withdrawn } : {}),
+          ...(moved
+            ? {
+                arrangements: model.arrangements,
+                width: model.width,
+                height: model.height,
+              }
+            : {}),
         });
         return true;
       }
@@ -2599,8 +2644,10 @@ export class GraphPanel {
         });
       }, 0);
     }
-    this.panel.webview.html = this.built(layout).html;
+    const built = this.built(layout);
+    this.panel.webview.html = built.html;
     this.painted = true;
+    this.drawn = built.model ? geometry(built.model) : undefined;
 
     /*
      * The frame is told what it is a reading of, and remembers it for us.
@@ -3182,6 +3229,21 @@ function readAgency(settings: unknown): Record<string, Agency> {
 /** As much of the page's model as this side has any business knowing. */
 interface PageModel {
   nodes: { id: string }[];
+  /** Where every card is drawn, in each of the readings the page can be in. */
+  arrangements?: unknown;
+  width?: number;
+  height?: number;
+}
+
+/**
+ * The part of a model that says where the cards are and how big they are.
+ *
+ * As a string, because the only question ever asked of it is whether two of
+ * them are the same, and the arrangements are plain numbers written out in an
+ * order the renderer fixes.
+ */
+function geometry(model: PageModel): string {
+  return JSON.stringify([model.arrangements ?? null, model.width ?? 0, model.height ?? 0]);
 }
 
 /** Where the model sits in a rendered document, and where it stops. */
