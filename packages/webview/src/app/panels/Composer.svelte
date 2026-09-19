@@ -15,7 +15,7 @@
   import type { Anchor } from "./Thread.svelte";
   import { initialsOf } from "./Thread.svelte";
   import type { Draft, Where } from "./drafts.js";
-  import { composerKey, fileDrafts, forget, load, remember } from "./drafts.js";
+  import { composerKey, fileDrafts, forget, load, remember, shelfOf } from "./drafts.js";
   import Editor from "./Editor.svelte";
 
   let {
@@ -66,13 +66,13 @@
   // timer that had not fired yet is exactly as good as no timer at all.
   $effect(() => {
     const which = key;
-    text = which ? (load(model.current.review).unsent[which] ?? "") : "";
+    text = which ? (load(shelfOf(model.current)).unsent[which] ?? "") : "";
   });
 
   $effect(() => {
     const which = key;
     const held = text;
-    if (which) remember(model.current.review, which, held);
+    if (which) remember(shelfOf(model.current), which, held);
   });
 
   /**
@@ -277,7 +277,7 @@
       body,
     });
 
-    forget(model.current.review, key);
+    forget(shelfOf(model.current), key);
     text = "";
     onadded();
   }
@@ -289,7 +289,7 @@
     const body = text.trim();
     if (!sayable || !where) return;
 
-    drafts = fileDrafts(model.current.review, [
+    drafts = fileDrafts(shelfOf(model.current), [
       ...drafts,
       {
         path: where.path,
@@ -309,7 +309,7 @@
       },
     ]);
 
-    forget(model.current.review, key);
+    forget(shelfOf(model.current), key);
     text = "";
     onadded();
   }

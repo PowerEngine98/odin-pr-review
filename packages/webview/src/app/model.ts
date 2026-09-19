@@ -303,6 +303,17 @@ export interface ViewModel {
   canReview: boolean;
   /** What a half-written review is filed under between page loads. */
   review: string;
+  /**
+   * Which repository that review belongs to, for the drafts' key.
+   *
+   * `review` alone was a pull request number, and a number is unique only
+   * within its repository; every reading on the machine shares one store, so
+   * two repositories' #272 shared one set of drafts. Kept apart from `review`
+   * rather than folded into it because other things are keyed by `review` —
+   * the camera, the pinned drawings — and changing that string would have
+   * lost every one of them on the next load.
+   */
+  repository?: string;
   viewer: string;
   viewerFace: string;
   comments: CommentView[];

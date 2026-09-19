@@ -4,7 +4,7 @@
 // called in the file it lives in.
 import type { Delta as LedgerEntry } from "@odin/core/agents/deltas.js";
 import { deltaOf, type Delta } from "./canvas/deltas.js";
-import { fileDrafts, load, type Draft } from "./panels/drafts.js";
+import { fileDrafts, load, shelfOf, type Draft } from "./panels/drafts.js";
 import { partPaths } from "./parts.js";
 
 import type { RowView } from "./canvas/rows.js";
@@ -72,7 +72,7 @@ export function replaceAnchors(): void {
     });
   }
 
-  for (const draft of load(model.current.review).drafts) {
+  for (const draft of load(shelfOf(model.current)).drafts) {
     if (draft.line === undefined || !draft.lines?.length) continue;
     anchors.push({
       id: draftKey(draft),
@@ -113,8 +113,8 @@ function applyPlacement(span: Placed): void {
     return;
   }
 
-  const review = model.current.review;
-  const held = load(review).drafts;
+  const shelf = shelfOf(model.current);
+  const held = load(shelf).drafts;
   let touched = false;
   const next = held.map((draft) => {
     if (draftKey(draft) !== span.id) return draft;
@@ -126,7 +126,7 @@ function applyPlacement(span: Placed): void {
       ...(span.startLine === undefined ? {} : { startLine: span.startLine }),
     };
   });
-  if (touched) fileDrafts(review, next);
+  if (touched) fileDrafts(shelf, next);
 }
 
 /** The bridge to the extension, absent when the page is opened in a browser. */

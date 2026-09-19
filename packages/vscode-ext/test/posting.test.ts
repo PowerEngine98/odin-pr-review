@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FileCommentsNotPosted, ReviewNotPosted } from "@odin/core";
 
-import { failedToPost } from "../src/posting.js";
+import { failedToPost, unsavedDrafts } from "../src/posting.js";
 
 const EOF_ERROR =
   'Post "https://api.github.com/repos/o/r/pulls/80/reviews": unexpected EOF';
@@ -101,5 +101,29 @@ describe("a refusal the forge explained", () => {
   it("finishes the forge's words before the reassurance rather than running on", () => {
     const message = failedToPost(new ReviewNotPosted("HTTP 422: Validation Failed", false), 80);
     expect(message).toContain("Validation Failed. Your comments are still here.");
+  });
+});
+
+/**
+ * What the reviewer is told when their unsent remarks stop being kept.
+ *
+ * Said at the moment it happens, while the remarks are on screen, because after
+ * the next reload there is nothing left to say it about. A full store and one
+ * the editor will not provide ask different things of the reader, so they are
+ * told apart.
+ */
+describe("what the reviewer is told when drafts cannot be saved", () => {
+  it("says the remarks are still there and will not survive a reload", () => {
+    for (const trouble of ["full", "unavailable", undefined]) {
+      const message = unsavedDrafts(trouble);
+      expect(message).toMatch(/still on screen/);
+      expect(message).toMatch(/lost if this tab reloads/);
+    }
+  });
+
+  it("says room can be made when the store is full, and not otherwise", () => {
+    expect(unsavedDrafts("full")).toMatch(/full/);
+    expect(unsavedDrafts("full")).toMatch(/makes room/);
+    expect(unsavedDrafts("unavailable")).not.toMatch(/makes room/);
   });
 });

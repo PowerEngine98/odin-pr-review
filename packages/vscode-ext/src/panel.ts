@@ -42,7 +42,7 @@ import { SettingsStore } from "./settings.js";
 import { baseUri } from "./baseContent.js";
 import { imageFolder, keepPasted, readImage, withImages } from "./images.js";
 import { waitingPage } from "./loading.js";
-import { failedToPost } from "./posting.js";
+import { failedToPost, unsavedDrafts } from "./posting.js";
 import { activeTheme } from "./theme.js";
 import { conversationKey, keyOf } from "./session.js";
 import { PairingSession, PLACEHOLDER } from "./pairing.js";
@@ -283,7 +283,19 @@ interface ReplaceMessage {
   };
 }
 
+/**
+ * The page could not keep the reader's unsent remarks.
+ *
+ * Only the page knows, because only the page holds them; it says so once, and
+ * the editor is where it is said. See `unsavedDrafts` for the words.
+ */
+interface UnsavedMessage {
+  type: "draftsUnsaved";
+  payload?: { trouble?: string };
+}
+
 type Message =
+  | UnsavedMessage
   | ReplaceMessage
   | DeltasMessage
   | ApprovalMessage
@@ -2882,6 +2894,10 @@ export class GraphPanel {
        */
       if (message.type === "folded") {
         this.folded?.set(message.payload.path, message.payload.folded);
+        return;
+      }
+      if (message.type === "draftsUnsaved") {
+        void vscode.window.showWarningMessage(unsavedDrafts(message.payload?.trouble));
         return;
       }
       if (message.type === "submitReview") {

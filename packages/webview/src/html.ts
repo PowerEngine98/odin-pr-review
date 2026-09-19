@@ -329,10 +329,15 @@ export function renderHtml(
     },
     canReview: options.canReview === true,
     // What a half-written review is filed under between page loads: the pull
-    // request if there is one, the pair of refs if there is not.
+    // request if there is one, the pair of refs if there is not. Left exactly
+    // as it was, because the camera and the pinned drawings are keyed by it
+    // too, and a new spelling would have lost every one of them.
     review: graph.meta.pullRequest
       ? `pr:${graph.meta.pullRequest.number}`
       : `${graph.meta.baseRef}..${graph.meta.headRef}`,
+    // And the repository it belongs to, which the drafts are also filed under:
+    // #272 is a different pull request in every repository that has one.
+    ...(repositoryOf(graph.meta) ? { repository: repositoryOf(graph.meta) } : {}),
     viewer: options.viewer ?? "",
     viewerFace: options.viewerFace ?? "",
     ...(options.mermaid ? { mermaid: options.mermaid } : {}),
@@ -399,6 +404,40 @@ export function renderHtml(
     `<script${nonce}>${APP_SCRIPT}</script>`,
     `</body></html>`,
   ].join("\n");
+}
+
+/**
+ * Which repository a reading belongs to, for filing its unsent remarks.
+ *
+ * For a pull request, the forge's own name for the repository, taken from the
+ * pull request's address: host, owner and name. That is the thing a pull
+ * request number is actually unique within, and it is the same in every clone
+ * and every worktree of the repository, so drafts written in one checkout are
+ * found from another. It needs nothing the page does not already have — the
+ * address comes with the pull request, and there is no pull request at all
+ * without the forge having answered — and it is the repository the review will
+ * be submitted to, which is the one question the key exists to answer.
+ *
+ * Without a pull request the forge may never have been asked (the reader may
+ * not be signed in to it), and the remote's name is not something the page is
+ * told. The checkout's own root stands in: that key names a pair of refs, and a
+ * pair such as `main..feature` turns up in every repository there is, so some
+ * name is needed, and these drafts cannot be submitted anywhere until a pull
+ * request exists — at which point they are filed under the pull request anyway.
+ * The root is the honest name for them, too: a live reading's head is this
+ * checkout's working tree, which another worktree of the same repository does
+ * not share.
+ */
+export function repositoryOf(meta: {
+  repo?: string;
+  pullRequest?: { url?: string };
+}): string | undefined {
+  const url = meta.pullRequest?.url ?? "";
+  const forge = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/\d+/i.exec(url);
+  // Lower-cased because the forge treats owner and name without regard to
+  // case, and one repository must not be two keys for the sake of a capital.
+  if (forge) return `${forge[1]}/${forge[2]}/${forge[3]}`.toLowerCase();
+  return meta.repo || undefined;
 }
 
 function contentSecurityPolicy(csp: { nonce: string; source: string }): string {

@@ -167,7 +167,7 @@
   // The exact module, not the package: `@odin/core` reaches git and spawns
   // processes, none of which exists in a browser.
   import { markOf } from "@odin/core/agents/marks.js";
-  import { forget, load, remember, threadKey } from "./drafts.js";
+  import { forget, load, remember, shelfOf, threadKey } from "./drafts.js";
   import Editor from "./Editor.svelte";
   import { EDGE, leftOf, topOf, WIDEST, widthOf } from "./thread.js";
 
@@ -403,13 +403,13 @@
   $effect(() => {
     const which = key;
     editing = null;
-    reply = which ? (load(model.current.review).unsent[which] ?? "") : "";
+    reply = which ? (load(shelfOf(model.current)).unsent[which] ?? "") : "";
   });
 
   $effect(() => {
     const which = key;
     const text = reply;
-    if (which && editing === null) remember(model.current.review, which, text);
+    if (which && editing === null) remember(shelfOf(model.current), which, text);
   });
 
   function send(): void {
@@ -447,7 +447,7 @@
       // beside the first is how one conversation becomes two.
       notify("reply", { id: thread.root.id, body });
     }
-    forget(model.current.review, key);
+    forget(shelfOf(model.current), key);
     reply = "";
   }
 

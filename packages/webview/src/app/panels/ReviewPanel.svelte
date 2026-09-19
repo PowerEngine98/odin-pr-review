@@ -10,6 +10,8 @@
   everything pending, not a remark about one line.
 -->
 <script lang="ts">
+  import { onMount } from "svelte";
+
   import type { CommentView } from "../model.js";
   import { saidOf } from "../pictures.js";
   import { model, notify } from "../state.svelte.js";
@@ -20,6 +22,7 @@
     fileDrafts,
     load,
     remember,
+    shelfOf,
     whereOf,
   } from "./drafts.js";
   import Editor from "./Editor.svelte";
@@ -32,6 +35,22 @@
   let summary = $state("");
 
   /**
+   * The remarks already filed, read back when the page wakes up.
+   *
+   * They were written to the store on every change and never read from it
+   * into this list, so after a reload the pending review said nothing was
+   * pending while the store still held every remark — and the next one added
+   * was filed as the whole list, over the top of them. Once, on mount, and
+   * only into an empty list: a page that already has remarks in hand has the
+   * newer ones.
+   */
+  onMount(() => {
+    if (drafts.length > 0) return;
+    const held = load(shelfOf(model.current)).drafts;
+    if (held.length > 0) drafts = held;
+  });
+
+  /**
    * The summary outlives the panel being closed.
    *
    * Closing is a view being put away, not a review being abandoned — so the
@@ -39,12 +58,12 @@
    * box happens to be on screen.
    */
   $effect(() => {
-    summary = load(model.current.review).unsent[SUMMARY_KEY] ?? "";
+    summary = load(shelfOf(model.current)).unsent[SUMMARY_KEY] ?? "";
   });
 
   $effect(() => {
     const held = summary;
-    remember(model.current.review, SUMMARY_KEY, held);
+    remember(shelfOf(model.current), SUMMARY_KEY, held);
   });
 
   const count = $derived(
@@ -53,7 +72,7 @@
 
   function drop(at: number): void {
     drafts = fileDrafts(
-      model.current.review,
+      shelfOf(model.current),
       drafts.filter((_, index) => index !== at),
     );
   }
@@ -107,7 +126,7 @@
   $effect(() => {
     const done = (message: MessageEvent) => {
       if (!message.data || message.data.type !== "reviewSubmitted") return;
-      clearAll(model.current.review);
+      clearAll(shelfOf(model.current));
       drafts = [];
       summary = "";
       open = false;

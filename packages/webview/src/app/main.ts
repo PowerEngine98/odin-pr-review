@@ -2,7 +2,8 @@ import { hydrate } from "svelte";
 
 import App from "./App.svelte";
 import { bootStart } from "./hud/boot.svelte.js";
-import { listen, restorePart } from "./state.svelte.js";
+import { onUnsaved } from "./panels/drafts.js";
+import { host, listen, notify, restorePart } from "./state.svelte.js";
 
 /**
  * Wakes the page up.
@@ -29,6 +30,20 @@ import { listen, restorePart } from "./state.svelte.js";
 bootStart("reading the change");
 
 listen();
+
+/*
+ * Said by the editor when the drafts stop being kept.
+ *
+ * The host's own warning rather than something drawn here, because that is
+ * where this page already says what went wrong with a review — a verdict that
+ * did not post, a branch that would not update — and because it is seen
+ * whatever the reader has open on the canvas. Opened as a file with no editor
+ * around it there is nobody to ask, and the console is the only place left.
+ */
+onUnsaved((trouble) => {
+  if (host) notify("draftsUnsaved", { trouble });
+  else console.warn(`Odin: pending review comments are not being saved (${trouble}).`);
+});
 
 /*
  * Back where the reader was.

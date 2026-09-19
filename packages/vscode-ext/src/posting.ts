@@ -62,3 +62,31 @@ export function failedToPost(error: unknown, number: number): string {
 function ending(said: string): string {
   return /[.!?]$/.test(said) ? said : `${said}.`;
 }
+
+/**
+ * What to say when the page could not keep the reader's unsent remarks.
+ *
+ * Said once, at the moment it first happens, because that is the last moment
+ * anything can be done about it: the remarks are still on screen and the review
+ * can still be sent, and after a reload they are gone. It used to be said not at
+ * all, on the grounds that the remarks lived as long as the page did — which is
+ * true right up to the reload that nobody was warned about.
+ *
+ * The two causes ask different things. A full store is shared with every other
+ * review on the machine, in every repository, so finishing or discarding one
+ * of those makes room; a store the editor will not provide will never keep
+ * anything, and the only move is to send or copy what is written before
+ * leaving.
+ */
+export function unsavedDrafts(trouble: unknown): string {
+  const kept =
+    "Your comments are still on screen, but will be lost if this tab reloads or closes — submit the review or copy them first.";
+  if (trouble === "full") {
+    return (
+      `Odin: pending review comments could not be saved — the editor's storage for them is full, ` +
+      `shared with every other pending review on this machine. ${kept} ` +
+      `Submitting or discarding pending reviews elsewhere makes room.`
+    );
+  }
+  return `Odin: pending review comments cannot be saved in this editor. ${kept}`;
+}

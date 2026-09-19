@@ -18,6 +18,9 @@ import { fileDrafts, load, type Draft } from "../src/app/panels/drafts.js";
  * region the reader picked now covers different code, and nothing on screen
  * says so. Press send and the remark is filed against lines nobody looked at.
  */
+/** One review, in one repository. */
+const REVIEW = { review: "review", repository: "github.com/o/r" };
+
 function store() {
   const held = new Map<string, string>();
   return {
@@ -40,9 +43,9 @@ describe("what a draft remembers", () => {
       body: "this loop is wrong",
       lines: ["  for (const item of items) {", "    sum += item.price;"],
     };
-    fileDrafts("review", [draft], kept);
+    fileDrafts(REVIEW, [draft], kept);
 
-    expect(load("review", kept).drafts[0]?.lines).toEqual(draft.lines);
+    expect(load(REVIEW, kept).drafts[0]?.lines).toEqual(draft.lines);
   });
 
   it("survives being written down and read back", () => {
@@ -50,7 +53,7 @@ describe("what a draft remembers", () => {
     // and an anchor that did not would be no anchor at all.
     const kept = store();
     fileDrafts(
-      "review",
+      REVIEW,
       [
         {
           path: "src/one.ts",
@@ -62,7 +65,7 @@ describe("what a draft remembers", () => {
       ],
       kept,
     );
-    expect(load("review", kept).drafts[0]).toMatchObject({
+    expect(load(REVIEW, kept).drafts[0]).toMatchObject({
       line: 4,
       lines: ["  let sum = 0;"],
     });
@@ -71,8 +74,8 @@ describe("what a draft remembers", () => {
   it("carries nothing for a remark about the file as a whole", () => {
     // There is no line to move, so there is nothing to anchor.
     const kept = store();
-    fileDrafts("review", [{ path: "src/one.ts", side: "RIGHT", body: "x" }], kept);
-    expect(load("review", kept).drafts[0]?.lines).toBeUndefined();
+    fileDrafts(REVIEW, [{ path: "src/one.ts", side: "RIGHT", body: "x" }], kept);
+    expect(load(REVIEW, kept).drafts[0]?.lines).toBeUndefined();
   });
 });
 
@@ -98,7 +101,7 @@ describe("asking where the unsent remarks have got to", () => {
     // The open composer is the one that matters most, because it is the one the
     // reader is looking at while an agent moves the ground under it.
     expect(state).toContain("id: COMPOSING,");
-    expect(state).toContain("for (const draft of load(model.current.review).drafts)");
+    expect(state).toContain("for (const draft of load(shelfOf(model.current)).drafts)");
   });
 
   it("leaves a remark whose code has gone where it is", () => {
