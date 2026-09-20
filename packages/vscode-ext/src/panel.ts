@@ -1760,6 +1760,22 @@ export class GraphPanel {
   static settings: SettingsStore | undefined;
 
   /**
+   * Whether the reader asked for import arrows.
+   *
+   * Static for the same reason the settings above are: it belongs to the reader
+   * rather than to any one review, and the panel has no way to ask — it is
+   * handed a graph and four arrangements, none of which says whether an import
+   * that is not there was left out or simply does not exist.
+   *
+   * The page needs it for one thing. The strip of tabs splits the change into
+   * the parts that do not reach each other, and an arrow a reader can see is an
+   * arrow that split may not deny; this setting decides whether the resolvers
+   * emit those arrows at all. Set by the host beside every build request, so
+   * the answer the page is given is the answer the graph was built under.
+   */
+  static imports = true;
+
+  /**
    * Where the extension's own files live.
    *
    * Needed for the tab icon, which is a file on disk rather than anything the
@@ -2451,6 +2467,9 @@ export class GraphPanel {
        * and a half megabytes of renderer.
        */
       ...(this.diagramRenderer() ? { mermaid: this.diagramRenderer()! } : {}),
+      // Whether this reading was built with import arrows in it, which decides
+      // whether the tabs above the drawing may count them.
+      includeImports: GraphPanel.imports,
       ...(this.withTests ? { withTests: this.withTests } : {}),
       ...(this.alternate ? { alternate: this.alternate } : {}),
       ...(this.highlight ? { highlight: this.highlight } : {}),

@@ -178,7 +178,18 @@ async function render(
       const snippets = opts.patchFile
         ? new Map()
         : await enrichSnippets(graph, { cwd: opts.cwd });
-      const layout = layoutGraph(graph, { snippets });
+      /*
+       * Whether import arrows are part of this picture.
+       *
+       * Not the same question as `--imports` once the output is a page: the
+       * page carries its own switch for them and has it on to begin with, so a
+       * document is built with the edges resolved whatever the flag said. The
+       * split into parts has to count the arrows the reader will be looking
+       * at, and for an svg — which is drawn once and cannot be switched — that
+       * is exactly what the flag asked for.
+       */
+      const arrows = opts.format === "html" || includeImports;
+      const layout = layoutGraph(graph, { snippets, includeImports: arrows });
       const theme = opts.light ? LIGHT_THEME : DARK_THEME;
 
       // Drawn by the application's own components rather than by an exporter
@@ -214,14 +225,17 @@ async function render(
 
       return renderHtml(graph, layout, {
         theme,
+        // The same answer the arrows were built from: what is drawn is what
+        // the tabs above the drawing split the change by.
+        includeImports: arrows,
         ...(checks ? { checks } : {}),
-        withTests: layoutGraph(everything, { snippets }),
+        withTests: layoutGraph(everything, { snippets, includeImports: arrows }),
         // Both readings of the change travel with the page: switching between
         // them is a change of card sizes, which needs a layout, and a file
         // opened from disk has nothing to ask for one.
         alternate: {
-          layout: layoutGraph(graph, { snippets, unified: true }),
-          withTests: layoutGraph(everything, { snippets, unified: true }),
+          layout: layoutGraph(graph, { snippets, unified: true, includeImports: arrows }),
+          withTests: layoutGraph(everything, { snippets, unified: true, includeImports: arrows }),
         },
         ...(comments.length ? { comments } : {}),
         highlight,

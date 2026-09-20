@@ -167,7 +167,7 @@ export async function buildGraphForRepo(
   // unconnected for as long as the reader kept it open.
   const reusable = previous && !previous.unresolved;
   const rows = reusable ? rowsOnly(previous.graph, graph) : undefined;
-  if (reusable && rows) return again(previous, graph, rows);
+  if (reusable && rows) return again(previous, graph, rows, request.includeImports);
 
   const build = (roots: { head: string; base?: string }) => [
     new TsResolver({
@@ -286,7 +286,7 @@ export async function buildGraphForRepo(
       }),
     );
 
-    return arrange(graph, snippets);
+    return arrange(graph, snippets, request.includeImports);
   } finally {
     for (const checkout of checkouts) checkout.dispose();
   }
@@ -335,7 +335,7 @@ async function diffOnly(request: BuildRequest): Promise<BuiltGraph> {
     }),
   );
 
-  return { ...arrange(graph, snippets), unresolved: true };
+  return { ...arrange(graph, snippets, request.includeImports), unresolved: true };
 }
 
 /**
@@ -421,10 +421,10 @@ export async function stageGraphForRepo(
   }
 
   const rows = rowsOnly(previous.graph, fresh);
-  if (rows) return { first: again(previous, fresh, rows) };
+  if (rows) return { first: again(previous, fresh, rows, request.includeImports) };
 
   return {
-    first: await provisional(previous, fresh, request.cwd),
+    first: await provisional(previous, fresh, request.cwd, request.includeImports),
     rest: () => buildGraphForRepo(request, previous),
   };
 }
@@ -447,6 +447,7 @@ async function provisional(
   previous: BuiltGraph,
   fresh: ChangeGraph,
   cwd: string,
+  includeImports: boolean,
 ): Promise<BuiltGraph> {
   const moved = new Set(movedNodes(previous.graph, fresh));
   const here = new Set(fresh.nodes.map((node) => node.id));
@@ -535,8 +536,8 @@ async function provisional(
     ? await freshSnippets(graph, previous, cwd)
     : previous.snippets;
 
-  if (reshaped) return arrange(graph, snippets);
-  return arrange(graph, snippets, [...moved], withdrawn);
+  if (reshaped) return arrange(graph, snippets, includeImports);
+  return arrange(graph, snippets, includeImports, [...moved], withdrawn);
 }
 
 /**
@@ -670,6 +671,14 @@ async function freshSnippets(
 function arrange(
   graph: ChangeGraph,
   snippets: Map<string, Snippet[]>,
+  /**
+   * Whether this reading was built with imports in it, which is the reader's
+   * setting and not a property of the graph. The arrangement stacks the cards
+   * in the order the parts are offered, so it has to split the change the way
+   * the tab strip does or a card sits in a band of canvas belonging to work it
+   * is not filed under.
+   */
+  includeImports: boolean,
   redrawn?: string[],
   withdrawn?: string[],
 ): BuiltGraph {
@@ -678,10 +687,10 @@ function arrange(
     graph,
     shown,
     snippets,
-    layout: layoutGraph(shown, { snippets }),
-    layoutWithTests: layoutGraph(graph, { snippets }),
-    unifiedLayout: layoutGraph(shown, { snippets, unified: true }),
-    unifiedWithTests: layoutGraph(graph, { snippets, unified: true }),
+    layout: layoutGraph(shown, { snippets, includeImports }),
+    layoutWithTests: layoutGraph(graph, { snippets, includeImports }),
+    unifiedLayout: layoutGraph(shown, { snippets, unified: true, includeImports }),
+    unifiedWithTests: layoutGraph(graph, { snippets, unified: true, includeImports }),
     ...(redrawn ? { redrawn } : {}),
     ...(withdrawn ? { withdrawn } : {}),
   };
@@ -706,6 +715,7 @@ function again(
   previous: BuiltGraph,
   fresh: ChangeGraph,
   redrawn: string[],
+  includeImports: boolean,
 ): BuiltGraph {
   const rows = new Map(fresh.nodes.map((node) => [node.id, node.hunks]));
   const graph: ChangeGraph = {
@@ -724,5 +734,5 @@ function again(
   // Laid out again rather than reused: a line that grew wider makes its card
   // wider, and a card that has changed size moves the ones beside it. It is
   // tens of milliseconds against the seconds this skipped.
-  return arrange(graph, previous.snippets, redrawn);
+  return arrange(graph, previous.snippets, includeImports, redrawn);
 }

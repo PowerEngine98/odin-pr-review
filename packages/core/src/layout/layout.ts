@@ -77,6 +77,17 @@ export interface LayoutOptions {
    * and not to the stylesheet.
    */
   unified?: boolean;
+  /**
+   * Whether the change was read with import statements in it.
+   *
+   * The cards are stacked in the order the parts are offered, so the drawing
+   * and the tab strip have to be splitting the change the same way. Both are
+   * `components`, and one of them counting imports while the other did not
+   * would put a card in the band of canvas belonging to work it is not listed
+   * under. Absent it is taken as on, matching the setting; a change carrying no
+   * import arrows is unaffected either way.
+   */
+  includeImports?: boolean;
 }
 
 /**
@@ -102,7 +113,7 @@ export function layoutGraph(
     (e) => byId.has(e.from.nodeId) && byId.has(e.to.nodeId),
   );
 
-  const parts = partOrder(graph);
+  const parts = partOrder(graph, options.includeImports !== false);
   assignRanks(placed, byId, edges);
 
   const anchored = anchorEdges(edges, byId, metrics);
@@ -652,9 +663,9 @@ const TRAILING_LANES = 6;
  * buys both: the parts stack down the canvas in the order they are listed, and
  * a part opened on its own keeps the shape it had in the picture of everything.
  */
-function partOrder(graph: ChangeGraph): Map<string, number> {
+function partOrder(graph: ChangeGraph, includeImports: boolean): Map<string, number> {
   const rank = new Map<string, number>();
-  const parts = components(graph);
+  const parts = components(graph, { includeImports });
   // Everything that stands alone shares the last place, the way the tabs put
   // them all under "on their own" rather than giving each its own name.
   const alone = parts.filter((p) => p.files > 1).length;

@@ -18,10 +18,20 @@ export interface ComponentOptions {
   /**
    * Count import edges as connections.
    *
-   * Off by default. An import says one file names another, which in a codebase
-   * with a shared type module or a barrel file connects nearly everything to
-   * nearly everything — true, and useless as a way of splitting the change up.
-   * A call chain is the thing a reviewer follows.
+   * Off by default, because a call chain is the thing a reviewer follows and an
+   * import is only one file naming another. The fear that went with that — that
+   * a shared type module or a barrel file would connect nearly everything to
+   * nearly everything and leave the change in one useless lump — was measured
+   * over eleven real changes and is not what happens: the largest part grew by
+   * a file or two and the number of parts fell by at most four. On a change of
+   * a hundred and thirty-one files it went from a hundred and seventeen parts
+   * to a hundred and thirteen, the biggest of them from six files to eight.
+   *
+   * Which is why the page turns it on. What decides it there is the reader's
+   * own setting, and that setting decides whether the resolvers emit these
+   * edges at all — so with it off there is nothing here to count, and with it
+   * on the arrows are on the canvas, where a tab saying a file reaches nothing
+   * is contradicted by the picture beside it.
    */
   includeImports?: boolean;
 }

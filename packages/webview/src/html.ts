@@ -61,6 +61,17 @@ export interface RenderOptions {
    * it already swaps between showing tests and hiding them.
    */
   alternate?: { layout: GraphLayout; withTests?: GraphLayout };
+  /**
+   * Whether this reading was built with import statements in it.
+   *
+   * The reader's own setting, passed through rather than guessed at. It decides
+   * whether the resolvers emit an arrow for an import at all, and so whether
+   * the page has any to draw — and what is drawn is what the tabs above the
+   * drawing have to agree with. Absent it is taken as on, which is what the
+   * setting itself defaults to; a change with no import arrows in it is
+   * unaffected either way.
+   */
+  includeImports?: boolean;
   /** Comments already on the pull request. */
   comments?: ReviewComment[];
   /** What the forge made of the branch, if it was asked. */
@@ -147,9 +158,38 @@ export function renderHtml(
 
   const comments = options.comments ?? [];
   const full = options.withTests ?? layout;
-  // Split from the arrangement that holds every file, so a part does not lose
-  // members to a filter and then be named after a file that is not in it.
-  const parts = components({ ...graph, nodes: full.nodes.map((n) => n.node) });
+  /*
+   * Split from the arrangement that holds every file — its arrows as well as
+   * its cards.
+   *
+   * Taking the cards from there and leaving the arrows behind is how the tab
+   * strip came to contradict the picture beside it. The graph handed to this
+   * function is the one with the tests taken out, and taking the tests out
+   * takes every arrow with an end in a test file out with them. So the split
+   * saw a change in which no test file reached anything and nothing reached a
+   * test file, filed all of them under "on their own", and the canvas — which
+   * draws from the arrangement, arrows and all — then drew them joined to each
+   * other. On the change this was found in, a reader watching two files they
+   * had just written, one of which constructs the other's classes four times
+   * over, was told both were on their own: thirty-six files under that tab, of
+   * which twenty-five had an arrow to another card in it. From one graph
+   * rather than two halves of two, the same change is eleven parts and eight
+   * files alone, none of them joined to anything.
+   *
+   * Imports count when the reader has them, because when they have them the
+   * page draws them, and an arrow a reader can see is an arrow the tabs may
+   * not deny. The setting that decides this is the same one that decides
+   * whether those edges exist at all, so saying no here when they do exist is
+   * the same contradiction wearing a different arrow.
+   */
+  const parts = components(
+    {
+      ...graph,
+      nodes: full.nodes.map((n) => n.node),
+      edges: full.edges.map((e) => e.edge),
+    },
+    { includeImports: options.includeImports !== false },
+  );
   // Column identity belongs to the arrangement, not to the file: hiding the
   // tests changes the graph, which changes the ranking. Carrying it from one
   // arrangement while taking positions from another is how cards end up
@@ -285,7 +325,13 @@ export function renderHtml(
           // the id happens to be the first node's id today, and a strip that
           // silently lost its labels when that stopped being true would be
           // worse than one that is simply told.
-          label: graph.nodes.find((n) => n.id === p.id)?.path ?? "",
+          //
+          // Looked up in the same set of files the split was worked out from.
+          // The graph handed to this function is the one with the tests taken
+          // out, and a chain that starts at a test file is not in it — so a
+          // part perfectly correctly named after `RTCNodeContractTests.kt`
+          // arrived at the strip as a tab with no name at all.
+          label: full.nodes.find((n) => n.id === p.id)?.path ?? "",
         })),
       {
         id: "loose",

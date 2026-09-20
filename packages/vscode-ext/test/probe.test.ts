@@ -1653,6 +1653,109 @@ describe("an edit that must not take the shortcut", () => {
   }, 120_000);
 });
 
+/**
+ * The tabs, while an agent writes the reference that joins two of the cards.
+ *
+ * A reader watching a live reading is reading something that is still being
+ * written, and what the strip above the drawing says has to be true of the
+ * drawing underneath it at every moment — including of the tabs they are not
+ * looking at. Two files that reach nothing sit under "on their own" and belong
+ * there; the instant one of them calls the other, the arrow is drawn and the
+ * two of them are a part, and a strip still offering them as alone would be
+ * saying something the picture beside it contradicts.
+ *
+ * Driven through the built extension against a real repository, because the
+ * split is worked out on this side of the wire and the question is what the
+ * page is finally holding, not what any one function returned.
+ */
+describe("a reference written while the reading is live", () => {
+  let repo: string;
+
+  beforeAll(() => {
+    repo = mkdtempSync(join(tmpdir(), "odin-parts-"));
+    const run = (...args: string[]) =>
+      execFileSync("git", args, {
+        cwd: repo,
+        stdio: "ignore",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "t",
+          GIT_AUTHOR_EMAIL: "t@t",
+          GIT_COMMITTER_NAME: "t",
+          GIT_COMMITTER_EMAIL: "t@t",
+        },
+      });
+    run("init", "--quiet", "-b", "main");
+    writeFileSync(join(repo, "seed.ts"), "export const seed = 0;\n");
+    run("add", "-A");
+    run("commit", "--quiet", "-m", "seed");
+    run("branch", "base", "HEAD");
+    // The change itself, uncommitted: two files that know nothing of each other.
+    writeFileSync(join(repo, "alpha.ts"), "export function alpha(): number {\n  return 1;\n}\n");
+    writeFileSync(join(repo, "beta.ts"), "export const beta = 2;\n");
+    repo = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: repo,
+      encoding: "utf8",
+    }).trim();
+  });
+  afterAll(() => rmSync(repo, { recursive: true, force: true }));
+
+  /** The parts the page is holding, by the files in each. */
+  function filed(panel: ReturnType<typeof recorder>): Record<string, string[]> {
+    const model = showing(panel) as unknown as {
+      nodes: { id: string; path: string }[];
+      parts?: { id: string; nodes: string[] }[];
+    };
+    const paths = new Map(model.nodes.map((node) => [node.id, node.path]));
+    const filed: Record<string, string[]> = {};
+    for (const part of model.parts ?? []) {
+      filed[part.id] = part.nodes
+        .map((id) => paths.get(id))
+        .filter((path): path is string => path !== undefined)
+        .sort();
+    }
+    return filed;
+  }
+
+  it("moves them out of 'on their own' the moment the arrow is drawn", async () => {
+    const editor = stub(
+      { repo, baseRef: "base", worktree: true, at: new Date().toISOString() },
+      { folder: repo, baseRef: "base" },
+    );
+    const panel = recorder();
+    await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
+    for (let waited = 0; waited < 60_000; waited += 50) {
+      if (panel.page().includes("window.__ODIN__=") && editor.watchers.length > 0) break;
+      await wait(50);
+    }
+
+    // Where they start: nothing reaches either of them, so both are alone and
+    // there is no chain to be a tab.
+    expect(filed(panel)["loose"]).toEqual(["alpha.ts", "beta.ts"]);
+
+    const before = redraws(panel);
+    writeFileSync(
+      join(repo, "beta.ts"),
+      'import { alpha } from "./alpha.js";\n\nexport const beta = alpha() + 1;\n',
+    );
+    const watcher = editor.watchers.find((w) => !w.disposed)!;
+    for (const fire of watcher.change) fire({ fsPath: join(repo, "beta.ts") });
+    // Two answers arrive for one edit — the rows first, the arrows after — and
+    // it is the second that has the reference in it, so the wait is for the
+    // arrow rather than for a redraw.
+    for (let i = 0; i < 400; i++) {
+      const now = showing(panel);
+      if (now.edges.some((e) => e.toPath === "alpha.ts")) break;
+      if (i > 0 && redraws(panel) === before) { /* still nothing sent */ }
+      await wait(50);
+    }
+
+    const parts = filed(panel);
+    expect(parts["loose"] ?? []).toEqual([]);
+    expect(Object.values(parts)).toContainEqual(["alpha.ts", "beta.ts"]);
+  }, 120_000);
+});
+
 /*
  * A reading of commits, over files that have moved on.
  *

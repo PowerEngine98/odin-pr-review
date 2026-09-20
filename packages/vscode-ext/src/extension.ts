@@ -1321,6 +1321,10 @@ async function review(
           if (drawn) GraphPanel.setRefreshing(true, said, { percent });
           else GraphPanel.note(said, percent);
         });
+        // Said to the panel as well as to the build. The page splits the
+        // change into parts and must count the arrows it is about to draw;
+        // this setting is what decides whether those arrows exist.
+        GraphPanel.imports = settings.get<boolean>("includeImports", true);
         const request = {
           cwd: repo,
           ...(base ? { baseRef: base } : {}),
@@ -1779,6 +1783,11 @@ function armLive(
      */
     history: true,
     rebuild: async () => {
+      // Read again on every rebuild rather than once when the watch was armed:
+      // a reader who turns imports off is asking for a different picture, and
+      // the parts the page is told about have to be the parts of the picture
+      // it is about to draw.
+      GraphPanel.imports = settings.get<boolean>("includeImports", true);
       const request = {
         cwd: repo,
         ...(base ? { baseRef: base } : {}),
