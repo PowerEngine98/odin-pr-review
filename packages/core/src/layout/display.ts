@@ -149,6 +149,16 @@ export interface Snippet {
    * of being rendered as ordinary context, which would defeat the collapsing.
    */
   hidden?: boolean;
+  /**
+   * How far the run reaches, when that is further than the text goes.
+   *
+   * A run too long to be worth embedding is fetched as a range and no lines: a
+   * card can still say how much is behind the band, which is the honest half of
+   * the answer, and simply cannot offer to open it. Without the range the card
+   * has no way to know the run is there at all, and the tail of a long file
+   * would end the card where the change ended rather than where the file does.
+   */
+  endLine?: number;
 }
 
 export interface DisplayOptions {
@@ -416,6 +426,31 @@ function assemble(node: FileNode, snippets: Snippet[], side: Side): DisplayRow[]
     }
     rows.push(...segment.rows);
     previousEnd = segment.end;
+  }
+
+  /*
+   * And the rest of the file, past the last thing the change touched.
+   *
+   * A card used to end where its last hunk did, which reads as the file ending
+   * there too: nothing on it distinguished a change to the last line of a file
+   * from a change to the middle of one with two hundred lines under it. The
+   * control in the title bar promises the whole file and could not keep that
+   * promise downwards — it opened every band the card had, and there was no
+   * band for the tail because nobody had made one.
+   *
+   * The material is already to hand: it is fetched with the rest of the gaps.
+   * Collapsed like any other run, so a card nobody has opened grows by the one
+   * row that says how much is down there.
+   */
+  const tail = fill.reduce(
+    (end, snippet) =>
+      Math.max(end, snippet.endLine ?? snippet.startLine + snippet.lines.length - 1),
+    0,
+  );
+  if (previousEnd !== undefined && tail > previousEnd) {
+    rows.push(
+      gapRow(tail - previousEnd, undefined, textFor(fill, side, previousEnd + 1, tail)),
+    );
   }
 
   return rows;

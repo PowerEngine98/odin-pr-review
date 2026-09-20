@@ -217,6 +217,25 @@ export function bandRows(band: GapRow): RowView[] {
 }
 
 /**
+ * Whether a band is showing the lines it stands for.
+ *
+ * Two things can open one and they are not the same thing. The reader can press
+ * the band itself, which is a question about that run of code; and the card's
+ * own control can ask for the whole file, which is a question about the card and
+ * is answered for every band at once. Folding the card back answers the second
+ * question and must leave the first alone — otherwise the reader opens a band to
+ * read around a change, glances at the whole file, folds it again, and comes
+ * back to a card that has quietly shut the part they were reading.
+ *
+ * Which is why the card's answer is held beside the reader's rather than written
+ * into it. A card unfolded and folded again is the card they left, including
+ * whatever they had opened themselves.
+ */
+export function bandOpen(state: { opened: boolean; revealed: boolean }): boolean {
+  return state.opened || state.revealed;
+}
+
+/**
  * A line that only moves one of the two numberings on.
  *
  * An insertion advances the head and leaves the base where it was, a removal

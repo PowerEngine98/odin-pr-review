@@ -15,6 +15,7 @@
   import { boxesOn, markKey, type SymbolBox, type SymbolMark } from "./symbols.js";
   import Row from "./Row.svelte";
   import {
+    bandOpen,
     bandRows,
     pairRows,
     runs,
@@ -89,9 +90,9 @@
   // A band the reader opened by hand, as opposed to one the card's own unfold
   // is holding open. Kept apart so that folding the card again — a question
   // about the lines it is holding back — does not undo a band they chose to
-  // read.
+  // read. The rule itself is `bandOpen`, where it can be read and tested.
   let opened = $state(false);
-  const open = $derived(band ? opened || revealed : gapOpen);
+  const open = $derived(band ? bandOpen({ opened, revealed }) : gapOpen);
 
   /** The lines behind this band, in whichever reading the card is being read. */
   const behind = $derived(

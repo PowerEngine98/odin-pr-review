@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
 import { displayRows, rowForLine, type Snippet } from "../layout/display.js";
 import type { ChangeGraph, FileNode, Side } from "../model/types.js";
 import { git, type GitOptions } from "./exec.js";
@@ -63,7 +66,8 @@ export async function enrichSnippets(
   const snippets = new Map<string, Snippet[]>();
   const fileCache = new Map<string, string[] | null>();
 
-  // Material behind the gaps between hunks, so a reader can open them.
+  // Material behind the gaps: before the first hunk, between them, and under
+  // the last one, so a reader can open any of them.
   const maxGap = options.maxGapLines ?? 400;
   for (const node of graph.nodes) {
     if (node.binary || node.hunks.length === 0) continue;
@@ -72,11 +76,19 @@ export async function enrichSnippets(
     if (!lines) continue;
 
     const collected = snippets.get(node.id) ?? [];
-    for (const [from, to] of gapRanges(node, side)) {
-      if (to - from + 1 > maxGap) continue;
-      const slice = lines.slice(from - 1, Math.min(to, lines.length));
-      if (slice.length === 0) continue;
-      collected.push({ side, startLine: from, lines: slice, hidden: true });
+    for (const [from, to] of gapRanges(node, side, lines.length)) {
+      // Never past the end of the file it was read from: the two sides of a
+      // comparison are different lengths, and a band standing for lines that
+      // are not there is a band that opens onto nothing.
+      const end = Math.min(to, lines.length);
+      if (end < from) continue;
+      // A run too long to embed travels as a range with no text. The card can
+      // still say how many lines stand there and simply cannot offer to open
+      // them, which is the honest half of the answer; dropping the run outright
+      // instead left the tail of a long file with nothing at all to say the
+      // file went on past the change.
+      const slice = end - from + 1 > maxGap ? [] : lines.slice(from - 1, end);
+      collected.push({ side, startLine: from, lines: slice, hidden: true, endLine: end });
     }
     if (collected.length > 0) snippets.set(node.id, collected);
   }
@@ -118,8 +130,19 @@ export async function enrichSnippets(
   return snippets;
 }
 
-/** The untouched runs between a file's hunks, and before the first one. */
-function gapRanges(node: FileNode, side: Side): [number, number][] {
+/**
+ * The untouched runs of a file: before the first hunk, between them, and after
+ * the last one.
+ *
+ * The run past the last hunk used to be left out, on the reckoning that a card
+ * stops where the change does. What it meant was that the control offering to
+ * show the whole file could not: a change to the middle of a file showed the
+ * file from its first line to the end of the last hunk and nothing after, and
+ * the reader had no way to tell a file that ended there from one that carried
+ * on for another two hundred lines. The tail is fetched like any other gap and
+ * bands over like any other gap, so it costs one row on a card nobody opens.
+ */
+function gapRanges(node: FileNode, side: Side, lineCount: number): [number, number][] {
   const spans = node.hunks
     .map((hunk): [number, number] => {
       const start = side === "base" ? hunk.oldStart : hunk.newStart;
@@ -134,6 +157,7 @@ function gapRanges(node: FileNode, side: Side): [number, number][] {
     if (start > cursor) ranges.push([cursor, start - 1]);
     cursor = Math.max(cursor, end + 1);
   }
+  if (lineCount >= cursor) ranges.push([cursor, lineCount]);
   return ranges;
 }
 
@@ -149,16 +173,44 @@ async function readBlob(
   options: GitOptions,
   cache: Map<string, string[] | null>,
 ): Promise<string[] | null> {
-  const sha = side === "base" ? graph.meta.mergeBase : graph.meta.headSha;
-  if (!sha) return null;
-
   const path = side === "base" ? (node.prevPath ?? node.path) : node.path;
-  const key = `${sha}:${path}`;
+
+  /*
+   * A live reading is of the working tree, so the head of it is the file on
+   * disk and not the commit `HEAD` happens to name.
+   *
+   * Those are the same file only while nothing is uncommitted, which for a live
+   * reading is the one case it was not built for: somebody watching an agent
+   * work is watching a tree full of work that has not been committed and may
+   * never be. The diff was measured against the tree, so every line on a card
+   * is numbered by the tree — while the material behind the bands came out of
+   * the commit, numbered by the tree all the same.
+   *
+   * What that looks like is not a missing line but a sliding one. Two lines
+   * inserted near the top of a file put every line after them two out of step,
+   * so opening a band showed real code from the file at numbers belonging to
+   * the code two lines above it, and where the slide ran past the end of the
+   * band it showed the lines the hunk below was already showing. The reader
+   * sees one line of their file drawn twice, at two numbers, one of which it
+   * has never had — on a file they are in the middle of editing, which is the
+   * worst possible moment to be told something is there twice.
+   *
+   * It also means a file git has never been told about has context at all: a
+   * `git show` of an untracked path fails, and the card for a file somebody has
+   * just written could show nothing around its hunks.
+   */
+  const live = graph.meta.worktree === true && side === "head";
+  const sha = side === "base" ? graph.meta.mergeBase : graph.meta.headSha;
+  if (!live && !sha) return null;
+
+  const key = live ? `worktree:${path}` : `${sha}:${path}`;
   if (cache.has(key)) return cache.get(key)!;
 
   let lines: string[] | null = null;
   try {
-    const content = await git(["show", key], options);
+    const content = live
+      ? await readFile(resolve(graph.meta.repo ?? options.cwd, path), "utf8")
+      : await git(["show", key], options);
     lines = content.split("\n");
     if (lines[lines.length - 1] === "") lines.pop();
   } catch {
