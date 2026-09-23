@@ -55,6 +55,17 @@ export interface BuildRequest {
    * checkout holds has a working tree to read, so this overrides `headRef`.
    */
   worktree?: boolean;
+  /**
+   * Which pull request is being read, when whoever asked for the reading knows.
+   *
+   * Carried so the forge can be asked by number rather than by ref. Everything
+   * that has finished needs this: a landed change has had its branch taken
+   * away, so the reading is of a bare commit, and a bare commit is a question
+   * about this checkout rather than about a change — which is how a reader
+   * pressing a merged row came to be shown that row's files under the number,
+   * title and comments of whatever branch they happened to have out.
+   */
+  number?: number;
   includeImports: boolean;
   includeContext: boolean;
   /** Called with coarse progress so the editor can show it. */
@@ -149,6 +160,7 @@ export async function buildGraphForRepo(
     // changed the pull request's title, and `gh` is most of a second of network
     // in the middle of what is supposed to be an instant redraw.
     ...(previous ? {} : { pullRequest: true }),
+    ...(request.number !== undefined ? { pullRequestNumber: request.number } : {}),
   });
   if (previous?.graph.meta.pullRequest) {
     graph = {
@@ -318,6 +330,7 @@ async function diffOnly(request: BuildRequest): Promise<BuiltGraph> {
     headRef,
     ...(request.worktree ? { worktree: true } : {}),
     pullRequest: true,
+    ...(request.number !== undefined ? { pullRequestNumber: request.number } : {}),
   });
 
   report("Laying out…");

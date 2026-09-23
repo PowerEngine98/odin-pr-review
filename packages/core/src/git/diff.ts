@@ -92,6 +92,24 @@ export interface DiffRequest extends GitOptions {
   /** Ask `gh` for the pull request this branch belongs to. */
   pullRequest?: boolean;
   /**
+   * Which pull request this reading is of, when the caller already knows.
+   *
+   * Asked of the forge by number instead of by ref, and it exists because a
+   * change that has finished cannot be named by a ref at all. Its branch is
+   * taken away the moment it lands, so what is left to read is the head commit
+   * under `refs/pull/<n>/head` — and a bare commit is not a question `gh` can
+   * answer, so the lookup fell through to asking about the branch the working
+   * tree happened to be on. That always answered, and it answered about a
+   * different change: the reader pressed one row and got that row's diff
+   * wearing another row's number, title, comments and checks, every time,
+   * because the answer never depended on which row was pressed.
+   *
+   * Only consulted when `pullRequest` asks for the lookup at all. It overrules
+   * the ref, since a caller who has the number has it from the forge's own list
+   * and a ref is at best a guess at the same thing.
+   */
+  pullRequestNumber?: number;
+  /**
    * Diff the working tree rather than a commit.
    *
    * `HEAD` names a commit, so the ordinary reading of a branch stops at the
@@ -150,11 +168,22 @@ export async function readPatch(req: DiffRequest): Promise<{
      * Nothing about it looks like a bug. Both halves are real, and the only way
      * to catch it is to notice that the branch named in the bar is not the
      * branch the files came from.
+     *
+     * The number comes before either of them, because a ref only names a change
+     * while there is a change being worked on. A reading of finished work has
+     * no name of that kind — the branch was taken away when it landed and what
+     * is left is a commit — so the fallback below was reached on every such
+     * reading, and the branch it asked about was the reader's own. That is the
+     * same wrong label as before, arriving by the route that was left open when
+     * it was fixed. Where the caller knows the number, nothing else is guessed.
      */
     const branch = pullBranch(req.headRef);
-    pull = branch
-      ? await readPullRequest(branch, req)
-      : await readPullRequest((await currentBranch(req)) ?? headRef, req);
+    pull =
+      req.pullRequestNumber !== undefined
+        ? await readPullRequest(String(req.pullRequestNumber), req)
+        : branch
+          ? await readPullRequest(branch, req)
+          : await readPullRequest((await currentBranch(req)) ?? headRef, req);
   }
   const wanted =
     req.baseRef ??

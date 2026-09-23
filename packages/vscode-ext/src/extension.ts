@@ -1010,16 +1010,40 @@ async function readFinished(pull: PullRequestSummary): Promise<void> {
   if (!repo) return;
 
   await GraphPanel.showLoading(`Fetching #${pull.number}`);
+  let fetched = false;
   try {
     await git(["fetch", "--quiet", "origin", `refs/pull/${pull.number}/head`], {
       cwd: repo,
     });
+    fetched = true;
   } catch {
     // Older forges and some mirrors do not publish that ref. The head commit
     // may still be here from when the branch was.
   }
 
-  const head = pull.headSha ?? (await revision(repo, "FETCH_HEAD"));
+  /*
+   * The commit the forge named, once this checkout is known to have it — and
+   * `FETCH_HEAD` only when this fetch is the thing that wrote it.
+   *
+   * Neither half is how it was. The forge's commit was taken on trust, so a
+   * change whose objects never arrived went into the build as a sha nothing
+   * here has ever seen and came back out as a git error about an unknown
+   * revision, several layers below anything that knew which change was being
+   * asked for. And `FETCH_HEAD` is not a ref belonging to anything: it is a
+   * note of whatever was fetched last, by anybody, for any reason, so reaching
+   * for it after a fetch that failed is reaching for another change's commits.
+   *
+   * Git happens to truncate the file when a fetch fails, so that reach came up
+   * empty rather than wrong — but only by luck, and the luck is somebody
+   * else's implementation detail. A fallback worth keeping is one that can be
+   * checked, and this one now is: the forge's sha only when it is here, and
+   * the note only when this fetch wrote it. When neither holds there is
+   * genuinely nothing to read, and saying so beats drawing something.
+   */
+  const named = pull.headSha && (await revision(repo, pull.headSha))
+    ? pull.headSha
+    : undefined;
+  const head = named ?? (fetched ? await revision(repo, "FETCH_HEAD") : undefined);
   if (!head) {
     await GraphPanel.stopLoading(
       `Could not find the commits for #${pull.number}. The forge may not publish ` +
@@ -1035,7 +1059,10 @@ async function readFinished(pull: PullRequestSummary): Promise<void> {
     : undefined;
   const forked = base ? await mergeBase(repo, base, head) : undefined;
 
-  await review(forked ?? base, head);
+  // And which change it is, which nothing downstream can work out from a
+  // commit. This is the whole of the report: the number was in hand here and
+  // was not passed on, so the reading was named after the checked-out branch.
+  await review(forked ?? base, head, false, undefined, pull.number);
 }
 
 /** A ref's commit, or nothing when this checkout has never heard of it. */
@@ -1199,11 +1226,20 @@ async function review(
   /**
    * Which pull request this is, when the caller already knows.
    *
-   * Only used when a ref cannot be found. A branch is deleted the moment its
-   * change merges, so a reading of one asks for a ref the forge no longer has —
-   * and the forge still keeps the head it merged, under `refs/pull/<n>/head`.
-   * Reaching that needs the number, and the number is on the reading rather
-   * than in anything a signed-out `gh` could tell us.
+   * A branch is deleted the moment its change merges, so a reading of one asks
+   * for a ref the forge no longer has — and the forge still keeps the head it
+   * merged, under `refs/pull/<n>/head`. Reaching that needs the number, and the
+   * number is on the reading rather than in anything a signed-out `gh` could
+   * tell us.
+   *
+   * It is also what the change is *called*, which is the part that was missing.
+   * The build works out whose change it is drawing by asking the forge about a
+   * ref, and a reading of finished work has no ref to ask about: it is a commit.
+   * Asked about a commit the lookup falls back to the checked-out branch, which
+   * always answers and answers about something else entirely — so this is now
+   * handed down to the build as well as kept here, and the reading is named by
+   * the row that was pressed rather than by the branch the reader was standing
+   * on.
    */
   is?: number,
   /**
@@ -1331,6 +1367,18 @@ async function review(
           ...(fallback ? { fallbackBaseRef: fallback } : {}),
           headRef: head,
           ...(worktree ? { worktree: true } : {}),
+          /*
+           * Which change this is, said rather than worked out.
+           *
+           * The build asks the forge what it is drawing, and the only thing it
+           * has to ask with is a ref. That is fine while a change is open and
+           * useless the moment it is not: a landed change has no branch left,
+           * so the reading is of a commit, and the lookup fell back to the
+           * branch the working tree happened to be on — which answered, every
+           * time, about the wrong change. The reader pressed one row in the
+           * list and got that row's files under another row's number.
+           */
+          ...(is !== undefined ? { number: is } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
           progress: step,
