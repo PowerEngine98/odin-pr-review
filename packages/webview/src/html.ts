@@ -228,11 +228,13 @@ export function renderHtml(
     // The width of one character, for placing a mark over a symbol without
     // measuring text in the browser — the same number the layout engine used.
     charWidth: layout.metrics.charWidth,
-    // Where a row's first character sits: the marker column, the base number,
-    // the padding between that and the code, and the strip kept clear between
-    // them for the marks a reader picks lines with. That strip is part of the
+    // Where a row's first character sits: the marker column, the strip kept
+    // clear after it for the marks a reader picks lines with, the base number,
+    // and the padding between that and the code. That strip is part of the
     // answer because it is part of the card the engine measured — leave it out
-    // and everything placed from this number lands a column early.
+    // and everything placed from this number lands a column early. Its place in
+    // the row moved once, from behind the numbers to in front of them, and this
+    // sum did not change: the columns were reordered, not resized.
     textLeft:
       layout.metrics.padding +
       layout.metrics.gutterWidth +

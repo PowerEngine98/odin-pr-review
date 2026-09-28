@@ -275,15 +275,23 @@
 
   In the column the grips use, at the same offset, because it is the same
   control at two moments of one gesture: press it and it becomes the grip on the
-  near end of the range. Sitting it over the line number instead — where it was
-  — meant the affordance appeared by covering the digits it was offering to talk
-  about, so a row read `1[+]5` for as long as the pointer was on it, and then the
-  button jumped sideways the instant the drag began.
+  near end of the range. That column sits at the head of the gutter, a few
+  pixels after the sign saying what happened to the line, so the offer is always
+  the same short distance in from the card's edge whatever the row holds. It
+  used to sit on the far side of the line numbers, which put it a whole gutter
+  away from the sign — and on an inserted line, whose base gutter carries no
+  number at all, that left it standing in empty space beside the code, close
+  enough to the first character that it read as a mark on the line's own
+  indentation rather than as a control on the row.
 
-  Clear of the numbers, then, for the reason the grips are: the numbers are
-  exactly what the reader is reading while they decide how far a passage should
-  reach. The rail either side of it still starts the gesture, so hover, press
-  and drag remain one movement.
+  Never over the numbers, though, which is where it sat before that: the
+  affordance appeared by covering the digits it was offering to talk about, so a
+  row read `1[+]5` for as long as the pointer was on it, and then the button
+  jumped sideways the instant the drag began. The numbers are exactly what the
+  reader is reading while they decide how far a passage should reach, so the
+  offer stays clear of them and takes the side the sign is on. The rail either
+  side of it still starts the gesture, so hover, press and drag remain one
+  movement.
 -->
 {#snippet plus(at: { side: Side; line: number }, name: "left" | "right")}<button
     type="button"
@@ -322,7 +330,7 @@
   >+</button>{/snippet}
 
 <!--
-  The strip the picking marks are drawn in, between the numbers and the code.
+  The strip the picking marks are drawn in, between the sign and the numbers.
 
   A column of the row rather than an overlay on one. The offer and the grips
   used to be positioned over the head of the code, which meant that choosing a
@@ -331,6 +339,14 @@
   what they were picking. Putting them back over the line numbers is no better:
   those digits are exactly what is being read while a range is decided. So the
   marks get a column of their own and take space from neither.
+
+  At the head of the gutter rather than at the end of it. Behind the numbers the
+  offer stood as far in from the card's edge as the gutter is wide, which on a
+  line the change inserted — a line with no base number, and so an empty gutter
+  — was a button floating in a blank strip next to the code, near enough the
+  first character to read as something about the indentation. Beside the sign it
+  is in the same place on every row of every card, and the sign and the offer
+  are the two things the row says about itself before the code begins.
 
   Its width is `--pick-column`, which is the layout engine's, not this
   stylesheet's. Every card was sized in the extension host before this page
@@ -424,13 +440,13 @@
       class:sign-last={last}
     >
       {#if !last}{@render sign(only.kind === "del" ? "−" : "", at, name)}{/if}
+      {@render strip([{ at, name, end: grip }])}
       <span
         class="num"
         data-rail={at ? name : null}
         data-gutter={at?.side}
         data-line={at?.line}>{shown}</span
       >
-      {@render strip([{ at, name, end: grip }])}
       <span class="text">{@render code(only)}{@render outlines(
           boxesFor(only, [spot && markKey(spot.side, spot.line)]),
         )}</span>
@@ -564,6 +580,24 @@
        the one carrying an end of the range. -->
   {@const beforeEnd = endAt(ends, before)}
   {@const afterEnd = endAt(ends, after)}
+  <!--
+    What an empty gutter answers for.
+
+    A unified row has a column of numbers either side of the code and a line the
+    change only made on one side fills one of them: an inserted line has no
+    place in the base, so the left column beside it is blank, and a removed one
+    leaves the right column blank the same way. Those are exactly the rows a
+    review is about, and the blank column is still the strip a reader's pointer
+    runs down looking for somewhere to start — so a gutter that stood for
+    nothing meant hovering the numbers beside an insertion offered nothing, and
+    the reader had to find the narrow strip beside them before anything
+    appeared. An empty gutter therefore answers for whichever side the row does
+    have, which is the rule the strip between them was already following.
+  -->
+  {@const beforeAt = before ?? after}
+  {@const afterAt = after ?? before}
+  {@const beforeName = before ? "left" : "right"}
+  {@const afterName = after ? "right" : "left"}
   <div
     class="row flat {row.kind}"
     class:just-changed={flash === "changed"}
@@ -586,23 +620,28 @@
       data-gutter={before?.side}
       data-line={before?.line}>{row.kind === "add" ? "+" : row.kind === "del" ? "−" : ""}</span
     >
-    <!-- A wholly added or deleted file has one numbering, so both gutters carry it. -->
-    <span
-      class="num old"
-      data-rail={before ? "left" : null}
-      data-gutter={before?.side}
-      data-line={before?.line}>{(row.oldLine ?? (single ? row.newLine : undefined)) ??
-        ""}</span
-    >
     <!-- Both gutters draw into the one strip, because there is one column of
          code and both ends of a range belong at the head of it. The strip
          stands for the base where the line has one, since that is the gutter it
          sits against; a line the change added has no base number, and it stands
-         for the head instead rather than for nothing. -->
+         for the head instead rather than for nothing.
+
+         Straight after the sign rather than after the numbers. A unified row's
+         base gutter is blank on every line the change inserted, so an offer
+         drawn beyond it had a gutter's width of nothing between it and the
+         nearest thing it belonged to, and sat against the code instead. -->
     {@render strip([
       { at: before, name: "left", end: beforeEnd },
       { at: after, name: "right", end: afterEnd },
     ])}
+    <!-- A wholly added or deleted file has one numbering, so both gutters carry it. -->
+    <span
+      class="num old"
+      data-rail={beforeAt ? beforeName : null}
+      data-gutter={beforeAt?.side}
+      data-line={beforeAt?.line}>{(row.oldLine ?? (single ? row.newLine : undefined)) ??
+        ""}</span
+    >
     <span class="text">{@render code(row)}{@render outlines(
         boxesFor(row, [markKey("base", row.oldLine), markKey("head", row.newLine)]),
       )}</span>
@@ -611,9 +650,9 @@
          border and read as part of the frame. -->
     <span
       class="num new"
-      data-rail={after ? "right" : null}
-      data-gutter={after?.side}
-      data-line={after?.line}>{(row.newLine ?? (single ? row.oldLine : undefined)) ??
+      data-rail={afterAt ? afterName : null}
+      data-gutter={afterAt?.side}
+      data-line={afterAt?.line}>{(row.newLine ?? (single ? row.oldLine : undefined)) ??
         ""}</span
     >
   </div>
@@ -862,10 +901,10 @@
      */
     user-select: none;
   }
-  /* The column the picking marks live in, kept clear of both its neighbours.
-     Fixed rather than flexible: it is the engine's measurement, and a column
-     that gave ground under a long line would move the code out from under the
-     outlines the arrows draw on it. */
+  /* The column the picking marks live in, between the sign and the numbers and
+     kept clear of both. Fixed rather than flexible: it is the engine's
+     measurement, and a column that gave ground under a long line would move the
+     code out from under the outlines the arrows draw on it. */
   .row .pick-column {
     flex: 0 0 var(--pick-column);
     width: var(--pick-column);
@@ -887,17 +926,20 @@
   .row .side.add .marker, .row .side.del .marker { color: inherit; }
 
   /* The head pane's sign, moved to the end of that pane, takes its fourteen
-     pixels with it — so the number gets them back as padding and both panes
-     keep their numbers in the same column and start their code at the same
-     offset. Given back rather than simply dropped: without it the head pane's
-     gutter is fourteen pixels narrower than the base's, every line number on
-     the right sits left of its neighbour on the left, and the two columns stop
-     reading as columns. A pane that exists on one side only is measured the
-     same way, so an empty facing pane changes nothing. */
-  .row.split .side.sign-last .num {
-    width: calc(var(--gutter-width) - 8px);
-    padding-left: 14px;
-  }
+     pixels with it — so the picking strip, which is now what leads that pane,
+     gets them back as a margin and both panes keep their numbers in the same
+     column and start their code at the same offset. Given back rather than
+     simply dropped: without it the head pane's gutter is fourteen pixels
+     narrower than the base's, every line number on the right sits left of its
+     neighbour on the left, and the two columns stop reading as columns. A pane
+     that exists on one side only is measured the same way, so an empty facing
+     pane changes nothing.
+
+     A margin rather than padding on the strip, because the offer inside it is
+     placed against the strip's own box: padded, the button would have come back
+     to the pane's edge and sat on the hairline dividing the two readings, which
+     is the one line on a split row that is not about any file. */
+  .row.split .side.sign-last .pick-column { margin-left: 14px; }
   /* Against the pane's outer edge, the way the leading sign is against the
      card's: the two read as a pair of margins rather than as one mark inside
      the code and one outside it. */
@@ -1026,9 +1068,9 @@
     position: absolute;
     top: 1px;
     /* Inside the strip the row keeps for them, centred across it: two pixels
-       clear of the last digit on one side and of the first character on the
-       other. Written once so the offer and the two grips cannot come apart by
-       one of them being moved and the others not.
+       clear of the sign on one side and of the first digit on the other.
+       Written once so the offer and the two grips cannot come apart by one of
+       them being moved and the others not.
 
        As wide as it is tall, which the strip is sized for. It was eighteen
        across against a sixteen-pixel row while it was floating over the code,

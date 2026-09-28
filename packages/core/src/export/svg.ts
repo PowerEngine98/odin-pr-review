@@ -185,7 +185,7 @@ function card(
         : index === 0 ? side.oldLine : side.newLine;
       if (line !== undefined && !unified) {
         parts.push(
-          `<text x="${x + metrics.gutterWidth - 8}" y="${y}" ` +
+          `<text x="${x + metrics.gutterWidth + metrics.pickColumn - 8}" y="${y}" ` +
             `fill="${theme.gutter}" font-size="${metrics.fontSize - 1}" ` +
             `text-anchor="end">${line}</text>`,
         );
@@ -215,8 +215,14 @@ function card(
         }
       }
 
+      // Past the picking column as well as past the gutter. The page keeps that
+      // column at the head of every row and the engine sized every card with it
+      // in, so a static picture that started its code a column early was drawing
+      // the same card differently — and, since the capacity above is worked out
+      // with the column reserved, leaving a strip of nothing at the far end of
+      // every pane to make up the difference.
       parts.push(
-        `<text x="${x + metrics.gutterWidth}" y="${y}" fill="${colour}" ` +
+        `<text x="${x + metrics.gutterWidth + metrics.pickColumn}" y="${y}" fill="${colour}" ` +
           `font-size="${metrics.fontSize}" xml:space="preserve">` +
           `${escape(fitText(side.text, capacity))}</text>`,
       );

@@ -259,7 +259,7 @@
       {@const line = numberOf(cell, index)}
       {#if line !== undefined}
         <text
-          x={x + metrics.gutterWidth - 8}
+          x={x + metrics.gutterWidth + metrics.pickColumn - 8}
           {y}
           fill={ink.gutter}
           font-size={metrics.fontSize - 1}
@@ -270,9 +270,14 @@
 
     <!-- The line itself. Space is preserved because indentation is most of what
          makes a diff readable, and a renderer collapses runs of it by default
-         the way HTML does. -->
+         the way HTML does.
+
+         Past the picking column as well as past the gutter: the canvas keeps
+         that column at the head of every row and every card was sized with it
+         in, so a drawing that began its code a column early was a picture of a
+         card nobody is looking at. -->
     <text
-      x={x + metrics.gutterWidth}
+      x={x + metrics.gutterWidth + metrics.pickColumn}
       {y}
       fill={colourOf(cell)}
       font-size={metrics.fontSize}

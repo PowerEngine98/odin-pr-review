@@ -68,7 +68,11 @@ export function drawingOf(
     height: layout.height,
     rowGap: metrics.rowGap,
     charWidth: metrics.charWidth,
-    textLeft: metrics.padding + metrics.gutterWidth,
+    // Where a row's first character sits: the gutter, and the column kept at
+    // the head of it for the marks a reader picks lines with. The column is in
+    // the answer because it is in the card the engine measured — leave it out
+    // and everything placed from this number lands a column early.
+    textLeft: metrics.padding + metrics.gutterWidth + metrics.pickColumn,
     padding: metrics.padding,
     gutterWidth: metrics.gutterWidth,
     columnGap: metrics.columnGap,
@@ -273,13 +277,25 @@ function at(row: number, metrics: LayoutMetrics): RowAt {
   };
 }
 
-/** How many characters one pane of a card this wide has room for. */
+/**
+ * How many characters one pane of a card this wide has room for.
+ *
+ * The layout engine's own sum, written out here for the reason given at the top
+ * of this file. Both columns come off the width, the gutter and the picking
+ * strip at the head of it, because the card was measured with both — a copy
+ * that forgot the strip cut its lines two or three characters later than the
+ * engine and the exporter did, so the same card said different things in the
+ * drawing and in the file written from it.
+ */
 function textCapacity(
   width: number,
   metrics: LayoutMetrics,
   panes: number,
 ): number {
-  const available = (width - metrics.padding * 2) / panes - metrics.gutterWidth;
+  const available =
+    (width - metrics.padding * 2) / panes -
+    metrics.gutterWidth -
+    metrics.pickColumn;
   return Math.max(0, Math.floor(available / metrics.charWidth));
 }
 

@@ -20,15 +20,25 @@ export interface LayoutMetrics {
   /** Left gutter: the +/- marker and the base-side line number. */
   gutterWidth: number;
   /**
-   * A column of its own, between the line numbers and the code, for the marks
-   * a reader picks lines with: the square + a hovered row offers, the grip at
-   * each end of a chosen range, and the rail joining them.
+   * A column of its own, between the sign saying what happened to a line and
+   * that line's numbers, for the marks a reader picks lines with: the square +
+   * a hovered row offers, the grip at each end of a chosen range, and the rail
+   * joining them.
    *
-   * Beside `gutterWidth` rather than folded into it, because only the page has
-   * a pointer and only the page draws these marks. A static SVG places its line
-   * numbers a fixed distance inside the gutter, so a wider gutter would have
-   * carried them sideways into this column for a set of controls it does not
-   * have; left alone it simply spends the room on longer lines.
+   * At the head of the gutter rather than at the end of it, because the offer
+   * has to be findable in the same place on every row. Behind the numbers it
+   * stood a whole gutter in from the card's edge, and on a line the change
+   * inserted — which has no base number, so nothing in that gutter at all — it
+   * hung in a blank strip against the first character of the code, where it
+   * read as a mark on the indentation rather than as a control on the row.
+   *
+   * Beside `gutterWidth` rather than folded into it, because it is a different
+   * fact: the gutter is a sign and a number, and this is the room kept for a
+   * set of controls only a page with a pointer can draw. Every renderer still
+   * reserves it in the same place, marks or no marks — a picture of a card the
+   * engine measured with this column in it has to put the code where the card
+   * was measured for, and a static export that quietly spent the room on longer
+   * lines was drawing a different card from the one on the canvas.
    *
    * It is a measurement rather than a stylesheet's business because it moves
    * where a row's first character sits. The engine sizes every card in the
@@ -40,7 +50,14 @@ export interface LayoutMetrics {
    * is a fact about that line rather than about the column.
    */
   pickColumn: number;
-  /** Where the base-side number's right edge sits within the left gutter. */
+  /**
+   * Where the base-side number's right edge sits within the left gutter.
+   *
+   * Past the picking column, because that column leads the gutter: a renderer
+   * that measured this from the sign alone would write the numbers underneath
+   * the marks a reader picks lines with on the page, and the same card would
+   * read two different ways depending on which renderer drew it.
+   */
   lineNumberRight: number;
   /** Right gutter: the head-side line number, and the + beside it. */
   rightGutterWidth: number;
@@ -92,10 +109,12 @@ export const DEFAULT_METRICS: LayoutMetrics = {
   padding: 12,
   gutterWidth: 58,
   // Wide enough for a mark the size of a row — sixteen across, with a couple of
-  // pixels either side so the grip is neither against the last digit nor against
-  // the first character of the line.
+  // pixels either side so the mark is neither against the sign before it nor
+  // against the first digit of the line number after it.
   pickColumn: 20,
-  lineNumberRight: 50,
+  // The sign, the picking column, and then the number's own eight pixels of
+  // air before the code: `gutterWidth + pickColumn - 8`.
+  lineNumberRight: 70,
   rightGutterWidth: 52,
   minCardWidth: 240,
   columnGap: 140,

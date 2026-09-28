@@ -1264,6 +1264,43 @@ describe("toSvg", () => {
   it("renders the same bytes every time", () => {
     expect(toSvg(layoutGraph(graph()))).toBe(toSvg(layoutGraph(graph())));
   });
+
+  /**
+   * A file on disk has no pointer, so it draws none of the marks a reader picks
+   * lines with — but it is a picture of a card that was measured with a column
+   * kept for them, and the page keeps that column at the head of every gutter.
+   * An exporter that started its code where the gutter ends was therefore
+   * drawing the same card a column narrower than the canvas does, and, because
+   * it cut its lines to a capacity worked out with the column reserved, leaving
+   * a strip of nothing at the far end of every pane to make the sums come out.
+   */
+  it("begins a row's code where the layout engine measured it", () => {
+    const layout = layoutGraph(graph());
+    const { padding, gutterWidth, pickColumn } = layout.metrics;
+    const node = layout.nodes[0]!;
+    const svg = toSvg(layout);
+
+    const starts = [...svg.matchAll(/<text x="([-\d.]+)"[^>]*xml:space="preserve"/g)]
+      .map((found) => Number(found[1]))
+      .filter((x) => x >= node.x && x < node.x + node.width);
+
+    expect(starts.length).toBeGreaterThan(0);
+    expect(Math.min(...starts) - node.x).toBe(padding + gutterWidth + pickColumn);
+  });
+
+  /**
+   * And the numbers go on the far side of that column, where the page puts
+   * them: written from the sign alone they would sit under the strip the offer
+   * to comment and the grips on a range are drawn in, and the same card would
+   * read two different ways depending on which renderer drew it.
+   */
+  it("leaves the base number the last thing in the gutter before the code", () => {
+    const { gutterWidth, pickColumn, lineNumberRight } = DEFAULT_METRICS;
+    // Eight pixels of air between the last digit and the first character, and
+    // nothing else in between — which is only true if the number is on the far
+    // side of the picking column rather than in front of it.
+    expect(gutterWidth + pickColumn - lineNumberRight).toBe(8);
+  });
 });
 
 function positions(layout: ReturnType<typeof layoutGraph>) {
