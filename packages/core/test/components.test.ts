@@ -340,3 +340,86 @@ describe("a file the change never touched", () => {
     expect(parts[0]!.nodeIds).not.toContain("n:icons.ts");
   });
 });
+
+/**
+ * What a tab in the strip calls a part of the change.
+ *
+ * It used to be the name of the file the part's call chain starts at, which
+ * answers a question nobody asked: a reader scanning the strip wants to know
+ * which corner of the repository a part is in, and the drawing already says
+ * better than a word can where inside it to begin.
+ */
+describe("the name a part is given", () => {
+  it("is the folder every file in it sits under", () => {
+    const parts = components(
+      graph(
+        [
+          file("backend/src/main/labor/LaborDao.kt"),
+          file("backend/build.gradle.kts"),
+          file("frontend/src/labor/LaborReview.tsx"),
+          file("frontend/package.json"),
+        ],
+        [
+          edge("backend/build.gradle.kts", "backend/src/main/labor/LaborDao.kt"),
+          edge("frontend/package.json", "frontend/src/labor/LaborReview.tsx"),
+        ],
+      ),
+    );
+    expect(parts.map((p) => p.label).sort()).toEqual(["backend", "frontend"]);
+  });
+
+  it("keeps the whole folder beside the name, for anything with room for it", () => {
+    const parts = components(
+      graph(
+        [file("web/app/labor/one.ts"), file("web/app/labor/two.ts")],
+        [edge("web/app/labor/one.ts", "web/app/labor/two.ts")],
+      ),
+    );
+    expect(parts[0]!.folder).toBe("web/app/labor");
+    expect(parts[0]!.label).toBe("labor");
+  });
+
+  it("falls back to the file it starts at where the files share no folder", () => {
+    // A part spanning the whole tree is under the root, and the root has no
+    // name worth printing.
+    const parts = components(
+      graph(
+        [file("backend/one.kt"), file("frontend/two.ts")],
+        [edge("backend/one.kt", "frontend/two.ts")],
+      ),
+    );
+    expect(parts[0]!.folder).toBe("");
+    expect(parts[0]!.label).toMatch(/\.(kt|ts)$/);
+  });
+
+  it("takes enough of the path to tell two parts of the same name apart", () => {
+    // Pressing one of two tabs both reading `labor` is a guess, not a choice.
+    const parts = components(
+      graph(
+        [
+          file("api/labor/one.kt"),
+          file("api/labor/two.kt"),
+          file("web/labor/three.ts"),
+          file("web/labor/four.ts"),
+        ],
+        [
+          edge("api/labor/one.kt", "api/labor/two.kt"),
+          edge("web/labor/three.ts", "web/labor/four.ts"),
+        ],
+      ),
+    );
+    expect(parts.map((p) => p.label).sort()).toEqual(["api/labor", "web/labor"]);
+  });
+
+  it("compares folders a segment at a time, not a character at a time", () => {
+    // `labor` and `laboratory` share five characters and no folder.
+    const parts = components(
+      graph(
+        [file("src/labor/one.ts"), file("src/laboratory/two.ts")],
+        [edge("src/labor/one.ts", "src/laboratory/two.ts")],
+      ),
+    );
+    expect(parts[0]!.folder).toBe("src");
+    expect(parts[0]!.label).toBe("src");
+  });
+});

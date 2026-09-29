@@ -580,7 +580,12 @@ function tabs(parts: Component[]): string {
           part.id,
           part.label,
           part.files,
-          `${part.path} and the ${part.files - 1} file${part.files === 2 ? "" : "s"} its calls reach`,
+          // The whole folder, which the tab itself has no room for, and the
+          // file the part's chain starts at, which is where a reader opening it
+          // is put down.
+          `${part.folder ? `${part.folder}/ — ` : ""}${part.path} and the ${
+            part.files - 1
+          } file${part.files === 2 ? "" : "s"} its calls reach`,
         ),
       )
       .join("") +

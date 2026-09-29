@@ -4,8 +4,23 @@ import type { ChangeGraph, Edge, FileNode } from "../model/types.js";
 export interface Component {
   /** Stable across runs: the id of the file the part is named after. */
   id: string;
-  /** The file the part is named after — where its call chain starts. */
+  /**
+   * What the tab says: the folder every file in the part sits under.
+   *
+   * A part used to be named after the file its chain starts at, which answers
+   * a question nobody was asking. A reader scanning the strip wants to know
+   * which corner of the repository a part is in — `backend`, `frontend` — and
+   * a filename says only where a reader might begin inside it, which the
+   * drawing says better than a word can.
+   *
+   * The last segment of that folder rather than the whole path, because a tab
+   * is a few characters wide and the path of a deeply nested package would
+   * push every other tab off the strip. Where two parts would answer the same
+   * way, each takes as many segments as it needs to be told from the other.
+   */
   label: string;
+  /** The whole of that folder, for anything with room to say it. */
+  folder: string;
   path: string;
   nodeIds: string[];
   /** Files in it, and how much of the change they carry. */
@@ -140,20 +155,52 @@ export function components(
   );
   const leant = leaning(graph, parts, untouched, byId);
 
-  return parts
-    .map((group) =>
+  return told(
+    parts.map((group) =>
       describe(group, links, [
         ...schema,
         ...(carried.get(group[0]!.id) ?? []),
         ...(leant.get(group[0]!.id) ?? []),
       ]),
-    )
+    ),
+  )
     .sort(
       (a, b) =>
         b.files - a.files ||
         b.additions + b.deletions - (a.additions + a.deletions) ||
         a.path.localeCompare(b.path),
     );
+}
+
+/**
+ * The same name twice is no name at all.
+ *
+ * A repository with `api/labor` and `web/labor` in one change would give two
+ * tabs reading `labor`, and a reader pressing one would have no way of knowing
+ * which they were about to get. Each part that clashes takes one more segment
+ * of its own folder, and they are asked again, until every name stands for one
+ * part — or until there is nothing left to add, which is where two parts share
+ * a folder outright and no path can tell them apart.
+ */
+function told(parts: Component[]): Component[] {
+  for (let depth = 1; depth < 12; depth += 1) {
+    const seen = new Map<string, number>();
+    for (const part of parts) seen.set(part.label, (seen.get(part.label) ?? 0) + 1);
+    const clashing = parts.filter((part) => (seen.get(part.label) ?? 0) > 1 && part.folder);
+    if (clashing.length === 0) break;
+
+    let moved = false;
+    for (const part of clashing) {
+      const segments = part.folder.split("/");
+      const wanted = segments.slice(Math.max(0, segments.length - depth - 1)).join("/");
+      if (wanted !== part.label) {
+        part.label = wanted;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return parts;
 }
 
 /**
@@ -279,6 +326,27 @@ function travellers(
  * and any name would be as arbitrary as any other, so it takes the first file
  * by path and stays predictable.
  */
+/**
+ * The deepest folder every one of these files sits under.
+ *
+ * Empty where they share none — a part spanning `backend` and `frontend` is
+ * under the root and the root has no name worth printing. Compared segment by
+ * segment rather than by common prefix of the strings, so `src/labor` and
+ * `src/laboratory` are found to share `src` rather than `src/labor`.
+ */
+export function commonFolder(paths: readonly string[]): string {
+  if (paths.length === 0) return "";
+  let shared = paths[0]!.split("/").slice(0, -1);
+  for (const path of paths.slice(1)) {
+    const parts = path.split("/").slice(0, -1);
+    let at = 0;
+    while (at < shared.length && at < parts.length && shared[at] === parts[at]) at += 1;
+    shared = shared.slice(0, at);
+    if (shared.length === 0) break;
+  }
+  return shared.join("/");
+}
+
 function describe(
   group: FileNode[],
   links: Edge[],
@@ -304,9 +372,13 @@ function describe(
       (a, b) => (outgoing.get(b.id) ?? 0) - (outgoing.get(a.id) ?? 0),
     )[0] ?? sorted[0]!;
 
+  // Where the files share no folder at all the part spans the whole tree, and
+  // the file its chain starts at is the most useful thing left to call it.
+  const folder = commonFolder(sorted.map((n) => n.path));
   return {
     id: head.id,
-    label: head.path.split("/").pop() ?? head.path,
+    label: folder ? folder.split("/").pop()! : (head.path.split("/").pop() ?? head.path),
+    folder,
     path: head.path,
     // The schema travels with every part, since every part may talk to it.
     nodeIds: [...sorted.map((n) => n.id), ...schemaIds],
