@@ -308,8 +308,9 @@ on the corner of their card, travelling with its title bar as the card scrolls,
 and at the end of their row in the sidebar. In a live reading the dot means
 *not committed yet*; in a reading of a pull request's commits it means *changed
 since your last review*. Inside the card, each line that moved gets an orange
-edge on its right, the new side, while the left edge keeps its green or red, so
-work done on top of work can be told apart from the rest of the branch.
+edge on its right, the new side, and its sign and new line number turn orange,
+while the left edge keeps its green or red, so work done on top of work can be
+told apart from the rest of the branch.
 
 Two more details:
 
