@@ -14,8 +14,8 @@
 -->
 <script lang="ts">
   import Settings from "./Settings.svelte";
-  import { model, notify, ui } from "../state.svelte.js";
-  import { CARET, COPY_ICON, PR_ICON, RING } from "./icons.js";
+  import { host, model, notify, ui } from "../state.svelte.js";
+  import { CARET, COPY_ICON, HISTORY, PR_ICON, RING } from "./icons.js";
 
   /**
    * Repeated from Chrome rather than shared, because there is nowhere to share
@@ -308,10 +308,39 @@
     </button>
   {/if}
 
+  <!-- Which part of the change to draw: all of it, what came after the last
+       review, or what is not committed. Beside the settings rather than up in
+       the editor's own bar, where it sat among the editor's buttons and could
+       not be found. Only where there is a host to ask: the file `odin view`
+       writes is one reading, fixed. -->
+  {#if host}
+    <button
+      class="view-button"
+      title="What to show: all changes, since your last review, or uncommitted"
+      aria-label="What to show"
+      onclick={() => notify("chooseView")}
+    >{@html HISTORY}</button>
+  {/if}
+
   <Settings {hasSchema} {notes} />
 </div>
 
 <style>
+  /* The settings button's twin, so the two read as one group of controls. */
+  .view-button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .view-button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
   /*
    * What the bar gives up first, and what it never gives up.
    *

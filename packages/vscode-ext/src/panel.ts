@@ -2782,6 +2782,13 @@ export class GraphPanel {
         await this.openDiff(message.payload.path);
         return;
       }
+      // All, since the last review, or only what is not committed. Asked of
+      // the reading in front, which is this one: the press brought it there.
+      if (message.type === "chooseView") {
+        GraphPanel.active = this;
+        await vscode.commands.executeCommand("odin.chooseView");
+        return;
+      }
       if (message.type === "focusMissed") {
         await this.missed(message.payload);
         return;

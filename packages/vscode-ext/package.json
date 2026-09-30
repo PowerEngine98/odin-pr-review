@@ -249,13 +249,6 @@
           "when": "false"
         }
       ],
-      "editor/title": [
-        {
-          "command": "odin.chooseView",
-          "when": "activeWebviewPanelId == 'odin.graph'",
-          "group": "navigation"
-        }
-      ],
       "webview/context": [
         {
           "command": "odin.openAtLine",
