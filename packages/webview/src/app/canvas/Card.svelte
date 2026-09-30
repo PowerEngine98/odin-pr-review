@@ -2256,10 +2256,13 @@
   .row.more .text { flex: 0 0 auto; }
   /* Also moved in the narrower view — after the review, or not committed.
      Orange like the list's "new commits": the same news, said on the file. */
+  /* Centred on the rounded corner itself rather than on the square corner
+     the card would have had: the middle of a 14px arc is 14 × (1 − 1/√2),
+     about 4px in from each edge, and the dot is 10px across. */
   .fresh {
     position: absolute;
-    top: -5px;
-    right: -5px;
+    top: -1px;
+    right: -1px;
     z-index: 4;
     width: 10px;
     height: 10px;
