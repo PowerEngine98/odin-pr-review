@@ -355,6 +355,20 @@
   );
 
   /**
+   * Whether this file also moved in the narrower view of the change.
+   *
+   * The whole change is still the whole change; the dot is what lets a reader
+   * find, inside it, the files the author touched after their review or the
+   * ones they have not committed yet.
+   */
+  const fresh = $derived(model.current.fresh?.paths.includes(node.path) === true);
+  const freshSays = $derived(
+    model.current.fresh?.means === "uncommitted"
+      ? "Has changes that are not committed yet"
+      : "Changed since your last review",
+  );
+
+  /**
    * The first thing anybody said about this file, by where they said it.
    *
    * By line rather than by when it was written: the count is pressed to start
@@ -1303,6 +1317,7 @@
         <span class="path-tip">{node.path}</span>
       {/if}
       <span class="box">{@render statusMark(node.status)}</span>
+      {#if fresh}<span class="fresh" title={freshSays}></span>{/if}
       {head.name}
       {#if head.was}<span class="was">{head.was}</span>{/if}
       <span class="stats">
@@ -2197,4 +2212,16 @@
   }
   .row.more:hover { color: var(--text); }
   .row.more .text { flex: 0 0 auto; }
+  /* Also moved in the narrower view — after the review, or not committed.
+     Orange like the list's "new commits": the same news, said on the file. */
+  .fresh {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 4px;
+    border-radius: 50%;
+    background: var(--warning);
+    vertical-align: middle;
+    flex: 0 0 auto;
+  }
 </style>

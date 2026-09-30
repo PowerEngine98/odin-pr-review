@@ -37,6 +37,8 @@ import { ODIN_MARK, renderHtml } from "@odin/webview";
 import { readFileSync, rmSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
+
+import { viewSuffix, type Fresh } from "./views.js";
 import { SettingsStore } from "./settings.js";
 
 import { baseUri } from "./baseContent.js";
@@ -1622,6 +1624,21 @@ export class GraphPanel {
    * as the rebuild notices: a watcher belongs to one checkout, and its news is
    * about that checkout whatever the reader is looking at now.
    */
+  /**
+   * The orange dots for one reading, which usually arrive after it is drawn.
+   *
+   * Sent as a message rather than drawn into a new document: the forge has to
+   * be asked for the reader's last review, and the page is already up by the
+   * time it answers. Kept on the panel as well, so the next document it writes
+   * has them from the start.
+   */
+  static freshIn(graph: ChangeGraph, repo: string, fresh: Fresh | undefined): void {
+    const panel = GraphPanel.open.get(readingKey(graph, repo));
+    if (!panel) return;
+    panel.fresh = fresh;
+    void panel.panel.webview.postMessage({ type: "fresh", fresh: fresh ?? null });
+  }
+
   static observedIn(graph: ChangeGraph, repo: string, paths: string[]): void {
     if (paths.length === 0) return;
     const panel = GraphPanel.open.get(readingKey(graph, repo));
@@ -1796,6 +1813,8 @@ export class GraphPanel {
    */
   private folded: FoldedStore | undefined;
   private comments: ReviewComment[] = [];
+  /** Files that also moved in the narrower view, for the orange dot. */
+  private fresh: Fresh | undefined;
   /** Loaded before the first paint, so the code is never briefly grey. */
   private highlight: Highlighter | undefined;
   /** Who the reader is, so only their own remarks offer edit and delete. */
@@ -2458,6 +2477,7 @@ export class GraphPanel {
 
     const html = renderHtml(this.graph, layout, {
       theme: dark ? DARK_THEME : LIGHT_THEME,
+      ...(this.fresh ? { fresh: this.fresh } : {}),
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
       /*
        * The diagram renderer, named but not loaded.
@@ -2540,11 +2560,9 @@ export class GraphPanel {
     const named = pull
       ? `#${pull.number} ${pull.title}`
       : `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
-    // A reading of what came after a review is not the change, and a tab that
-    // looked like the whole of it would be read as the whole of it.
-    const since = this.graph.meta.since
-      ? `${named} (since ${this.graph.meta.since.slice(0, 7)})`
-      : named;
+    // A narrower reading is not the change, and a tab that looked like the
+    // whole of it would be read as the whole of it.
+    const since = `${named}${viewSuffix(this.graph.meta)}`;
     this.panel.title = this.graph.meta.worktree === true ? `LIVE ${since}` : since;
     // The mark that goes with it, now there is a graph to ask which reading
     // this is. The frame was given the plain one before anything was known.

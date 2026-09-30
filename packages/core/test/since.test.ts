@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { graphFromRepo } from "../src/git/diff.js";
+import { graphFromRepo, pathsChangedSince } from "../src/git/diff.js";
 import { lastReviewIn } from "../src/git/review.js";
 
 const created: string[] = [];
@@ -120,5 +120,41 @@ describe("finding the commit a reader last reviewed", () => {
 
   it("matches the login regardless of case", () => {
     expect(lastReviewIn("Me\tAPPROVED\tabc", "me")).toBe("abc");
+  });
+});
+
+describe("naming the files that moved, for the orange dot", () => {
+  it("names the files pushed after the review", async () => {
+    const { dir, at } = reviewed();
+    expect(await pathsChangedSince(at, "feature", { cwd: dir })).toEqual(["b.txt"]);
+  });
+
+  it("names uncommitted edits and new files when the far end is the disk", async () => {
+    const { dir } = reviewed();
+    writeFileSync(join(dir, "a.txt"), "edited\n");
+    writeFileSync(join(dir, "new.txt"), "fresh\n");
+    expect(await pathsChangedSince("HEAD", undefined, { cwd: dir })).toEqual([
+      "a.txt",
+      "new.txt",
+    ]);
+  });
+
+  it("names nothing on a branch rewritten past the commit", async () => {
+    const { dir, at } = reviewed();
+    git(dir, "reset", "--quiet", "--hard", "main");
+    expect(await pathsChangedSince(at, "HEAD", { cwd: dir })).toEqual([]);
+  });
+
+  it("draws only uncommitted work when a live reading starts at HEAD", async () => {
+    const { dir } = reviewed();
+    writeFileSync(join(dir, "a.txt"), "edited\n");
+    const graph = await graphFromRepo({
+      cwd: dir,
+      baseRef: "main",
+      worktree: true,
+      sinceRef: "HEAD",
+    });
+    expect(graph.nodes.map((n) => n.path)).toEqual(["a.txt"]);
+    expect(graph.meta.since).toBe(graph.meta.headSha);
   });
 });

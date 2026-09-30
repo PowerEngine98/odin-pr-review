@@ -318,6 +318,13 @@ export interface ViewModel {
   viewerFace: string;
   comments: CommentView[];
   /**
+   * Files of the whole change that also moved in a narrower view of it: what
+   * the author pushed after the reader's last review, or what the reader has
+   * not committed. Each gets an orange dot, so the news can be found without
+   * leaving the whole picture.
+   */
+  fresh?: { paths: string[]; means: "uncommitted" | "review" };
+  /**
    * How the last reader had the page set up, if the host remembered.
    *
    * A partial on purpose: what the host has stored is whatever it was told, and

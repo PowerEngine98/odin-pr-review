@@ -9,6 +9,8 @@ import {
   inlineAvatar,
   inlineAvatars,
   lastReviewedCommit,
+  pathsChangedSince,
+  type ChangeGraph,
   listReviewComments,
   listReviewThreads,
   stampThreads,
@@ -41,6 +43,7 @@ import { keyOf, SessionStore, type Session } from "./session.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
 import { FoldedStore } from "./folded.js";
+import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
 function isDark(): boolean {
@@ -394,7 +397,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("odin.readSince", (number: number) =>
       readSince(number),
     ),
-    vscode.commands.registerCommand("odin.toggleSince", () => toggleSince()),
+    vscode.commands.registerCommand("odin.chooseView", () => chooseView()),
     /*
      * From reading a change to working on it.
      *
@@ -885,36 +888,109 @@ async function readSince(number: number): Promise<void> {
 }
 
 /**
- * The reading in front of the reader, the other way: the whole change, or
- * only what came after their last review.
+ * Which of the three views of the reading in front of the reader to show.
+ *
+ * The whole change; only what the author pushed after the reader's last
+ * review; or only what the reader has edited here and not committed. Each is
+ * offered only where it means something: a reading that is not of a pull
+ * request has no review to start from, and a branch this checkout does not
+ * hold has no uncommitted work in it.
  *
  * Replaced in place. It is the same change from a different starting point,
  * and a second tab of it would be two pictures to keep apart.
  */
-async function toggleSince(): Promise<void> {
+async function chooseView(): Promise<void> {
   const here = questionInFront();
   const meta = GraphPanel.currentMeta();
   if (!here || !meta) {
     vscode.window.showInformationMessage("Odin: open a pull request first.");
     return;
   }
-  const worktree = here.worktree === true;
-
-  if (meta.since) {
-    await review(here.baseRef, here.headRef, worktree, undefined, here.number);
-    return;
-  }
-
+  const now = viewOf(meta);
   const number = here.number ?? meta.pullRequest?.number;
-  if (number === undefined) {
-    vscode.window.showInformationMessage(
-      "Odin: this reading is not of a pull request, so there is no review to start from.",
-    );
+  const branch = await currentBranch({ cwd: here.repo });
+  const ours =
+    meta.worktree === true ||
+    (branch !== undefined && (meta.headRef === branch || meta.headRef === `origin/${branch}`));
+
+  const offered: (vscode.QuickPickItem & { view: View })[] = [
+    { view: "all", label: "All changes", detail: "The whole change, as it will be merged" },
+    ...(number !== undefined
+      ? [{
+          view: "since" as const,
+          label: "Since my last review",
+          detail: "Only what was pushed after you last reviewed it",
+        }]
+      : []),
+    ...(ours
+      ? [{
+          view: "uncommitted" as const,
+          label: "Uncommitted only",
+          detail: "Only your edits on this machine that are not committed yet",
+        }]
+      : []),
+  ];
+  for (const item of offered) {
+    if (item.view === now) item.description = "showing";
+  }
+
+  const picked = await vscode.window.showQuickPick(offered, {
+    title: "Odin: what to show",
+    placeHolder: "Which part of the change to draw",
+  });
+  if (!picked || picked.view === now) return;
+
+  const worktree = meta.worktree === true;
+  if (picked.view === "all") {
+    await review(here.baseRef, here.headRef, worktree, here.repo, number);
     return;
   }
-  const since = await lastRead(here.repo, number, meta.headSha);
-  if (nothingSince(number, since, meta.headSha)) return;
-  await review(here.baseRef, here.headRef, worktree, undefined, number, undefined, since);
+
+  if (picked.view === "since") {
+    const since = await lastRead(here.repo, number!, meta.headSha);
+    if (nothingSince(number!, since, meta.headSha)) return;
+    await review(here.baseRef, here.headRef, worktree, here.repo, number, undefined, since);
+    return;
+  }
+
+  const pending = await pathsChangedSince("HEAD", undefined, { cwd: here.repo });
+  if (pending.length === 0) {
+    vscode.window.showInformationMessage("Odin: there is nothing uncommitted on this branch.");
+    return;
+  }
+  // The files on disk, so a committed reading gives way to the live one.
+  const going = worktree ? undefined : GraphPanel.currentReading();
+  await review(here.baseRef, undefined, true, here.repo, number, going, "HEAD");
+}
+
+/**
+ * The orange dots on the whole change: which of its files also moved in a
+ * narrower view of it.
+ *
+ * A live reading marks what is not committed yet, since that is the part of
+ * it only this reader can see. A reading of a pull request's commits marks
+ * what the author pushed after the reader's last review. Nothing is marked in
+ * a narrower view, where every file is already the news.
+ */
+async function freshFor(graph: ChangeGraph, repo: string): Promise<Fresh | undefined> {
+  const meta = graph.meta;
+  if (viewOf(meta) !== "all") return undefined;
+  if (meta.worktree === true) {
+    const paths = await pathsChangedSince("HEAD", undefined, { cwd: repo });
+    return paths.length > 0 ? { paths, means: "uncommitted" } : undefined;
+  }
+  const number = meta.pullRequest?.number;
+  if (number === undefined) return undefined;
+  const since = await lastRead(repo, number, meta.headSha);
+  if (!since || since === meta.headSha) return undefined;
+  const paths = await pathsChangedSince(since, meta.headSha ?? meta.headRef, { cwd: repo });
+  return paths.length > 0 ? { paths, means: "review" } : undefined;
+}
+
+async function markFresh(graph: ChangeGraph, repo: string): Promise<void> {
+  const fresh = await freshFor(graph, repo).catch(() => undefined);
+  GraphPanel.freshIn(graph, repo, fresh);
+  sidebar.setFresh(fresh);
 }
 
 async function checkout(number: number): Promise<void> {
@@ -1690,6 +1766,7 @@ async function present(
     );
     if (took) {
       sidebar.setGraph(graph);
+      void markFresh(graph, repo);
       return;
     }
   }
@@ -1720,14 +1797,16 @@ async function present(
         if (comments.length > 0) panel.setComments(comments);
       });
   }
+  sidebar.setFresh(undefined);
   sidebar.setGraph(graph);
+  void markFresh(graph, repo);
   last = {
     repo,
     ...(base ? { baseRef: base } : {}),
     ...(headRef ? { headRef } : {}),
     ...(graph.meta.worktree ? { worktree: true } : {}),
     ...(is !== undefined ? { number: is } : pull ? { number: pull.number } : {}),
-    ...(graph.meta.since ? { since: graph.meta.since } : {}),
+    ...(sinceToAsk(graph.meta) ? { since: sinceToAsk(graph.meta)! } : {}),
   };
   /*
    * Asked for less and given all of it, which has to be said: a whole change
@@ -1958,8 +2037,9 @@ function armLive(
         ...(base ? { baseRef: base } : {}),
         ...(headRef ? { headRef } : {}),
         worktree: true,
-        // A live reading of what came after a review stays one as files change.
-        ...(shown.meta.since ? { since: shown.meta.since } : {}),
+        // A narrower live reading stays one as files change, and the
+        // uncommitted one keeps following HEAD as the reader commits.
+        ...(sinceToAsk(shown.meta) ? { since: sinceToAsk(shown.meta)! } : {}),
         includeImports: settings.get<boolean>("includeImports", true),
         includeContext: settings.get<boolean>("includeContext", false),
       };

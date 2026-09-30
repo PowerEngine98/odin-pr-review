@@ -114,8 +114,8 @@
         "enablement": "false"
       },
       {
-        "command": "odin.toggleSince",
-        "title": "Toggle Only Changes Since My Last Review",
+        "command": "odin.chooseView",
+        "title": "Choose What to Show: All, Since My Last Review, or Uncommitted",
         "category": "Odin",
         "icon": "$(history)"
       },
@@ -251,7 +251,7 @@
       ],
       "editor/title": [
         {
-          "command": "odin.toggleSince",
+          "command": "odin.chooseView",
           "when": "activeWebviewPanelId == 'odin.graph'",
           "group": "navigation"
         }

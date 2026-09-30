@@ -315,6 +315,43 @@ async function sinceCommit(
 }
 
 /**
+ * Which files moved after a commit, without reading the change itself.
+ *
+ * For marking, not drawing: a reading of the whole change can say which of its
+ * files the author touched after the reader's review, or which the reader has
+ * edited and not committed, and that needs names rather than a patch. With no
+ * `headRef` the far end is the files on disk, untracked ones included — the
+ * new file nobody has added yet is the most uncommitted thing there is.
+ *
+ * Empty when the commit is not in the head's history: there is no "after" to
+ * speak of on a branch rewritten past it.
+ */
+export async function pathsChangedSince(
+  sinceRef: string,
+  headRef: string | undefined,
+  options: GitOptions,
+): Promise<string[]> {
+  const merged = await revParse(`${sinceRef}^{commit}`, options).catch(() => undefined);
+  if (!merged) return [];
+  const since = await sinceCommit(sinceRef, merged, headRef ?? "HEAD", options);
+  if (!since) return [];
+
+  const listed = await git(
+    ["diff", "--name-only", "-z", "--no-renames", since, ...(headRef ? [headRef] : [])],
+    options,
+  ).catch(() => "");
+  const paths = listed.split("\0").filter(Boolean);
+  if (!headRef) {
+    const untracked = await git(
+      ["ls-files", "--others", "--exclude-standard", "-z"],
+      options,
+    ).catch(() => "");
+    paths.push(...untracked.split("\0").filter(Boolean));
+  }
+  return [...new Set(paths)].sort();
+}
+
+/**
  * The branch a ref names, as the forge would know it.
  *
  * A reading of the forge's copy asks for `origin/feature/x`, and `gh` knows

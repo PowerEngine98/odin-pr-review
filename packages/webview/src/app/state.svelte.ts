@@ -1047,6 +1047,10 @@ export function listen(): void {
         ui.checksAt += 1;
         return;
 
+      case "fresh":
+        model.current.fresh = message.fresh ?? undefined;
+        return;
+
       case "comments":
         model.current.comments = normalise(message.comments);
         // Which agents are mid-turn, sent alongside because it changes at the

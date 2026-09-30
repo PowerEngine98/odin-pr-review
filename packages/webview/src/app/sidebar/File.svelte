@@ -122,6 +122,7 @@
     <Chevron {open} blank={file.refs.length === 0} />
   </span>
   <StatusBadge status={file.status} />
+  {#if file.fresh}<span class="fresh" title={file.fresh}></span>{/if}
   <span class="name"><Hit text={file.name} needle={ui.needle} /></span>
   <span class="counts">
     {#if file.status === "phantom"}
@@ -151,6 +152,15 @@
 {/if}
 
 <style>
+  /* The same dot the card wears: this file also moved in the narrower view. */
+  .fresh {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--warning);
+    align-self: center;
+  }
   .row {
     display: flex;
     align-items: center;
