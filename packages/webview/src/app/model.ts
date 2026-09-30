@@ -323,7 +323,12 @@ export interface ViewModel {
    * not committed. Each gets an orange dot, so the news can be found without
    * leaving the whole picture.
    */
-  fresh?: { paths: string[]; means: "uncommitted" | "review" };
+  fresh?: {
+    paths: string[];
+    means: "uncommitted" | "review";
+    /** Head lines that moved, per file: runs changed, and where lines went. */
+    lines?: Record<string, { changed: [number, number][]; gone: number[] }>;
+  };
   /**
    * How the last reader had the page set up, if the host remembered.
    *

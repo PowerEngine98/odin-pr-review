@@ -1,4 +1,5 @@
 import { parseUnifiedDiff, type ParsedFile } from "../diff/parse.js";
+import { unquotePath } from "../diff/unquote.js";
 import { buildGraph } from "../graph/build.js";
 import { annotateTests } from "../graph/tests.js";
 import type { ChangeGraph, GraphMeta, PullRequest } from "../model/types.js";
@@ -349,6 +350,100 @@ export async function pathsChangedSince(
     paths.push(...untracked.split("\0").filter(Boolean));
   }
   return [...new Set(paths)].sort();
+}
+
+/** Which lines of one file moved after a commit, as the head numbers them. */
+export interface LinesMoved {
+  /** Runs of head lines added or rewritten, first and last inclusive. */
+  changed: [number, number][];
+  /**
+   * Head lines that something was removed straight after. Zero means before
+   * the first line. A deleted line has no number on the head side, so the
+   * place it used to be is the only thing left to point at.
+   */
+  gone: number[];
+}
+
+/**
+ * Stands in for "to the end of the file" on a file that is new in its
+ * entirety — one git has never been told about has no hunks to count.
+ */
+const WHOLE_FILE = 1_000_000_000;
+
+/**
+ * The lines behind the orange dot: which of a file's lines moved after a
+ * commit, for every file that moved at all.
+ *
+ * Read from a patch with no context, where every hunk header is exactly the
+ * run it changed: `@@ -a,b +c,d @@` is `d` head lines from `c`, or with `d` of
+ * nought, a removal just after head line `c`. With no `headRef` the far end is
+ * the files on disk, and a file git has never been told about is all new.
+ */
+export async function linesChangedSince(
+  sinceRef: string,
+  headRef: string | undefined,
+  options: GitOptions,
+): Promise<Record<string, LinesMoved>> {
+  const found = await revParse(`${sinceRef}^{commit}`, options).catch(() => undefined);
+  if (!found) return {};
+  const since = await sinceCommit(sinceRef, found, headRef ?? "HEAD", options);
+  if (!since) return {};
+
+  const patch = await git(
+    [
+      "-c", "core.quotePath=false",
+      "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames",
+      "--unified=0", since, ...(headRef ? [headRef] : []),
+    ],
+    options,
+  ).catch(() => "");
+  const moved = hunksIn(patch);
+
+  if (!headRef) {
+    const untracked = await git(
+      ["ls-files", "--others", "--exclude-standard", "-z"],
+      options,
+    ).catch(() => "");
+    for (const path of untracked.split("\0").filter(Boolean)) {
+      moved[path] = { changed: [[1, WHOLE_FILE]], gone: [] };
+    }
+  }
+  return moved;
+}
+
+/**
+ * The runs a zero-context patch changed, by the file's head path.
+ *
+ * Exported so the arithmetic can be tested on text rather than on a
+ * repository: hunk headers are the whole of it, and a file deleted outright
+ * has no head lines to mark.
+ */
+export function hunksIn(patch: string): Record<string, LinesMoved> {
+  const moved: Record<string, LinesMoved> = {};
+  let current: LinesMoved | undefined;
+  for (const line of patch.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      const target = line.slice(4).trim();
+      if (target === "/dev/null") {
+        current = undefined;
+        continue;
+      }
+      const path = unquotePath(target).replace(/^b\//, "");
+      current = moved[path] ??= { changed: [], gone: [] };
+      continue;
+    }
+    if (!current || !line.startsWith("@@")) continue;
+    const header = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!header) continue;
+    const start = Number(header[1]);
+    const count = header[2] === undefined ? 1 : Number(header[2]);
+    if (count === 0) current.gone.push(start);
+    else current.changed.push([start, start + count - 1]);
+  }
+  for (const [path, lines] of Object.entries(moved)) {
+    if (lines.changed.length === 0 && lines.gone.length === 0) delete moved[path];
+  }
+  return moved;
 }
 
 /**

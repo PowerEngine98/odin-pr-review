@@ -300,6 +300,26 @@
     return delta && row ? delta.marks.get(row) : undefined;
   }
 
+  /** Which head lines of this file also moved in the narrower view. */
+  const freshLines = $derived(model.current.fresh?.lines?.[node.path]);
+
+  /**
+   * Whether a row is part of what moved in the narrower view, or sits just
+   * above something that was taken out there.
+   *
+   * By its head line, because that is how the narrower diff numbers it. A
+   * line only the base has cannot be named that way, so what it answers for
+   * is the line it was removed after.
+   */
+  function freshOf(row: RowView | undefined): "line" | "gone" | "both" | undefined {
+    if (!freshLines || !row || row.kind === "gap") return undefined;
+    const at = row.newLine;
+    if (at === undefined) return undefined;
+    const line = freshLines.changed.some(([from, to]) => at >= from && at <= to);
+    const gone = freshLines.gone.includes(at);
+    return line && gone ? "both" : line ? "line" : gone ? "gone" : undefined;
+  }
+
   /** And the ones taken from the end of the card, which sit above nothing. */
   const goneAtEnd = $derived(
     delta?.gone.reduce((n, run) => (run.before ? n : n + run.lines), 0) ?? 0,
@@ -1265,7 +1285,18 @@
      the canvas before any name on the card can be read. Beside the card rather
      than inside it, because the card clips whatever crosses its edge and its
      title bar is painted over anything beneath it. -->
-{#if fresh}<span class="fresh" title={freshSays}></span>{/if}
+{#if fresh}
+  <!-- Travelling with the title bar: down the card as the reader scrolls it,
+       and in from the far edge when the card is wider than the window, so the
+       dot is on screen whenever the file's name is. -->
+  <span
+    class="fresh"
+    title={freshSays}
+    style:transform={pin > 0 || stuck.controls > 0
+      ? `translate(${-stuck.controls}px, ${pin}px)`
+      : null}
+  ></span>
+{/if}
 
 <div
   class="card status-{node.status}"
@@ -1615,6 +1646,7 @@
           {canComment}
           marks={symbols}
           flash={flashOf(rows[i])}
+          fresh={freshOf(row)}
           beyondCap={i >= unifiedLimit && !held(row, anchored)}
           revealed={expanded}
         />
@@ -1633,6 +1665,7 @@
           {canComment}
           marks={symbols}
           flash={flashOf(asSent(pair, i))}
+          fresh={freshOf(pair.right)}
           beyondCap={i >= splitLimit &&
             !held(pair.left, anchored) &&
             !held(pair.right, anchored)}

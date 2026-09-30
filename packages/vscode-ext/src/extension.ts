@@ -10,6 +10,7 @@ import {
   inlineAvatars,
   lastReviewedCommit,
   pathsChangedSince,
+  linesChangedSince,
   type ChangeGraph,
   listReviewComments,
   listReviewThreads,
@@ -976,15 +977,17 @@ async function freshFor(graph: ChangeGraph, repo: string): Promise<Fresh | undef
   const meta = graph.meta;
   if (viewOf(meta) !== "all") return undefined;
   if (meta.worktree === true) {
-    const paths = await pathsChangedSince("HEAD", undefined, { cwd: repo });
-    return paths.length > 0 ? { paths, means: "uncommitted" } : undefined;
+    const lines = await linesChangedSince("HEAD", undefined, { cwd: repo });
+    const paths = Object.keys(lines).sort();
+    return paths.length > 0 ? { paths, means: "uncommitted", lines } : undefined;
   }
   const number = meta.pullRequest?.number;
   if (number === undefined) return undefined;
   const since = await lastRead(repo, number, meta.headSha);
   if (!since || since === meta.headSha) return undefined;
-  const paths = await pathsChangedSince(since, meta.headSha ?? meta.headRef, { cwd: repo });
-  return paths.length > 0 ? { paths, means: "review" } : undefined;
+  const lines = await linesChangedSince(since, meta.headSha ?? meta.headRef, { cwd: repo });
+  const paths = Object.keys(lines).sort();
+  return paths.length > 0 ? { paths, means: "review", lines } : undefined;
 }
 
 async function markFresh(graph: ChangeGraph, repo: string, where?: string): Promise<void> {

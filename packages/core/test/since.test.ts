@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { graphFromRepo, pathsChangedSince } from "../src/git/diff.js";
+import { graphFromRepo, hunksIn, linesChangedSince, pathsChangedSince } from "../src/git/diff.js";
 import { lastReviewIn } from "../src/git/review.js";
 
 const created: string[] = [];
@@ -156,5 +156,41 @@ describe("naming the files that moved, for the orange dot", () => {
     });
     expect(graph.nodes.map((n) => n.path)).toEqual(["a.txt"]);
     expect(graph.meta.since).toBe(graph.meta.headSha);
+  });
+});
+
+describe("naming the lines that moved, for the orange edge", () => {
+  it("reads runs and removals off zero-context hunk headers", () => {
+    const patch = [
+      "diff --git a/x.ts b/x.ts",
+      "--- a/x.ts",
+      "+++ b/x.ts",
+      "@@ -3,0 +4,2 @@",
+      "+one",
+      "+two",
+      "@@ -9 +11 @@",
+      "-old",
+      "+new",
+      "@@ -20,3 +21,0 @@",
+      "-a",
+      "-b",
+      "-c",
+      "diff --git a/gone.ts b/gone.ts",
+      "--- a/gone.ts",
+      "+++ /dev/null",
+      "@@ -1,2 +0,0 @@",
+    ].join("\n");
+    expect(hunksIn(patch)).toEqual({
+      "x.ts": { changed: [[4, 5], [11, 11]], gone: [21] },
+    });
+  });
+
+  it("marks uncommitted lines, and a new file whole", async () => {
+    const { dir } = reviewed();
+    writeFileSync(join(dir, "b.txt"), "two\nthree\n");
+    writeFileSync(join(dir, "new.txt"), "fresh\n");
+    const lines = await linesChangedSince("HEAD", undefined, { cwd: dir });
+    expect(lines["b.txt"]).toEqual({ changed: [[2, 2]], gone: [] });
+    expect(lines["new.txt"]?.changed[0]?.[0]).toBe(1);
   });
 });

@@ -1,4 +1,4 @@
-import type { GraphMeta } from "@odin/core";
+import type { GraphMeta, LinesMoved } from "@odin/core";
 
 /**
  * The three ways a change can be read.
@@ -57,4 +57,10 @@ export function viewSuffix(meta: Pick<GraphMeta, "since" | "worktree" | "headSha
 export interface Fresh {
   paths: string[];
   means: "uncommitted" | "review";
+  /**
+   * Which lines of each of those files moved, by head line number, so the
+   * card can mark them and not only itself. Changes made on top of changes
+   * are otherwise one green block with nothing to tell the new part apart.
+   */
+  lines?: Record<string, LinesMoved>;
 }

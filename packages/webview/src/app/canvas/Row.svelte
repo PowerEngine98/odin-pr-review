@@ -68,6 +68,13 @@
      * touched, on a card too long to spot the difference in.
      */
     flash = undefined,
+    /**
+     * This line also moved in the narrower view of the change — not committed
+     * yet, or pushed after the reader's review — or something was taken out
+     * straight after it there. Drawn as an orange edge, over the line's own
+     * green or red, so a change made on top of a change can be told apart.
+     */
+    fresh = undefined,
   }: {
     row?: RowView;
     pair?: RowPair;
@@ -80,6 +87,7 @@
     gapOpen?: boolean;
     revealed?: boolean;
     flash?: Mark | undefined;
+    fresh?: "line" | "gone" | "both" | undefined;
   } = $props();
 
   /** The band this row is, whichever reading asked for it. */
@@ -529,6 +537,8 @@
   -->
   <div
     class="row split"
+    class:fresh-line={fresh === "line" || fresh === "both"}
+    class:fresh-gone={fresh === "gone" || fresh === "both"}
     class:just-changed={flash === "changed"}
     class:just-added={flash === "added"}
     class:in-diff={inDiff(pair.left) || inDiff(pair.right)}
@@ -600,6 +610,8 @@
   {@const afterName = after ? "right" : "left"}
   <div
     class="row flat {row.kind}"
+    class:fresh-line={fresh === "line" || fresh === "both"}
+    class:fresh-gone={fresh === "gone" || fresh === "both"}
     class:just-changed={flash === "changed"}
     class:just-added={flash === "added"}
     class:in-diff={row.inDiff}
@@ -679,6 +691,15 @@
      Painted with an inset shadow rather than a background, because the row's
      own background is what says added, removed or untouched, and a line that
      was rewritten is still whichever of those it was. */
+  /* Also moved in the narrower view: an orange edge down the line, over its
+     own colour rather than instead of it, so it still reads as added or
+     removed. A tick under the line where something was taken out after it. */
+  .row.fresh-line { box-shadow: inset 4px 0 0 var(--warning); }
+  .row.fresh-gone { box-shadow: inset 0 -2px 0 var(--warning); }
+  .row.fresh-line.fresh-gone {
+    box-shadow: inset 4px 0 0 var(--warning), inset 0 -2px 0 var(--warning);
+  }
+
   .row.just-changed,
   .row.just-added {
     animation: line-touched 1400ms ease-out forwards;
