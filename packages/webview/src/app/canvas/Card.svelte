@@ -1261,6 +1261,12 @@
   </svg>
 {/snippet}
 
+<!-- On the corner, like the mark on an app with news in it: seen from across
+     the canvas before any name on the card can be read. Beside the card rather
+     than inside it, because the card clips whatever crosses its edge and its
+     title bar is painted over anything beneath it. -->
+{#if fresh}<span class="fresh" title={freshSays}></span>{/if}
+
 <div
   class="card status-{node.status}"
   class:unresolved={head.note !== ""}
@@ -1282,10 +1288,6 @@
   onpointerup={release}
   onpointercancel={() => gesture.dragging && drop()}
 >
-  <!-- In the corner, like the mark on an app with news in it: seen from across
-       the canvas before any name on the card can be read. Inside the rounded
-       edge rather than over it, because the card clips what leaves it. -->
-  {#if fresh}<span class="fresh" title={freshSays}></span>{/if}
   <div
     class="card-title"
     class:pinned={pin > 0}
@@ -2223,9 +2225,9 @@
      Orange like the list's "new commits": the same news, said on the file. */
   .fresh {
     position: absolute;
-    top: 4px;
-    right: 4px;
-    z-index: 3;
+    top: -5px;
+    right: -5px;
+    z-index: 4;
     width: 10px;
     height: 10px;
     border-radius: 50%;
