@@ -1149,4 +1149,17 @@
      picked. Both are what the reader is reading while they decide how far the
      passage should reach. */
   .pick-grip { cursor: ns-resize; }
+
+  /* And the sign and the head number of a line that moved, in the same
+     orange. The edge alone sits against the card's own border, which is
+     yellow on a modified file, and the two read as one line — a file whose
+     changes were all local looked exactly like a file with none. */
+  .row.flat.fresh-line .marker,
+  .row.flat.fresh-line .num.new,
+  .row.split.fresh-line .side.head .marker,
+  .row.split.fresh-line .side.head .num {
+    color: var(--warning);
+    opacity: 1;
+    font-weight: 700;
+  }
 </style>
