@@ -2258,17 +2258,23 @@
      Orange like the list's "new commits": the same news, said on the file. */
   /* Centred on the rounded corner itself rather than on the square corner
      the card would have had: the middle of a 14px arc is 14 × (1 − 1/√2),
-     about 4px in from each edge, and the dot is 10px across. */
+     about 4px in from each edge.
+
+     Sized against the canvas's scale the way the name over a shrunken card is,
+     and never smaller than it is at full size: zoomed out to see the whole
+     change is exactly when the reader is looking for which cards have news,
+     and a dot that shrank with the card was gone by then. */
   .fresh {
+    --fresh-size: max(10px, calc(10px / var(--zoom, 1)));
     position: absolute;
-    top: -1px;
-    right: -1px;
+    top: calc(4px - var(--fresh-size) / 2);
+    right: calc(4px - var(--fresh-size) / 2);
     z-index: 4;
-    width: 10px;
-    height: 10px;
+    width: var(--fresh-size);
+    height: var(--fresh-size);
     border-radius: 50%;
     background: var(--warning);
-    box-shadow: 0 0 0 2px var(--card-bg);
+    box-shadow: 0 0 0 max(2px, calc(2px / var(--zoom, 1))) var(--card-bg);
     pointer-events: auto;
   }
 </style>
