@@ -123,6 +123,21 @@ export interface DiffRequest extends GitOptions {
    * told about, and a build directory is not a change to review.
    */
   worktree?: boolean;
+  /**
+   * Read only what the head gained after this commit.
+   *
+   * A reviewer who has left their remarks and is shown the whole change again
+   * when the author answers has to find the answer themselves, file by file,
+   * among everything they already read. This is the commit they read; the diff
+   * starts there instead of at the merge base.
+   *
+   * Only honoured while it is still an ancestor of the head. A branch rebased or
+   * force-pushed since has no such point any more — the old commit is not in its
+   * history — and a diff from it would be a comparison of two unrelated
+   * snapshots, full of the base's own work. The whole change is read instead,
+   * and `meta.sinceLost` says so.
+   */
+  sinceRef?: string;
 }
 
 /** Raw patch text for a base..head comparison, taken from the merge base. */
@@ -214,7 +229,11 @@ export async function readPatch(req: DiffRequest): Promise<{
     req,
     !dirty && pull ? "forge" : "local",
   );
-  const base = await mergeBase(baseRef, headRef, req);
+  const merged = await mergeBase(baseRef, headRef, req);
+  const since = req.sinceRef
+    ? await sinceCommit(req.sinceRef, merged, headRef, req)
+    : undefined;
+  const base = since ?? merged;
 
   const args = [
     "diff",
@@ -248,6 +267,8 @@ export async function readPatch(req: DiffRequest): Promise<{
     generator: "odin-pr-review/0.1.0",
   };
   if (dirty) meta.worktree = true;
+  if (since) meta.since = since;
+  else if (req.sinceRef) meta.sinceLost = req.sinceRef;
   if (req.stamp) meta.generatedAt = new Date().toISOString();
 
   const authors = await readAuthors(base, headRef, req);
@@ -256,6 +277,41 @@ export async function readPatch(req: DiffRequest): Promise<{
   if (pull) meta.pullRequest = pull;
 
   return { patch, meta };
+}
+
+/**
+ * The commit a "since" reading starts from, or nothing when there is none.
+ *
+ * Fetched when it is missing: the review was very likely left on a commit this
+ * machine never had, because the reader looked at it on the forge. The forge
+ * still serves a commit by its sha while any pull request refers to it.
+ *
+ * Refused unless it lies between the merge base and the head. Outside that
+ * range it is not a point in this change's history — the branch was rewritten
+ * under it — and starting a diff there would show the base's work as the
+ * author's.
+ */
+async function sinceCommit(
+  ref: string,
+  merged: string,
+  headRef: string,
+  req: GitOptions,
+): Promise<string | undefined> {
+  let sha = await revParse(`${ref}^{commit}`, req).catch(() => undefined);
+  if (!sha && /^[0-9a-f]{40}$/i.test(ref)) {
+    await git(["fetch", "--quiet", "--no-tags", "origin", ref], req).catch(() => "");
+    sha = await revParse(`${ref}^{commit}`, req).catch(() => undefined);
+  }
+  if (!sha) return undefined;
+
+  const ancestor = (a: string, b: string) =>
+    git(["merge-base", "--is-ancestor", a, b], req).then(
+      () => true,
+      () => false,
+    );
+  if (!(await ancestor(sha, headRef))) return undefined;
+  if (!(await ancestor(merged, sha))) return undefined;
+  return sha;
 }
 
 /**

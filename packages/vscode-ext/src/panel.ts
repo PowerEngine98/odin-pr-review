@@ -2540,7 +2540,12 @@ export class GraphPanel {
     const named = pull
       ? `#${pull.number} ${pull.title}`
       : `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
-    this.panel.title = this.graph.meta.worktree === true ? `LIVE ${named}` : named;
+    // A reading of what came after a review is not the change, and a tab that
+    // looked like the whole of it would be read as the whole of it.
+    const since = this.graph.meta.since
+      ? `${named} (since ${this.graph.meta.since.slice(0, 7)})`
+      : named;
+    this.panel.title = this.graph.meta.worktree === true ? `LIVE ${since}` : since;
     // The mark that goes with it, now there is a graph to ask which reading
     // this is. The frame was given the plain one before anything was known.
     this.mark(false);
@@ -3196,7 +3201,7 @@ export class GraphPanel {
    * at another one.
    */
   static current():
-    | { repo: string; baseRef?: string; headRef?: string; worktree?: boolean }
+    | { repo: string; baseRef?: string; headRef?: string; worktree?: boolean; since?: string }
     | undefined {
     const panel = GraphPanel.active;
     if (!panel) return undefined;
@@ -3206,7 +3211,13 @@ export class GraphPanel {
       ...(meta.baseRef ? { baseRef: meta.baseRef } : {}),
       ...(meta.headRef ? { headRef: meta.headRef } : {}),
       ...(meta.worktree === true ? { worktree: true } : {}),
+      ...(meta.since ? { since: meta.since } : {}),
     };
+  }
+
+  /** What the reading in front of the reader turned out to be. */
+  static currentMeta(): ChangeGraph["meta"] | undefined {
+    return GraphPanel.active?.graph.meta;
   }
 }
 

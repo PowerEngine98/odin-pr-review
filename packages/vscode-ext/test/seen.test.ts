@@ -57,3 +57,35 @@ describe("knowing a pull request has moved since it was read", () => {
     expect(store.get(REPO, 7)).toBeUndefined();
   });
 });
+
+describe("the commit read before this one", () => {
+  it("is the head that was read, while the branch has moved on", () => {
+    const store = new SeenStore(memento());
+    store.mark(REPO, 7, "abc123", "2026-08-01T09:00:00Z");
+    expect(store.before(REPO, 7, "def456")).toBe("abc123");
+  });
+
+  it("is the one before, once the new head has been opened too", () => {
+    // Opening the change writes its head down, so asking afterwards what is
+    // new must not answer "this".
+    const store = new SeenStore(memento());
+    store.mark(REPO, 7, "abc123", "2026-08-01T09:00:00Z");
+    store.mark(REPO, 7, "def456", "2026-08-02T09:00:00Z");
+    expect(store.before(REPO, 7, "def456")).toBe("abc123");
+  });
+
+  it("survives the same head being opened again", () => {
+    const store = new SeenStore(memento());
+    store.mark(REPO, 7, "abc123", "2026-08-01T09:00:00Z");
+    store.mark(REPO, 7, "def456", "2026-08-02T09:00:00Z");
+    store.mark(REPO, 7, "def456", "2026-08-03T09:00:00Z");
+    expect(store.before(REPO, 7, "def456")).toBe("abc123");
+  });
+
+  it("is nothing for a change never opened, or opened only at its head", () => {
+    const store = new SeenStore(memento());
+    expect(store.before(REPO, 7, "abc123")).toBeUndefined();
+    store.mark(REPO, 7, "abc123", "2026-08-01T09:00:00Z");
+    expect(store.before(REPO, 7, "abc123")).toBeUndefined();
+  });
+});

@@ -125,8 +125,15 @@
     {#if decision}<span class="tag {decision.tone}">{decision.label}</span>{/if}
     <!-- Pushed to since this reviewer last opened it. The forge goes on showing
          the verdict they left on a commit that is no longer the head, and this
-         is the only thing in the list that says so. -->
-    {#if pull.moved}<span class="tag fresh">new commits</span>{/if}
+         is the only thing in the list that says so. Pressed, it opens only what
+         was pushed since their last review: that is what the news is. -->
+    {#if pull.moved}
+      <span
+        class="tag fresh"
+        data-where="since"
+        title="Show only what changed since your last review"
+      >new commits</span>
+    {/if}
     <!-- What this machine has that the forge does not. Said on the row itself
          rather than only inside the fold, so a reader scrolling past can see
          which changes they have work sitting on without opening anything. -->
@@ -293,7 +300,9 @@
     background: var(--warning);
     border-color: var(--warning);
     font-weight: 600;
+    cursor: pointer;
   }
+  .tag.fresh:hover { filter: brightness(1.15); }
   .tag.draft { color: var(--muted); }
   .tag.ok { color: var(--status-added); }
   .tag.warn { color: var(--warning); }

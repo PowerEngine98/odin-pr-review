@@ -8,6 +8,7 @@ import {
   listRefs,
   inlineAvatar,
   inlineAvatars,
+  lastReviewedCommit,
   listReviewComments,
   listReviewThreads,
   stampThreads,
@@ -97,6 +98,8 @@ interface Question {
   headRef?: string;
   worktree?: boolean;
   number?: number;
+  /** Only what came after this commit, the one the reader last reviewed. */
+  since?: string;
 }
 
 /** The question the most recently opened review answered. */
@@ -311,6 +314,8 @@ export function activate(context: vscode.ExtensionContext): void {
           here.worktree === true,
           undefined,
           here.number,
+          undefined,
+          here.since,
         );
       }
     }),
@@ -379,6 +384,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("odin.readOrigin", (number: number) =>
       readOrigin(number),
     ),
+    /*
+     * What the author pushed after the reader's last review, and nothing else.
+     *
+     * The rest of the change has been read and remarked on already. Shown whole
+     * again, the answer to those remarks is somewhere among forty files the
+     * reader has to go back through to find it.
+     */
+    vscode.commands.registerCommand("odin.readSince", (number: number) =>
+      readSince(number),
+    ),
+    vscode.commands.registerCommand("odin.toggleSince", () => toggleSince()),
     /*
      * From reading a change to working on it.
      *
@@ -776,7 +792,7 @@ async function withProgressOn<T>(title: string, run: () => Promise<T>): Promise<
  * do it would mean the reader's own work had to be stashed for the privilege of
  * looking at someone else's — which is exactly the trade this avoids.
  */
-async function readOrigin(number: number): Promise<void> {
+async function readOrigin(number: number, since?: string): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
 
@@ -814,7 +830,91 @@ async function readOrigin(number: number): Promise<void> {
     return;
   }
 
-  await review(pull.baseRef, head, false, undefined, pull.number, going);
+  await review(pull.baseRef, head, false, undefined, pull.number, going, since);
+}
+
+/**
+ * The commit a reader last read a pull request at, and where that came from.
+ *
+ * The forge first. A review left there — a verdict, or a single remark — is
+ * the reader saying "I have read this far" to the author, and it is the point
+ * the author's answer is measured from. The commit this editor last opened is
+ * the fallback, for a reader who looked here and never wrote anything.
+ */
+async function lastRead(
+  repo: string,
+  number: number,
+  head: string | undefined,
+): Promise<string | undefined> {
+  const reviewed = await lastReviewedCommit(number, { cwd: repo }).catch(() => undefined);
+  return reviewed ?? seen.before(repo, number, head);
+}
+
+/**
+ * Says why there is no "since" to show, and answers whether there is one.
+ *
+ * Nothing to go on, or nothing new, are both ordinary: the reader has not
+ * reviewed this change yet, or the author has not pushed since they did.
+ */
+function nothingSince(number: number, since: string | undefined, head: string | undefined): boolean {
+  if (!since) {
+    vscode.window.showInformationMessage(
+      `Odin: you have not reviewed #${number} yet, so there is no "since" to show.`,
+    );
+    return true;
+  }
+  if (head && head === since) {
+    vscode.window.showInformationMessage(
+      `Odin: nothing has been pushed to #${number} since your last review.`,
+    );
+    return true;
+  }
+  return false;
+}
+
+/** The forge's copy of a change, from the reader's last review onwards. */
+async function readSince(number: number): Promise<void> {
+  const repo = await repositoryRoot();
+  if (!repo) return;
+  const pull = known.get(number);
+  if (!pull) return;
+
+  const since = await lastRead(repo, number, pull.headSha);
+  if (nothingSince(number, since, pull.headSha)) return;
+  await readOrigin(number, since);
+}
+
+/**
+ * The reading in front of the reader, the other way: the whole change, or
+ * only what came after their last review.
+ *
+ * Replaced in place. It is the same change from a different starting point,
+ * and a second tab of it would be two pictures to keep apart.
+ */
+async function toggleSince(): Promise<void> {
+  const here = questionInFront();
+  const meta = GraphPanel.currentMeta();
+  if (!here || !meta) {
+    vscode.window.showInformationMessage("Odin: open a pull request first.");
+    return;
+  }
+  const worktree = here.worktree === true;
+
+  if (meta.since) {
+    await review(here.baseRef, here.headRef, worktree, undefined, here.number);
+    return;
+  }
+
+  const number = here.number ?? meta.pullRequest?.number;
+  if (number === undefined) {
+    vscode.window.showInformationMessage(
+      "Odin: this reading is not of a pull request, so there is no review to start from.",
+    );
+    return;
+  }
+  const since = await lastRead(here.repo, number, meta.headSha);
+  if (nothingSince(number, since, meta.headSha)) return;
+  await review(here.baseRef, here.headRef, worktree, undefined, number, undefined, since);
 }
 
 async function checkout(number: number): Promise<void> {
@@ -1258,6 +1358,12 @@ async function review(
    * and it opened one beside the forge's copy instead of in place of it.
    */
   insteadOf?: string,
+  /**
+   * The commit the reader last reviewed, when only what came after it is
+   * wanted. Not part of the tab's name: the same change read from a later
+   * point replaces the reading in place rather than opening beside it.
+   */
+  since?: string,
 ): Promise<void> {
   const repo = at ?? (await repositoryRoot());
   if (!repo) return;
@@ -1379,6 +1485,7 @@ async function review(
            * list and got that row's files under another row's number.
            */
           ...(is !== undefined ? { number: is } : {}),
+          ...(since ? { since } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
           progress: step,
@@ -1620,7 +1727,17 @@ async function present(
     ...(headRef ? { headRef } : {}),
     ...(graph.meta.worktree ? { worktree: true } : {}),
     ...(is !== undefined ? { number: is } : pull ? { number: pull.number } : {}),
+    ...(graph.meta.since ? { since: graph.meta.since } : {}),
   };
+  /*
+   * Asked for less and given all of it, which has to be said: a whole change
+   * that the reader believes is only the new part is worse than either.
+   */
+  if (graph.meta.sinceLost && !quick) {
+    vscode.window.showInformationMessage(
+      `Odin: ${graph.meta.sinceLost.slice(0, 7)} is no longer in this branch's history — it was rebased or force-pushed. Showing the whole change.`,
+    );
+  }
   // And against the name this reading goes under, so that asking it again asks
   // the same question rather than the one the refs turned out to be. `last`
   // answers for whichever was opened most recently, which is the wrong tab the
@@ -1841,6 +1958,8 @@ function armLive(
         ...(base ? { baseRef: base } : {}),
         ...(headRef ? { headRef } : {}),
         worktree: true,
+        // A live reading of what came after a review stays one as files change.
+        ...(shown.meta.since ? { since: shown.meta.since } : {}),
         includeImports: settings.get<boolean>("includeImports", true),
         includeContext: settings.get<boolean>("includeContext", false),
       };

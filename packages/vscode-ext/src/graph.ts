@@ -66,6 +66,11 @@ export interface BuildRequest {
    * title and comments of whatever branch they happened to have out.
    */
   number?: number;
+  /**
+   * The commit the reader last reviewed, when only what came after it is
+   * wanted. The diff starts there rather than at the merge base.
+   */
+  since?: string;
   includeImports: boolean;
   includeContext: boolean;
   /** Called with coarse progress so the editor can show it. */
@@ -156,6 +161,7 @@ export async function buildGraphForRepo(
     ...(request.fallbackBaseRef ? { fallbackBaseRef: request.fallbackBaseRef } : {}),
     headRef,
     ...(request.worktree ? { worktree: true } : {}),
+    ...(request.since ? { sinceRef: request.since } : {}),
     // The forge is asked once. A rebuild provoked by a keystroke cannot have
     // changed the pull request's title, and `gh` is most of a second of network
     // in the middle of what is supposed to be an instant redraw.
@@ -329,6 +335,7 @@ async function diffOnly(request: BuildRequest): Promise<BuiltGraph> {
     ...(request.fallbackBaseRef ? { fallbackBaseRef: request.fallbackBaseRef } : {}),
     headRef,
     ...(request.worktree ? { worktree: true } : {}),
+    ...(request.since ? { sinceRef: request.since } : {}),
     pullRequest: true,
     ...(request.number !== undefined ? { pullRequestNumber: request.number } : {}),
   });
@@ -425,6 +432,7 @@ export async function stageGraphForRepo(
     ...(request.fallbackBaseRef ? { fallbackBaseRef: request.fallbackBaseRef } : {}),
     headRef,
     ...(request.worktree ? { worktree: true } : {}),
+    ...(request.since ? { sinceRef: request.since } : {}),
   });
   if (previous.graph.meta.pullRequest) {
     fresh = {

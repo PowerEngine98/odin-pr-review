@@ -173,7 +173,11 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
       if (message.type === "read" && typeof message.number === "number") {
         void vscode.commands.executeCommand(
-          message.where === "origin" ? "odin.readOrigin" : "odin.readLocal",
+          message.where === "since"
+            ? "odin.readSince"
+            : message.where === "origin"
+              ? "odin.readOrigin"
+              : "odin.readLocal",
           message.number,
         );
         return;

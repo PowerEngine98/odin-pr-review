@@ -55,6 +55,7 @@ async function main(argv: string[]): Promise<number> {
         cwd: opts.cwd,
         ...(opts.baseRef ? { baseRef: opts.baseRef } : {}),
         headRef: opts.headRef,
+        ...(opts.sinceRef ? { sinceRef: opts.sinceRef } : {}),
         context: opts.context,
         stamp: opts.stamp,
         pullRequest: opts.pullRequest,

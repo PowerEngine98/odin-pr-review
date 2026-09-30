@@ -108,6 +108,18 @@
         "enablement": "false"
       },
       {
+        "command": "odin.readSince",
+        "title": "Review What Changed Since My Last Review",
+        "category": "Odin",
+        "enablement": "false"
+      },
+      {
+        "command": "odin.toggleSince",
+        "title": "Toggle Only Changes Since My Last Review",
+        "category": "Odin",
+        "icon": "$(history)"
+      },
+      {
         "command": "odin.checkoutLocal",
         "title": "Odin: Check Out This Change"
       },
@@ -235,6 +247,13 @@
         {
           "command": "odin.checkoutLocal",
           "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "odin.toggleSince",
+          "when": "activeWebviewPanelId == 'odin.graph'",
+          "group": "navigation"
         }
       ],
       "webview/context": [
