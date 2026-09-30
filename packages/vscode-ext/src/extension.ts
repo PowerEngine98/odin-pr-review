@@ -987,9 +987,9 @@ async function freshFor(graph: ChangeGraph, repo: string): Promise<Fresh | undef
   return paths.length > 0 ? { paths, means: "review" } : undefined;
 }
 
-async function markFresh(graph: ChangeGraph, repo: string): Promise<void> {
+async function markFresh(graph: ChangeGraph, repo: string, where?: string): Promise<void> {
   const fresh = await freshFor(graph, repo).catch(() => undefined);
-  GraphPanel.freshIn(graph, repo, fresh);
+  GraphPanel.freshIn(graph, repo, fresh, where);
   sidebar.setFresh(fresh);
 }
 
@@ -1766,7 +1766,7 @@ async function present(
     );
     if (took) {
       sidebar.setGraph(graph);
-      void markFresh(graph, repo);
+      void markFresh(graph, repo, where);
       return;
     }
   }
@@ -1799,7 +1799,7 @@ async function present(
   }
   sidebar.setFresh(undefined);
   sidebar.setGraph(graph);
-  void markFresh(graph, repo);
+  void markFresh(graph, repo, where);
   last = {
     repo,
     ...(base ? { baseRef: base } : {}),

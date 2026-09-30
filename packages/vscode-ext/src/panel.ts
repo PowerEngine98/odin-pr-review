@@ -1632,11 +1632,34 @@ export class GraphPanel {
    * time it answers. Kept on the panel as well, so the next document it writes
    * has them from the start.
    */
-  static freshIn(graph: ChangeGraph, repo: string, fresh: Fresh | undefined): void {
-    const panel = GraphPanel.open.get(readingKey(graph, repo));
+  static freshIn(
+    graph: ChangeGraph,
+    repo: string,
+    fresh: Fresh | undefined,
+    /**
+     * The name the reading is filed under, when the caller has it.
+     *
+     * Not worked out from the graph: a reading is filed under the refs that
+     * were asked for, and the graph says what they resolved to — `development`
+     * in, `origin/development` out — so asking by the second found no tab and
+     * the dots never reached the page.
+     */
+    where?: string,
+  ): void {
+    const panel = GraphPanel.open.get(where ?? readingKey(graph, repo));
     if (!panel) return;
     panel.fresh = fresh;
-    void panel.panel.webview.postMessage({ type: "fresh", fresh: fresh ?? null });
+    const send = () =>
+      void panel.panel.webview.postMessage({ type: "fresh", fresh: fresh ?? null });
+    send();
+    /*
+     * And once more a moment later. The page may still be loading the document
+     * it was just given, and a message that arrives before its listener does is
+     * dropped. Saying the same thing twice costs nothing.
+     */
+    setTimeout(() => {
+      if (panel.fresh === fresh) send();
+    }, 1500);
   }
 
   static observedIn(graph: ChangeGraph, repo: string, paths: string[]): void {

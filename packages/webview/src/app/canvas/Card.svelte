@@ -1282,6 +1282,10 @@
   onpointerup={release}
   onpointercancel={() => gesture.dragging && drop()}
 >
+  <!-- In the corner, like the mark on an app with news in it: seen from across
+       the canvas before any name on the card can be read. Inside the rounded
+       edge rather than over it, because the card clips what leaves it. -->
+  {#if fresh}<span class="fresh" title={freshSays}></span>{/if}
   <div
     class="card-title"
     class:pinned={pin > 0}
@@ -1321,7 +1325,6 @@
         <span class="path-tip">{node.path}</span>
       {/if}
       <span class="box">{@render statusMark(node.status)}</span>
-      {#if fresh}<span class="fresh" title={freshSays}></span>{/if}
       {head.name}
       {#if head.was}<span class="was">{head.was}</span>{/if}
       <span class="stats">
@@ -2219,13 +2222,15 @@
   /* Also moved in the narrower view — after the review, or not committed.
      Orange like the list's "new commits": the same news, said on the file. */
   .fresh {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    margin-right: 4px;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 3;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     background: var(--warning);
-    vertical-align: middle;
-    flex: 0 0 auto;
+    box-shadow: 0 0 0 2px var(--card-bg);
+    pointer-events: auto;
   }
 </style>

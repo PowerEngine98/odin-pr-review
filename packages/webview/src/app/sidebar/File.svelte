@@ -122,7 +122,6 @@
     <Chevron {open} blank={file.refs.length === 0} />
   </span>
   <StatusBadge status={file.status} />
-  {#if file.fresh}<span class="fresh" title={file.fresh}></span>{/if}
   <span class="name"><Hit text={file.name} needle={ui.needle} /></span>
   <span class="counts">
     {#if file.status === "phantom"}
@@ -141,6 +140,10 @@
   {#if reviewable}
     <Viewed checked={file.viewed} onchange={(on) => mark(file.path, on)} />
   {/if}
+  <!-- Last, after the box, so the news lines up down the edge of the list
+       rather than pushing every name it lands on to the right. The slot is kept
+       on every row, dot or not, so the boxes above stay in one column. -->
+  <span class="fresh" class:on={file.fresh !== undefined} title={file.fresh}></span>
 </div>
 
 {#if open && refs.length > 0}
@@ -158,9 +161,9 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: var(--warning);
     align-self: center;
   }
+  .fresh.on { background: var(--warning); }
   .row {
     display: flex;
     align-items: center;
