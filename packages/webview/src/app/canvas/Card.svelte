@@ -15,7 +15,7 @@
 -->
 <script lang="ts">
   import type { NodeView } from "../model.js";
-  import { host, model, notify, settings, travel, ui, view } from "../state.svelte.js";
+  import { canAskAgents, host, model, notify, settings, travel, ui, view } from "../state.svelte.js";
   import { anchors, lineIn, measure } from "./measured.svelte.js";
   import type { Mark } from "./deltas.js";
   import { legibleAt } from "./legible.js";
@@ -660,8 +660,12 @@
    * behind it, and offering to write a review comment there is an invitation to
    * a dead end. A file the reader has marked read is bowed out of the way for
    * the same reason its card is: they have finished with it.
+   *
+   * An agent is somewhere to send it too. A live reading of a branch nobody has
+   * pushed has no pull request, and asking an agent about a line of it is the
+   * whole point of reading it live.
    */
-  const canComment = $derived(model.current.canReview && !viewed);
+  const canComment = $derived((model.current.canReview || canAskAgents()) && !viewed);
 
   /** The gesture running on this card, if it is this one's. */
   const picking = $derived(gesture.pick?.nodeId === node.id);

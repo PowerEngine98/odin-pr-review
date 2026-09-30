@@ -638,6 +638,25 @@ function normalise(comments: unknown): CommentView[] {
  * merely never hears anything. Doing it here rather than at each caller means a
  * payload cannot acquire the fault later by being made reactive.
  */
+/**
+ * Whether a passage can be handed to an agent from this page.
+ *
+ * A live reading with at least one agent switched on. Both halves matter: an
+ * agent works on the files on disk, so over a reading of the forge's copy it
+ * would be changing a checkout the reader is not looking at — and a button
+ * that hands work to nobody is a button that does nothing.
+ *
+ * Nothing here needs the forge. A branch nobody has pushed has no pull request
+ * to review, and it is exactly the branch somebody is asking an agent about.
+ */
+export function canAskAgents(): boolean {
+  return (
+    model.current.meta.worktree === true &&
+    (settings.pairing ?? []).length > 0 &&
+    (model.current.agents ?? []).length > 0
+  );
+}
+
 export function notify(type: string, payload?: unknown): void {
   host?.postMessage({ type, payload: $state.snapshot(payload) });
 }

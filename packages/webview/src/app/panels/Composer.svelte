@@ -10,7 +10,7 @@
   to be.
 -->
 <script lang="ts">
-  import { model, notify, settings, view } from "../state.svelte.js";
+  import { canAskAgents, model, notify, view } from "../state.svelte.js";
   import { sideOf } from "../marks/marks.js";
   import type { Anchor } from "./Thread.svelte";
   import { initialsOf } from "./Thread.svelte";
@@ -241,19 +241,16 @@
     return fenced ? fenced[1]!.trim().length > 0 : true;
   }
 
+  /** Whether asking an agent is a thing that can be done from here. */
+  const canAsk = $derived(canAskAgents());
   /**
-   * Whether asking an agent is a thing that can be done from here.
+   * Whether there is a pull request to leave the remark on.
    *
-   * A live reading with at least one agent switched on. Both halves matter: an
-   * agent works on the files on disk, so over a reading of the forge's copy it
-   * would be changing a checkout the reader is not looking at — and a button
-   * that hands work to nobody is a button that does nothing.
+   * Without one the box is only for the agents, and a "Start a review" that
+   * posts to nowhere would be the dead end the gate on the card used to avoid
+   * by refusing the whole box.
    */
-  const canAsk = $derived(
-    model.current.meta.worktree === true &&
-      (settings.pairing ?? []).length > 0 &&
-      (model.current.agents ?? []).length > 0,
-  );
+  const canReview = $derived(model.current.canReview);
 
   /**
    * Sends what was written to the agents, and keeps it here.
@@ -401,6 +398,7 @@
       {#if canAsk}
         <button
           class="composer-ask"
+          class:primary={!canReview}
           disabled={!sayable}
           title={sayable
             ? "Send this to the agents. It stays on this machine."
@@ -423,11 +421,13 @@
           Ask agents
         </button>
       {/if}
-      <button
-        class="composer-add primary"
-        disabled={!sayable}
-        title={sayable ? undefined : "Write something first"}
-        onclick={add}>{primary}</button>
+      {#if canReview}
+        <button
+          class="composer-add primary"
+          disabled={!sayable}
+          title={sayable ? undefined : "Write something first"}
+          onclick={add}>{primary}</button>
+      {/if}
     </div>
   </div>
 {/if}
@@ -453,6 +453,19 @@
     color: var(--ai, #a371f7);
     border-color: var(--ai, #a371f7);
     background: color-mix(in srgb, var(--ai, #a371f7) 12%, transparent);
+  }
+
+  /* The only way out of the box when there is no pull request to post to, so
+     it is drawn as the press rather than beside it — and still purple, since it
+     still goes to the agents and not to the forge. */
+  .composer-actions .composer-ask.primary {
+    background: var(--ai, #a371f7);
+    border-color: var(--ai, #a371f7);
+    color: var(--vscode-editor-background, #1e1e1e);
+  }
+  .composer-actions .composer-ask.primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--ai, #a371f7) 85%, white);
+    color: var(--vscode-editor-background, #1e1e1e);
   }
 
   .composer-ask .sparks {
