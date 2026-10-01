@@ -98,6 +98,11 @@ export interface FileView {
    * path meant a word in a directory dragged in every file beneath it.
    */
   search: string;
+  /**
+   * Why the file wears an orange dot, when it does: it also moved after the
+   * reader's last review, or has changes that are not committed yet.
+   */
+  fresh?: string;
   /** Why this file has no references, where that is worth saying out loud. */
   note?: string;
   /** What that note is about, for the hover. */

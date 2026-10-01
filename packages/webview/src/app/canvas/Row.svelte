@@ -68,6 +68,13 @@
      * touched, on a card too long to spot the difference in.
      */
     flash = undefined,
+    /**
+     * This line also moved in the narrower view of the change — not committed
+     * yet, or pushed after the reader's review — or something was taken out
+     * straight after it there. Drawn as an orange edge, over the line's own
+     * green or red, so a change made on top of a change can be told apart.
+     */
+    fresh = undefined,
   }: {
     row?: RowView;
     pair?: RowPair;
@@ -80,6 +87,7 @@
     gapOpen?: boolean;
     revealed?: boolean;
     flash?: Mark | undefined;
+    fresh?: "line" | "gone" | "both" | undefined;
   } = $props();
 
   /** The band this row is, whichever reading asked for it. */
@@ -529,6 +537,8 @@
   -->
   <div
     class="row split"
+    class:fresh-line={fresh === "line" || fresh === "both"}
+    class:fresh-gone={fresh === "gone" || fresh === "both"}
     class:just-changed={flash === "changed"}
     class:just-added={flash === "added"}
     class:in-diff={inDiff(pair.left) || inDiff(pair.right)}
@@ -600,6 +610,8 @@
   {@const afterName = after ? "right" : "left"}
   <div
     class="row flat {row.kind}"
+    class:fresh-line={fresh === "line" || fresh === "both"}
+    class:fresh-gone={fresh === "gone" || fresh === "both"}
     class:just-changed={flash === "changed"}
     class:just-added={flash === "added"}
     class:in-diff={row.inDiff}
@@ -679,6 +691,31 @@
      Painted with an inset shadow rather than a background, because the row's
      own background is what says added, removed or untouched, and a line that
      was rewritten is still whichever of those it was. */
+  /* Also moved in the narrower view: an orange edge down the line, over its
+     own colour rather than instead of it, so it still reads as added or
+     removed. A tick under the line where something was taken out after it. */
+  /* Also moved in the narrower view. Drawn on the head edge of the row — the
+     right, which is the side the narrower diff numbers it by — in orange
+     instead of the diff's own colour, so the left edge still says added or
+     removed. Given to the edge rules below as variables rather than as rules
+     of its own: those paint the row's background image, and a second rule for
+     the same property would replace them or be replaced. A tick under the row
+     marks where something was taken out after it. */
+  .row.fresh-line {
+    --edge-head: var(--warning);
+    --edge-head-width: 4px;
+    --fresh-edge: linear-gradient(to left, var(--warning) 0 4px, transparent 4px);
+  }
+  .row.fresh-gone {
+    --gone-tick: linear-gradient(to top, var(--warning) 0 2px, transparent 2px);
+  }
+  /* A line that moved but is unchanged against the base has no edge rule of
+     its own to carry the orange. */
+  .row.fresh-line,
+  .row.fresh-gone {
+    background-image: var(--fresh-edge, none), var(--gone-tick, none);
+  }
+
   .row.just-changed,
   .row.just-added {
     animation: line-touched 1400ms ease-out forwards;
@@ -817,20 +854,31 @@
   .row.split:has(.side.add):not(:has(.side.del)) {
     background-image:
       linear-gradient(to right, var(--added) 0 3px, transparent 3px),
-      linear-gradient(to left, var(--added) 0 3px, transparent 3px);
+      linear-gradient(
+        to left,
+        var(--edge-head, var(--added)) 0 var(--edge-head-width, 3px),
+        transparent var(--edge-head-width, 3px)
+      ),
+      var(--gone-tick, none);
   }
   .row.flat.del,
   .row.split:has(.side.del):not(:has(.side.add)) {
     background-image:
       linear-gradient(to right, var(--removed) 0 3px, transparent 3px),
-      linear-gradient(to left, var(--removed) 0 3px, transparent 3px);
+      linear-gradient(to left, var(--removed) 0 3px, transparent 3px),
+      var(--gone-tick, none);
   }
   /* A line rewritten in place: what it was on the left, what it became on the
      right, which is the same story the two panes tell. */
   .row.split:has(.side.del):has(.side.add) {
     background-image:
       linear-gradient(to right, var(--removed) 0 3px, transparent 3px),
-      linear-gradient(to left, var(--added) 0 3px, transparent 3px);
+      linear-gradient(
+        to left,
+        var(--edge-head, var(--added)) 0 var(--edge-head-width, 3px),
+        transparent var(--edge-head-width, 3px)
+      ),
+      var(--gone-tick, none);
   }
 
   /* Two panes: the base of the change on the left, the head on the right. Equal
@@ -1101,4 +1149,17 @@
      picked. Both are what the reader is reading while they decide how far the
      passage should reach. */
   .pick-grip { cursor: ns-resize; }
+
+  /* And the sign and the head number of a line that moved, in the same
+     orange. The edge alone sits against the card's own border, which is
+     yellow on a modified file, and the two read as one line — a file whose
+     changes were all local looked exactly like a file with none. */
+  .row.flat.fresh-line .marker,
+  .row.flat.fresh-line .num.new,
+  .row.split.fresh-line .side.head .marker,
+  .row.split.fresh-line .side.head .num {
+    color: var(--warning);
+    opacity: 1;
+    font-weight: 700;
+  }
 </style>

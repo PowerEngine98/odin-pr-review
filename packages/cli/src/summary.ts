@@ -14,7 +14,11 @@ export function summarize(graph: ChangeGraph): string {
   const { meta } = graph;
 
   out.push(`${meta.baseRef}...${meta.headRef}`);
-  if (meta.mergeBase) out.push(`merge-base ${meta.mergeBase.slice(0, 12)}`);
+  if (meta.since) out.push(`since ${meta.since.slice(0, 12)}`);
+  else if (meta.mergeBase) out.push(`merge-base ${meta.mergeBase.slice(0, 12)}`);
+  if (meta.sinceLost) {
+    out.push(`${meta.sinceLost.slice(0, 12)} is not in this branch's history; showing the whole change`);
+  }
   out.push("");
 
   for (const node of graph.nodes) {

@@ -27,6 +27,7 @@ Review options:
 Graph options:
   -b, --base <ref>      base branch the PR targets   (default: detect)
   -H, --head <ref>      branch under review                   (default: HEAD)
+  -s, --since <ref>     only what the head gained after this commit
   -C, --cwd <dir>       repository directory                  (default: .)
   -p, --patch <file>    read a .patch file instead of a repo
   -o, --out <file>      write output here                     (default: stdout)
@@ -56,6 +57,8 @@ export interface GraphOptions {
   cwd: string;
   baseRef?: string;
   headRef: string;
+  /** Read only what the head gained after this commit. */
+  sinceRef?: string;
   patchFile?: string;
   out?: string;
   context: number;
@@ -394,6 +397,7 @@ function parseGraph(argv: string[], view: boolean): ParseResult {
     switch (arg) {
       case "-b": case "--base": opts.baseRef = value; break;
       case "-H": case "--head": opts.headRef = value; break;
+      case "-s": case "--since": opts.sinceRef = value; break;
       case "-C": case "--cwd": opts.cwd = value; break;
       case "-p": case "--patch": opts.patchFile = value; break;
       case "-o": case "--out": opts.out = value; break;

@@ -37,6 +37,8 @@ import { ODIN_MARK, renderHtml } from "@odin/webview";
 import { readFileSync, rmSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
+
+import { viewSuffix, type Fresh } from "./views.js";
 import { SettingsStore } from "./settings.js";
 
 import { baseUri } from "./baseContent.js";
@@ -1622,6 +1624,44 @@ export class GraphPanel {
    * as the rebuild notices: a watcher belongs to one checkout, and its news is
    * about that checkout whatever the reader is looking at now.
    */
+  /**
+   * The orange dots for one reading, which usually arrive after it is drawn.
+   *
+   * Sent as a message rather than drawn into a new document: the forge has to
+   * be asked for the reader's last review, and the page is already up by the
+   * time it answers. Kept on the panel as well, so the next document it writes
+   * has them from the start.
+   */
+  static freshIn(
+    graph: ChangeGraph,
+    repo: string,
+    fresh: Fresh | undefined,
+    /**
+     * The name the reading is filed under, when the caller has it.
+     *
+     * Not worked out from the graph: a reading is filed under the refs that
+     * were asked for, and the graph says what they resolved to — `development`
+     * in, `origin/development` out — so asking by the second found no tab and
+     * the dots never reached the page.
+     */
+    where?: string,
+  ): void {
+    const panel = GraphPanel.open.get(where ?? readingKey(graph, repo));
+    if (!panel) return;
+    panel.fresh = fresh;
+    const send = () =>
+      void panel.panel.webview.postMessage({ type: "fresh", fresh: fresh ?? null });
+    send();
+    /*
+     * And once more a moment later. The page may still be loading the document
+     * it was just given, and a message that arrives before its listener does is
+     * dropped. Saying the same thing twice costs nothing.
+     */
+    setTimeout(() => {
+      if (panel.fresh === fresh) send();
+    }, 1500);
+  }
+
   static observedIn(graph: ChangeGraph, repo: string, paths: string[]): void {
     if (paths.length === 0) return;
     const panel = GraphPanel.open.get(readingKey(graph, repo));
@@ -1808,6 +1848,8 @@ export class GraphPanel {
    */
   private folded: FoldedStore | undefined;
   private comments: ReviewComment[] = [];
+  /** Files that also moved in the narrower view, for the orange dot. */
+  private fresh: Fresh | undefined;
   /** Loaded before the first paint, so the code is never briefly grey. */
   private highlight: Highlighter | undefined;
   /** Who the reader is, so only their own remarks offer edit and delete. */
@@ -2470,6 +2512,7 @@ export class GraphPanel {
 
     const html = renderHtml(this.graph, layout, {
       theme: dark ? DARK_THEME : LIGHT_THEME,
+      ...(this.fresh ? { fresh: this.fresh } : {}),
       csp: { nonce: nonce(), source: this.panel.webview.cspSource },
       /*
        * The diagram renderer, named but not loaded.
@@ -2552,7 +2595,10 @@ export class GraphPanel {
     const named = pull
       ? `#${pull.number} ${pull.title}`
       : `Odin: ${this.graph.meta.baseRef} → ${this.graph.meta.headRef}`;
-    this.panel.title = this.graph.meta.worktree === true ? `LIVE ${named}` : named;
+    // A narrower reading is not the change, and a tab that looked like the
+    // whole of it would be read as the whole of it.
+    const since = `${named}${viewSuffix(this.graph.meta)}`;
+    this.panel.title = this.graph.meta.worktree === true ? `LIVE ${since}` : since;
     // The mark that goes with it, now there is a graph to ask which reading
     // this is. The frame was given the plain one before anything was known.
     this.mark(false);
@@ -2746,6 +2792,13 @@ export class GraphPanel {
       }
       if (message.type === "open") {
         await this.openDiff(message.payload.path);
+        return;
+      }
+      // All, since the last review, or only what is not committed. Asked of
+      // the reading in front, which is this one: the press brought it there.
+      if (message.type === "chooseView") {
+        GraphPanel.active = this;
+        await vscode.commands.executeCommand("odin.chooseView");
         return;
       }
       if (message.type === "focusMissed") {
@@ -3208,7 +3261,7 @@ export class GraphPanel {
    * at another one.
    */
   static current():
-    | { repo: string; baseRef?: string; headRef?: string; worktree?: boolean }
+    | { repo: string; baseRef?: string; headRef?: string; worktree?: boolean; since?: string }
     | undefined {
     const panel = GraphPanel.active;
     if (!panel) return undefined;
@@ -3218,7 +3271,13 @@ export class GraphPanel {
       ...(meta.baseRef ? { baseRef: meta.baseRef } : {}),
       ...(meta.headRef ? { headRef: meta.headRef } : {}),
       ...(meta.worktree === true ? { worktree: true } : {}),
+      ...(meta.since ? { since: meta.since } : {}),
     };
+  }
+
+  /** What the reading in front of the reader turned out to be. */
+  static currentMeta(): ChangeGraph["meta"] | undefined {
+    return GraphPanel.active?.graph.meta;
   }
 }
 

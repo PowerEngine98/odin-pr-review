@@ -8,6 +8,10 @@ import {
   listRefs,
   inlineAvatar,
   inlineAvatars,
+  lastReviewedCommit,
+  pathsChangedSince,
+  linesChangedSince,
+  type ChangeGraph,
   listReviewComments,
   listReviewThreads,
   stampThreads,
@@ -40,6 +44,7 @@ import { keyOf, SessionStore, type Session } from "./session.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
 import { FoldedStore } from "./folded.js";
+import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
 function isDark(): boolean {
@@ -97,6 +102,8 @@ interface Question {
   headRef?: string;
   worktree?: boolean;
   number?: number;
+  /** Only what came after this commit, the one the reader last reviewed. */
+  since?: string;
 }
 
 /** The question the most recently opened review answered. */
@@ -311,6 +318,8 @@ export function activate(context: vscode.ExtensionContext): void {
           here.worktree === true,
           undefined,
           here.number,
+          undefined,
+          here.since,
         );
       }
     }),
@@ -382,6 +391,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("odin.readOrigin", (number: number) =>
       readOrigin(number),
     ),
+    /*
+     * What the author pushed after the reader's last review, and nothing else.
+     *
+     * The rest of the change has been read and remarked on already. Shown whole
+     * again, the answer to those remarks is somewhere among forty files the
+     * reader has to go back through to find it.
+     */
+    vscode.commands.registerCommand("odin.readSince", (number: number) =>
+      readSince(number),
+    ),
+    vscode.commands.registerCommand("odin.chooseView", () => chooseView()),
     /*
      * From reading a change to working on it.
      *
@@ -779,7 +799,7 @@ async function withProgressOn<T>(title: string, run: () => Promise<T>): Promise<
  * do it would mean the reader's own work had to be stashed for the privilege of
  * looking at someone else's — which is exactly the trade this avoids.
  */
-async function readOrigin(number: number): Promise<void> {
+async function readOrigin(number: number, since?: string): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
 
@@ -817,7 +837,166 @@ async function readOrigin(number: number): Promise<void> {
     return;
   }
 
-  await review(pull.baseRef, head, false, undefined, pull.number, going);
+  await review(pull.baseRef, head, false, undefined, pull.number, going, since);
+}
+
+/**
+ * The commit a reader last read a pull request at, and where that came from.
+ *
+ * The forge first. A review left there — a verdict, or a single remark — is
+ * the reader saying "I have read this far" to the author, and it is the point
+ * the author's answer is measured from. The commit this editor last opened is
+ * the fallback, for a reader who looked here and never wrote anything.
+ */
+async function lastRead(
+  repo: string,
+  number: number,
+  head: string | undefined,
+): Promise<string | undefined> {
+  const reviewed = await lastReviewedCommit(number, { cwd: repo }).catch(() => undefined);
+  return reviewed ?? seen.before(repo, number, head);
+}
+
+/**
+ * Says why there is no "since" to show, and answers whether there is one.
+ *
+ * Nothing to go on, or nothing new, are both ordinary: the reader has not
+ * reviewed this change yet, or the author has not pushed since they did.
+ */
+function nothingSince(number: number, since: string | undefined, head: string | undefined): boolean {
+  if (!since) {
+    vscode.window.showInformationMessage(
+      `Odin: you have not reviewed #${number} yet, so there is no "since" to show.`,
+    );
+    return true;
+  }
+  if (head && head === since) {
+    vscode.window.showInformationMessage(
+      `Odin: nothing has been pushed to #${number} since your last review.`,
+    );
+    return true;
+  }
+  return false;
+}
+
+/** The forge's copy of a change, from the reader's last review onwards. */
+async function readSince(number: number): Promise<void> {
+  const repo = await repositoryRoot();
+  if (!repo) return;
+  const pull = known.get(number);
+  if (!pull) return;
+
+  const since = await lastRead(repo, number, pull.headSha);
+  if (nothingSince(number, since, pull.headSha)) return;
+  await readOrigin(number, since);
+}
+
+/**
+ * Which of the three views of the reading in front of the reader to show.
+ *
+ * The whole change; only what the author pushed after the reader's last
+ * review; or only what the reader has edited here and not committed. Each is
+ * offered only where it means something: a reading that is not of a pull
+ * request has no review to start from, and a branch this checkout does not
+ * hold has no uncommitted work in it.
+ *
+ * Replaced in place. It is the same change from a different starting point,
+ * and a second tab of it would be two pictures to keep apart.
+ */
+async function chooseView(): Promise<void> {
+  const here = questionInFront();
+  const meta = GraphPanel.currentMeta();
+  if (!here || !meta) {
+    vscode.window.showInformationMessage("Odin: open a pull request first.");
+    return;
+  }
+  const now = viewOf(meta);
+  const number = here.number ?? meta.pullRequest?.number;
+  const branch = await currentBranch({ cwd: here.repo });
+  const ours =
+    meta.worktree === true ||
+    (branch !== undefined && (meta.headRef === branch || meta.headRef === `origin/${branch}`));
+
+  const offered: (vscode.QuickPickItem & { view: View })[] = [
+    { view: "all", label: "All changes", detail: "The whole change, as it will be merged" },
+    ...(number !== undefined
+      ? [{
+          view: "since" as const,
+          label: "Since my last review",
+          detail: "Only what was pushed after you last reviewed it",
+        }]
+      : []),
+    ...(ours
+      ? [{
+          view: "uncommitted" as const,
+          label: "Uncommitted only",
+          detail: "Only your edits on this machine that are not committed yet",
+        }]
+      : []),
+  ];
+  for (const item of offered) {
+    if (item.view === now) item.description = "showing";
+  }
+
+  const picked = await vscode.window.showQuickPick(offered, {
+    title: "Odin: what to show",
+    placeHolder: "Which part of the change to draw",
+  });
+  if (!picked || picked.view === now) return;
+
+  const worktree = meta.worktree === true;
+  if (picked.view === "all") {
+    await review(here.baseRef, here.headRef, worktree, here.repo, number);
+    return;
+  }
+
+  if (picked.view === "since") {
+    const since = await lastRead(here.repo, number!, meta.headSha);
+    if (nothingSince(number!, since, meta.headSha)) return;
+    await review(here.baseRef, here.headRef, worktree, here.repo, number, undefined, since);
+    return;
+  }
+
+  const pending = await pathsChangedSince("HEAD", undefined, { cwd: here.repo });
+  if (pending.length === 0) {
+    vscode.window.showInformationMessage("Odin: there is nothing uncommitted on this branch.");
+    return;
+  }
+  // The files on disk, so a committed reading gives way to the live one.
+  const going = worktree ? undefined : GraphPanel.currentReading();
+  await review(here.baseRef, undefined, true, here.repo, number, going, "HEAD");
+}
+
+/**
+ * The orange dots on the whole change: which of its files also moved in a
+ * narrower view of it.
+ *
+ * A live reading marks what is not committed yet, since that is the part of
+ * it only this reader can see. A reading of a pull request's commits marks
+ * what the author pushed after the reader's last review. Nothing is marked in
+ * a narrower view, where every file is already the news.
+ */
+async function freshFor(graph: ChangeGraph, repo: string): Promise<Fresh | undefined> {
+  const meta = graph.meta;
+  if (viewOf(meta) !== "all") return undefined;
+  if (meta.worktree === true) {
+    const lines = await linesChangedSince("HEAD", undefined, { cwd: repo });
+    const paths = Object.keys(lines).sort();
+    return paths.length > 0 ? { paths, means: "uncommitted", lines } : undefined;
+  }
+  const number = meta.pullRequest?.number;
+  if (number === undefined) return undefined;
+  const since = await lastRead(repo, number, meta.headSha);
+  if (!since || since === meta.headSha) return undefined;
+  const lines = await linesChangedSince(since, meta.headSha ?? meta.headRef, { cwd: repo });
+  const paths = Object.keys(lines).sort();
+  return paths.length > 0 ? { paths, means: "review", lines } : undefined;
+}
+
+async function markFresh(graph: ChangeGraph, repo: string, where?: string): Promise<void> {
+  const fresh = await freshFor(graph, repo).catch(() => undefined);
+  GraphPanel.freshIn(graph, repo, fresh, where);
+  sidebar.setFresh(fresh);
 }
 
 async function checkout(number: number): Promise<void> {
@@ -1261,6 +1440,12 @@ async function review(
    * and it opened one beside the forge's copy instead of in place of it.
    */
   insteadOf?: string,
+  /**
+   * The commit the reader last reviewed, when only what came after it is
+   * wanted. Not part of the tab's name: the same change read from a later
+   * point replaces the reading in place rather than opening beside it.
+   */
+  since?: string,
 ): Promise<void> {
   const repo = at ?? (await repositoryRoot());
   if (!repo) return;
@@ -1382,6 +1567,7 @@ async function review(
            * list and got that row's files under another row's number.
            */
           ...(is !== undefined ? { number: is } : {}),
+          ...(since ? { since } : {}),
           includeImports: settings.get<boolean>("includeImports", true),
           includeContext: settings.get<boolean>("includeContext", false),
           progress: step,
@@ -1586,6 +1772,7 @@ async function present(
     );
     if (took) {
       sidebar.setGraph(graph);
+      void markFresh(graph, repo, where);
       return;
     }
   }
@@ -1616,14 +1803,26 @@ async function present(
         if (comments.length > 0) panel.setComments(comments);
       });
   }
+  sidebar.setFresh(undefined);
   sidebar.setGraph(graph);
+  void markFresh(graph, repo, where);
   last = {
     repo,
     ...(base ? { baseRef: base } : {}),
     ...(headRef ? { headRef } : {}),
     ...(graph.meta.worktree ? { worktree: true } : {}),
     ...(is !== undefined ? { number: is } : pull ? { number: pull.number } : {}),
+    ...(sinceToAsk(graph.meta) ? { since: sinceToAsk(graph.meta)! } : {}),
   };
+  /*
+   * Asked for less and given all of it, which has to be said: a whole change
+   * that the reader believes is only the new part is worse than either.
+   */
+  if (graph.meta.sinceLost && !quick) {
+    vscode.window.showInformationMessage(
+      `Odin: ${graph.meta.sinceLost.slice(0, 7)} is no longer in this branch's history — it was rebased or force-pushed. Showing the whole change.`,
+    );
+  }
   // And against the name this reading goes under, so that asking it again asks
   // the same question rather than the one the refs turned out to be. `last`
   // answers for whichever was opened most recently, which is the wrong tab the
@@ -1844,6 +2043,9 @@ function armLive(
         ...(base ? { baseRef: base } : {}),
         ...(headRef ? { headRef } : {}),
         worktree: true,
+        // A narrower live reading stays one as files change, and the
+        // uncommitted one keeps following HEAD as the reader commits.
+        ...(sinceToAsk(shown.meta) ? { since: sinceToAsk(shown.meta)! } : {}),
         includeImports: settings.get<boolean>("includeImports", true),
         includeContext: settings.get<boolean>("includeContext", false),
       };

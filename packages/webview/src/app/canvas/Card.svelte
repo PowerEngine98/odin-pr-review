@@ -15,7 +15,7 @@
 -->
 <script lang="ts">
   import type { NodeView } from "../model.js";
-  import { host, model, notify, settings, travel, ui, view } from "../state.svelte.js";
+  import { canAskAgents, host, model, notify, settings, travel, ui, view } from "../state.svelte.js";
   import { anchors, lineIn, measure } from "./measured.svelte.js";
   import type { Mark } from "./deltas.js";
   import { legibleAt } from "./legible.js";
@@ -300,6 +300,26 @@
     return delta && row ? delta.marks.get(row) : undefined;
   }
 
+  /** Which head lines of this file also moved in the narrower view. */
+  const freshLines = $derived(model.current.fresh?.lines?.[node.path]);
+
+  /**
+   * Whether a row is part of what moved in the narrower view, or sits just
+   * above something that was taken out there.
+   *
+   * By its head line, because that is how the narrower diff numbers it. A
+   * line only the base has cannot be named that way, so what it answers for
+   * is the line it was removed after.
+   */
+  function freshOf(row: RowView | undefined): "line" | "gone" | "both" | undefined {
+    if (!freshLines || !row || row.kind === "gap") return undefined;
+    const at = row.newLine;
+    if (at === undefined) return undefined;
+    const line = freshLines.changed.some(([from, to]) => at >= from && at <= to);
+    const gone = freshLines.gone.includes(at);
+    return line && gone ? "both" : line ? "line" : gone ? "gone" : undefined;
+  }
+
   /** And the ones taken from the end of the card, which sit above nothing. */
   const goneAtEnd = $derived(
     delta?.gone.reduce((n, run) => (run.before ? n : n + run.lines), 0) ?? 0,
@@ -352,6 +372,20 @@
 
   const remarks = $derived(
     model.current.comments.filter((comment) => comment.path === node.path).length,
+  );
+
+  /**
+   * Whether this file also moved in the narrower view of the change.
+   *
+   * The whole change is still the whole change; the dot is what lets a reader
+   * find, inside it, the files the author touched after their review or the
+   * ones they have not committed yet.
+   */
+  const fresh = $derived(model.current.fresh?.paths.includes(node.path) === true);
+  const freshSays = $derived(
+    model.current.fresh?.means === "uncommitted"
+      ? "Has changes that are not committed yet"
+      : "Changed since your last review",
   );
 
   /**
@@ -646,8 +680,12 @@
    * behind it, and offering to write a review comment there is an invitation to
    * a dead end. A file the reader has marked read is bowed out of the way for
    * the same reason its card is: they have finished with it.
+   *
+   * An agent is somewhere to send it too. A live reading of a branch nobody has
+   * pushed has no pull request, and asking an agent about a line of it is the
+   * whole point of reading it live.
    */
-  const canComment = $derived(model.current.canReview && !viewed);
+  const canComment = $derived((model.current.canReview || canAskAgents()) && !viewed);
 
   /** The gesture running on this card, if it is this one's. */
   const picking = $derived(gesture.pick?.nodeId === node.id);
@@ -1243,6 +1281,23 @@
   </svg>
 {/snippet}
 
+<!-- On the corner, like the mark on an app with news in it: seen from across
+     the canvas before any name on the card can be read. Beside the card rather
+     than inside it, because the card clips whatever crosses its edge and its
+     title bar is painted over anything beneath it. -->
+{#if fresh}
+  <!-- Travelling with the title bar: down the card as the reader scrolls it,
+       and in from the far edge when the card is wider than the window, so the
+       dot is on screen whenever the file's name is. -->
+  <span
+    class="fresh"
+    title={freshSays}
+    style:transform={pin > 0 || stuck.controls > 0
+      ? `translate(${-stuck.controls}px, ${pin}px)`
+      : null}
+  ></span>
+{/if}
+
 <div
   class="card status-{node.status}"
   class:unresolved={head.note !== ""}
@@ -1591,6 +1646,7 @@
           {canComment}
           marks={symbols}
           flash={flashOf(rows[i])}
+          fresh={freshOf(row)}
           beyondCap={i >= unifiedLimit && !held(row, anchored)}
           revealed={expanded}
         />
@@ -1609,6 +1665,7 @@
           {canComment}
           marks={symbols}
           flash={flashOf(asSent(pair, i))}
+          fresh={freshOf(pair.right)}
           beyondCap={i >= splitLimit &&
             !held(pair.left, anchored) &&
             !held(pair.right, anchored)}
@@ -2197,4 +2254,27 @@
   }
   .row.more:hover { color: var(--text); }
   .row.more .text { flex: 0 0 auto; }
+  /* Also moved in the narrower view — after the review, or not committed.
+     Orange like the list's "new commits": the same news, said on the file. */
+  /* Centred on the rounded corner itself rather than on the square corner
+     the card would have had: the middle of a 14px arc is 14 × (1 − 1/√2),
+     about 4px in from each edge.
+
+     Sized against the canvas's scale the way the name over a shrunken card is,
+     and never smaller than it is at full size: zoomed out to see the whole
+     change is exactly when the reader is looking for which cards have news,
+     and a dot that shrank with the card was gone by then. */
+  .fresh {
+    --fresh-size: max(10px, calc(10px / var(--zoom, 1)));
+    position: absolute;
+    top: calc(4px - var(--fresh-size) / 2);
+    right: calc(4px - var(--fresh-size) / 2);
+    z-index: 4;
+    width: var(--fresh-size);
+    height: var(--fresh-size);
+    border-radius: 50%;
+    background: var(--warning);
+    box-shadow: 0 0 0 max(2px, calc(2px / var(--zoom, 1))) var(--card-bg);
+    pointer-events: auto;
+  }
 </style>

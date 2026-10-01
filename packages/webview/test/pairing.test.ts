@@ -17,6 +17,7 @@ describe("pairing with an agent", () => {
   const terminal = source("hud/Terminal.svelte");
   const pairing = source("hud/Pairing.svelte");
   const composer = source("panels/Composer.svelte");
+  const state = source("state.svelte.ts");
 
   it("puts everything an agent is told into the record first", () => {
     /*
@@ -763,7 +764,18 @@ describe("pairing with an agent", () => {
     // An agent changes the working tree. Over a reading of the forge's copy it
     // would be editing a checkout the reader is not looking at.
     expect(pairing).toMatch(/model\.current\.meta\.worktree === true/);
-    expect(composer).toMatch(/model\.current\.meta\.worktree === true/);
+    expect(state).toMatch(/model\.current\.meta\.worktree === true/);
+    expect(composer).toMatch(/canAsk = \$derived\(canAskAgents\(\)\)/);
+  });
+
+  it("lets a line be picked for the agents on a branch with no pull request", () => {
+    // A branch nobody has pushed has nothing to review on the forge, and it is
+    // exactly the branch somebody reading it live is asking an agent about.
+    expect(source("canvas/Card.svelte")).toMatch(
+      /canComment = \$derived\(\(model\.current\.canReview \|\| canAskAgents\(\)\) && !viewed\)/,
+    );
+    // And the box offers only the agents then, not a review posted to nowhere.
+    expect(composer).toMatch(/\{#if canReview\}\s*<button\s*class="composer-add primary"/);
   });
 
   it("keeps asking an agent separate from writing a review", () => {
@@ -790,7 +802,7 @@ describe("pairing with an agent", () => {
   });
 
   it("will not offer to ask nobody", () => {
-    expect(composer).toMatch(/settings\.pairing \?\? \[\]\)\.length > 0/);
+    expect(state).toMatch(/settings\.pairing \?\? \[\]\)\.length > 0/);
   });
 });
 

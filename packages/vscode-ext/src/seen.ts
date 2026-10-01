@@ -15,6 +15,14 @@ export interface Seen {
   sha: string;
   /** When it was read, ISO-8601. */
   at: string;
+  /**
+   * The head read before this one.
+   *
+   * Opening a change writes down its head, so by the time a reader asks what
+   * is new since they last looked, `sha` already says "this" — and the answer
+   * they wanted is the commit it replaced.
+   */
+  previous?: string;
 }
 
 /**
@@ -49,7 +57,25 @@ export class SeenStore {
   /** Records the commit being read now. */
   mark(repo: string, number: number, sha: string, at: string): void {
     if (!sha) return;
-    void this.memento.update(this.key(repo, number), { sha, at });
+    const was = this.get(repo, number);
+    const previous = was && was.sha !== sha ? was.sha : was?.previous;
+    void this.memento.update(this.key(repo, number), {
+      sha,
+      at,
+      ...(previous ? { previous } : {}),
+    });
+  }
+
+  /**
+   * The last commit read here that is not `head`, if any was.
+   *
+   * What "since I last looked" means for a reader who looked in this editor
+   * but never left a review on the forge.
+   */
+  before(repo: string, number: number, head: string | undefined): string | undefined {
+    const seen = this.get(repo, number);
+    if (!seen) return undefined;
+    return head && seen.sha === head ? seen.previous : seen.sha;
   }
 
   /**

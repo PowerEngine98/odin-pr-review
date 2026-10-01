@@ -31,6 +31,7 @@ import {
   type Folder,
 } from "./tree-model.js";
 import type { SeenStore } from "./seen.js";
+import type { Fresh } from "./views.js";
 import type { ViewedStore } from "./viewed.js";
 
 /**
@@ -85,6 +86,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
    * go missing until they next panned.
    */
   private here = "";
+  /** Files of the whole change that also moved in the narrower view. */
+  private fresh: Fresh | undefined;
   /** Whether the list of pull requests is showing over the change list. */
   private chooser = false;
   /**
@@ -180,7 +183,11 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
       if (message.type === "read" && typeof message.number === "number") {
         void vscode.commands.executeCommand(
-          message.where === "origin" ? "odin.readOrigin" : "odin.readLocal",
+          message.where === "since"
+            ? "odin.readSince"
+            : message.where === "origin"
+              ? "odin.readOrigin"
+              : "odin.readLocal",
           message.number,
         );
         return;
@@ -206,6 +213,12 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   setPart(paths: string[] | undefined): void {
     this.part = paths ? new Set(paths) : undefined;
     if (this.graph) this.render();
+  }
+
+  /** The orange dots, which arrive after the graph when the forge is asked. */
+  setFresh(fresh: Fresh | undefined): void {
+    this.fresh = fresh;
+    if (this.graph && !this.chooser) this.render();
   }
 
   setGraph(graph: ChangeGraph | undefined): void {
@@ -344,7 +357,14 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     return {
       loading: this.loading,
       ...(graph
-        ? { change: changeView(graph, (path) => this.viewed.has(path), this.here) }
+        ? {
+            change: changeView(
+              graph,
+              (path) => this.viewed.has(path),
+              this.here,
+              this.fresh,
+            ),
+          }
         : {}),
       picker: pickerView(
         this.pulls,
@@ -390,12 +410,14 @@ export function changeView(
    * tree opening folders to reveal a row that is not there.
    */
   here = "",
+  /** Files that also moved in the narrower view, for the orange dot. */
+  fresh?: Fresh,
 ): ChangeView {
   const totals = progressOf(graph, isViewed);
   const known = here !== "" && graph.nodes.some((node) => node.path === here);
 
   return {
-    tree: folderView(buildTree(graph.nodes), graph, isViewed),
+    tree: folderView(buildTree(graph.nodes), graph, isViewed, freshNote(fresh)),
     ...(known ? { here } : {}),
     totals: {
       additions: totals.additions,
@@ -413,15 +435,27 @@ export function changeView(
   };
 }
 
+/** Why a path wears the dot, or nothing when it does not. */
+function freshNote(fresh: Fresh | undefined): (path: string) => string | undefined {
+  if (!fresh) return () => undefined;
+  const paths = new Set(fresh.paths);
+  const says =
+    fresh.means === "uncommitted"
+      ? "Has changes that are not committed yet"
+      : "Changed since your last review";
+  return (path) => (paths.has(path) ? says : undefined);
+}
+
 function folderView(
   folder: Folder,
   graph: ChangeGraph,
   isViewed: (path: string) => boolean,
+  fresh: (path: string) => string | undefined = () => undefined,
 ): FolderView {
   return {
     label: folder.label,
-    folders: folder.folders.map((child) => folderView(child, graph, isViewed)),
-    files: folder.files.map((node) => fileView(node, graph, isViewed)),
+    folders: folder.folders.map((child) => folderView(child, graph, isViewed, fresh)),
+    files: folder.files.map((node) => fileView(node, graph, isViewed, fresh(node.path))),
   };
 }
 
@@ -429,11 +463,13 @@ function fileView(
   node: FileNode,
   graph: ChangeGraph,
   isViewed: (path: string) => boolean,
+  fresh?: string,
 ): FileView {
   const title = cardTitle(node);
 
   return {
     path: node.path,
+    ...(fresh ? { fresh } : {}),
     name: title.name,
     status: node.status,
     viewed: isViewed(node.path),

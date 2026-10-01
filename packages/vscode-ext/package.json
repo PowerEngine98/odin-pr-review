@@ -108,6 +108,18 @@
         "enablement": "false"
       },
       {
+        "command": "odin.readSince",
+        "title": "Review What Changed Since My Last Review",
+        "category": "Odin",
+        "enablement": "false"
+      },
+      {
+        "command": "odin.chooseView",
+        "title": "Choose What to Show: All, Since My Last Review, or Uncommitted",
+        "category": "Odin",
+        "icon": "$(history)"
+      },
+      {
         "command": "odin.checkoutLocal",
         "title": "Odin: Check Out This Change"
       },

@@ -363,6 +363,54 @@ export async function pullRequestHeadSha(
 }
 
 /**
+ * The commit this reader last reviewed the pull request at.
+ *
+ * The forge files every review — a verdict, or a single remark on a line, which
+ * it wraps in a review of its own — against the head it was left on. The last
+ * one of the reader's is where they stopped reading, and what the author pushed
+ * after it is what they have come back to see.
+ *
+ * Drafts are left out: a pending review has not been sent, so nobody has been
+ * answered yet. Undefined when the reader never reviewed it here or the forge
+ * cannot be asked.
+ */
+export async function lastReviewedCommit(
+  number: number,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<string | undefined> {
+  const login = await viewerLogin(options);
+  if (!login) return undefined;
+  const lines = await read(
+    [
+      "api",
+      "--paginate",
+      `repos/{owner}/{repo}/pulls/${number}/reviews?per_page=100`,
+      "--jq",
+      ".[] | [.user.login, .state, .commit_id] | @tsv",
+    ],
+    options,
+  );
+  return lines ? lastReviewIn(lines, login) : undefined;
+}
+
+/**
+ * The newest commit in a list of reviews that one reader left and sent.
+ *
+ * Split out so the rule can be tested without a forge: one line per review,
+ * oldest first, as `login`, `state` and `commit_id` separated by tabs.
+ */
+export function lastReviewIn(lines: string, login: string): string | undefined {
+  let found: string | undefined;
+  for (const line of lines.split("\n")) {
+    const [who, state, sha] = line.trim().split("\t");
+    if (!sha || who?.toLowerCase() !== login.toLowerCase()) continue;
+    if (state === "PENDING") continue;
+    found = sha;
+  }
+  return found;
+}
+
+/**
  * The body of a standalone comment about a whole file.
  *
  * `subject_type` belongs here and only here. It is documented on this endpoint

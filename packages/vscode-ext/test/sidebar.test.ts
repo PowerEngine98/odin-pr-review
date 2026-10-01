@@ -318,3 +318,39 @@ describe("the file the reader is standing on", () => {
     expect(changeView(part, () => false, "somewhere/else.ts").here).toBeUndefined();
   });
 });
+
+describe("marking the files that also moved in a narrower view", () => {
+  const graph = {
+    schemaVersion: "0.1.0",
+    meta: { baseRef: "main", headRef: "feat/x", generator: "test" },
+    nodes: [file("a.kt"), file("b.kt")],
+    edges: [],
+  } as unknown as ChangeGraph;
+
+  const rows = (view: ReturnType<typeof changeView>) => {
+    const out: { path: string; fresh?: string }[] = [];
+    const walk = (folder: typeof view.tree) => {
+      for (const child of folder.folders) walk(child);
+      out.push(...folder.files.map((f) => ({ path: f.path, ...(f.fresh ? { fresh: f.fresh } : {}) })));
+    };
+    walk(view.tree);
+    return out;
+  };
+
+  it("dots only the files named, and says why", () => {
+    const view = changeView(graph, () => false, "", { paths: ["b.kt"], means: "review" });
+    expect(rows(view)).toEqual([
+      { path: "a.kt" },
+      { path: "b.kt", fresh: "Changed since your last review" },
+    ]);
+  });
+
+  it("says uncommitted work is uncommitted", () => {
+    const view = changeView(graph, () => false, "", { paths: ["a.kt"], means: "uncommitted" });
+    expect(rows(view)[0]?.fresh).toBe("Has changes that are not committed yet");
+  });
+
+  it("dots nothing when there is nothing to mark", () => {
+    expect(rows(changeView(graph, () => false)).every((r) => !r.fresh)).toBe(true);
+  });
+});

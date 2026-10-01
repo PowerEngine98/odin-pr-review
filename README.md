@@ -283,7 +283,48 @@ comments cannot reshuffle the list under you.
 A pull request you have opened before and that has been pushed to since carries
 a **new commits** chip: the forge goes on showing the verdict you left on a
 commit that is no longer the head, and this is the only thing in the row that
-says so.
+says so. Pressing the chip opens only what was pushed since your last review.
+
+A change can be read three ways, chosen from the clock button beside the
+settings in the bar above the graph:
+
+- **All changes** — the whole change, as it will be merged.
+- **Since my last review** — only what the author pushed after your newest
+  review on the forge, or, if you never left one, after the commit you last
+  opened here. A branch rebased or force-pushed past that commit has no such
+  point any more, so the whole change is shown and you are told why. Only
+  offered for a pull request.
+- **Uncommitted only** — only your edits on this machine that are not
+  committed yet, new files included. It follows `HEAD`, so committing some of
+  the work moves it out of the picture. Only offered for a branch this checkout
+  holds.
+
+The tab's title says which one you are reading — `(since abc1234)` or
+`(uncommitted)` — so a narrower reading is never mistaken for the whole change.
+From the command line, `odin graph --since <ref>` does the same.
+
+Read whole, the files that also moved in the narrower view carry an orange dot:
+on the corner of their card, travelling with its title bar as the card scrolls,
+and at the end of their row in the sidebar. In a live reading the dot means
+*not committed yet*; in a reading of a pull request's commits it means *changed
+since your last review*. Inside the card, each line that moved gets an orange
+edge on its right, the new side, and its sign and new line number turn orange,
+while the left edge keeps its green or red, so work done on top of work can be
+told apart from the rest of the branch.
+
+Two more details:
+
+- **Deleted lines.** Where lines were deleted in the narrower view, a thin
+  orange line appears under the line just above where they were. The deleted
+  lines themselves no longer exist in that reading.
+- **On a pull request.** The same edge marks the lines changed since your last
+  review.
+
+One limit:
+
+- **Branch lines deleted locally.** A line your commits added that you then
+  deleted locally does not appear at all in *All changes*. It only shows as the
+  thin line.
 
 Clicking a row checks out its branch and builds the graph; the branch you are on
 is marked down its left edge. Checking out refuses outright while the working

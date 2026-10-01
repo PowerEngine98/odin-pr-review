@@ -62,6 +62,14 @@ export const HUD_CLOSE =
   `<path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8" stroke="currentColor" ` +
   `stroke-width="1.6" stroke-linecap="round"/></svg>`;
 
+/** A clock turning back: which point in the change's history to read from. */
+export const HISTORY =
+  `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` +
+  `<path d="M2.6 8a5.4 5.4 0 1 0 1.6-3.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>` +
+  `<path d="M2.2 1.9v2.9h2.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+  `<path d="M8 5v3.2l2.1 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>` +
+  `</svg>`;
+
 export const GEAR =
   `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">` +
   [0, 45, 90, 135, 180, 225, 270, 315]

@@ -74,6 +74,16 @@ export interface RenderOptions {
   includeImports?: boolean;
   /** Comments already on the pull request. */
   comments?: ReviewComment[];
+  /**
+   * Files that also moved in a narrower view of the change — since the
+   * reader's last review, or not yet committed — for the orange dot.
+   */
+  fresh?: {
+    paths: string[];
+    means: "uncommitted" | "review";
+    /** Head lines that moved, per file: runs changed, and where lines went. */
+    lines?: Record<string, { changed: [number, number][]; gone: number[] }>;
+  };
   /** What the forge made of the branch, if it was asked. */
   checks?: CheckSummary;
   /** How the change stands against being merged, as the forge sees it. */
@@ -376,6 +386,7 @@ export function renderHtml(
       ...(graph.meta.worktree ? { worktree: true } : {}),
     },
     canReview: options.canReview === true,
+    ...(options.fresh ? { fresh: options.fresh } : {}),
     // What a half-written review is filed under between page loads: the pull
     // request if there is one, the pair of refs if there is not. Left exactly
     // as it was, because the camera and the pinned drawings are keyed by it

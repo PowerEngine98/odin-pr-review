@@ -140,6 +140,10 @@
   {#if reviewable}
     <Viewed checked={file.viewed} onchange={(on) => mark(file.path, on)} />
   {/if}
+  <!-- Last, after the box, so the news lines up down the edge of the list
+       rather than pushing every name it lands on to the right. The slot is kept
+       on every row, dot or not, so the boxes above stay in one column. -->
+  <span class="fresh" class:on={file.fresh !== undefined} title={file.fresh}></span>
 </div>
 
 {#if open && refs.length > 0}
@@ -151,6 +155,15 @@
 {/if}
 
 <style>
+  /* The same dot the card wears: this file also moved in the narrower view. */
+  .fresh {
+    flex: 0 0 auto;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    align-self: center;
+  }
+  .fresh.on { background: var(--warning); }
   .row {
     display: flex;
     align-items: center;

@@ -224,6 +224,22 @@ export interface GraphMeta {
    * changes that have not been committed and that nobody else can see.
    */
   worktree?: boolean;
+  /**
+   * The commit the reader last reviewed, when this reading is of what came
+   * after it rather than of the whole change.
+   *
+   * Set only when it was used. `mergeBase` is then this commit, and the diff is
+   * the work pushed since the review, not the change as a whole.
+   */
+  since?: string;
+  /**
+   * A commit that was asked to be read from and could not be.
+   *
+   * The branch was rebased or force-pushed past it, or it was never fetched
+   * here, so there is no honest "since" to draw — the whole change is drawn
+   * instead, and this says why the reader got more than they asked for.
+   */
+  sinceLost?: string;
 }
 
 /** The forge's own record of the change under review. */
