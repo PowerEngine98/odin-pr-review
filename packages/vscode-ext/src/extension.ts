@@ -328,6 +328,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("odin.focusFile", (path: string) =>
       GraphPanel.focusPath(path),
     ),
+    vscode.commands.registerCommand("odin.showTests", () =>
+      GraphPanel.showTests(),
+    ),
     vscode.commands.registerCommand(
       "odin.followEdge",
       (target: { toPath: string; toLine: number; toSide: "base" | "head" }) =>

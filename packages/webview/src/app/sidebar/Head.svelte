@@ -12,7 +12,7 @@
 -->
 <script lang="ts">
   import type { ChangeView } from "./model.js";
-  import { ui } from "./state.svelte.js";
+  import { foldAll, ui } from "./state.svelte.js";
   import { progressOf } from "./tree.js";
 
   let { change }: { change: ChangeView } = $props();
@@ -59,6 +59,29 @@
     placeholder="Filter files and references"
     oninput={(event) => (ui.needle = event.currentTarget.value.trim().toLowerCase())}
   />
+  <!--
+    The two ways to take the whole tree at once.
+
+    Here rather than on the tree itself, because they are about every folder and
+    there is no folder they belong to. Words rather than the editor's chevron
+    icons: a webview has no icon font to borrow, and two unlabelled glyphs in a
+    strip that already has a chevron on every row would read as a third kind of
+    fold rather than as a control over all of them.
+
+    Expanding also turns test files back on in the drawing — see `foldAll`.
+  -->
+  <div class="all">
+    <button
+      type="button"
+      title="Open every folder, and show test files in the drawing"
+      onclick={() => foldAll(true)}
+    >Expand all</button>
+    <button
+      type="button"
+      title="Shut every folder, leaving the file you are standing on showing"
+      onclick={() => foldAll(false)}
+    >Collapse all</button>
+  </div>
 </div>
 
 <style>
@@ -118,4 +141,31 @@
     padding: 4px 8px;
   }
   .filter:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+  .all {
+    display: flex;
+    gap: 10px;
+    margin-top: 5px;
+  }
+
+  /* Drawn as text rather than as buttons. They are a pair of standing commands
+     over the list, and two filled buttons under the search box would be the
+     loudest thing in a strip whose point is the file names — the same argument
+     the reviewed box is drawn by. The editor's link colour because that is what
+     every theme that ships has an opinion about. */
+  .all button {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 0.85em;
+    color: var(--vscode-textLink-foreground, #0a84ff);
+    cursor: pointer;
+    opacity: 0.8;
+  }
+  .all button:hover { opacity: 1; text-decoration: underline; }
+  .all button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: 2px;
+  }
 </style>

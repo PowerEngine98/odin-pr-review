@@ -1711,6 +1711,18 @@ export class GraphPanel {
   }
 
   /**
+   * Puts the test files back in the drawing.
+   *
+   * Asked for by the list, which has no settings of its own: a reader who opens
+   * every folder there is asking to see the whole change, and the drawing is
+   * holding a part of it back. Only ever turns the setting on — the page
+   * remembers it from there, like every other choice the reader makes.
+   */
+  static showTests(): void {
+    void GraphPanel.active?.panel.webview.postMessage({ type: "showTests" });
+  }
+
+  /**
    * Follows a reference from the file list, on the canvas.
    *
    * The graph is the thing being read; a row in the list is a way around it,

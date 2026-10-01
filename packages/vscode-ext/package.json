@@ -118,6 +118,12 @@
         "enablement": "false"
       },
       {
+        "command": "odin.showTests",
+        "title": "Show Test Files in the Graph",
+        "category": "Odin",
+        "enablement": "false"
+      },
+      {
         "command": "odin.hideSidebar",
         "title": "Hide the Side Bar",
         "category": "Odin",

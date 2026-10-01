@@ -1141,6 +1141,13 @@ export function listen(): void {
         if (typeof message.path === "string") travel.toFile?.(message.path);
         return;
 
+      // The list was opened in full, so the one part of the change this drawing
+      // hides on a setting of its own comes back. Never turned off from there:
+      // folding the list is not a request to take anything out of the picture.
+      case "showTests":
+        settings.showTests = true;
+        return;
+
       // One of the references under a file. It names where it lands rather than
       // which arrow it is, because that is what a row in the list knows — and
       // because the same three fields would open an editor at the same place.

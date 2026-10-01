@@ -170,6 +170,35 @@ export function movedTo(
 }
 
 /**
+ * Every folder in the tree opened at once, or every one shut.
+ *
+ * The reveal is rebuilt rather than dropped, and that is the part worth saying.
+ * The rule that the file the reader is standing on stays visible is not
+ * suspended by a press on "collapse all": a tree that answered that press by
+ * hiding the one row it had just marked would be undoing its own mark, and the
+ * reader would have to pan the canvas to get it back. So shutting everything
+ * lands on exactly the state this module already calls the resting one —
+ * nothing open but the path to wherever they are.
+ *
+ * The reveal's own openings are not written down, so what goes into storage
+ * afterwards is the whole tree shut, which is what was asked for.
+ */
+export function foldedAll(
+  folds: Folds,
+  tree: FolderView | undefined,
+  paths: readonly string[],
+  open: boolean,
+): Folds {
+  const shut: Shut = {};
+  if (!open) for (const path of paths) shut[path] = true;
+  return {
+    shut,
+    opened: tree && folds.path ? toOpen(shut, trailToFile(tree, folds.path)) : {},
+    path: folds.path,
+  };
+}
+
+/**
  * The reader has folded something themselves.
  *
  * The reveal is handed over to them first and in full, so the path they are

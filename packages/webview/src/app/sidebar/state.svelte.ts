@@ -1,12 +1,12 @@
 import type { Query, SidebarModel } from "./model.js";
-import { folded, movedTo, showing, type Folds } from "./reveal.js";
+import { folded, foldedAll, movedTo, showing, type Folds } from "./reveal.js";
 import {
   readShut,
   SHUT_KEY,
   writeShut,
   type Shut,
 } from "./shut.js";
-import { filesIn } from "./tree.js";
+import { filesIn, foldersIn } from "./tree.js";
 
 /**
  * What the sidebar is showing, as data the components react to.
@@ -92,8 +92,26 @@ export function notify(type: string, payload: Record<string, unknown> = {}): voi
  * persists it and tells the panel, which is the half this view cannot do.
  */
 export function mark(path: string, viewed: boolean): void {
-  setViewed([path], viewed);
-  notify("viewed", { paths: [path], viewed });
+  markAll([path], viewed);
+}
+
+/**
+ * A whole folder marked read, or unmarked.
+ *
+ * One message carrying every path rather than one message per file. The host
+ * writes its store once and tells the panel once; forty separate messages would
+ * be forty writes and forty redraws of a drawing nobody is looking at yet, for
+ * a single press.
+ *
+ * Nothing is sent for a folder with nothing markable under it. The box is not
+ * drawn in that case, so this is only a guard against a tree that changed
+ * underneath a press already in flight.
+ */
+export function markAll(paths: readonly string[], viewed: boolean): void {
+  if (paths.length === 0) return;
+  const list = [...paths];
+  setViewed(list, viewed);
+  notify("viewed", { paths: list, viewed });
 }
 
 /** The same change arriving from elsewhere: the canvas, or another view. */
@@ -172,6 +190,23 @@ export function folderOpen(path: string): boolean {
 export function toggleFolder(path: string): void {
   folders.folds = folded(folders.folds, path);
   remember(SHUT_KEY, writeShut(folders.folds.shut));
+}
+
+/**
+ * Every folder in the tree opened, or every one shut.
+ *
+ * Opening everything means everything, which is why this also says so to the
+ * drawing. Test files are the one part of a change the canvas hides on a
+ * setting of its own, and a reader who pressed "expand all" and got a list with
+ * test files in it and a picture without them has been given two answers to one
+ * question. Nothing is said when shutting: folding the list is not a request to
+ * take anything out of the drawing.
+ */
+export function foldAll(open: boolean): void {
+  const tree = model.current.change?.tree;
+  folders.folds = foldedAll(folders.folds, tree, tree ? foldersIn(tree) : [], open);
+  remember(SHUT_KEY, writeShut(folders.folds.shut));
+  if (open) notify("showTests");
 }
 
 /** Asks the host for a different set of pull requests. */

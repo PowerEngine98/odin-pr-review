@@ -146,6 +146,13 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
         void vscode.commands.executeCommand("odin.review");
         return;
       }
+      // The list was opened in full, and the drawing hides test files on a
+      // setting of its own. Nothing is sent the other way: shutting the list is
+      // not a request to take anything out of the picture.
+      if (message.type === "showTests") {
+        void vscode.commands.executeCommand("odin.showTests");
+        return;
+      }
       if (message.type === "viewed" && message.paths) {
         this.viewed.set(message.paths, message.viewed === true);
         return;

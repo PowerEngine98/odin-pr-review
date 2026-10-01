@@ -19,9 +19,10 @@
   model, one arrangement, one piece of arithmetic behind every arrow.
 -->
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
 
   import * as camera from "./canvas/camera.svelte.js";
+  import { unhides } from "./canvas/hidden.js";
   import { drop, gesture } from "./canvas/picking.svelte.js";
   import Canvas from "./canvas/Canvas.svelte";
   import Card from "./canvas/Card.svelte";
@@ -45,6 +46,7 @@
     model as page,
     notify,
     review,
+    settings,
     travel,
     ui,
     view,
@@ -273,6 +275,30 @@
    */
   $effect(watchSettings);
 
+  /**
+   * Flies to a card that has only just been let into the drawing.
+   *
+   * Not on the spot, and the measurements are the reason. A card the drawing
+   * was hiding has never been drawn, so the placement is working from the
+   * extension's estimate of how tall it is; the browser measures it on the
+   * frame after it appears and the column it is in settles. Flying first lands
+   * the camera where the card was about to stop being.
+   *
+   * So a tick for the cards to render, and a frame for the round of
+   * measurements to be published — which is the beat `measured.svelte.ts`
+   * gathers them on, and the reason this waits for a frame rather than a
+   * microtask.
+   */
+  async function arriveAt(path: string): Promise<void> {
+    await tick();
+    await new Promise<void>((go) => {
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => go());
+      else setTimeout(go, 0);
+    });
+    const id = camera.showFile(path);
+    if (id) ui.activeNode = id;
+  }
+
   $effect(() => {
     travel.toFile = (path) => {
       const id = camera.showFile(path);
@@ -284,14 +310,24 @@
       }
 
       /*
+       * A hidden card that can be reached by changing a setting rather than by
+       * giving up. Which settings those are, and why only those, is `unhides`.
+       */
+      const node = page.current.nodes.find((one) => one.path === path);
+      if (unhides(node, settings) === "tests") {
+        settings.showTests = true;
+        void arriveAt(path);
+        return;
+      }
+
+      /*
        * Nowhere to fly to, which is two different situations.
        *
-       * The drawing may be hiding the card — a part is open, tests are off, the
-       * file has been ticked away — or the change may not contain the file at
-       * all, which is what happens when a committed reading is on screen and
-       * the reader has since edited something. Both used to be a click that did
-       * nothing, and a row that does nothing is indistinguishable from a broken
-       * one.
+       * The drawing may be hiding the card — a part is open, the file has been
+       * ticked away — or the change may not contain the file at all, which is
+       * what happens when a committed reading is on screen and the reader has
+       * since edited something. Both used to be a click that did nothing, and a
+       * row that does nothing is indistinguishable from a broken one.
        *
        * The host is told which, because only it can do anything about either.
        */
