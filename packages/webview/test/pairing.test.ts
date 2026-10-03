@@ -1113,7 +1113,10 @@ describe("writing about a line on the right", () => {
      * 764, which is the head pane's own left edge — 2394px in from the card's.
      */
     expect(composer).toMatch(/row\.classList\.contains\("split"\)[\s\S]{0,200}?\.side\.\$\{sideOf\(where\.side\)\}/);
-    expect(composer).toMatch(/Math\.round\(placed\.pane\?\.left \?\? placed\.card\.left\)/);
+    // The pane, not the card, is what the placement is worked out from — see
+    // `hanging.ts`, which takes the card only to decide whether to hold the box
+    // inside the window at all.
+    expect(composer).toMatch(/pane: placed\.pane \?\? placed\.card/);
     // As wide as what it hangs from, so a box on one pane does not run across
     // the other.
     expect(composer).toMatch(/Math\.min\(placed\.pane\?\.width \?\? placed\.card\.width, 680\)/);

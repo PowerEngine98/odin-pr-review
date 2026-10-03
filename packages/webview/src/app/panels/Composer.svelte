@@ -17,6 +17,7 @@
   import type { Draft, Where } from "./drafts.js";
   import { composerKey, fileDrafts, forget, load, remember, shelfOf } from "./drafts.js";
   import Editor from "./Editor.svelte";
+  import { hang } from "./hanging.js";
 
   let {
     /** The lines being talked about, or null when nothing is being written. */
@@ -201,18 +202,49 @@
       : 520,
   );
 
-  /*
-   * Left with the card, top just under the last line, and nothing else.
+  /**
+   * The window, for the box to be placed against as well as the code.
    *
-   * Every clamp that used to keep this inside the window has gone. They were
-   * what made it slide: as the reader panned, the box stopped following the
-   * code and started crawling along the edge of the screen instead, which is
-   * the one place it means nothing.
+   * Watched rather than read once. Dragging the editor's own panes about
+   * changes how much room this one has without moving the drawing by a pixel,
+   * so a size read at the moment the box opened would have the box hanging off
+   * an edge that had since moved.
    */
-  const left = $derived(
-    placed ? Math.round(placed.pane?.left ?? placed.card.left) : 8,
+  let room = $state({
+    width: typeof window === "undefined" ? 0 : window.innerWidth,
+    height: typeof window === "undefined" ? 0 : window.innerHeight,
+  });
+
+  $effect(() => {
+    const measure = () => {
+      room = { width: window.innerWidth, height: window.innerHeight };
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  });
+
+  /*
+   * Where it hangs: against the code, and against the window where the code has
+   * taken it off the edge of one. The rule, and why it is two clamps rather
+   * than one, is `hanging.ts`.
+   */
+  const at = $derived(
+    placed
+      ? hang(
+          {
+            pane: placed.pane ?? placed.card,
+            card: placed.card,
+            row: placed.row,
+            width,
+            height,
+          },
+          { width: room.width, height: room.height, chromeBottom },
+        )
+      : { left: 8, top: 0 },
   );
-  const top = $derived(placed ? Math.round(placed.row.bottom + 6) : 0);
+  const left = $derived(at.left);
+  const top = $derived(at.top);
 
   /**
    * The forge's wording, and it earns its place: the first remark starts
@@ -325,7 +357,10 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
     class="composer"
-    style="left:{left}px;top:{top}px;width:{width}px"
+    style="left:{left}px;top:{top}px;width:{width}px;--composer-room:{Math.max(
+      160,
+      room.height - chromeBottom - 16,
+    )}px"
     bind:clientHeight={height}
     onclick={(event) => event.stopPropagation()}
     onwheel={(event) => {
