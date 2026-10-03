@@ -158,8 +158,8 @@
   /* The same dot the card wears: this file also moved in the narrower view. */
   .fresh {
     flex: 0 0 auto;
-    width: 7px;
-    height: 7px;
+    width: var(--news-dot, 7px);
+    height: var(--news-dot, 7px);
     border-radius: 50%;
     align-self: center;
   }

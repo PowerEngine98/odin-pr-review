@@ -153,6 +153,15 @@
 
   /* At the end of the row, in the same column the file rows keep their boxes
      in, so a press travels straight down the list rather than hunting left and
-     right for each one. */
-  .folder :global(.viewed) { margin-left: auto; }
+     right for each one.
+
+     The margin is that column. A file row ends with the dot that says the file
+     moved since the last reading, and the box sits before it; a folder row has
+     no such news to carry, so it holds the space the dot would have taken
+     rather than letting its box sit thirteen pixels further out than every box
+     beneath it. The two numbers are named once, on the list itself. */
+  .folder :global(.viewed) {
+    margin-left: auto;
+    margin-right: calc(var(--news-dot, 7px) + var(--news-gap, 6px));
+  }
 </style>

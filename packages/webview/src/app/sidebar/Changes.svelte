@@ -73,6 +73,17 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+
+    /* The dot at the end of a file row that says the file moved since the last
+       reading, and the air before it.
+
+       Named here rather than in the row that draws it because the folder rows
+       have to reserve the same width without ever drawing one: the reviewed
+       boxes are a column, and a column that steps thirteen pixels sideways at
+       every directory is not a column. Two numbers in one place, so the slot
+       and the space held for it cannot drift apart. */
+    --news-dot: 7px;
+    --news-gap: 6px;
   }
 
   .go-local {
