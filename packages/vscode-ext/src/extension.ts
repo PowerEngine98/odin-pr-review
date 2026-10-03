@@ -44,6 +44,7 @@ import { keyOf, SessionStore, type Session } from "./session.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
 import { FoldedStore } from "./folded.js";
+import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
@@ -312,6 +313,12 @@ export function activate(context: vscode.ExtensionContext): void {
       // those opened a second tab of the change already in front of them.
       const here = questionInFront();
       if (here) {
+        // Before the build, not after it. The refs the diff is taken from are
+        // the whole of what refresh is for: a reader who has just pushed and
+        // presses this is asking to see what they pushed, and rebuilding from
+        // the tracking ref this machine last fetched draws the picture they
+        // already had.
+        await freshen(here);
         await review(
           here.baseRef,
           here.headRef,
@@ -486,7 +493,11 @@ export function activate(context: vscode.ExtensionContext): void {
          * were — `review` reports them itself — and there is nobody here left
          * to report them to.
          */
-        void review(previous.baseRef, previous.headRef, previous.worktree === true);
+        // Brought up to date first, for the same reason the queued route is:
+        // the refs this tab was written with are as old as the tab.
+        void freshen(previous).then(() =>
+          review(previous.baseRef, previous.headRef, previous.worktree === true),
+        );
       },
     }),
   );
@@ -541,6 +552,38 @@ function readingIn(state: unknown): Session | undefined {
 const queued: { reading: Session; key: string }[] = [];
 let reopening = false;
 
+/**
+ * Brings the remote's copy of a reading's branches up to date, if it has any.
+ *
+ * Called from the two moments a reading is deliberately built again — the
+ * refresh button, and a tab rebuilt after the window came back — and from
+ * neither of the automatic ones. A live reading rebuilds whenever a watched
+ * file is saved, and a fetch on each of those is a network call for every edit.
+ *
+ * Every failure is swallowed, on purpose. Offline, behind a proxy, a remote
+ * that has gone away: none of those is a reason to refuse to draw. The picture
+ * is then as current as this machine is, which is what it was a moment ago
+ * anyway, and the alternative is a refresh button that reports an error instead
+ * of refreshing.
+ */
+async function freshen(reading: { baseRef?: string; headRef?: string }): Promise<void> {
+  if (!reading.headRef && !reading.baseRef) return;
+  const repo = await repositoryRoot();
+  if (!repo) return;
+
+  const remotes = (await git(["remote"], { cwd: repo }).catch(() => ""))
+    .split("\n")
+    .map((one) => one.trim())
+    .filter(Boolean);
+  if (remotes.length === 0) return;
+
+  for (const { remote, branches } of toFetch(reading, remotes)) {
+    await git(["fetch", "--quiet", "--no-tags", remote, ...branches], {
+      cwd: repo,
+    }).catch(() => "");
+  }
+}
+
 function reopen(reading: Session, key: string): void {
   queued.push({ reading, key });
   if (reopening) return;
@@ -558,6 +601,11 @@ function reopen(reading: Session, key: string): void {
             : "Reopening the change",
         );
         try {
+          // A tab coming back may have been shut for a day. Whatever its refs
+          // meant when it was written, they mean something else now, and the
+          // reader is owed the change as it stands rather than as it was when
+          // they last had this window open.
+          await freshen(next.reading);
           await review(
             next.reading.baseRef,
             next.reading.headRef,

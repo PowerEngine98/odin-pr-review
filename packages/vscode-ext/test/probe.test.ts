@@ -1876,3 +1876,139 @@ describe("work appearing under a committed reading", () => {
     expect(committed.disposed).toBe(true);
   }, 90_000);
 });
+
+/**
+ * A reading of the forge's copy, after the author has pushed to it.
+ *
+ * The complaint: push, refresh the tab or reopen the window, and the modified
+ * lines are the ones that were there before the push. Nothing looks broken —
+ * the graph redraws, the counts are plausible, the file is the right file —
+ * and what is actually on screen is the diff against a tracking ref this
+ * machine last fetched at some point in the past.
+ *
+ * Measured rather than argued: before the fix, a refresh here draws `TWO` and
+ * not `THREE`, with the second commit sitting on the remote the whole time.
+ */
+describe("a change the author has pushed to since it was drawn", () => {
+  let reader: string;
+  let author: string;
+
+  const run = (cwd: string, ...args: string[]) =>
+    execFileSync("git", args, {
+      cwd,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    });
+
+  const toplevel = (dir: string) =>
+    execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: dir })
+      .toString()
+      .trim();
+
+  beforeAll(() => {
+    const dir = mkdtempSync(join(tmpdir(), "odin-pushed-"));
+    const remote = join(dir, "remote.git");
+    execFileSync("git", ["init", "--quiet", "--bare", "-b", "main", remote]);
+
+    author = join(dir, "author");
+    execFileSync("git", ["clone", "--quiet", remote, author]);
+    writeFileSync(join(author, "one.ts"), "export const one = () => 1;\n");
+    writeFileSync(join(author, "two.ts"), 'import { one } from "./one.js";\n\nexport const two = one() + 1;\n');
+    run(author, "add", "-A");
+    run(author, "commit", "--quiet", "-m", "base");
+    run(author, "push", "--quiet", "origin", "main");
+
+    run(author, "checkout", "--quiet", "-b", "topic");
+    writeFileSync(join(author, "two.ts"), 'import { one } from "./one.js";\n\nexport const two = one() + 2;\n');
+    run(author, "add", "-A");
+    run(author, "commit", "--quiet", "-m", "first push");
+    run(author, "push", "--quiet", "origin", "topic");
+
+    const clone = join(dir, "reader");
+    execFileSync("git", ["clone", "--quiet", remote, clone]);
+    run(clone, "fetch", "--quiet", "origin", "topic");
+    reader = toplevel(clone);
+  });
+
+  afterAll(() => {
+    rmSync(join(reader, ".."), { recursive: true, force: true });
+  });
+
+  /** The reading a tab of this change carries, as the session stores one. */
+  const forge = () => ({
+    repo: reader,
+    baseRef: "origin/main",
+    headRef: "origin/topic",
+    worktree: false,
+    at: new Date().toISOString(),
+  });
+
+  /**
+   * What the author does next, which this machine is told nothing about.
+   *
+   * Each call writes a different line, so one test's push cannot be mistaken
+   * for another's — and so a second push is a real commit rather than a `git
+   * commit` with nothing staged.
+   */
+  let pushes = 2;
+  function pushAgain(): number {
+    const now = ++pushes;
+    writeFileSync(
+      join(author, "two.ts"),
+      `import { one } from "./one.js";\n\nexport const two = one() + ${now};\n`,
+    );
+    run(author, "add", "-A");
+    run(author, "commit", "--quiet", "-m", `push ${now}`);
+    run(author, "push", "--quiet", "origin", "topic");
+    return now;
+  }
+
+  async function drawn(editor: ReturnType<typeof stub>) {
+    const panel = recorder();
+    await editor.serializer!.deserializeWebviewPanel(panel.panel, undefined);
+    for (let waited = 0; waited < 60_000; waited += 50) {
+      if (panel.page().includes("card-body")) return panel;
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    throw new Error("the graph never arrived");
+  }
+
+  /** Waits for a page carrying the line the second push added. */
+  async function awaits(panel: ReturnType<typeof recorder>, what: string) {
+    for (let waited = 0; waited < 60_000; waited += 50) {
+      if (panel.page().includes(what)) return true;
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    return false;
+  }
+
+  it("shows what was pushed when the tab is refreshed", async () => {
+    const editor = stub(forge(), { folder: reader, baseRef: "origin/main" });
+    const panel = await drawn(editor);
+    expect(panel.page()).toContain("one() + 2");
+
+    const now = pushAgain();
+
+    await editor.commands.get("odin.refresh")!();
+    expect(await awaits(panel, `one() + ${now}`)).toBe(true);
+  }, 120_000);
+
+  it("shows what was pushed when the tab comes back with the window", async () => {
+    const editor = stub(forge(), { folder: reader, baseRef: "origin/main" });
+    const panel = await drawn(editor);
+
+    // Whatever this tab's refs meant when it was written, they mean something
+    // else now: a tab may have been shut for a day.
+    const now = pushAgain();
+
+    const again = await drawn(stub(forge(), { folder: reader, baseRef: "origin/main" }));
+    expect(await awaits(again, `one() + ${now}`)).toBe(true);
+    expect(panel.page()).toBeTruthy();
+  }, 120_000);
+});
