@@ -1,0 +1,224 @@
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { parseUnifiedDiff } from "../src/diff/parse.js";
+import { buildGraph } from "../src/graph/build.js";
+import { readPatch } from "../src/git/diff.js";
+import { enrichPictures } from "../src/git/pictures.js";
+import { layoutGraph } from "../src/layout/layout.js";
+import { serializeGraph } from "../src/serialize.js";
+import type { ChangeGraph } from "../src/model/types.js";
+
+/**
+ * A real PNG, written rather than pasted.
+ *
+ * Small enough to build here and a genuine one: the parser reads a header, so a
+ * fixture that is not really a PNG would pass by accident or fail for the wrong
+ * reason. 37 by 19, because a square hides the one mistake that matters — width
+ * and height the wrong way round.
+ */
+function png(width: number, height: number): Buffer {
+  const crcTable: number[] = [];
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crcTable[n] = c >>> 0;
+  }
+  const crc = (buf: Buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff]! ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const tail = Buffer.alloc(4);
+    tail.writeUInt32BE(crc(body));
+    return Buffer.concat([head, body, tail]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 2;
+  // Uncompressed deflate blocks would need framing; zlib is to hand and the
+  // bytes after the header are never read by anything under test.
+  const rows = Buffer.alloc(height * (width * 3 + 1));
+  const { deflateSync } = require("node:zlib") as typeof import("node:zlib");
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(rows)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="16"><rect/></svg>\n';
+
+describe("a change with pictures in it", () => {
+  let repo: string;
+  let graph: ChangeGraph;
+
+  const run = (...args: string[]) =>
+    execFileSync("git", args, {
+      cwd: repo,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    });
+
+  beforeAll(async () => {
+    repo = mkdtempSync(join(tmpdir(), "odin-pics-"));
+    execFileSync("git", ["init", "--quiet", "-b", "main", repo]);
+    writeFileSync(join(repo, "readme.md"), "start\n");
+    run("add", "-A");
+    run("commit", "--quiet", "-m", "base");
+    run("branch", "base", "HEAD");
+
+    writeFileSync(join(repo, "logo.png"), png(37, 19));
+    writeFileSync(join(repo, "icon.png"), png(19, 37));
+    writeFileSync(join(repo, "mark.svg"), SVG);
+    // Named like a picture and holding nothing of the sort.
+    writeFileSync(join(repo, "fake.png"), "this is not a picture\n");
+    run("add", "-A");
+    run("commit", "--quiet", "-m", "pictures");
+
+    const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
+    graph = buildGraph(parseUnifiedDiff(patch), { meta });
+    await enrichPictures(graph, { cwd: repo });
+  }, 60_000);
+
+  afterAll(() => rmSync(repo, { recursive: true, force: true }));
+
+  const nodeFor = (path: string) => graph.nodes.find((n) => n.path === path)!;
+
+  it("measures each picture out of its own bytes", () => {
+    expect(nodeFor("logo.png").picture).toMatchObject({ width: 37, height: 19 });
+    expect(nodeFor("icon.png").picture).toMatchObject({ width: 19, height: 37 });
+  });
+
+  it("reads an SVG, and says it has a diff as well as a drawing", () => {
+    expect(nodeFor("mark.svg").picture).toMatchObject({
+      width: 48,
+      height: 16,
+      textual: true,
+    });
+  });
+
+  it("leaves a file that only looks like a picture entirely alone", () => {
+    /*
+     * The bytes decide. A card drawn from a name that lied is a broken-image
+     * glyph where the diff used to be, and the diff is the thing being
+     * reviewed.
+     */
+    expect(nodeFor("fake.png").picture).toBeUndefined();
+    expect(graph.drawings?.[nodeFor("fake.png").id]).toBeUndefined();
+  });
+
+  it("carries each drawing as a data URI of the right type", () => {
+    const drawing = graph.drawings?.[nodeFor("logo.png").id];
+    expect(drawing).toMatch(/^data:image\/png;base64,/);
+    // Round-trips to the same bytes the repository holds, magic number first.
+    const bytes = Buffer.from(drawing!.split(",")[1]!, "base64");
+    expect([...bytes.subarray(1, 4)].map((b) => String.fromCharCode(b)).join("")).toBe("PNG");
+  });
+
+  it("stops drawing once the change has spent its whole budget", async () => {
+    /*
+     * A per-file limit bounds one card and says nothing about a page. Forty
+     * screenshots each under the per-file limit is a document of a third of a
+     * gigabyte — not a slow page but a window that never comes back.
+     *
+     * The ones that do not fit keep no shape either: a card sized for a picture
+     * it has not got is an empty frame.
+     */
+    const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
+    const tight = buildGraph(parseUnifiedDiff(patch), { meta });
+    await enrichPictures(tight, { cwd: repo, maxTotalBytes: 100 });
+
+    const drawn = tight.nodes.filter((n) => n.picture !== undefined);
+    expect(drawn.length).toBeGreaterThan(0);
+    expect(drawn.length).toBeLessThan(3);
+    for (const node of tight.nodes) {
+      if (node.picture) expect(tight.drawings?.[node.id]).toBeTruthy();
+      else expect(tight.drawings?.[node.id]).toBeUndefined();
+    }
+  }, 30_000);
+
+  it("shapes each card like the picture it holds", () => {
+    const layout = layoutGraph(graph, {});
+    const card = (path: string) => layout.nodes.find((n) => n.path === path)!;
+
+    const wide = card("logo.png");
+    const tall = card("icon.png");
+    // The title and the padding are the difference between the card and the
+    // drawing, so the cards differ in height by the difference in the pictures.
+    expect(tall.height - wide.height).toBe(37 - 19);
+  });
+
+  it("keeps an SVG the width its markup earned", () => {
+    /*
+     * The one card that can be turned over. A reader switching between the
+     * drawing and the patch is asking about one file, and a card that changed
+     * width under them would shove every card beside it across the canvas.
+     */
+    const layout = layoutGraph(graph, {});
+    const svg = layout.nodes.find((n) => n.path === "mark.svg")!;
+    const widest = Math.max(...SVG.split("\n").map((line) => line.length));
+    expect(svg.width).toBeGreaterThan(widest);
+  });
+});
+
+describe("the document a change is exported as", () => {
+  const graph: ChangeGraph = {
+    schemaVersion: "0.1.0",
+    meta: { generator: "test" } as ChangeGraph["meta"],
+    nodes: [
+      {
+        id: "n:logo.png",
+        path: "logo.png",
+        status: "added",
+        language: "",
+        binary: true,
+        picture: { width: 37, height: 19, mime: "image/png", textual: false },
+        stats: { additions: 0, deletions: 0 },
+        hunks: [],
+        symbols: [],
+      },
+    ],
+    edges: [],
+    drawings: { "n:logo.png": "data:image/png;base64,AAAAAAAA" },
+  };
+
+  it("leaves the pictures themselves out", () => {
+    /*
+     * The graph object and the exported file are different things. A change
+     * with a dozen screenshots in it would otherwise serialise to a file mostly
+     * made of base64 — committed, diffed, and reviewed by somebody.
+     */
+    const written = serializeGraph(graph);
+    expect(written).not.toContain("base64");
+    expect(written).not.toContain("drawings");
+  });
+
+  it("keeps each picture's shape, which is what sized the card", () => {
+    // A document whose cards differ from the page's is a picture of a different
+    // change.
+    expect(JSON.parse(serializeGraph(graph)).nodes[0].picture).toEqual({
+      width: 37,
+      height: 19,
+      mime: "image/png",
+      textual: false,
+    });
+  });
+});

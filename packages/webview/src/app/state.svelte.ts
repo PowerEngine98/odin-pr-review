@@ -294,6 +294,7 @@ const DEFAULTS: ReaderSettings = {
   terminalWidth: 360,
   terminalHeight: 320,
   diagrams: {},
+  asMarkup: {},
 };
 
 /**

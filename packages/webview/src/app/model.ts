@@ -33,6 +33,21 @@ export interface NodeView {
    */
   column: number;
   isTest: boolean;
+  /**
+   * The picture this file holds, when it holds one.
+   *
+   * The shape, which is what the card was sized from. `textual` marks the one
+   * format that also has a diff — SVG — and so the one card that can be turned
+   * from a drawing into a patch and back.
+   */
+  picture?: { width: number; height: number; mime: string; textual: boolean };
+  /**
+   * The picture itself, as a data URI.
+   *
+   * Absent when the file was too large to embed or could not be read, in which
+   * case there is a `picture` nowhere and the card says what it always said.
+   */
+  drawing?: string;
   /** For colouring a suggestion in a comment; the card knows it, a path does not. */
   language: string;
   /** In the picture only because something points at it. */
@@ -450,6 +465,18 @@ export interface ReaderSettings {
    * the diagrams from one pull request turning up over the cards of the next.
    */
   diagrams?: Record<string, PinnedDiagram[]>;
+  /**
+   * Picture files the reader has turned over to see the markup behind them.
+   *
+   * Only ever SVG, which is the one format that is both a drawing and a file
+   * you can read. Keyed by path rather than by node id, so the choice survives
+   * a rebuild: an id is assigned when a graph is built and a path is the file.
+   *
+   * What is written down is the departures from the default, which is the
+   * drawing — so a file added to a change later is a picture, rather than
+   * inheriting a state nobody chose for it.
+   */
+  asMarkup?: Record<string, true>;
 }
 
 /** One pinned drawing: what it says, where it is, and how big. */

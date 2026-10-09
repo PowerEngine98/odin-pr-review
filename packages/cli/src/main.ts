@@ -5,6 +5,7 @@ import {
   buildGraph,
   currentBranch,
   enrichSnippets,
+  enrichPictures,
   graphFromRepo,
   inlineAvatars,
   layoutGraph,
@@ -179,6 +180,11 @@ async function render(
       const snippets = opts.patchFile
         ? new Map()
         : await enrichSnippets(graph, { cwd: opts.cwd });
+      // The pictures, before anything is laid out: an image card is sized from
+      // its picture's proportions, so a layout taken first is a layout of cards
+      // that did not yet know they were pictures. A patch read from a file has
+      // no repository behind it to read blobs out of.
+      if (!opts.patchFile) await enrichPictures(graph, { cwd: opts.cwd });
       /*
        * Whether import arrows are part of this picture.
        *

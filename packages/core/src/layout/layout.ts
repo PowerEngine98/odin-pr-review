@@ -14,6 +14,7 @@ import {
   type Snippet,
 } from "./display.js";
 import { folderOf } from "./folders.js";
+import { frame } from "./framing.js";
 import { DEFAULT_METRICS, type LayoutMetrics } from "./metrics.js";
 
 export interface PlacedNode {
@@ -273,6 +274,23 @@ function measureNodes(
         ? metrics.emptyCardHeight
         : metrics.titleHeight + metrics.padding * 2 + drawnRows * metrics.lineHeight;
 
+    /*
+     * A picture is shaped by the picture, not by the rows it has not got.
+     *
+     * Only ever the card's own shape. Which picture, and whether it is drawn at
+     * all, is the page's business — but the size has to be settled here,
+     * because the arrows are placed against it before any page exists.
+     *
+     * An SVG keeps the width its markup earned. It is the one picture that also
+     * has a diff, so a reader can turn it from a drawing into a patch and back,
+     * and a card that changed width under them would shove every card beside it
+     * across the canvas. Its height is free to move: the page measures that,
+     * which it already does for every fold.
+     */
+    const drawn = node.picture
+      ? frame(node.picture, metrics, node.picture.textual ? Math.round(width) : undefined)
+      : undefined;
+
     return {
       id: node.id,
       path: node.path,
@@ -281,8 +299,8 @@ function measureNodes(
       pairs,
       x: 0,
       y: 0,
-      width: Math.round(width),
-      height: Math.round(height),
+      width: drawn ? drawn.width : Math.round(width),
+      height: drawn ? drawn.height : Math.round(height),
       rank: 0,
       order: 0,
       visibleRows,

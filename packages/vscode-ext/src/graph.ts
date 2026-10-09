@@ -6,6 +6,7 @@ import {
   languageLookup,
   withoutTests,
   enrichSnippets,
+  enrichPictures,
   graphFromRepo,
   inlineAvatar,
   layoutGraph,
@@ -18,6 +19,7 @@ import {
   type Checkout,
   type GraphLayout,
   type Snippet,
+  type Drawings,
 } from "@odin/core";
 import { KotlinResolver } from "@odin/resolver-kotlin";
 import {
@@ -105,6 +107,14 @@ export interface BuiltGraph {
    * the same commits needs exactly the same answer.
    */
   snippets: Map<string, Snippet[]>;
+  /**
+   * The pictures in the change, as data URIs, by node id.
+   *
+   * Kept on the build beside the snippets and for the same reason: they are
+   * read out of the object database, and the next build over the same commits
+   * wants exactly the same answer.
+   */
+  drawings: Drawings;
   /** Which files this build had to redraw, when it was an incremental one. */
   redrawn?: string[];
   /**
@@ -304,7 +314,16 @@ export async function buildGraphForRepo(
       }),
     );
 
-    return arrange(graph, snippets, request.includeImports);
+    return arrange(
+      graph,
+      snippets,
+      // Read before anything is laid out: `enrichPictures` writes each
+      // picture's proportions onto its node and the engine sizes an image card
+      // from them, so a layout taken first is a layout of cards that did not
+      // yet know they were pictures.
+      await enrichPictures(graph, { cwd: request.cwd }),
+      request.includeImports,
+    );
   } finally {
     for (const checkout of checkouts) checkout.dispose();
   }
@@ -355,7 +374,15 @@ async function diffOnly(request: BuildRequest): Promise<BuiltGraph> {
     }),
   );
 
-  return { ...arrange(graph, snippets, request.includeImports), unresolved: true };
+  return {
+    ...arrange(
+      graph,
+      snippets,
+      await enrichPictures(graph, { cwd: request.cwd }),
+      request.includeImports,
+    ),
+    unresolved: true,
+  };
 }
 
 /**
@@ -557,8 +584,9 @@ async function provisional(
     ? await freshSnippets(graph, previous, cwd)
     : previous.snippets;
 
-  if (reshaped) return arrange(graph, snippets, includeImports);
-  return arrange(graph, snippets, includeImports, [...moved], withdrawn);
+  const drawings = await enrichPictures(graph, { cwd });
+  if (reshaped) return arrange(graph, snippets, drawings, includeImports);
+  return arrange(graph, snippets, drawings, includeImports, [...moved], withdrawn);
 }
 
 /**
@@ -693,6 +721,15 @@ function arrange(
   graph: ChangeGraph,
   snippets: Map<string, Snippet[]>,
   /**
+   * The pictures in the change, already read.
+   *
+   * Handed in rather than fetched here, because the nodes have to carry their
+   * proportions before anything is laid out — an image card is sized from them
+   * — and because the one caller that rebuilds from a previous build already
+   * has the answer and must not pay for it twice.
+   */
+  drawings: Drawings,
+  /**
    * Whether this reading was built with imports in it, which is the reader's
    * setting and not a property of the graph. The arrangement stacks the cards
    * in the order the parts are offered, so it has to split the change the way
@@ -708,6 +745,7 @@ function arrange(
     graph,
     shown,
     snippets,
+    drawings,
     layout: layoutGraph(shown, { snippets, includeImports }),
     layoutWithTests: layoutGraph(graph, { snippets, includeImports }),
     unifiedLayout: layoutGraph(shown, { snippets, unified: true, includeImports }),
@@ -755,5 +793,8 @@ function again(
   // Laid out again rather than reused: a line that grew wider makes its card
   // wider, and a card that has changed size moves the ones beside it. It is
   // tens of milliseconds against the seconds this skipped.
-  return arrange(graph, previous.snippets, includeImports, redrawn);
+  // The nodes were copied from the previous build, so each picture's shape
+  // came with them; the drawings themselves are on that build too. Nothing
+  // here has moved, so nothing is read again.
+  return arrange(graph, previous.snippets, previous.drawings, includeImports, redrawn);
 }

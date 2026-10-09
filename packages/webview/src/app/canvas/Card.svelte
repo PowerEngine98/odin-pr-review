@@ -217,6 +217,39 @@
    */
   const flat = $derived(simplified || !nearby);
 
+  /**
+   * Whether this card is the picture rather than a patch.
+   *
+   * Every readable picture is, except an SVG the reader has turned over. SVG is
+   * the one format that is also text, so it has both a drawing and a diff and
+   * the reader gets to say which they are looking at; everything else has no
+   * second form to offer and the question never arises.
+   *
+   * A file with no `drawing` is one that could not be read or was too large to
+   * embed, and it falls back to what it always was.
+   */
+  const asPicture = $derived(
+    !!node.drawing &&
+      !!node.picture &&
+      !(node.picture.textual && settings.asMarkup?.[node.path] === true),
+  );
+
+
+  /**
+   * Turns an SVG card from a drawing into its markup, or back.
+   *
+   * Written into the reader's own settings, which the host persists, so the
+   * choice survives a rebuilt page the way every other per-card choice does.
+   * A new object rather than the same one changed: a record altered in place is
+   * a record nothing is watching.
+   */
+  function toggleMarkup(): void {
+    const held = { ...(settings.asMarkup ?? {}) };
+    if (held[node.path]) delete held[node.path];
+    else held[node.path] = true;
+    settings.asMarkup = held;
+  }
+
   /** Whether the reader has marked this file read. */
   const viewed = $derived(ui.viewed.has(node.path));
 
@@ -1411,6 +1444,52 @@
         </svg>
       </button>
 
+      {#if node.picture?.textual && node.drawing}
+        <!--
+          The one picture that is also a file you can read.
+
+          An SVG is markup, so git produces an ordinary patch for it and the
+          card can show either thing — and which one is wanted depends entirely
+          on the change. A new icon is a picture; three altered path commands
+          are a diff, and drawing them tells the reviewer nothing about what
+          actually moved. Neither answer is right often enough to be the only
+          one, so the card offers both and the reader picks per file.
+
+          Remembered per file and across rebuilds, like every other choice they
+          make about a card.
+        -->
+        <button
+          class="as-markup"
+          class:on={settings.asMarkup?.[node.path] === true}
+          data-hint={settings.asMarkup?.[node.path] === true
+            ? "Show the drawing instead of the markup"
+            : "Show the markup instead of the drawing"}
+          title={settings.asMarkup?.[node.path] === true
+            ? "Show the drawing"
+            : "Show the markup"}
+          aria-label={settings.asMarkup?.[node.path] === true
+            ? "Show the drawing"
+            : "Show the markup"}
+          aria-pressed={settings.asMarkup?.[node.path] === true}
+          onclick={(event) => {
+            event.stopPropagation();
+            toggleMarkup();
+          }}
+        >
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <!-- A pair of angle brackets: the markup behind the drawing. -->
+            <path
+              d="M5.8 4.6 2.6 8l3.2 3.4M10.2 4.6 13.4 8l-3.2 3.4"
+              stroke="currentColor"
+              stroke-width="1.4"
+              fill="none"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      {/if}
+
       <!-- Both directions at once: this opens what a card is not showing, and
            closes it again. -->
       <button
@@ -1631,6 +1710,34 @@
         {#if head.additions}<span class="added">{head.additions}</span>{/if}
         {#if head.deletions}<span class="removed">{head.deletions}</span>{/if}
       </span>
+    </div>
+  {:else if asPicture && node.picture}
+    <!--
+      The file, drawn.
+
+      A diff has nothing to say about an image: git calls the blob binary, the
+      card draws no rows, and what a reviewer got was a filename and the word
+      "binary" — with the one thing they wanted to know, which is what the
+      picture looks like now, the one thing the card could not tell them.
+
+      The card was sized from the picture's own proportions in the engine, so
+      what is drawn here fits by construction rather than by being made to. The
+      checkerboard behind it is how transparency is read: an icon with a clear
+      background on a dark card is a shape with no edges, and against squares it
+      is plainly a picture with nothing behind it.
+    -->
+    <div class="card-body picture-view" bind:offsetHeight={bodyHeight}>
+      <!--
+        Sized by the box rather than by numbers worked out again here.
+
+        The engine already shaped this card around the picture's proportions,
+        so the room left under the title is the right shape by construction.
+        `contain` then fits the drawing to it and keeps the ratio exactly — a
+        second copy of that arithmetic in the page would agree with the engine
+        until one of the two changed, and the way a reader finds that out is a
+        picture overflowing its card or arrows landing in the margin beside it.
+      -->
+      <img class="card-picture" src={node.drawing} alt={head.name} draggable="false" />
     </div>
   {:else if settings.unified}
     <!-- Both readings measure themselves the same way: a split card is shorter,
@@ -1928,6 +2035,51 @@
      press does mean something. */
   .card-block,
   .card-body { cursor: default; }
+
+  /*
+   * The picture, in whatever room the title left it.
+   *
+   * Centred both ways because the card is sized to the picture's proportions
+   * and then held to a minimum width, so a small one has air either side of it;
+   * against the left edge it would read as a picture that failed to load to its
+   * full width.
+   */
+  .picture-view {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  /*
+   * `contain` is what keeps the ratio, and the two maximums are what give it
+   * something to contain against. Without them an intrinsically huge picture
+   * lays itself out at full size first and drags the card's own box with it.
+   *
+   * The squares behind it are how transparency is read. An icon with a clear
+   * background on a dark card is a shape with no edges — half of it simply
+   * missing — and against a checkerboard it is plainly a picture with nothing
+   * behind it, which is the thing the reviewer needs to be able to see.
+   */
+  .card-picture {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    /* Drawn as it was authored. A browser smoothing a 16-pixel icon up to the
+       card's width is showing the reader a blur rather than the icon. */
+    image-rendering: auto;
+    background-color: #ffffff;
+    background-image:
+      linear-gradient(45deg, rgba(0, 0, 0, 0.08) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(0, 0, 0, 0.08) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.08) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.08) 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  }
+
+  /* Set, the way the other switches in this bar read when they are on. */
+  .card-controls .as-markup.on { color: var(--vscode-textLink-foreground, #0a84ff); }
 
   /* The line the reader has just asked about, while the menu is over it.
      Global because the row is another component's markup: this component owns

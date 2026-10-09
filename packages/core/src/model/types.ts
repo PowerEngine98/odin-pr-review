@@ -1,3 +1,5 @@
+import type { Picture } from "../graph/pictures.js";
+
 /**
  * The Odin change-graph model.
  *
@@ -158,6 +160,21 @@ export interface FileNode {
   resolution?: ResolutionStatus;
   /** Matches this ecosystem's conventions for test code. */
   isTest?: boolean;
+  /**
+   * The picture this file holds, when it holds one.
+   *
+   * Set by reading the blob rather than by reading the name: a file called
+   * `.png` that is not one has no entry here, and its card says what every
+   * unreadable blob's card says.
+   *
+   * The shape and not the bytes. A card is sized in the extension host before
+   * any page exists, because the arrows are placed against those sizes, so the
+   * proportions have to travel with the graph — and the bytes must not, because
+   * a graph is a document people export and a change with a dozen screenshots
+   * in it would serialise to a file mostly made of base64. The drawing itself
+   * goes to the page separately, the way a snippet does.
+   */
+  picture?: Picture;
   /**
    * What this vertex stands for.
    *
@@ -347,4 +364,22 @@ export interface ChangeGraph {
   meta: GraphMeta;
   nodes: FileNode[];
   edges: Edge[];
+  /**
+   * The pictures in the change, as data URIs, by node id.
+   *
+   * Carried on the graph in memory and never written to a document:
+   * `serializeGraph` drops it, and there is a test that says so. The two are
+   * different things — this interface is the object the build passes around,
+   * and the exported file is the contract — and a change with a dozen
+   * screenshots in it would otherwise serialise to a file mostly made of
+   * base64.
+   *
+   * Here rather than threaded through the panel because the alternative was a
+   * tenth positional parameter on a function that already has nine, and because
+   * everything that draws a graph is already handed the graph. The shape of
+   * each picture does travel in the document, on its node, since that is what
+   * the card was sized from and a document that drew its cards differently from
+   * the page would not be a picture of the same change.
+   */
+  drawings?: Record<string, string>;
 }
