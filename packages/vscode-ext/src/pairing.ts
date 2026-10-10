@@ -1199,8 +1199,21 @@ export class PairingSession {
        * So the conversation is started again under a new name and the turn is
        * run a second time. The reader loses what the agent remembered, which is
        * already lost; what they do not lose is the answer.
+       *
+       * A stopped turn is not that, and the distinction is the whole of this
+       * condition. Stopping exits non-zero like every other unhappy ending, so
+       * read off the code alone the reader pressing stop looked identical to a
+       * transcript that had been deleted — and the answer to one is the worst
+       * possible answer to the other. A conversation that was alive a second
+       * ago was thrown away and its memory with it, and then the turn that had
+       * just been cancelled was run again from the top, which is the one thing
+       * stop has to mean it will not do.
+       *
+       * Measured, not reasoned: the session the log said could not be resumed
+       * was still on disk, two hundred lines of it, with the right working
+       * directory recorded throughout.
        */
-      if (run.code !== 0 && carrying && kind.session) {
+      if (run.code !== 0 && !run.stopped && carrying && kind.session) {
         say(`\n[odin] could not resume ${carrying}; starting a new conversation\n`);
         delete this.sessions[agentId];
         this.save();

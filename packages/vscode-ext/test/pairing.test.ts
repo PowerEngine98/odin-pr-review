@@ -781,6 +781,93 @@ describe("remembering which conversation an agent is having", () => {
     expect(again.transcript("claude")).toContain("could not resume");
   }, 40_000);
 
+  it("keeps the conversation when the reader stopped the turn", async () => {
+    /*
+     * Stopping exits non-zero, like every other unhappy ending, and the guard
+     * above read the code alone — so pressing stop looked exactly like a
+     * transcript that had been deleted, and got the answer meant for one: the
+     * live conversation was thrown away, its memory with it, and the turn the
+     * reader had just cancelled was run again from the top.
+     *
+     * The report that found it had the session still on disk, two hundred lines
+     * of it, while the log said it could not be resumed.
+     */
+    const bin = mkdtempSync(join(tmpdir(), "odin-stop-bin-"));
+    const where = mkdtempSync(join(tmpdir(), "odin-stop-repo-"));
+    const file = join(bin, "claude");
+    /*
+     * Long enough to still be running when stop arrives, prints a marker first
+     * so a second run would show as a second marker, and — the part that makes
+     * this a test of anything — answers the signal itself.
+     *
+     * A process killed outright reports no exit code at all, and the runner
+     * reads that as zero; a stub that merely dies therefore never reaches the
+     * branch under test, and the test passes whatever the branch says. Real
+     * tools trap the signal and exit non-zero, which is exactly why the fault
+     * existed: stopping looked like failing.
+     *
+     * The sleep keeps its own output, because a background one holding the
+     * pipe open would keep the run alive long after the shell had gone.
+     */
+    writeFileSync(
+      file,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "--version" ]; then echo "c"; exit 0; fi',
+        "trap 'exit 143' TERM",
+        'echo "TURN-MARKER"',
+        "sleep 30 >/dev/null 2>&1 &",
+        "wait",
+      ].join("\n") + "\n",
+    );
+    chmodSync(file, 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+
+    try {
+      const store = memento();
+      // A conversation already in hand, which is what makes the resume branch
+      // reachable at all.
+      const carried = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      (store as unknown as { held: Record<string, unknown> }).held["odin.pairing"] = {
+        reading: { comments: [], next: -1, sessions: { claude: carried } },
+      };
+      const paired = new PairingSession(store as never, "reading", where, () => {});
+      await paired.look(true);
+      paired.setOrder(["claude"]);
+
+      paired.ask({ path: "a.ts", line: 1, side: "RIGHT", body: "go", author: "m" });
+      await until(() => paired.busy().includes("claude"), 20_000);
+      await until(() => paired.transcript("claude").includes("TURN-MARKER"), 20_000);
+      paired.stop("claude");
+
+      /*
+       * Settled either way, rather than waited on until one of them happens.
+       *
+       * A stopped turn ends at once; a turn being run a second time prints its
+       * marker at once too. Waiting only for the first would hang for the whole
+       * of the second run and report nothing but a timeout, which says that
+       * something is wrong and not what.
+       */
+      const marks = () => paired.transcript("claude").match(/TURN-MARKER/g) ?? [];
+      for (let waited = 0; waited < 6_000; waited += 50) {
+        if (!paired.busy().includes("claude") || marks().length > 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+
+      // The conversation is the reader's to lose, and they did not ask to.
+      expect(paired.transcript("claude")).not.toContain("could not resume");
+      expect(paired.session("claude")).toBe(carried);
+      // And stop means stop: the cancelled turn is not run a second time.
+      expect(marks()).toHaveLength(1);
+      expect(paired.busy()).not.toContain("claude");
+    } finally {
+      process.env.PATH = path;
+      rmSync(bin, { recursive: true, force: true });
+      rmSync(where, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("forgets the conversations without forgetting the thread", async () => {
     const paired = await session(memento());
     paired.ask({ ...where, body: "one" });
