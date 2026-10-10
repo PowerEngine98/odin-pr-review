@@ -28,6 +28,7 @@
   import Card from "./canvas/Card.svelte";
   import Chrome from "./chrome/Chrome.svelte";
   import Checks from "./hud/Checks.svelte";
+  import Deciding from "./hud/Deciding.svelte";
   import Pairing from "./hud/Pairing.svelte";
   import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
@@ -412,6 +413,10 @@
     at={ui.thread?.at ?? null}
     onclose={() => (ui.thread = null)}
   />
+
+  <!-- The agent is stopped until this is answered, and there is no timeout
+       behind it, so it is drawn over everything and takes the keys with it. -->
+  <Deciding />
 
   <Composer
     {chromeBottom}

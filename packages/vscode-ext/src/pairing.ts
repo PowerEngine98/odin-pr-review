@@ -2,6 +2,8 @@ import {
   addressedTo,
   assign,
   describeRequest,
+  stepsIn,
+  type Step,
   doingOf,
   permitted,
   avatarFor,
@@ -1236,6 +1238,9 @@ export class PairingSession {
        * that answers nothing.
        */
       for (const [id] of [...this.waitingOn]) this.answer(id, false);
+      // And the questions with them, for the same reason: nobody is waiting on
+      // the answer any more, so a stepper left on screen answers nothing.
+      for (const [id] of [...this.askingAbout]) this.dropQuestion(id);
     }
 
     /*
@@ -1555,6 +1560,23 @@ export class PairingSession {
     { settle: (decision: unknown) => void; comment: number }
   >();
 
+  /**
+   * Questions parked on a reader, which are not the same as permission.
+   *
+   * An agent asks two kinds of thing and they settle differently. Permission is
+   * yes or no and the answer is the behaviour; a question is a choice among
+   * options the agent worked out, and the answer goes back inside the tool's
+   * own input, under `answers`, keyed by the question. Both arrive down the one
+   * socket, because the asking tool sees every call — which is how this was
+   * confirmed rather than assumed: `AskUserQuestion` turns up there with its
+   * questions intact, and an answer handed back that way is read by the agent
+   * as the reader's own.
+   */
+  private readonly askingAbout = new Map<
+    string,
+    { settle: (decision: unknown) => void; agent: string; steps: Step[]; input: unknown }
+  >();
+
   /** Where the spawnable stub lives. Set once, at activation. */
   static stub = "";
 
@@ -1607,6 +1629,24 @@ export class PairingSession {
     const agentId = this.asking ?? "";
     const rung = this.agencyOf(agentId);
 
+    /*
+     * A question is asked whatever the rung says.
+     *
+     * The rung is about what an agent may *do* without being interrupted, and
+     * this is not an agent doing anything — it is one asking the reader to
+     * choose. Letting it through because the reader had granted broad
+     * permission would answer a question nobody read, with whatever the tool
+     * makes of an empty answer.
+     */
+    const steps = tool === "AskUserQuestion" ? stepsIn(asked.input) : undefined;
+    if (steps) {
+      const id = randomUUID();
+      return new Promise((settle) => {
+        this.askingAbout.set(id, { settle, agent: agentId, steps, input: asked.input });
+        this.changed();
+      });
+    }
+
     if (permitted(rung, doingOf(tool))) {
       return Promise.resolve({ behavior: "allow", updatedInput: asked.input ?? {} });
     }
@@ -1639,6 +1679,44 @@ export class PairingSession {
         ? { behavior: "allow", updatedInput: {} }
         : { behavior: "deny", message: "The reviewer declined this." },
     );
+  }
+
+  /**
+   * The reader's answers to a question, which end the waiting.
+   *
+   * Handed back inside the tool's own input rather than as a behaviour: the
+   * asking tool reads `answers` keyed by each question's text, and a choice the
+   * reader typed rather than picked goes back word for word.
+   */
+  answerQuestions(id: string, answers: Record<string, string>): void {
+    const held = this.askingAbout.get(id);
+    if (!held) return;
+    this.askingAbout.delete(id);
+    const input = (held.input ?? {}) as Record<string, unknown>;
+    held.settle({ behavior: "allow", updatedInput: { ...input, answers } });
+    this.changed();
+  }
+
+  /**
+   * A question nobody is going to answer, because the turn is over.
+   *
+   * Denied rather than answered with nothing: an empty answer is a thing the
+   * agent would act on, and it was never given.
+   */
+  private dropQuestion(id: string): void {
+    const held = this.askingAbout.get(id);
+    if (!held) return;
+    this.askingAbout.delete(id);
+    held.settle({ behavior: "deny", message: "The reviewer did not answer." });
+  }
+
+  /** Every question waiting on the reader, for the page to put in front of them. */
+  deciding(): { id: string; agent: string; steps: Step[] }[] {
+    return [...this.askingAbout].map(([id, held]) => ({
+      id,
+      agent: held.agent,
+      steps: held.steps,
+    }));
   }
 
   /** Everything a reader has been asked and has not answered. */

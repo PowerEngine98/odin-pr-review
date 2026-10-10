@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -865,6 +865,114 @@ describe("remembering which conversation an agent is having", () => {
       process.env.PATH = path;
       rmSync(bin, { recursive: true, force: true });
       rmSync(where, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("puts an agent's question in front of the reader, and answers it", async () => {
+    /*
+     * The whole round trip, against the protocol as it actually is.
+     *
+     * Measured before any of this was written: `AskUserQuestion` arrives at the
+     * asking tool like every other call, carrying its questions, and an answer
+     * handed back inside the tool's own input under `answers` — keyed by the
+     * question's text — is read by the agent as the reader's own. An answer on
+     * none of the offered lists comes back verbatim.
+     *
+     * The stub stands in for the agent rather than for the asking stub: that
+     * one speaks MCP and is tested where it lives. What is under test here is
+     * the half that belongs to Odin — that a question is not swallowed by the
+     * rung, that it reaches the reader, and that what they choose goes back in
+     * the shape the tool reads.
+     */
+    const bin = mkdtempSync(join(tmpdir(), "odin-ask-bin-"));
+    const home = mkdtempSync(join(tmpdir(), "odin-ask-repo-"));
+    const reply = join(home, "reply.json");
+
+    // Finds the socket the way the real asking stub is told about it — out of
+    // the mcp config Odin wrote — and asks down it.
+    const asker = join(bin, "ask.mjs");
+    writeFileSync(
+      asker,
+      [
+        'import { readFileSync, writeFileSync } from "node:fs";',
+        'import { createConnection } from "node:net";',
+        "const argv = process.argv.slice(2);",
+        'const config = argv[argv.indexOf("--mcp-config") + 1];',
+        "const held = JSON.parse(readFileSync(config, 'utf8'));",
+        "const sock = held.mcpServers.odin.args[1];",
+        "const socket = createConnection(sock);",
+        "let got = '';",
+        'socket.on("data", (chunk) => {',
+        "  got += String(chunk);",
+        "  if (!got.includes('\\n')) return;",
+        `  writeFileSync(${JSON.stringify(reply)}, got);`,
+        "  process.stdout.write('ASKED');",
+        "  socket.end();",
+        "  process.exit(0);",
+        "});",
+        'socket.on("connect", () => socket.write(JSON.stringify({',
+        '  tool: "AskUserQuestion",',
+        "  input: { questions: [{",
+        '    question: "Which colour for the shed?",',
+        '    header: "Colour",',
+        '    options: [{ label: "Red", description: "Loud." }, { label: "Blue", description: "Quiet." }],',
+        "    multiSelect: false,",
+        "  }] },",
+        '  id: "toolu_1",',
+        "}) + '\\n'));",
+      ].join("\n") + "\n",
+    );
+    const file = join(bin, "claude");
+    writeFileSync(
+      file,
+      '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "c"; exit 0; fi\n' +
+        `exec "${process.execPath}" ${asker} "$@"\n`,
+    );
+    chmodSync(file, 0o755);
+
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+    const stub = PairingSession.stub;
+    // The asking flags are only added when there is a stub on disk to name.
+    PairingSession.stub = asker;
+
+    try {
+      const paired = new PairingSession(memento() as never, "reading", home, () => {});
+      await paired.look(true);
+      paired.setOrder(["claude"]);
+      paired.ask({ path: "a.ts", line: 1, side: "RIGHT", body: "ask me", author: "m" });
+
+      await until(() => paired.deciding().length > 0, 20_000);
+      const [question] = paired.deciding();
+      // The rung does not cover this. Being allowed to edit freely is not being
+      // allowed to answer a question on the reader's behalf.
+      expect(question!.agent).toBe("claude");
+      expect(question!.steps).toHaveLength(1);
+      expect(question!.steps[0]!.header).toBe("Colour");
+      expect(question!.steps[0]!.options.map((o) => o.label)).toEqual(["Red", "Blue"]);
+
+      paired.answerQuestions(question!.id, {
+        "Which colour for the shed?": "Purple with yellow spots",
+      });
+      await until(() => paired.deciding().length === 0, 10_000);
+      await until(() => existsSync(reply), 10_000);
+
+      const sent = JSON.parse(readFileSync(reply, "utf8")) as {
+        behavior: string;
+        updatedInput: { answers: Record<string, string>; questions: unknown[] };
+      };
+      expect(sent.behavior).toBe("allow");
+      // Inside the tool's own input, keyed by the question, and word for word.
+      expect(sent.updatedInput.answers).toEqual({
+        "Which colour for the shed?": "Purple with yellow spots",
+      });
+      // The questions go back with it: this is the tool's input, amended.
+      expect(sent.updatedInput.questions).toHaveLength(1);
+    } finally {
+      process.env.PATH = path;
+      PairingSession.stub = stub;
+      rmSync(bin, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     }
   }, 60_000);
 

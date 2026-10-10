@@ -41,6 +41,7 @@ export * from "./agents/run.js";
 export * from "./agents/stream.js";
 export * from "./agents/marks.js";
 export * from "./agents/approval.js";
+export * from "./agents/deciding.js";
 export * from "./agents/queue.js";
 export * from "./agents/settling.js";
 export * from "./serialize.js";

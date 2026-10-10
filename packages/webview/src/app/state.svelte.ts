@@ -3,6 +3,7 @@
 // made. Aliased at the door rather than renamed, so each stays what it is
 // called in the file it lives in.
 import type { Delta as LedgerEntry } from "@odin/core/agents/deltas.js";
+import type { Step } from "@odin/core/agents/deciding.js";
 import { deltaOf, type Delta } from "./canvas/deltas.js";
 import { fileDrafts, load, shelfOf, type Draft } from "./panels/drafts.js";
 import { partPaths } from "./parts.js";
@@ -458,6 +459,14 @@ export const ui = $state({
    * which is where somebody staring at a stalled log will be looking.
    */
   pending: [] as { id: string; what: string }[],
+  /**
+   * Questions an agent has stopped on, waiting for the reader to choose.
+   *
+   * Not the same as `pending`, which is permission — yes or no about something
+   * the agent wants to do. These are a choice among options it worked out, and
+   * the turn is stopped on every one of them until it is answered.
+   */
+  deciding: [] as { id: string; agent: string; steps: Step[] }[],
   /**
    * What the reader has asked that nobody has started on yet.
    *
@@ -1099,6 +1108,9 @@ export function listen(): void {
         }
         if (Array.isArray(message.pending)) {
           ui.pending = message.pending as { id: string; what: string }[];
+        }
+        if (Array.isArray(message.deciding)) {
+          ui.deciding = message.deciding as { id: string; agent: string; steps: Step[] }[];
         }
         if (Array.isArray(message.queued)) {
           ui.queued = message.queued as { id: number; body: string; addressee?: string }[];

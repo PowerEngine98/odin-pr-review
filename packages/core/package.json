@@ -14,6 +14,10 @@
       "types": "./dist/agents/deltas.d.ts",
       "default": "./dist/agents/deltas.js"
     },
+    "./agents/deciding.js": {
+      "types": "./dist/agents/deciding.d.ts",
+      "default": "./dist/agents/deciding.js"
+    },
     "./agents/marks.js": {
       "types": "./dist/agents/marks.d.ts",
       "default": "./dist/agents/marks.js"

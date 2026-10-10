@@ -1427,6 +1427,11 @@ export class GraphPanel {
       carrying: this.paired?.carrying() ?? [],
       // What the reader has been asked and not yet answered.
       pending: this.paired?.pending() ?? [],
+      // And the questions, which are a different kind of asking: a choice among
+      // options the agent worked out rather than a yes or a no. The turn is
+      // stopped on each of these, so they travel with every update rather than
+      // being announced once and missed.
+      deciding: this.paired?.deciding() ?? [],
       // And what they have asked that nobody has started on. The queue is only
       // visible in the margins otherwise, which is not where somebody watching
       // an agent work is looking.
@@ -2856,6 +2861,13 @@ export class GraphPanel {
       }
       if (message.type === "answerApproval") {
         this.paired?.answer(message.payload.id, message.payload.allow === true);
+        return;
+      }
+      if (message.type === "answerQuestions") {
+        this.paired?.answerQuestions(
+          message.payload.id,
+          (message.payload.answers ?? {}) as Record<string, string>,
+        );
         return;
       }
       if (message.type === "forgetSessions") {
