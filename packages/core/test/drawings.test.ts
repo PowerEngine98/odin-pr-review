@@ -10,6 +10,7 @@ import { buildGraph } from "../src/graph/build.js";
 import { readPatch } from "../src/git/diff.js";
 import { enrichPictures } from "../src/git/pictures.js";
 import { layoutGraph } from "../src/layout/layout.js";
+import { graphDelta, rowsOnly } from "../src/graph/delta.js";
 import { serializeGraph } from "../src/serialize.js";
 import type { ChangeGraph } from "../src/model/types.js";
 
@@ -21,7 +22,7 @@ import type { ChangeGraph } from "../src/model/types.js";
  * reason. 37 by 19, because a square hides the one mistake that matters — width
  * and height the wrong way round.
  */
-function png(width: number, height: number): Buffer {
+function png(width: number, height: number, seed = 0): Buffer {
   const crcTable: number[] = [];
   for (let n = 0; n < 256; n += 1) {
     let c = n;
@@ -49,6 +50,9 @@ function png(width: number, height: number): Buffer {
   // Uncompressed deflate blocks would need framing; zlib is to hand and the
   // bytes after the header are never read by anything under test.
   const rows = Buffer.alloc(height * (width * 3 + 1));
+  // So that two pictures of the same size are genuinely different files, which
+  // is the case the live comparison has to notice.
+  rows.fill(seed);
   const { deflateSync } = require("node:zlib") as typeof import("node:zlib");
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -154,6 +158,57 @@ describe("a change with pictures in it", () => {
       else expect(tight.drawings?.[node.id]).toBeUndefined();
     }
   }, 30_000);
+
+  it("notices an image whose bytes changed under an identical patch", async () => {
+    /*
+     * The live-mode fault this was written for.
+     *
+     * Git reports a binary blob as binary and says nothing else, so replacing
+     * an image produces a patch byte-for-byte identical to the one before it:
+     * same status, same zero stats, no hunks — and, for an image redrawn at the
+     * same size, the same dimensions too. Every fact the comparison looked at
+     * was unchanged, so a live reading read the new picture correctly and then
+     * threw it away as not news. The card went on showing the old image until
+     * something forced a full rebuild.
+     */
+    const read = async () => {
+      const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
+      const g = buildGraph(parseUnifiedDiff(patch), { meta });
+      await enrichPictures(g, { cwd: repo });
+      return g;
+    };
+
+    const before = await read();
+    // The same picture, redrawn: identical dimensions, different bytes.
+    writeFileSync(join(repo, "logo.png"), png(37, 19, 0xcc));
+    run("add", "-A");
+    run("commit", "--quiet", "-m", "redrawn");
+    const after = await read();
+
+    const id = after.nodes.find((n) => n.path === "logo.png")!.id;
+    expect(before.nodes.find((n) => n.id === id)!.picture!.digest).not.toBe(
+      after.nodes.find((n) => n.id === id)!.picture!.digest,
+    );
+    expect(graphDelta(before, after).changed).toContain(id);
+    // And the shortcut that would have reused the picture already on screen
+    // refuses: a different image is not "only the rows differ".
+    expect(rowsOnly(before, after)).toBeUndefined();
+  }, 60_000);
+
+  it("says nothing changed when the pictures are the same", async () => {
+    // The other half, and the one that makes the first safe: a digest computed
+    // afresh on every build must not make every build look like news.
+    const read = async () => {
+      const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
+      const g = buildGraph(parseUnifiedDiff(patch), { meta });
+      await enrichPictures(g, { cwd: repo });
+      return g;
+    };
+    const first = await read();
+    const second = await read();
+    expect(graphDelta(first, second).changed).toEqual([]);
+    expect(rowsOnly(first, second)).toBeDefined();
+  }, 60_000);
 
   it("shapes each card like the picture it holds", () => {
     const layout = layoutGraph(graph, {});

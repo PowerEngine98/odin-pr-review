@@ -6,7 +6,6 @@ import {
   languageLookup,
   withoutTests,
   enrichSnippets,
-  enrichPictures,
   graphFromRepo,
   inlineAvatar,
   layoutGraph,
@@ -314,16 +313,7 @@ export async function buildGraphForRepo(
       }),
     );
 
-    return arrange(
-      graph,
-      snippets,
-      // Read before anything is laid out: `enrichPictures` writes each
-      // picture's proportions onto its node and the engine sizes an image card
-      // from them, so a layout taken first is a layout of cards that did not
-      // yet know they were pictures.
-      await enrichPictures(graph, { cwd: request.cwd }),
-      request.includeImports,
-    );
+    return arrange(graph, snippets, request.includeImports);
   } finally {
     for (const checkout of checkouts) checkout.dispose();
   }
@@ -374,15 +364,7 @@ async function diffOnly(request: BuildRequest): Promise<BuiltGraph> {
     }),
   );
 
-  return {
-    ...arrange(
-      graph,
-      snippets,
-      await enrichPictures(graph, { cwd: request.cwd }),
-      request.includeImports,
-    ),
-    unresolved: true,
-  };
+  return { ...arrange(graph, snippets, request.includeImports), unresolved: true };
 }
 
 /**
@@ -584,9 +566,8 @@ async function provisional(
     ? await freshSnippets(graph, previous, cwd)
     : previous.snippets;
 
-  const drawings = await enrichPictures(graph, { cwd });
-  if (reshaped) return arrange(graph, snippets, drawings, includeImports);
-  return arrange(graph, snippets, drawings, includeImports, [...moved], withdrawn);
+  if (reshaped) return arrange(graph, snippets, includeImports);
+  return arrange(graph, snippets, includeImports, [...moved], withdrawn);
 }
 
 /**
@@ -721,15 +702,6 @@ function arrange(
   graph: ChangeGraph,
   snippets: Map<string, Snippet[]>,
   /**
-   * The pictures in the change, already read.
-   *
-   * Handed in rather than fetched here, because the nodes have to carry their
-   * proportions before anything is laid out — an image card is sized from them
-   * — and because the one caller that rebuilds from a previous build already
-   * has the answer and must not pay for it twice.
-   */
-  drawings: Drawings,
-  /**
    * Whether this reading was built with imports in it, which is the reader's
    * setting and not a property of the graph. The arrangement stacks the cards
    * in the order the parts are offered, so it has to split the change the way
@@ -745,7 +717,9 @@ function arrange(
     graph,
     shown,
     snippets,
-    drawings,
+    // Read where the graph was read, so that the two comparisons a live reading
+    // makes are both made against graphs that know about their pictures.
+    drawings: new Map(Object.entries(graph.drawings ?? {})),
     layout: layoutGraph(shown, { snippets, includeImports }),
     layoutWithTests: layoutGraph(graph, { snippets, includeImports }),
     unifiedLayout: layoutGraph(shown, { snippets, unified: true, includeImports }),
@@ -793,8 +767,8 @@ function again(
   // Laid out again rather than reused: a line that grew wider makes its card
   // wider, and a card that has changed size moves the ones beside it. It is
   // tens of milliseconds against the seconds this skipped.
-  // The nodes were copied from the previous build, so each picture's shape
-  // came with them; the drawings themselves are on that build too. Nothing
-  // here has moved, so nothing is read again.
-  return arrange(graph, previous.snippets, previous.drawings, includeImports, redrawn);
+  // The nodes were copied from the previous build, so each picture's shape came
+  // with them — and this route is only reached when nothing but line text
+  // differs, which `onlyRows` will not say of a file whose picture changed.
+  return arrange(graph, previous.snippets, includeImports, redrawn);
 }

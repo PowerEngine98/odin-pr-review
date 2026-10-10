@@ -31,6 +31,22 @@ export interface Picture {
   /** For the data URI the page draws it from. */
   mime: string;
   /**
+   * What these particular bytes are, short.
+   *
+   * Set when the picture is read out of a repository, and absent when a size
+   * was parsed from bytes on their own. It exists because a picture is the one
+   * kind of file whose card can change completely while every other fact about
+   * it stays identical: git reports a binary blob as binary and says nothing
+   * else, so the patch for a redrawn icon is byte-for-byte the patch for the
+   * old one, the stats are the same zeroes, and the dimensions are very often
+   * unchanged too.
+   *
+   * Without this, a live reading comparing two builds found nothing different
+   * and never redrew — the new image was read correctly and then thrown away as
+   * not news.
+   */
+  digest?: string;
+  /**
    * Whether this one also has a diff worth reading.
    *
    * True only for SVG: it is text, so git produces an ordinary patch for it and

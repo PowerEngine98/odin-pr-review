@@ -47,6 +47,17 @@ function fingerprint(node: FileNode): string {
     node.prevPath ?? "",
     node.status,
     node.binary,
+    /*
+     * Which image this is, when it is one.
+     *
+     * A picture is the one file whose card can change completely while every
+     * other fact here stays identical: git says "binary" and nothing more, so
+     * the patch for a redrawn icon is the patch for the old one, the stats are
+     * the same zeroes, and the dimensions are usually unchanged as well. Left
+     * out, a live reading read the new image correctly and then discarded it as
+     * not news, and the card went on showing the old one until a full rebuild.
+     */
+    node.picture?.digest ?? "",
     node.stats.additions,
     node.stats.deletions,
     node.hunks.map((hunk) => [
@@ -220,6 +231,9 @@ function onlyRows(before: FileNode, after: FileNode): boolean {
     before.prevPath !== after.prevPath ||
     before.status !== after.status ||
     before.binary !== after.binary ||
+    // A different image is not "only the rows differ": it has no rows, and the
+    // shortcut this guards would reuse the picture already on screen.
+    before.picture?.digest !== after.picture?.digest ||
     before.language !== after.language ||
     before.stats.additions !== after.stats.additions ||
     before.stats.deletions !== after.stats.deletions ||

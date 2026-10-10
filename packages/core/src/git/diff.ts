@@ -4,6 +4,7 @@ import { buildGraph } from "../graph/build.js";
 import { annotateTests } from "../graph/tests.js";
 import type { ChangeGraph, GraphMeta, PullRequest } from "../model/types.js";
 import type { Author } from "../model/types.js";
+import { enrichPictures } from "./pictures.js";
 import { readPullRequest } from "./pullRequest.js";
 import {
   currentBranch,
@@ -492,7 +493,25 @@ const REMOTES = new Set(["origin", "upstream", "fork"]);
 export async function graphFromRepo(req: DiffRequest): Promise<ChangeGraph> {
   const { patch, meta } = await readPatch(req);
   const files: ParsedFile[] = parseUnifiedDiff(patch);
-  return annotateTests(buildGraph(files, { meta }));
+  const graph = annotateTests(buildGraph(files, { meta }));
+
+  /*
+   * The pictures, read here rather than by each caller afterwards.
+   *
+   * Every caller needs them before it does anything else with the graph, and
+   * for two different reasons that both bite. An image card is sized from its
+   * picture's proportions, so a layout taken first is a layout of cards that do
+   * not yet know they are pictures. And a live reading decides whether a
+   * rebuild is worth redrawing by comparing two graphs — if only one of them
+   * has been through this, every rebuild looks like a change, and if neither
+   * has, a redrawn image looks like no change at all. It was the second of
+   * those: the new image was read correctly and discarded as not news.
+   *
+   * A change with no pictures pays nothing; the filter is the file's extension
+   * and stops before any git runs.
+   */
+  await enrichPictures(graph, req);
+  return graph;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
@@ -101,7 +102,10 @@ export async function enrichPictures(
     if (spent + bytes.length > budget) continue;
     spent += bytes.length;
 
-    node.picture = picture;
+    // What these bytes are, so that a redrawn image is seen as a change at all.
+    // Everything else about a binary file stays identical when its contents are
+    // replaced: see the note on `Picture.digest`.
+    node.picture = { ...picture, digest: digestOf(bytes) };
     drawings.set(node.id, dataUri(picture, bytes));
   }
 
@@ -117,6 +121,18 @@ export async function enrichPictures(
 /** Which side of the comparison a card shows, which is the one to draw. */
 function sideOf(node: FileNode): Side {
   return node.status === "deleted" ? "base" : "head";
+}
+
+/**
+ * These bytes, short enough to sit on a node and in a document.
+ *
+ * Sixteen hex characters of SHA-256. It is compared against another digest of
+ * the same kind and never used to prove anything about the bytes to anybody
+ * else, so the only property wanted is that two different images do not collide
+ * in one reading of one change.
+ */
+function digestOf(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 
 /** The picture as a page can hold it. */
