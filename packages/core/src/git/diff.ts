@@ -4,6 +4,7 @@ import { buildGraph } from "../graph/build.js";
 import { annotateTests } from "../graph/tests.js";
 import type { ChangeGraph, GraphMeta, PullRequest } from "../model/types.js";
 import type { Author } from "../model/types.js";
+import { landedAt } from "./landed.js";
 import { enrichPictures } from "./pictures.js";
 import { readPullRequest } from "./pullRequest.js";
 import {
@@ -235,7 +236,30 @@ export async function readPatch(req: DiffRequest): Promise<{
   const since = req.sinceRef
     ? await sinceCommit(req.sinceRef, merged, headRef, req)
     : undefined;
-  const base = since ?? merged;
+
+  /*
+   * A change that has already landed, measured from where it landed.
+   *
+   * The fork point is the right place to measure an open change from and the
+   * wrong one the moment it is merged — the whole argument is in `landed.ts`.
+   * Only taken when this checkout actually has the commit: the forge names it,
+   * and a repository that has not fetched since the merge would otherwise be
+   * handed a revision it cannot resolve, several layers below anything that
+   * knows which change is being read.
+   */
+  const landed = landedAt({
+    live: dirty,
+    ...(pull?.state ? { state: pull.state } : {}),
+    ...(pull?.mergeCommit ? { mergeCommit: pull.mergeCommit } : {}),
+  });
+  const here =
+    landed && (await revParse(`${landed}^{commit}`, req).catch(() => ""))
+      ? landed
+      : undefined;
+
+  // What the reader asked for beats what was worked out for them: "since my
+  // last review" is a question about a point they named.
+  const base = since ?? here ?? merged;
 
   const args = [
     "diff",

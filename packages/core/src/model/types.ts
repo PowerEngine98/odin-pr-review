@@ -282,6 +282,16 @@ export interface PullRequest {
    * they disagree the reader almost always means this one.
    */
   baseRefName?: string;
+  /**
+   * The commit that carried this change onto its base, once it has landed.
+   *
+   * The forge has to say, because nothing local can work it out: a squash or a
+   * rebase puts the branch's content on the base under a new commit, so the
+   * branch tip is an ancestor of nothing and the content matches while no sha
+   * does. It is what a reading of the files on disk is measured from after a
+   * merge — see `landed.ts`.
+   */
+  mergeCommit?: string;
   /** `APPROVED`, `CHANGES_REQUESTED`, `REVIEW_REQUIRED`, or absent. */
   reviewDecision?: string;
   /** Who has been asked to look, and what they have said so far. */

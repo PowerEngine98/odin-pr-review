@@ -21,7 +21,7 @@ export async function readPullRequest(
     [
       "pr", "view", branch,
       "--json",
-      "number,title,url,isDraft,state,baseRefName,reviewDecision,reviewRequests,latestReviews",
+      "number,title,url,isDraft,state,baseRefName,mergeCommit,reviewDecision,reviewRequests,latestReviews",
     ],
     options,
   );
@@ -32,6 +32,7 @@ export async function readPullRequest(
       isDraft?: boolean;
       state?: string;
       baseRefName?: string;
+      mergeCommit?: { oid?: string } | null;
       reviewDecision?: string | null;
       reviewRequests?: { login?: string; name?: string; slug?: string }[];
       latestReviews?: {
@@ -55,6 +56,11 @@ export async function readPullRequest(
     if (parsed.isDraft === true) pull.draft = true;
     if (parsed.state) pull.state = parsed.state;
     if (parsed.baseRefName) pull.baseRefName = parsed.baseRefName;
+    // Null for anything not merged, and an object with the sha in it once it
+    // is. See `landed.ts` for what a reading of the working tree does with it.
+    if (typeof parsed.mergeCommit?.oid === "string" && parsed.mergeCommit.oid) {
+      pull.mergeCommit = parsed.mergeCommit.oid;
+    }
     if (parsed.reviewDecision) pull.reviewDecision = parsed.reviewDecision;
 
     const reviewers = readReviewers(parsed.reviewRequests, parsed.latestReviews);
