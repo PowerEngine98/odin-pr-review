@@ -63,9 +63,11 @@ export const PLAYER_WIDTH = 360;
 /**
  * The card for a recording.
  *
- * No measurement and no ratio: the only thing that varies is the title, and a
- * card is never narrower than its own name — which `minCardWidth` already says
- * and the caller already applies.
+ * No measurement and no ratio: a player is the same size whatever is in it.
+ *
+ * This is how much room the player wants and not how wide the card ends up. A
+ * card is never narrower than its own name, and the name is not something this
+ * can see — the caller holds it, and widens to fit.
  */
 export function played(metrics: LayoutMetrics): { width: number; height: number } {
   return {

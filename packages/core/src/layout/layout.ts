@@ -302,7 +302,20 @@ function measureNodes(
       pairs,
       x: 0,
       y: 0,
-      width: drawn ? drawn.width : Math.round(width),
+      /*
+       * Never narrower than its own name.
+       *
+       * A picture or a player decides how much room its contents want, and that
+       * is all it decides: the title sits above it and is the one thing on a
+       * card that must always be legible. Taken from the shape alone, a short
+       * recording with a long filename drew a card the width of a scrubber and
+       * cut the beginning off its own name — which is the half that says which
+       * file it is, since the ones that differ differ at the front.
+       *
+       * The widening costs the contents nothing. A picture is centred in
+       * whatever room it is given and a player stretches to fill it.
+       */
+      width: drawn ? Math.max(drawn.width, Math.round(titleWidth)) : Math.round(width),
       height: drawn ? drawn.height : Math.round(height),
       rank: 0,
       order: 0,

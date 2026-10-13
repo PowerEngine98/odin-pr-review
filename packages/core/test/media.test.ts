@@ -10,6 +10,7 @@ import { buildGraph } from "../src/graph/build.js";
 import { readPatch } from "../src/git/diff.js";
 import { enrichMedia } from "../src/git/media.js";
 import { layoutGraph } from "../src/layout/layout.js";
+import { cardTitle, titleLength } from "../src/layout/display.js";
 import { PLAYER_HEIGHT, PLAYER_WIDTH } from "../src/layout/framing.js";
 import { DEFAULT_METRICS } from "../src/layout/metrics.js";
 import { graphDelta, rowsOnly } from "../src/graph/delta.js";
@@ -123,6 +124,10 @@ describe("a change with pictures in it", () => {
     // Named like a picture and holding nothing of the sort.
     writeFileSync(join(repo, "fake.png"), "this is not a picture\n");
     writeFileSync(join(repo, "chime.wav"), wav());
+    // Long names on small contents, which is where the card's own shape and the
+    // name it has to carry disagree.
+    writeFileSync(join(repo, "notification-knock-1.mp3"), wav());
+    writeFileSync(join(repo, "wide-screenshot-of-the-whole-page.png"), png(16, 16));
     // Named like a recording and holding nothing of the sort.
     writeFileSync(join(repo, "fake.mp3"), "this is not a recording\n");
     run("add", "-A");
@@ -271,6 +276,24 @@ describe("a change with pictures in it", () => {
     const card = layout.nodes.find((n) => n.path === "chime.wav")!;
     expect(card.height).toBe(DEFAULT_METRICS.titleHeight + DEFAULT_METRICS.padding * 2 + PLAYER_HEIGHT);
     expect(card.width).toBe(PLAYER_WIDTH);
+  });
+
+  it("never cuts a filename off, however short the thing it holds", () => {
+    /*
+     * The reported fault: two recordings called `notification-knock-1.mp3` and
+     * `notification-knock-2.mp3` drew cards the width of a scrubber, with the
+     * beginning of each name cut away — which is the half that says which file
+     * it is, since the ones that differ differ at the front.
+     *
+     * A player decides how much room a player wants and nothing else. The name
+     * sits above it and is the one thing on a card that must always be legible.
+     */
+    const layout = layoutGraph(graph, {});
+    for (const path of ["notification-knock-1.mp3", "wide-screenshot-of-the-whole-page.png"]) {
+      const card = layout.nodes.find((n) => n.path === path)!;
+      const wanted = titleLength(cardTitle(card.node)) * DEFAULT_METRICS.charWidth;
+      expect(card.width).toBeGreaterThan(wanted);
+    }
   });
 
   it("shapes each card like the picture it holds", () => {
