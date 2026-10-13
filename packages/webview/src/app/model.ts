@@ -42,12 +42,20 @@ export interface NodeView {
    */
   picture?: { width: number; height: number; mime: string; textual: boolean };
   /**
-   * The picture itself, as a data URI.
+   * The recording this file holds, when it holds one.
+   *
+   * A node carries this or `picture`, never both: a file is a picture, or a
+   * recording, or neither.
+   */
+  sound?: { mime: string; digest?: string };
+  /**
+   * The bytes themselves, as a data URI, for whichever of the two it is.
    *
    * Absent when the file was too large to embed or could not be read, in which
-   * case there is a `picture` nowhere and the card says what it always said.
+   * case there is no `picture` and no `sound` either, and the card says what it
+   * always said.
    */
-  drawing?: string;
+  media?: string;
   /** For colouring a suggestion in a comment; the card knows it, a path does not. */
   language: string;
   /** In the picture only because something points at it. */

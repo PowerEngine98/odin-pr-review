@@ -18,7 +18,7 @@ import {
   type Checkout,
   type GraphLayout,
   type Snippet,
-  type Drawings,
+  type Media,
 } from "@odin/core";
 import { KotlinResolver } from "@odin/resolver-kotlin";
 import {
@@ -107,13 +107,13 @@ export interface BuiltGraph {
    */
   snippets: Map<string, Snippet[]>;
   /**
-   * The pictures in the change, as data URIs, by node id.
+   * The pictures and recordings in the change, as data URIs, by node id.
    *
    * Kept on the build beside the snippets and for the same reason: they are
    * read out of the object database, and the next build over the same commits
    * wants exactly the same answer.
    */
-  drawings: Drawings;
+  media: Media;
   /** Which files this build had to redraw, when it was an incremental one. */
   redrawn?: string[];
   /**
@@ -718,8 +718,8 @@ function arrange(
     shown,
     snippets,
     // Read where the graph was read, so that the two comparisons a live reading
-    // makes are both made against graphs that know about their pictures.
-    drawings: new Map(Object.entries(graph.drawings ?? {})),
+    // makes are both made against graphs that know what their files are.
+    media: new Map(Object.entries(graph.media ?? {})),
     layout: layoutGraph(shown, { snippets, includeImports }),
     layoutWithTests: layoutGraph(graph, { snippets, includeImports }),
     unifiedLayout: layoutGraph(shown, { snippets, unified: true, includeImports }),

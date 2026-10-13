@@ -1,4 +1,5 @@
 import type { Picture } from "../graph/pictures.js";
+import type { Sound } from "../graph/sounds.js";
 
 /**
  * The Odin change-graph model.
@@ -175,6 +176,13 @@ export interface FileNode {
    * goes to the page separately, the way a snippet does.
    */
   picture?: Picture;
+  /**
+   * The recording this file holds, when it holds one.
+   *
+   * Set by reading the blob rather than the name, like `picture`. A node has at
+   * most one of the two: a file is a picture, or a recording, or neither.
+   */
+  sound?: Sound;
   /**
    * What this vertex stands for.
    *
@@ -375,7 +383,7 @@ export interface ChangeGraph {
   nodes: FileNode[];
   edges: Edge[];
   /**
-   * The pictures in the change, as data URIs, by node id.
+   * The pictures and recordings in the change, as data URIs, by node id.
    *
    * Carried on the graph in memory and never written to a document:
    * `serializeGraph` drops it, and there is a test that says so. The two are
@@ -391,5 +399,5 @@ export interface ChangeGraph {
    * the card was sized from and a document that drew its cards differently from
    * the page would not be a picture of the same change.
    */
-  drawings?: Record<string, string>;
+  media?: Record<string, string>;
 }

@@ -8,8 +8,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseUnifiedDiff } from "../src/diff/parse.js";
 import { buildGraph } from "../src/graph/build.js";
 import { readPatch } from "../src/git/diff.js";
-import { enrichPictures } from "../src/git/pictures.js";
+import { enrichMedia } from "../src/git/media.js";
 import { layoutGraph } from "../src/layout/layout.js";
+import { PLAYER_HEIGHT, PLAYER_WIDTH } from "../src/layout/framing.js";
+import { DEFAULT_METRICS } from "../src/layout/metrics.js";
 import { graphDelta, rowsOnly } from "../src/graph/delta.js";
 import { serializeGraph } from "../src/serialize.js";
 import type { ChangeGraph } from "../src/model/types.js";
@@ -62,6 +64,32 @@ function png(width: number, height: number, seed = 0): Buffer {
   ]);
 }
 
+/**
+ * A real WAV, built here rather than pasted.
+ *
+ * Small enough to write and genuinely one: the recogniser reads a header, so a
+ * fixture that only claimed to be a WAV would pass by accident or fail for the
+ * wrong reason.
+ */
+function wav(samples = 8): Buffer {
+  const data = Buffer.alloc(samples * 2);
+  const head = Buffer.alloc(44);
+  head.write("RIFF", 0);
+  head.writeUInt32LE(36 + data.length, 4);
+  head.write("WAVE", 8);
+  head.write("fmt ", 12);
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(1, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(8000, 24);
+  head.writeUInt32LE(16000, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write("data", 36);
+  head.writeUInt32LE(data.length, 40);
+  return Buffer.concat([head, data]);
+}
+
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="16"><rect/></svg>\n';
 
 describe("a change with pictures in it", () => {
@@ -94,12 +122,15 @@ describe("a change with pictures in it", () => {
     writeFileSync(join(repo, "mark.svg"), SVG);
     // Named like a picture and holding nothing of the sort.
     writeFileSync(join(repo, "fake.png"), "this is not a picture\n");
+    writeFileSync(join(repo, "chime.wav"), wav());
+    // Named like a recording and holding nothing of the sort.
+    writeFileSync(join(repo, "fake.mp3"), "this is not a recording\n");
     run("add", "-A");
     run("commit", "--quiet", "-m", "pictures");
 
     const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
     graph = buildGraph(parseUnifiedDiff(patch), { meta });
-    await enrichPictures(graph, { cwd: repo });
+    await enrichMedia(graph, { cwd: repo });
   }, 60_000);
 
   afterAll(() => rmSync(repo, { recursive: true, force: true }));
@@ -126,11 +157,11 @@ describe("a change with pictures in it", () => {
      * reviewed.
      */
     expect(nodeFor("fake.png").picture).toBeUndefined();
-    expect(graph.drawings?.[nodeFor("fake.png").id]).toBeUndefined();
+    expect(graph.media?.[nodeFor("fake.png").id]).toBeUndefined();
   });
 
   it("carries each drawing as a data URI of the right type", () => {
-    const drawing = graph.drawings?.[nodeFor("logo.png").id];
+    const drawing = graph.media?.[nodeFor("logo.png").id];
     expect(drawing).toMatch(/^data:image\/png;base64,/);
     // Round-trips to the same bytes the repository holds, magic number first.
     const bytes = Buffer.from(drawing!.split(",")[1]!, "base64");
@@ -148,14 +179,16 @@ describe("a change with pictures in it", () => {
      */
     const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
     const tight = buildGraph(parseUnifiedDiff(patch), { meta });
-    await enrichPictures(tight, { cwd: repo, maxTotalBytes: 100 });
+    await enrichMedia(tight, { cwd: repo, maxTotalBytes: 100 });
 
-    const drawn = tight.nodes.filter((n) => n.picture !== undefined);
-    expect(drawn.length).toBeGreaterThan(0);
-    expect(drawn.length).toBeLessThan(3);
+    // One budget across both kinds: a change carrying pictures and recordings
+    // must not be allowed to spend the whole of it twice over.
+    const kept = tight.nodes.filter((n) => n.picture !== undefined || n.sound !== undefined);
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(4);
     for (const node of tight.nodes) {
-      if (node.picture) expect(tight.drawings?.[node.id]).toBeTruthy();
-      else expect(tight.drawings?.[node.id]).toBeUndefined();
+      if (node.picture || node.sound) expect(tight.media?.[node.id]).toBeTruthy();
+      else expect(tight.media?.[node.id]).toBeUndefined();
     }
   }, 30_000);
 
@@ -174,7 +207,7 @@ describe("a change with pictures in it", () => {
     const read = async () => {
       const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
       const g = buildGraph(parseUnifiedDiff(patch), { meta });
-      await enrichPictures(g, { cwd: repo });
+      await enrichMedia(g, { cwd: repo });
       return g;
     };
 
@@ -201,7 +234,7 @@ describe("a change with pictures in it", () => {
     const read = async () => {
       const { patch, meta } = await readPatch({ cwd: repo, baseRef: "base", headRef: "main" });
       const g = buildGraph(parseUnifiedDiff(patch), { meta });
-      await enrichPictures(g, { cwd: repo });
+      await enrichMedia(g, { cwd: repo });
       return g;
     };
     const first = await read();
@@ -209,6 +242,36 @@ describe("a change with pictures in it", () => {
     expect(graphDelta(first, second).changed).toEqual([]);
     expect(rowsOnly(first, second)).toBeDefined();
   }, 60_000);
+
+  it("says what a recording is, so a player can be given its type", () => {
+    // Told the wrong type a browser may refuse the file outright, so the bytes
+    // decide rather than the name.
+    expect(nodeFor("chime.wav").sound).toMatchObject({ mime: "audio/wav" });
+    expect(nodeFor("chime.wav").picture).toBeUndefined();
+  });
+
+  it("leaves a file that only sounds like a recording alone", () => {
+    expect(nodeFor("fake.mp3").sound).toBeUndefined();
+    expect(graph.media?.[nodeFor("fake.mp3").id]).toBeUndefined();
+  });
+
+  it("carries the recording as a data URI of the right type", () => {
+    const held = graph.media?.[nodeFor("chime.wav").id];
+    expect(held).toMatch(/^data:audio\/wav;base64,/);
+    const bytes = Buffer.from(held!.split(",")[1]!, "base64");
+    expect(bytes.subarray(0, 4).toString("latin1")).toBe("RIFF");
+  });
+
+  it("gives a recording a card the size of a player", () => {
+    /*
+     * Fixed, which is the whole difference from a picture: a picture decides
+     * the shape of its card and a player is the same size whatever is in it.
+     */
+    const layout = layoutGraph(graph, {});
+    const card = layout.nodes.find((n) => n.path === "chime.wav")!;
+    expect(card.height).toBe(DEFAULT_METRICS.titleHeight + DEFAULT_METRICS.padding * 2 + PLAYER_HEIGHT);
+    expect(card.width).toBe(PLAYER_WIDTH);
+  });
 
   it("shapes each card like the picture it holds", () => {
     const layout = layoutGraph(graph, {});
@@ -252,7 +315,7 @@ describe("the document a change is exported as", () => {
       },
     ],
     edges: [],
-    drawings: { "n:logo.png": "data:image/png;base64,AAAAAAAA" },
+    media: { "n:logo.png": "data:image/png;base64,AAAAAAAA" },
   };
 
   it("leaves the pictures themselves out", () => {
@@ -263,7 +326,7 @@ describe("the document a change is exported as", () => {
      */
     const written = serializeGraph(graph);
     expect(written).not.toContain("base64");
-    expect(written).not.toContain("drawings");
+    expect(written).not.toContain("media");
   });
 
   it("keeps each picture's shape, which is what sized the card", () => {

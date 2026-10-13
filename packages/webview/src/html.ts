@@ -62,7 +62,7 @@ export interface RenderOptions {
    */
   alternate?: { layout: GraphLayout; withTests?: GraphLayout };
   /**
-   * The pictures in the change, as data URIs, by node id.
+   * The pictures and recordings in the change, as data URIs, by node id.
    *
    * Separate from the graph on purpose. The shape of a picture travels on its
    * node, because the engine sizes the card from it; the bytes travel here,
@@ -72,7 +72,7 @@ export interface RenderOptions {
    * Absent for any file too large to be worth embedding, or that could not be
    * read. The card then says what every unreadable blob's card says.
    */
-  drawings?: Record<string, string>;
+  media?: Record<string, string>;
   /**
    * Whether this reading was built with import statements in it.
    *
@@ -182,14 +182,14 @@ export function renderHtml(
   const full = options.withTests ?? layout;
 
   /**
-   * The picture for a card, from whichever of the two places has it.
+   * What a card plays or draws, from whichever of the two places has it.
    *
    * The graph carries them, because everything that draws a graph is handed
    * one; the option is for a caller that has them separately, and wins where
    * both are present.
    */
-  const drawingOf = (id: string): string | undefined =>
-    options.drawings?.[id] ?? graph.drawings?.[id];
+  const mediaOf = (id: string): string | undefined =>
+    options.media?.[id] ?? graph.media?.[id];
   /*
    * Split from the arrangement that holds every file — its arrows as well as
    * its cards.
@@ -293,10 +293,11 @@ export function renderHtml(
       // moves together leaves the odd-width cards behind, and they collide.
       column: n.rank,
       isTest: n.node.isTest === true,
-      // The shape of the picture this file holds, when it holds one, and the
-      // picture itself. The card is drawn from the first and shows the second.
+      // What this file is, when it is a picture or a recording, and the bytes
+      // themselves. The card is shaped by the first and shows the second.
       ...(n.node.picture ? { picture: n.node.picture } : {}),
-      ...(drawingOf(n.id) ? { drawing: drawingOf(n.id) } : {}),
+      ...(n.node.sound ? { sound: n.node.sound } : {}),
+      ...(mediaOf(n.id) ? { media: mediaOf(n.id) } : {}),
       // The language a suggestion in a comment on this file should be coloured
       // with; the card knows it, and the comment only knows a path.
       language: n.node.language ?? "",
@@ -540,6 +541,15 @@ function contentSecurityPolicy(csp: { nonce: string; source: string }): string {
      */
     `script-src 'nonce-${csp.nonce}' ${csp.source}`,
     `img-src ${csp.source} data:`,
+    /*
+     * The recordings, which travel the same way the pictures do.
+     *
+     * Its own directive because `default-src 'none'` covers audio and video,
+     * and `img-src` does not reach them — so a player handed a perfectly good
+     * data URI was refused by the policy, with a control on screen that simply
+     * would not start and nothing anywhere saying why.
+     */
+    `media-src ${csp.source} data:`,
     `font-src ${csp.source}`,
   ].join("; ");
   return `<meta http-equiv="Content-Security-Policy" content="${policy}">`;

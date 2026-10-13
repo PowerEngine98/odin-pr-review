@@ -5,7 +5,7 @@ import { annotateTests } from "../graph/tests.js";
 import type { ChangeGraph, GraphMeta, PullRequest } from "../model/types.js";
 import type { Author } from "../model/types.js";
 import { landedAt } from "./landed.js";
-import { enrichPictures } from "./pictures.js";
+import { enrichMedia } from "./media.js";
 import { readPullRequest } from "./pullRequest.js";
 import {
   currentBranch,
@@ -520,7 +520,7 @@ export async function graphFromRepo(req: DiffRequest): Promise<ChangeGraph> {
   const graph = annotateTests(buildGraph(files, { meta }));
 
   /*
-   * The pictures, read here rather than by each caller afterwards.
+   * The pictures and recordings, read here rather than by each caller after.
    *
    * Every caller needs them before it does anything else with the graph, and
    * for two different reasons that both bite. An image card is sized from its
@@ -534,7 +534,7 @@ export async function graphFromRepo(req: DiffRequest): Promise<ChangeGraph> {
    * A change with no pictures pays nothing; the filter is the file's extension
    * and stops before any git runs.
    */
-  await enrichPictures(graph, req);
+  await enrichMedia(graph, req);
   return graph;
 }
 

@@ -14,7 +14,7 @@ import {
   type Snippet,
 } from "./display.js";
 import { folderOf } from "./folders.js";
-import { frame } from "./framing.js";
+import { frame, played } from "./framing.js";
 import { DEFAULT_METRICS, type LayoutMetrics } from "./metrics.js";
 
 export interface PlacedNode {
@@ -275,7 +275,8 @@ function measureNodes(
         : metrics.titleHeight + metrics.padding * 2 + drawnRows * metrics.lineHeight;
 
     /*
-     * A picture is shaped by the picture, not by the rows it has not got.
+     * A picture is shaped by the picture, and a recording by the player it
+     * needs, rather than by the rows neither of them has.
      *
      * Only ever the card's own shape. Which picture, and whether it is drawn at
      * all, is the page's business — but the size has to be settled here,
@@ -289,7 +290,9 @@ function measureNodes(
      */
     const drawn = node.picture
       ? frame(node.picture, metrics, node.picture.textual ? Math.round(width) : undefined)
-      : undefined;
+      : node.sound
+        ? played(metrics)
+        : undefined;
 
     return {
       id: node.id,

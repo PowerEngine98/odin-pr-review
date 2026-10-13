@@ -4,14 +4,15 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 
-import { looksLikePicture, pictureIn, type Picture } from "../graph/pictures.js";
+import { looksLikePicture, pictureIn } from "../graph/pictures.js";
+import { looksLikeSound, soundIn } from "../graph/sounds.js";
 import type { ChangeGraph, FileNode, Side } from "../model/types.js";
 import type { GitOptions } from "./exec.js";
 
 const execFileAsync = promisify(execFile);
 
 /**
- * Reads the pictures in a change, so their cards can be the picture.
+ * Reads the pictures and recordings in a change, so their cards can be them.
  *
  * The shape goes on the node and the bytes do not. That split is the whole
  * design here. A card's size is worked out in the extension host before any
@@ -28,7 +29,7 @@ const execFileAsync = promisify(execFile);
  * and everything that draws already has one; the exported file is the contract,
  * and it stays as it was.
  */
-export interface PictureOptions extends GitOptions {
+export interface MediaOptions extends GitOptions {
   /**
    * The most bytes worth embedding in a page, per file.
    *
@@ -52,30 +53,38 @@ export interface PictureOptions extends GitOptions {
   maxTotalBytes?: number;
 }
 
-/** What a reading knows about its pictures, beyond the shapes on the nodes. */
-export type Drawings = Map<string, string>;
+/**
+ * Everything a reading can draw or play, as data URIs, by node id.
+ *
+ * One map for both, because a node is one or the other and never both. One
+ * budget for the same reason: a change carrying pictures and recordings would
+ * otherwise be allowed to spend the whole of it twice over.
+ */
+export type Media = Map<string, string>;
 
 const DEFAULT_MAX = 6 * 1024 * 1024;
 const DEFAULT_TOTAL = 24 * 1024 * 1024;
 
 /**
- * Finds every picture in the change and measures it.
+ * Finds every picture and recording in the change, and says what each is.
  *
- * Writes `picture` onto the nodes it recognises and hands back the data URI for
- * each, keyed by node id.
+ * Writes `picture` or `sound` onto the nodes it recognises and hands back the
+ * data URI for each, keyed by node id.
  *
- * A file that is named like a picture and is not one is left entirely alone: no
- * `picture`, no entry here, and a card that goes on saying what it said before.
- * The bytes decide, because a name can be wrong and a card drawn from a wrong
- * name is a broken-image glyph where the diff used to be.
+ * A file named like one and holding something else is left entirely alone: no
+ * `picture`, no `sound`, no entry here, and a card that goes on saying what it
+ * said before. The bytes decide, because a name can be wrong — and a card built
+ * from a wrong name is a broken-image glyph, or a player that will not play,
+ * where the diff used to be. Either looks like a broken file rather than an
+ * unreadable one.
  */
-export async function enrichPictures(
+export async function enrichMedia(
   graph: ChangeGraph,
-  options: PictureOptions,
-): Promise<Drawings> {
+  options: MediaOptions,
+): Promise<Media> {
   const most = options.maxBytes ?? DEFAULT_MAX;
   const budget = options.maxTotalBytes ?? DEFAULT_TOTAL;
-  const drawings: Drawings = new Map();
+  const found: Media = new Map();
   let spent = 0;
 
   for (const node of graph.nodes) {
@@ -83,13 +92,18 @@ export async function enrichPictures(
     // it. Opening it to draw it would be reading blobs for files the change
     // does not touch, which on a large repository is most of them.
     if (node.status === "phantom") continue;
-    if (!looksLikePicture(node.path)) continue;
+    const drawn = looksLikePicture(node.path);
+    const heard = !drawn && looksLikeSound(node.path);
+    if (!drawn && !heard) continue;
 
     const bytes = await readBytes(node, sideOf(node), graph, options, most);
     if (!bytes) continue;
 
-    const picture = pictureIn(bytes);
-    if (!picture) continue;
+    const picture = drawn ? pictureIn(bytes) : undefined;
+    const sound = heard ? soundIn(bytes) : undefined;
+    // What to tell a browser it is. Nothing recognised means nothing to show.
+    const mime = picture?.mime ?? sound?.mime;
+    if (!mime) continue;
 
     /*
      * Measured, then drawn only if there is room left for it.
@@ -102,23 +116,25 @@ export async function enrichPictures(
     if (spent + bytes.length > budget) continue;
     spent += bytes.length;
 
-    // What these bytes are, so that a redrawn image is seen as a change at all.
-    // Everything else about a binary file stays identical when its contents are
-    // replaced: see the note on `Picture.digest`.
-    node.picture = { ...picture, digest: digestOf(bytes) };
-    drawings.set(node.id, dataUri(picture, bytes));
+    // What these bytes are, so that a replaced file is seen as a change at all.
+    // Everything else about a binary one stays identical when its contents are
+    // swapped: see the note on `Picture.digest`.
+    const digest = digestOf(bytes);
+    if (picture) node.picture = { ...picture, digest };
+    if (sound) node.sound = { ...sound, digest };
+    found.set(node.id, dataUri(mime, bytes));
   }
 
   // Left on the graph as well as handed back, so that everything already given
-  // a graph to draw — the page, the static export, the command line — has the
-  // pictures without a new argument being threaded to each of them. Dropped
-  // again by `serializeGraph`: see the note on `ChangeGraph.drawings`.
-  if (drawings.size > 0) graph.drawings = Object.fromEntries(drawings);
+  // a graph to draw — the page, the static export, the command line — has them
+  // without a new argument being threaded to each. Dropped again by
+  // `serializeGraph`: see the note on `ChangeGraph.media`.
+  if (found.size > 0) graph.media = Object.fromEntries(found);
 
-  return drawings;
+  return found;
 }
 
-/** Which side of the comparison a card shows, which is the one to draw. */
+/** Which side of the comparison a card shows, which is the one to play. */
 function sideOf(node: FileNode): Side {
   return node.status === "deleted" ? "base" : "head";
 }
@@ -135,9 +151,9 @@ function digestOf(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 
-/** The picture as a page can hold it. */
-function dataUri(picture: Picture, bytes: Uint8Array): string {
-  return `data:${picture.mime};base64,${Buffer.from(bytes).toString("base64")}`;
+/** The file as a page can hold it. */
+function dataUri(mime: string, bytes: Uint8Array): string {
+  return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
 /**

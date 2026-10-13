@@ -46,6 +46,35 @@ export const PICTURE_WIDEST = 720;
 export const PICTURE_TALLEST = 560;
 
 /**
+ * How tall a player is drawn, and how wide a card holding one gets.
+ *
+ * Fixed, because a player is the same size whatever is in it — which is the
+ * whole difference between a recording and a picture here. A picture decides
+ * the shape of its card; a recording is a control, and the control is one size.
+ *
+ * The height is a browser's own native player plus the padding it sits in. The
+ * width is enough for the scrubber to be worth dragging: narrower than this and
+ * the elapsed time, the bar and the volume are competing for the same forty
+ * pixels, which is a control that can be seen and not used.
+ */
+export const PLAYER_HEIGHT = 54;
+export const PLAYER_WIDTH = 360;
+
+/**
+ * The card for a recording.
+ *
+ * No measurement and no ratio: the only thing that varies is the title, and a
+ * card is never narrower than its own name — which `minCardWidth` already says
+ * and the caller already applies.
+ */
+export function played(metrics: LayoutMetrics): { width: number; height: number } {
+  return {
+    width: Math.max(metrics.minCardWidth, PLAYER_WIDTH),
+    height: metrics.titleHeight + metrics.padding * 2 + PLAYER_HEIGHT,
+  };
+}
+
+/**
  * The card for a picture, from the picture's own shape.
  *
  * `within` is a width the card must take instead of choosing one — an SVG

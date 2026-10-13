@@ -1711,6 +1711,35 @@
         {#if head.deletions}<span class="removed">{head.deletions}</span>{/if}
       </span>
     </div>
+  {:else if node.sound && node.media}
+    <!--
+      The file, playable.
+
+      A diff has nothing to say about a recording either: git calls the blob
+      binary, the card draws no rows, and the reviewer gets a filename and the
+      word "binary" while the one question they have is what it sounds like.
+
+      The browser's own player rather than a drawn one. It is the control
+      everybody already knows, it reports the length and the position without
+      being asked, and the alternative is reimplementing a scrubber on a canvas
+      that is already panning and zooming under it.
+
+      `preload="metadata"` so the length is shown without the audio being
+      decoded: a change full of recordings would otherwise decode every one of
+      them the moment the page opened, for cards nobody has looked at yet. The
+      bytes are already in the document, so there is nothing to fetch.
+    -->
+    <div class="card-body sound-view" bind:offsetHeight={bodyHeight}>
+      <!-- svelte-ignore a11y_media_has_caption -->
+      <audio
+        class="card-sound"
+        src={node.media}
+        controls
+        preload="metadata"
+        onclick={(event) => event.stopPropagation()}
+        onpointerdown={(event) => event.stopPropagation()}
+      ></audio>
+    </div>
   {:else if asPicture && node.picture}
     <!--
       The file, drawn.
@@ -1737,7 +1766,7 @@
         until one of the two changed, and the way a reader finds that out is a
         picture overflowing its card or arrows landing in the margin beside it.
       -->
-      <img class="card-picture" src={node.drawing} alt={head.name} draggable="false" />
+      <img class="card-picture" src={node.media} alt={head.name} draggable="false" />
     </div>
   {:else if settings.unified}
     <!-- Both readings measure themselves the same way: a split card is shorter,
@@ -2076,6 +2105,24 @@
       linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.08) 75%);
     background-size: 12px 12px;
     background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  }
+
+  /*
+   * The player, filling the room the title left it.
+   *
+   * The pointer events are stopped on the control itself rather than on the
+   * body: the canvas decides whose a gesture is by where it began, so a press
+   * on the scrubber would otherwise start a pan and the drawing would slide
+   * away under a finger that was trying to seek.
+   */
+  .sound-view {
+    display: flex;
+    align-items: center;
+    padding: 0 var(--padding, 12px);
+  }
+  .card-sound {
+    width: 100%;
+    height: 40px;
   }
 
   /* Set, the way the other switches in this bar read when they are on. */

@@ -8,13 +8,13 @@ import type { ChangeGraph } from "./model/types.js";
  * lets the graph be committed or diffed like any other artefact.
  */
 export function serializeGraph(graph: ChangeGraph, indent = 2): string {
-  // The pictures stay behind. They live on the graph for as long as it is an
+  // The pictures and recordings stay behind. They live on the graph for as long as it is an
   // object being passed between a build and a page; the document is the
   // contract, and a change carrying a dozen screenshots would otherwise be a
   // file mostly made of base64. Their shapes go, because the cards were sized
   // from those and a document whose cards differ from the page's is a picture
   // of a different change.
-  const { drawings: _drawings, ...rest } = sortGraph(graph);
+  const { media: _media, ...rest } = sortGraph(graph);
   return JSON.stringify(rest, orderKeys, indent) + "\n";
 }
 
@@ -23,7 +23,7 @@ const KEY_ORDER = [
   "schemaVersion", "meta", "nodes", "edges",
   "repo", "baseRef", "headRef", "baseSha", "headSha", "mergeBase",
   "generator", "generatedAt",
-  "id", "path", "prevPath", "status", "language", "binary", "picture", "stats",
+  "id", "path", "prevPath", "status", "language", "binary", "picture", "sound", "stats",
   "additions", "deletions", "hunks", "symbols",
   "header", "oldStart", "oldLines", "newStart", "newLines", "lines",
   "kind", "text", "oldLine", "newLine", "noNewline",
