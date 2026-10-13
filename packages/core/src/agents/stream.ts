@@ -227,101 +227,175 @@ function gist(command: string): string {
 }
 
 /**
- * opencode's output, which is written for a terminal rather than for a reader.
+ * opencode's stream, which it calls "raw JSON events".
  *
- * It has no streaming mode to ask for, so what arrives is what it would have
- * drawn on a screen: colour codes around every tool name, a banner naming the
- * agent and the model, and tool calls run together with the prose around them
- * because the escape sequences — not the newlines — were what separated them.
- * Shown raw, a turn reads as a wall of `[0m` and `[90m` with a sentence
- * somewhere inside it, which is worse than showing nothing.
+ * Measured against the tool: `opencode run --format json` emits one JSON object
+ * per line, each carrying a `type` and a `part`. The shapes below are what it
+ * actually printed, checked by running it.
  *
- * So the codes are taken off, and used on the way out for the one thing they
- * were carrying: where one thing ends and the next begins. What comes out is
- * the shape Claude's stream already produces — a marked line per tool call,
- * and the prose left as prose.
+ * Its ordinary output is drawn for a terminal rather than for a reader — colour
+ * codes around every tool name, a banner naming the agent and the model, and a
+ * different rendering per tool (`$ cmd` for a shell run, `→ Read path` for a
+ * read) that changes between versions. Shown raw that is a wall of `[0m` and
+ * `[90m` with a sentence somewhere inside it, and parsed by eye it breaks the
+ * moment the tool restyles a line. So the machine-readable form is asked for
+ * instead, which also puts every event on standard output, where every other
+ * narrated tool already is.
  */
 export function readOpencode(line: string): Said | undefined {
-  const said: string[] = [];
-  for (const piece of pieces(line)) {
-    // The tool's own bullet, which says the same thing the arrow below says.
-    const plain = piece.replace(/^[→▸●•\-]\s*/, "").trim();
-    if (!plain) continue;
-
-    const tool = plain.match(TOOL);
-    if (tool) {
-      // Walked off here too. This tool is handed a working directory the same
-      // way, so its commands carry the same prefix, and a reader of this log is
-      // no more interested in it than a reader of the other one.
-      const about = (tool[2] ?? "").trim().replace(/^["']|["']$/g, "");
-      said.push(about ? `→ ${tool[1]}(${short(gist(about))})` : `→ ${tool[1]}`);
-      continue;
-    }
-
-    /*
-     * What the last tool found, kept on the last tool's line.
-     *
-     * `0 matches` on a line of its own says nothing — a reader has to look up
-     * to find out what found nothing — and it is the half of a search that
-     * matters. Claude's stream has no equivalent because its tool results are
-     * not shown at all; here they arrive whether they are wanted or not, so
-     * they are put where they mean something.
-     */
-    const last = said[said.length - 1];
-    if (last?.startsWith("→ ") && RESULT.test(plain)) {
-      said[said.length - 1] = `${last} · ${short(plain)}`;
-      continue;
-    }
-
-    said.push(plain);
+  let event: Record<string, unknown>;
+  try {
+    event = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    // Not JSON at all. opencode prints a banner before the stream starts in
+    // some builds, and a banner is worth showing; a fragment of a split line
+    // is not.
+    const text = line.trim();
+    return text && !text.startsWith("{") ? { show: text } : undefined;
   }
-  return said.length > 0 ? { show: said.join("\n") } : undefined;
+
+  const part = (event.part ?? {}) as Record<string, unknown>;
+
+  /*
+   * The agent talking. Every text part is the whole of what it said at that
+   * point rather than a delta — measured: a thousand-character answer arrived
+   * as one event — so the last of them is the turn's answer. Kept beside the
+   * log line because the reply is a message while the log is the working-out.
+   */
+  if (event.type === "text") {
+    const text = unmarked(String(part.text ?? ""));
+    if (!text) return undefined;
+    return { show: text, answer: text };
+  }
+
+  // The agent working rather than the agent answering, marked the way Claude's
+  // thinking is: a reader skimming a log should be able to tell the two apart.
+  if (event.type === "reasoning") {
+    const thought = unmarked(String(part.text ?? ""));
+    const lines = thought.split("\n").map((one) => one.trim()).filter(Boolean);
+    if (lines.length === 0) return undefined;
+    return { show: lines.map((one) => `… ${one}`).join("\n") };
+  }
+
+  if (event.type === "tool_use") {
+    const show = describeOpencode(part);
+    const did = editedByOpencode(part);
+    if (!show && did.length === 0) return undefined;
+    return {
+      ...(show ? { show } : {}),
+      ...(did.length ? { did } : {}),
+    };
+  }
+
+  /*
+   * Everything else is machinery: a step beginning and ending, and the token
+   * accounting that comes with it. The reader is watching to see what the agent
+   * is doing, and none of that is it.
+   */
+  return undefined;
 }
 
-/** What a search or a read says about how it went. */
-const RESULT = /^(\d+\s+match|no matches|failed|error\b|not found)/i;
+/**
+ * A chat marker a model leaked into its own text.
+ *
+ * Measured: the default model wrote a literal `</think>` at the front of a text
+ * part, so an answer arrived as `</think>Done.` and a search's result as
+ * `</think>3`. A marker is not a thing the agent said, so it comes off — and
+ * only from the front, where it is a marker rather than a quotation.
+ */
+function unmarked(text: string): string {
+  return text.replace(/^(?:\s*<\/(?:think|thinking|response)>\s*)+/i, "").trim();
+}
 
 /**
- * The tools opencode announces, as it spells them.
+ * opencode's tool ids, in the spelling a log reads.
  *
- * A closed list rather than "a capitalised word at the start of a piece": the
- * prose is full of sentences beginning with a capital, and a log that turned
- * every one of them into a tool call would be lying about what ran.
+ * A closed list rather than a guess from the name, for the same reason the
+ * page's own act classification is one: a tool drawn as a write because its
+ * name has "set" in it would be a log that lies about what an agent did.
  */
-const TOOL =
-  /^(Read|Write|Edit|Patch|Bash|Glob|Grep|List|Task|Todo|Webfetch|Fetch)\b[:\s]*(.*)$/;
+const OPENCODE_TOOL: Record<string, string> = {
+  read: "Read",
+  write: "Write",
+  edit: "Edit",
+  patch: "Patch",
+  multiedit: "MultiEdit",
+  bash: "Bash",
+  shell: "Shell",
+  glob: "Glob",
+  grep: "Grep",
+  list: "List",
+  ls: "LS",
+  webfetch: "Webfetch",
+  fetch: "Fetch",
+  websearch: "WebSearch",
+  task: "Task",
+  todowrite: "Todo",
+};
 
-/** Colour, cursor movement, and the rest of what a terminal is sent. */
-const CODES = /\u001b\[[0-9;?]*[A-Za-z]|\u001b\][^\u001b]*(?:\u001b\\|\u0007)?/g;
+/** The tools handed a path, whose argument is worth saying as a filename. */
+const NAMES_A_FILE = new Set(["read", "write", "edit", "patch", "multiedit", "list", "ls"]);
+
+/** One tool call, as a line of the log. */
+function describeOpencode(part: Record<string, unknown>): string {
+  const tool = typeof part.tool === "string" ? part.tool : "";
+  const name =
+    OPENCODE_TOOL[tool] ?? (tool ? tool[0]!.toUpperCase() + tool.slice(1) : "Tool");
+
+  const state = (part.state ?? {}) as Record<string, unknown>;
+  const input = (state.input ?? {}) as Record<string, unknown>;
+  const path =
+    typeof input.filePath === "string"
+      ? input.filePath
+      : typeof input.path === "string"
+        ? input.path
+        : "";
+  const command = typeof input.command === "string" ? input.command : "";
+  const pattern = typeof input.pattern === "string" ? input.pattern : "";
+  const url = typeof input.url === "string" ? input.url : "";
+
+  // A file is named by its filename, the others by what they were handed. The
+  // filename is the part that differs from line to line; the parent folders are
+  // the same walk on every line. See `place`.
+  if (NAMES_A_FILE.has(tool) && path) return `→ ${name}(${short(place(path))})`;
+  if (command) return `→ ${name}(${short(gist(command))})`;
+  if (pattern) return `→ ${name}(${short(pattern)})`;
+  if (url) return `→ ${name}(${short(url)})`;
+  if (path) return `→ ${name}(${short(place(path))})`;
+  return `→ ${name}`;
+}
 
 /**
- * One printed line, split where the colours said something ended.
+ * The edits inside one tool call, for the ledger.
  *
- * The codes are the only punctuation this output has: a tool name is written in
- * one colour and what it found in another, with no newline between them, so
- * dropping the codes without splitting on them glues a sentence to a file path
- * and the reader gets a wall. Split first, strip after, and drop the pieces
- * that were nothing but colour.
- *
- * Pieces are joined back up when the split was inside a sentence rather than
- * between two things — the colours change mid-sentence for emphasis as well as
- * for structure, and a paragraph broken at every emphasis is its own kind of
- * unreadable.
+ * Read off the tool's own arguments rather than its prose. Only the tools that
+ * write: a `read` or a `grep` changed nothing and belongs in the log, which
+ * already has it.
  */
-function pieces(line: string): string[] {
-  const parts = line
-    .split(/(?=\u001b\[)/)
-    .map((part) => part.replace(CODES, "").trim())
-    .filter((part) => part.length > 0);
+function editedByOpencode(part: Record<string, unknown>): Change[] {
+  const tool = typeof part.tool === "string" ? part.tool : "";
+  const state = (part.state ?? {}) as Record<string, unknown>;
+  const input = (state.input ?? {}) as Record<string, unknown>;
+  const path =
+    typeof input.filePath === "string"
+      ? input.filePath
+      : typeof input.path === "string"
+        ? input.path
+        : "";
+  if (!path) return [];
 
-  const out: string[] = [];
-  for (const part of parts) {
-    const last = out[out.length - 1];
-    if (last !== undefined && !TOOL.test(part) && !TOOL.test(last)) {
-      out[out.length - 1] = `${last} ${part}`;
-      continue;
-    }
-    out.push(part);
+  if (tool === "edit") {
+    const before = typeof input.oldString === "string" ? input.oldString : "";
+    const after = typeof input.newString === "string" ? input.newString : "";
+    // A no-op edit is a tool call that happened, not a change that did.
+    if (before === after) return [];
+    return [{ path, before, after, whole: false }];
   }
-  return out;
+
+  if (tool === "write") {
+    const content = typeof input.content === "string" ? input.content : "";
+    return [{ path, before: "", after: content, whole: true }];
+  }
+
+  return [];
 }

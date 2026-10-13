@@ -178,6 +178,15 @@ describe("opencode", () => {
     expect(kind().once).toEqual(["run"]);
   });
 
+  it("asks for the machine-readable stream", () => {
+    /*
+     * Its ordinary output is drawn for a terminal — colour codes around every
+     * tool name, a rendering that changes between versions — so the event
+     * stream is requested instead, which is what the reader parses.
+     */
+    expect(kind().streams?.args).toEqual(["--format", "json"]);
+  });
+
   it("has the two rungs it actually has, and not a third", () => {
     /*
      * There is no "ask me nothing" switch, and a rung with the same arguments
