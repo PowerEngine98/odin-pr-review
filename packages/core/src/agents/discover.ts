@@ -212,14 +212,14 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     once: ["run"],
     version: ["--version"],
     /*
-     * No streaming mode to ask for, so nothing is added to the command line:
-     * this is the tool's ordinary output, read rather than requested. What it
-     * prints is written for a terminal — colour codes around every tool name,
-     * and tool calls run together with the prose because the codes, not the
-     * newlines, were separating them.
+     * Its ordinary output is drawn for a terminal — colour codes around every
+     * tool name, a different rendering per tool, and a banner — which is a wall
+     * of escapes to a reader and a different wall each version. `--format json`
+     * asks for the event stream instead: one JSON object per line, on standard
+     * output, which is what the reader below parses.
      */
     streams: {
-      args: [],
+      args: ["--format", "json"],
       read: readOpencode,
     },
     /*
