@@ -134,21 +134,21 @@ function spotsOf(drawn: ReturnType<typeof place>): Record<string, Spread> {
 }
 
 /**
- * `labura` holding `labura/common` holding `labura/common/mediaGroup`.
+ * `example` holding `example/common` holding `example/common/mediaGroup`.
  *
  * Each level has to hold more than one thing or no box is drawn for it at all,
- * so `labura` has a second folder beside `common` and `common` has a second
+ * so `example` has a second folder beside `common` and `common` has a second
  * folder beside `mediaGroup`.
  */
 function nested() {
   const data = model([
-    card("m1", "labura/common/mediaGroup/one.ts", 0, 0),
-    card("m2", "labura/common/mediaGroup/two.ts", 0, 200),
-    card("m3", "labura/common/mediaGroup/three.ts", 1, 0),
-    card("u1", "labura/common/util/one.ts", 0, 600),
-    card("u2", "labura/common/util/two.ts", 1, 600),
-    card("a1", "labura/app/one.ts", 2, 0),
-    card("a2", "labura/app/two.ts", 2, 400),
+    card("m1", "example/common/mediaGroup/one.ts", 0, 0),
+    card("m2", "example/common/mediaGroup/two.ts", 0, 200),
+    card("m3", "example/common/mediaGroup/three.ts", 1, 0),
+    card("u1", "example/common/util/one.ts", 0, 600),
+    card("u2", "example/common/util/two.ts", 1, 600),
+    card("a1", "example/app/one.ts", 2, 0),
+    card("a2", "example/app/two.ts", 2, 400),
   ]);
   const drawn = place(data, arrangement(data), STANDING);
   const boxes = drawn.folders ?? [];
@@ -161,18 +161,18 @@ function nested() {
     drawn,
     boxes,
     spots: spotsOf(drawn),
-    outer: at("labura"),
-    middle: at("labura/common"),
-    inner: at("labura/common/mediaGroup"),
+    outer: at("example"),
+    middle: at("example/common"),
+    inner: at("example/common/mediaGroup"),
   };
 }
 
 /**
  * The other shape, where one folder really is the whole of what its parent holds.
  *
- * `labura/app` is drawn as a box and the only box inside it is `labura/app/home`,
+ * `example/app` is drawn as a box and the only box inside it is `example/app/home`,
  * which holds every card `app` holds — so `app` is `app/home` and saying so on
- * one bar is a true statement about the whole frame. `labura` around it is not
+ * one bar is a true statement about the whole frame. `example` around it is not
  * in that position at all: it holds `docs`, and a file of its own, neither of
  * which is anywhere under `app`.
  *
@@ -188,12 +188,12 @@ function nested() {
  */
 function occupied() {
   const data = model([
-    card("l1", "labura/one.ts", 0, 0),
-    card("h1", "labura/app/home/one.ts", 0, 200),
-    card("h2", "labura/app/home/two.ts", 1, 0),
-    card("d1", "labura/docs/one.ts", 2, 0),
-    card("g1", "labura/app/home/media/one.ts", 1, 400),
-    card("g2", "labura/app/home/media/two.ts", 0, 600),
+    card("l1", "example/one.ts", 0, 0),
+    card("h1", "example/app/home/one.ts", 0, 200),
+    card("h2", "example/app/home/two.ts", 1, 0),
+    card("d1", "example/docs/one.ts", 2, 0),
+    card("g1", "example/app/home/media/one.ts", 1, 400),
+    card("g2", "example/app/home/media/two.ts", 0, 600),
   ]);
   const drawn = place(data, arrangement(data), STANDING);
   const boxes = drawn.folders ?? [];
@@ -205,10 +205,10 @@ function occupied() {
   return {
     boxes,
     spots: spotsOf(drawn),
-    root: at("labura"),
-    app: at("labura/app"),
-    home: at("labura/app/home"),
-    media: at("labura/app/home/media"),
+    root: at("example"),
+    app: at("example/app"),
+    home: at("example/app/home"),
+    media: at("example/app/home/media"),
   };
 }
 
@@ -297,7 +297,7 @@ function three() {
 }
 
 /** The middle of the nest, which is the one worth collapsing. */
-const MIDDLE = "labura/common";
+const MIDDLE = "example/common";
 
 /** The bar's underside, on a whole window pixel: what `headLine` starts from. */
 const BAR = (chromeBottom: number) => Math.floor(chromeBottom - 1);
@@ -699,7 +699,7 @@ describe("where a card's title may start when a folder holding it is collapsed",
   });
 
   it("leaves a card outside the folded folder exactly where it was", () => {
-    // `a1` is in `labura/app`, which is beside `common` rather than inside it.
+    // `a1` is in `example/app`, which is beside `common` rather than inside it.
     // Collapsing somebody else's folder is not a reason to move its name.
     for (const scale of ZOOMS) {
       const { boxes } = nested();
@@ -780,7 +780,7 @@ describe("what collapsing a folder is not allowed to change", () => {
     barsFor(boxes, new Set([MIDDLE]), UNSCROLLED, ANYWHERE);
     barsFor(
       boxes,
-      new Set(["labura/common/mediaGroup", MIDDLE]),
+      new Set(["example/common/mediaGroup", MIDDLE]),
       UNSCROLLED,
       ANYWHERE,
     );
@@ -822,7 +822,7 @@ describe("what collapsing a folder is not allowed to change", () => {
     for (const folded of [
       new Set<string>(),
       new Set([MIDDLE]),
-      new Set([MIDDLE, "labura/common/mediaGroup", "labura/app"]),
+      new Set([MIDDLE, "example/common/mediaGroup", "example/app"]),
     ]) {
       barsFor(boxes, folded, UNSCROLLED, ANYWHERE);
       for (const box of boxes) {
@@ -1603,10 +1603,10 @@ describe("a bar reading a path off a drawing that was really placed", () => {
     // `app` is `app/home` and says so.
     expect(bars.get(app.path)?.label).toBe("app/home");
     expect(bars.get(app.path)?.absorbed).toEqual([home.path]);
-    // `labura` is not: it holds `docs` and a file of its own, neither of which
+    // `example` is not: it holds `docs` and a file of its own, neither of which
     // is anywhere under `app` — and with the whole drawing in sight, that is
     // true of the screen as well as of the change.
-    expect(bars.get(root.path)?.label).toBe("labura");
+    expect(bars.get(root.path)?.label).toBe("example");
     expect(bars.get(root.path)?.absorbed).toEqual([]);
     // And the box below the absorbed one carries on drawing its own bar, one
     // slot nearer the top of the window than its depth would have put it.
@@ -1965,7 +1965,7 @@ describe("how many bars stand above a card, as the canvas counts them", () => {
   });
 
   it("leaves a card outside the folded folder on the same count", () => {
-    // `a1` is in `labura/app`, which is beside `common` rather than inside it.
+    // `a1` is in `example/app`, which is beside `common` rather than inside it.
     // Somebody else's fold is not a reason to move its name.
     const { boxes } = nested();
     expect(

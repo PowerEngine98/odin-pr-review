@@ -12,7 +12,7 @@ export interface Folder {
  * Groups the changed files by directory, the way the project is laid out.
  *
  * Chains of directories with nothing else in them are joined into one row —
- * `src/main/kotlin/com/labura/notifications` rather than six nested rows each
+ * `src/main/kotlin/com/example/notifications` rather than six nested rows each
  * holding a single child. Without that, a Java-shaped tree spends most of its
  * width on indentation before reaching a file name.
  */
