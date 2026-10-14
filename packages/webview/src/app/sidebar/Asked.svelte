@@ -9,7 +9,7 @@
   import { untrack } from "svelte";
 
   import type { Query } from "./model.js";
-  import { ask, forget, remember, remembered } from "./state.svelte.js";
+  import { ask } from "./state.svelte.js";
 
   let { asked, viewer, open }: { asked: Query; viewer: string; open: boolean } =
     $props();
@@ -33,10 +33,7 @@
   let typed = $state(
     untrack(() => (asked.author && asked.author !== viewer ? asked.author : "")),
   );
-  let box = $state<HTMLInputElement | null>(null);
   let pending: ReturnType<typeof setTimeout> | undefined;
-
-  const TYPING = "odin.author-typing";
 
   /*
    * Asked for half a second after the typing stops.
@@ -48,13 +45,7 @@
    */
   function settle(): void {
     clearTimeout(pending);
-    pending = setTimeout(() => {
-      // Asking rebuilds the document, and a rebuild rebuilds this box. It says
-      // so before it goes and takes the caret back when it returns —
-      // otherwise a second letter after the pause lands nowhere.
-      remember(TYPING, "1");
-      ask({ author: typed.trim() });
-    }, 500);
+    pending = setTimeout(() => ask({ author: typed.trim() }), 500);
   }
 
   function now(): void {
@@ -62,12 +53,17 @@
     ask({ author: typed.trim() });
   }
 
-  $effect(() => {
-    if (remembered(TYPING) !== "1") return;
-    forget(TYPING);
-    box?.focus();
-    box?.setSelectionRange(typed.length, typed.length);
-  });
+  /*
+   * The caret used to be taken back by hand here, and no longer has to be.
+   *
+   * Asking the forge another question replaced the document, so this box — and
+   * the caret in it — was built again half a second after the reader stopped
+   * typing, and a second letter after the pause landed nowhere. It said so in
+   * session storage before it went and gave itself the focus back when it
+   * returned. The answer arrives as a message now and the box is never
+   * rebuilt, so the caret never leaves; restoring it would be the one thing
+   * that could take it somewhere the reader did not put it.
+   */
 </script>
 
 <div class="asked" hidden={!open}>
@@ -100,7 +96,6 @@
     type="search"
     autocomplete="off"
     placeholder="Any other login"
-    bind:this={box}
     bind:value={typed}
     oninput={settle}
     onkeydown={(event) => {

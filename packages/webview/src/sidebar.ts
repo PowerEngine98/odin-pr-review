@@ -29,7 +29,10 @@ export function renderSidebar(model: SidebarModel, theme: Theme = DARK_THEME): s
   return [
     `<!doctype html>`,
     `<html lang="en"><head><meta charset="utf-8">`,
-    `<style>${sidebarTokens(theme)}</style>`,
+    // Named, because it is the one thing in this document that is replaced
+    // without rebuilding it: the page keeps its folds and its scroll across a
+    // change of theme, and the host sends the new palette as a message.
+    `<style id="odin-tokens">${sidebarTokens(theme)}</style>`,
     // The components' own styles, scoped by the compiler. After the
     // vocabulary, so a component that means to override one can.
     `<style>${SIDEBAR_STYLES}</style>`,

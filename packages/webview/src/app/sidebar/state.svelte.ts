@@ -1,5 +1,12 @@
 import type { Query, SidebarModel } from "./model.js";
-import { folded, foldedAll, movedTo, showing, type Folds } from "./reveal.js";
+import {
+  folded,
+  foldedAll,
+  movedTo,
+  remeasured,
+  showing,
+  type Folds,
+} from "./reveal.js";
 import {
   readShut,
   SHUT_KEY,
@@ -217,10 +224,11 @@ export function ask(change: Partial<Query>): void {
 /**
  * Something the view would rather not forget across a redraw.
  *
- * Changing the question rebuilds the document — the host renders a new one and
- * assigns it — so a panel that shut on every press would be unusable, and a
- * box being typed into would lose the caret at the end of every word. Session
- * storage survives that; component state does not.
+ * The document is replaced when the view resolves and when the editor restores
+ * a window, and component state does not survive either — a panel that shut
+ * every time the window came back would be a panel nobody could leave open.
+ * Session storage does survive it, because a webview keeps its origin across
+ * the documents the host gives it.
  *
  * Wrapped because a webview can be configured without it, and a view that
  * throws while remembering where a panel was is worse than one that forgets.
@@ -250,6 +258,54 @@ export function forget(key: string): void {
 }
 
 /**
+ * A new reading of the change, applied to the page already showing one.
+ *
+ * This is what a refresh is now: the host sends the model and the page assigns
+ * it. The components are drawn from this one object and watching it, so the
+ * rows that changed redraw and everything else is left standing — the folds,
+ * the scroll, the references unfolded under a file, what is in the filter box.
+ * None of that is in the model, and the reason it survives is that nothing
+ * replaces the document it lives in.
+ *
+ * The reveal is the one thing that has to be worked out again, because it is
+ * the one piece of state that is about the tree rather than about the reader:
+ * its openings name folders, and a rebuilt tree can have renamed them. Where
+ * the host says the reader has moved as well, that move is made instead, which
+ * does the same measuring on the way through.
+ */
+export function apply(next: SidebarModel): void {
+  model.current = next;
+  ui.loading = next.loading;
+
+  const tree = next.change?.tree;
+  const at = next.change?.here ?? "";
+  folders.folds =
+    at === folders.folds.path
+      ? remeasured(folders.folds, tree)
+      : movedTo(folders.folds, tree, at);
+}
+
+/**
+ * The palette swapped for another, the editor's theme having changed.
+ *
+ * Written into the stylesheet the document was built with rather than appended
+ * beside it, so a reader who switches theme twice does not end up with three
+ * sets of the same variables and the first one winning on specificity. Added if
+ * it is somehow missing, which is only ever a document from an older build.
+ */
+function repaint(css: string): void {
+  const held = document.getElementById("odin-tokens");
+  if (held) {
+    held.textContent = css;
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = "odin-tokens";
+  style.textContent = css;
+  document.head.append(style);
+}
+
+/**
  * Listens for what the host has to say.
  *
  * Both messages exist because the alternative is a redraw. The document is
@@ -266,10 +322,25 @@ export function listen(): void {
           paths?: string[];
           viewed?: boolean;
           path?: string;
+          model?: SidebarModel;
+          css?: string;
         }
       | undefined;
     if (!message || typeof message.type !== "string") return;
 
+    // A reading rebuilt, which is nearly everything the host has to say. Not a
+    // new document: see `apply`.
+    if (message.type === "model" && message.model) {
+      apply(message.model);
+      return;
+    }
+    // A change of theme, which is the one part of the page the model cannot
+    // carry — the palette is a stylesheet in the head, not something a
+    // component draws.
+    if (message.type === "tokens" && typeof message.css === "string") {
+      repaint(message.css);
+      return;
+    }
     if (message.type === "loading") {
       ui.loading = message.value === true;
       return;

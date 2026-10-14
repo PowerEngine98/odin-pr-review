@@ -38,11 +38,10 @@ export interface ChangeView {
   /**
    * The file the reader is standing on in the drawing, when the panel has said.
    *
-   * Carried in the payload as well as sent as a message, because the document is
-   * rebuilt whole for anything structural — opening a part of the change, say —
-   * and the reader has not moved on the canvas while that happens, so no message
-   * follows to say where they are. Without this the mark would simply vanish at
-   * the rebuild and stay vanished until they next panned.
+   * Carried by every reading as well as sent on its own, because the reader has
+   * not moved on the canvas while a reading is rebuilt — so no message would
+   * follow to say where they are, and a reading that did not mention it would
+   * take the mark off the row until they next panned.
    */
   here?: string;
 }

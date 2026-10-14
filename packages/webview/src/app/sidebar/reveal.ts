@@ -170,6 +170,32 @@ export function movedTo(
 }
 
 /**
+ * The same reveal, against a tree that has just been replaced.
+ *
+ * A live reading is rebuilt on every save and the new tree is handed to the page
+ * as it stands, which means the folders between the root and the reader's file
+ * can have moved without the reader doing anything. They move for an ordinary
+ * reason: the tree joins a chain of directories holding nothing else into one
+ * row, so a file appearing anywhere along such a chain splits one folder into
+ * two and renames both. The reveal records the folders it opened by path, and a
+ * path that is no longer a row in the tree holds nothing open — while the row
+ * that is now in the way is still shut, and the reader's file is hidden behind
+ * it.
+ *
+ * So the openings are worked out again from the new tree. Only the openings:
+ * what the reader folded is theirs and is not touched here, which is the same
+ * line every function in this module keeps.
+ */
+export function remeasured(folds: Folds, tree: FolderView | undefined): Folds {
+  if (!folds.path || !tree) return folds;
+  return {
+    shut: folds.shut,
+    opened: toOpen(folds.shut, trailToFile(tree, folds.path)),
+    path: folds.path,
+  };
+}
+
+/**
  * Every folder in the tree opened at once, or every one shut.
  *
  * The reveal is rebuilt rather than dropped, and that is the part worth saying.

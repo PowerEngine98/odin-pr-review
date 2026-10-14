@@ -8,9 +8,11 @@ import {
   type FileNode,
   type LocalBranch,
   type PullRequestSummary,
+  type Theme,
 } from "@odin/core";
 import {
   renderSidebar,
+  sidebarTokens,
   type ChangeView,
   type FileView,
   type FolderView,
@@ -80,16 +82,29 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /**
    * The file the reader is standing on in the drawing, as the panel reports it.
    *
-   * Kept here as well as sent across, because the document is rebuilt whole for
-   * anything structural and the reader has not moved on the canvas while that
-   * happens — so nothing would follow to say where they are, and the mark would
-   * go missing until they next panned.
+   * Kept here as well as sent across, because the reader has not moved on the
+   * canvas while a reading is rebuilt — so nothing would follow to say where
+   * they are, and a reading drawn without it would take the mark off the row
+   * until they next panned.
    */
   private here = "";
   /** Files of the whole change that also moved in the narrower view. */
   private fresh: Fresh | undefined;
   /** Whether the list of pull requests is showing over the change list. */
   private chooser = false;
+  /**
+   * Whether the document in the view is up and listening.
+   *
+   * Which decides how a redraw is delivered, and that is the whole of why it is
+   * here. A view that has not said `ready` yet cannot be sent anything — a
+   * message posted at a webview that is still parsing is dropped, with no error
+   * and no second chance — so until it does, a new reading is handed over as a
+   * fresh document. Afterwards it is sent, and the page applies it to itself.
+   *
+   * Set to false by every rebuild, because a rebuild is a new document that has
+   * not said anything yet.
+   */
+  private woken = false;
   /**
    * What this machine has for each branch the list mentions.
    *
@@ -98,6 +113,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
    * than a fold that might be lying about what is underneath it.
    */
   private local = new Map<string, LocalBranch>();
+  /** What this view subscribed to, let go of when the view goes. */
+  private readonly disposables: vscode.Disposable[] = [];
 
   constructor(
     private readonly viewed: ViewedStore,
@@ -142,6 +159,9 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
         return;
       }
       if (message.type === "ready") {
+        // The document is up, so from here on a redraw is a message rather than
+        // another document.
+        this.woken = true;
         void this.view?.webview.postMessage({ type: "loading", value: this.loading });
         return;
       }
@@ -200,7 +220,25 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
     });
 
-    this.render();
+    /*
+     * The palette, which is the one part of the document a redraw cannot carry.
+     *
+     * It is a stylesheet in the head rather than anything a component draws, so
+     * a page kept alive across every reading would hold the theme it was built
+     * in for as long as it lived. Sent as its own message for the same reason
+     * the readings are: a reader's folds and filter are not something to spend
+     * on a change of colour.
+     */
+    vscode.window.onDidChangeActiveColorTheme(() => {
+      void this.view?.webview.postMessage({ type: "tokens", css: this.tokens() });
+    }, undefined, this.disposables);
+    view.onDidDispose?.(() => {
+      for (const one of this.disposables) one.dispose();
+      this.disposables.length = 0;
+      this.woken = false;
+    });
+
+    this.rebuild();
   }
 
   /**
@@ -310,10 +348,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /**
    * Whether a fetch is in flight.
    *
-   * Sent as a message rather than redrawn: the list under it is still the last
-   * good one, and replacing the document would lose the reader's scroll and
-   * whatever they had typed in the filter. Kept on the instance too, so a view
-   * resolved mid-fetch comes up with the bar already running.
+   * Its own message rather than a redraw: the list under it is still the last
+   * good one, and there is nothing to work out again for a bar that is either
+   * running or not. Kept on the instance too, so a view resolved mid-fetch
+   * comes up with the bar already running.
    */
   setLoading(on: boolean): void {
     this.loading = on;
@@ -328,10 +366,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /**
    * Where the reader has got to in the drawing, so the list can mark the row.
    *
-   * Sent rather than redrawn, and that is the whole reason this is a message at
-   * all: it changes every time a card passes under the middle of the canvas, and
-   * rebuilding the document for each would throw away the reader's scroll and
-   * whatever they had typed in the filter, several times a gesture.
+   * Its own message rather than a redraw, because of how often it changes: every
+   * time a card passes under the middle of the canvas. Sending the whole reading
+   * for each would be the list rebuilt several times a gesture, to move one
+   * mark.
    */
   setHere(path: string): void {
     if (path === this.here) return;
@@ -378,15 +416,54 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     };
   }
 
+  /**
+   * The list redrawn, in place wherever there is a page to redraw in place.
+   *
+   * A reading is rebuilt on every watched save, and each rebuild used to assign
+   * a new document to the view: the components came back as text, the bundle
+   * woke up again, and everything the reader had arranged in the strip went
+   * with the old document — the references they had unfolded under a file, how
+   * far down the list they had scrolled, what they had typed in the filter. On
+   * a live reading that is a strip that resets itself every few seconds, which
+   * is most of a change the reader cannot keep their place in.
+   *
+   * So the model is sent instead and the page applies it to itself. The
+   * components are already drawn from one object and watching it, which is what
+   * makes this a message rather than a rewrite: the rows that changed redraw,
+   * the rest are left exactly as they are, and nothing that is not in the model
+   * is touched at all.
+   *
+   * A fresh document is still the answer when there is no live one to send to —
+   * the view has just resolved, or the editor has rebuilt it — because a
+   * message posted at a document that is not listening is dropped silently.
+   */
   private render(): void {
     if (!this.view) return;
+    if (!this.woken) {
+      this.rebuild();
+      return;
+    }
+    void this.view.webview.postMessage({ type: "model", model: this.model() });
+  }
+
+  /** A whole new document, which is what the view is first given. */
+  private rebuild(): void {
+    if (!this.view) return;
+    // Whatever it had said about itself belongs to the document being replaced.
+    this.woken = false;
+    this.view.webview.html = renderSidebar(this.model(), this.theme());
+  }
+
+  private theme(): Theme {
     const dark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-    this.view.webview.html = renderSidebar(
-      this.model(),
-      dark ? DARK_THEME : LIGHT_THEME,
-    );
+    return dark ? DARK_THEME : LIGHT_THEME;
+  }
+
+  /** The palette as a stylesheet, for a page that is staying where it is. */
+  private tokens(): string {
+    return sidebarTokens(this.theme());
   }
 }
 

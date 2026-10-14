@@ -26,11 +26,12 @@
   const PANEL = "odin.asked-open";
   let asking = $state(false);
 
-  // Re-opened after a redraw, since changing the question rebuilds the document
-  // and a panel that shut on every press would be unusable. Done in an effect
-  // rather than read straight into the initial value: on the host's side of the
-  // render there is no session storage, and the markup the script adopts has to
-  // be the markup that was sent.
+  // Re-opened when the document is rebuilt — which an answer from the forge no
+  // longer does, but resolving the view and restoring the window both do, and a
+  // panel that shut every time the window came back would be a panel nobody
+  // could leave open. Done in an effect rather than read straight into the
+  // initial value: on the host's side of the render there is no session storage,
+  // and the markup the script adopts has to be the markup that was sent.
   $effect(() => {
     asking = remembered(PANEL) === "1";
   });

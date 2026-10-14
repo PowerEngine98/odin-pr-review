@@ -48,9 +48,10 @@
   /*
    * Read from the sidebar's own memory rather than held here.
    *
-   * The tree is rebuilt from scratch on every refresh — the host renders a new
-   * document and assigns it — so a state that lived in this component was
-   * thrown away each time and the whole tree sprang back open.
+   * A state that lived in this component was thrown away whenever the document
+   * was rebuilt, and the whole tree sprang back open. The document survives a
+   * refresh now, but it is still replaced when the view resolves and when the
+   * editor restores a window, and a fold is worth more than that.
    */
   const open = $derived(folderOpen(path));
 

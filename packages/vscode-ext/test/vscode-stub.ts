@@ -63,11 +63,39 @@ export const window = {
   showInformationMessage: () => Promise.resolve(undefined),
   showTextDocument: () => Promise.resolve(undefined),
   setStatusBarMessage: () => disposable,
-  onDidChangeActiveColorTheme: () => disposable,
+  /**
+   * The editor's theme changing, which a test can make happen.
+   *
+   * Kept rather than dropped because the colours are the one part of a webview
+   * that cannot arrive as a message to the page's own state: they are a
+   * stylesheet in the head, and whoever subscribes here is the only thing that
+   * will replace it.
+   */
+  onDidChangeActiveColorTheme: (fn: () => void) => {
+    themeWatchers.push(fn);
+    return disposable;
+  },
   tabGroups: { all: [], onDidChangeTabs: () => disposable },
 };
 
 export const ColorThemeKind = { Light: 1, Dark: 2, HighContrast: 3 };
+
+/** Whoever asked to be told when the theme changes. */
+const themeWatchers: (() => void)[] = [];
+
+/**
+ * The reader switching to the other theme.
+ *
+ * The kind is moved as well as the event fired, because anything reading it
+ * afterwards should see what the event was about.
+ */
+export function flipTheme(): void {
+  window.activeColorTheme.kind =
+    window.activeColorTheme.kind === ColorThemeKind.Dark
+      ? ColorThemeKind.Light
+      : ColorThemeKind.Dark;
+  for (const fn of [...themeWatchers]) fn();
+}
 
 /** Every question the editor has been asked to put to the reader. */
 export const asked: { message: string; choices: unknown[] }[] = [];
@@ -259,13 +287,33 @@ export interface StubView {
   say: (message: unknown) => void;
   /** What the view has been told, so a test can read the news. */
   sent: { type?: string }[];
+  /**
+   * Every document the view has been handed, in order.
+   *
+   * Counted rather than only kept, because the question a test has about the
+   * side list is now how often it is rebuilt: a redraw that arrives as a
+   * message leaves the reader's folds, scroll and filter where they are, and one
+   * that arrives as a document does not. The last of these is the markup, which
+   * is what the older tests read.
+   */
+  drawn: string[];
 }
 
 export function makeView(): StubView {
   const heard: ((message: unknown) => void)[] = [];
+  let html = "";
   const view: StubView = {
     webview: {
-      html: "",
+      // An accessor so that assigning a document is something a test can see
+      // happen. The editor's own webview is no different: setting this is what
+      // replaces the page, and the page is what the reader loses.
+      get html() {
+        return html;
+      },
+      set html(next: string) {
+        html = next;
+        view.drawn.push(next);
+      },
       cspSource: "vscode-test:",
       options: {},
       onDidReceiveMessage: (fn: (message: unknown) => void) => {
@@ -281,6 +329,7 @@ export function makeView(): StubView {
       for (const fn of heard) fn(message);
     },
     sent: [],
+    drawn: [],
   };
   return view;
 }
