@@ -460,36 +460,46 @@ export class GraphPanel {
   }
 
   /**
-   * The tab a promotion replaced, closed now its replacement is drawn.
+   * The tabs a promotion replaced, closed now their replacement is drawn.
    *
-   * After rather than before: closing the old one first would leave the reader
-   * looking at nothing for the seconds a build takes, and at nothing at all if
-   * it failed.
+   * After rather than before: closing the old ones first would leave the
+   * reader looking at nothing for the seconds a build takes, and at nothing at
+   * all if it failed.
+   *
+   * Plural because one change is sometimes open more than once. A promotion
+   * that closed a single tab left the reader with their live reading beside a
+   * stale copy of the same change — which is what a promotion exists to
+   * prevent, and what they said they did not want.
    */
   private static closePromoted(arrived: string): void {
     const going = GraphPanel.promoting;
     GraphPanel.promoting = undefined;
-    if (!going || going === arrived) return;
-    const old = GraphPanel.open.get(going);
-    if (!old) return;
+    if (!going) return;
+    const here = GraphPanel.open.get(arrived)?.panel;
 
-    /*
-     * Never the frame the replacement is standing in.
-     *
-     * A reading whose graph never arrived — a build that is still running, or
-     * one that failed — has a frame the loader is willing to hand on, so the
-     * replacement can quite legitimately move into the very frame this is
-     * being asked to close. Closing it then would take the picture that has
-     * just been drawn off the screen to tidy away the picture it replaced, and
-     * what the reader would be left with is no tab at all. The registry entry
-     * goes, because there is only one reading in that frame now; the frame
-     * stays, because it is the one they are looking at.
-     */
-    if (old.panel === GraphPanel.open.get(arrived)?.panel) {
-      GraphPanel.open.delete(going);
-      return;
+    for (const key of going) {
+      if (key === arrived) continue;
+      const old = GraphPanel.open.get(key);
+      if (!old) continue;
+
+      /*
+       * Never the frame the replacement is standing in.
+       *
+       * A reading whose graph never arrived — a build that is still running,
+       * or one that failed — has a frame the loader is willing to hand on, so
+       * the replacement can quite legitimately move into the very frame this
+       * is being asked to close. Closing it then would take the picture that
+       * has just been drawn off the screen to tidy away the picture it
+       * replaced, and what the reader would be left with is no tab at all. The
+       * registry entry goes, because there is only one reading in that frame
+       * now; the frame stays, because it is the one they are looking at.
+       */
+      if (old.panel === here) {
+        GraphPanel.open.delete(key);
+        continue;
+      }
+      old.dispose();
     }
-    old.dispose();
   }
 
   /** Every reading on screen, oldest first. */
@@ -1069,8 +1079,12 @@ export class GraphPanel {
    * Only for a promotion. Opening both deliberately is a thing people do — that
    * is why both exist — so nothing here closes a tab the reader did not just
    * ask to be replaced.
+   *
+   * A list, because the change being replaced is sometimes drawn in more than
+   * one tab, and leaving one of them standing beside the live reading is the
+   * fault this is for.
    */
-  static promoting: string | undefined;
+  static promoting: string[] | undefined;
 
   /**
    * Asked for the live reading of what is on screen.
