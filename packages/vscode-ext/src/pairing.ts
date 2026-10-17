@@ -24,6 +24,7 @@ import {
   within,
   type Agency,
   type AgentKind,
+  type FoundAgent,
   type AgentState,
   type Ask,
   type Change,
@@ -214,10 +215,10 @@ export const PLACEHOLDER = "you";
 const REMEMBER_FOR = 10 * 60 * 1000;
 
 /** The last answer, shared by every reading in this window. */
-let known: { at: number; agents: AgentKind[] } | undefined;
+let known: { at: number; agents: FoundAgent[] } | undefined;
 
 /** An answer already being waited on, so three tabs ask once between them. */
-let looking: Promise<AgentKind[]> | undefined;
+let looking: Promise<FoundAgent[]> | undefined;
 
 export class PairingSession {
   private comments: LocalComment[] = [];
@@ -254,7 +255,7 @@ export class PairingSession {
   private deltas: Delta[] = [];
 
   /** The agents installed here, once anybody has looked. */
-  private installed: AgentKind[] = [];
+  private installed: FoundAgent[] = [];
 
   /** Which are switched on, in the reader's order. Set by the page. */
   private order: string[] = [];
@@ -460,7 +461,7 @@ export class PairingSession {
   onSettle: ((rootId: number, resolved: boolean) => void) | undefined;
 
   /** What this machine can run, as the panel and the queue both need it. */
-  agents(): AgentKind[] {
+  agents(): FoundAgent[] {
     return this.installed;
   }
 
@@ -866,7 +867,7 @@ export class PairingSession {
    * `again` is the refresh button, which is the one moment the reader is
    * telling us the answer has changed.
    */
-  async look(again = false): Promise<AgentKind[]> {
+  async look(again = false): Promise<FoundAgent[]> {
     const now = Date.now();
     if (!again && known && now - known.at < REMEMBER_FOR) {
       this.installed = known.agents;
@@ -885,7 +886,7 @@ export class PairingSession {
         known = { at: Date.now(), agents: found };
         return found;
       })
-      .catch(() => [] as AgentKind[])
+      .catch(() => [] as FoundAgent[])
       .finally(() => {
         if (looking === asking) looking = undefined;
       });
@@ -1316,16 +1317,40 @@ export class PairingSession {
         ? kind.asks(this.configFor(kind))
         : [];
 
-    const extra = [...free, ...asking, ...aloud];
-    if (!kind.session) return extra.length ? [...kind.once, ...extra] : undefined;
+    /*
+     * Which model, when the reader has picked one and the tool can be told.
+     *
+     * Nothing at all when they have not. The tools each have a default, those
+     * defaults are what a reader gets everywhere else they use the tool, and a
+     * model named here because something had to be named would quietly
+     * override a choice they made in the tool's own settings.
+     */
+    const chosen = this.modelOf(agentId);
+    const named = chosen && kind.models ? kind.models.flag(chosen) : [];
+
+    const extra = [...free, ...asking, ...aloud, ...named];
+    if (!kind.session) return extra.length ? this.invoke(kind, kind.once, extra) : undefined;
 
     const held = this.sessions[agentId];
-    if (held) return [...kind.session.resume(held), ...extra];
+    if (held) return this.invoke(kind, kind.session.resume(held), extra);
 
     const fresh = randomUUID();
     this.sessions[agentId] = fresh;
     this.save();
-    return [...kind.session.start(fresh), ...extra];
+    return this.invoke(kind, kind.session.start(fresh), extra);
+  }
+
+  /**
+   * The invocation, with everything else in the place that tool allows.
+   *
+   * Ordinarily the switches that make it answer once come first and the rest
+   * follows. For a tool whose last switch takes the prompt as its value they
+   * go last instead: `gemini --prompt --model x "…"` is read as a prompt of
+   * `--model`, and what the reader gets back is the usage text. Measured
+   * against the tool, which refuses it outright.
+   */
+  private invoke(kind: AgentKind, head: string[], extra: string[]): string[] {
+    return kind.holdsPrompt ? [...extra, ...head] : [...head, ...extra];
   }
 
   /**
@@ -1356,6 +1381,49 @@ export class PairingSession {
    */
   private agencyOf(agentId: string): Agency {
     return this.agency[agentId] ?? "edits";
+  }
+
+  /**
+   * Which model each agent has been put on, where the reader has chosen one.
+   *
+   * Theirs to set, like the rungs: it is their account paying for the turn,
+   * and the difference between the cheap quick one and the careful expensive
+   * one is a decision about this afternoon's work rather than a constant.
+   */
+  private models: Record<string, string> = {};
+
+  /** What the reader has chosen for each agent, from the page. */
+  setModels(chosen: Record<string, string>): void {
+    this.models = chosen;
+  }
+
+  /** What this agent is to run on, or nothing for the tool's own default. */
+  private modelOf(agentId: string): string {
+    return this.models[agentId] ?? "";
+  }
+
+  /**
+   * What each installed tool can be put on, for the page to offer.
+   *
+   * What the tool itself said first, then the names written down beside it.
+   * A tool that can be asked outright is the better answer of the two and the
+   * list it printed is the whole of what it can run; the written names are for
+   * the tools that publish none, and they are aliases rather than ids for that
+   * reason.
+   *
+   * A tool with no way of being told has no entry, and the page draws no
+   * control for it: a dropdown that sets something the tool never hears is
+   * worse than no dropdown.
+   */
+  modelsOffered(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const kind of this.installed) {
+      if (!kind.models) continue;
+      const said = kind.models_ ?? [];
+      const written = kind.models.offers ?? [];
+      out[kind.id] = [...new Set([...said, ...written])];
+    }
+    return out;
   }
 
   /** Which rungs each installed tool actually offers, for the page to draw. */

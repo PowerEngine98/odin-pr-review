@@ -1388,3 +1388,62 @@ describe("the pairing panel, folded", () => {
     expect(pairing).toMatch(/\.pairing-panel\.folded \{ max-height: none; overflow: visible; \}/);
   });
 });
+
+/**
+ * Which model an agent runs on, as a control the reader can reach.
+ *
+ * The rung beside it is four buttons because there are four rungs everywhere;
+ * the models are however many that tool can run — thirty-odd for one of them,
+ * and names nobody would type from memory — so it is a dropdown. What it is
+ * allowed to offer comes from the host, because the honest answer is what the
+ * tool itself said when it was asked, and that differs by machine.
+ */
+describe("choosing what an agent runs on", () => {
+  const terminal = source("hud/Terminal.svelte");
+  const state = source("state.svelte.ts");
+
+  it("offers the models as a dropdown beside what the agent may do", () => {
+    expect(terminal).toMatch(/<select\s+class="model"/);
+    // In the bar the rungs are in. The two are the same kind of decision about
+    // the same agent, and a control for one of them somewhere else entirely is
+    // a control nobody finds.
+    const bar = terminal.slice(terminal.indexOf('class="terminal-bar"'));
+    expect(bar.indexOf('class="model"')).toBeGreaterThan(0);
+    expect(bar.indexOf('class="model"')).toBeLessThan(bar.indexOf('class="records"'));
+  });
+
+  it("keeps the tool's own default as a real answer", () => {
+    // An empty name, which the host reads as "say nothing": the agent then
+    // runs on whatever that tool is set to everywhere else, which is what the
+    // reader gets every other time they use it.
+    expect(terminal).toMatch(/<option value="">Default<\/option>/);
+  });
+
+  it("draws nothing for a tool that cannot be told", () => {
+    // A dropdown that sets something the tool never hears is worse than no
+    // dropdown, so the control hangs off what the host said it can offer.
+    expect(terminal).toMatch(/\{#if offered\.length > 0 \|\| ui\.models\[id\]\}/);
+  });
+
+  it("lets a name be typed, for the tools that publish none", () => {
+    // Two of them take whatever they are given and name nothing at all, so a
+    // list is never the whole of what can be asked for.
+    expect(terminal).toMatch(/<option value=\{OTHER\}>Other…<\/option>/);
+    expect(terminal).toMatch(/function takeTyped\(\): void \{[\s\S]{0,200}?runOn\(typed\.trim\(\)\)/);
+  });
+
+  it("keeps the name the reader is on in the list that shows it", () => {
+    // Two of these tools publish no names, so a choice made last week is one
+    // the list has never heard of — and a dropdown that silently drops what it
+    // is set to is a dropdown lying about the state of things.
+    expect(terminal).toMatch(
+      /runsOn && !offered\.includes\(runsOn\) \? \[runsOn, \.\.\.offered\] : offered/,
+    );
+  });
+
+  it("files the choice per agent, and takes the offer from the host", () => {
+    expect(terminal).toMatch(/settings\.model = \{ \.\.\.\(settings\.model \?\? \{\}\), \[id\]: name \}/);
+    expect(state).toMatch(/models: \{\} as Record<string, string\[\]>/);
+    expect(state).toMatch(/ui\.models = message\.models as Record<string, string\[\]>/);
+  });
+});

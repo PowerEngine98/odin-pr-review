@@ -235,6 +235,58 @@
     settings.agency = { ...(settings.agency ?? {}), [id]: next as never };
   }
 
+  /**
+   * Which model this agent runs on.
+   *
+   * Beside the rungs, because it is the same kind of decision and the same
+   * person makes it: what this agent may do, and what it is. The tools differ
+   * about what they will accept, so what is offered comes from the host —
+   * what the tool itself printed when asked, or the aliases it publishes — and
+   * a tool that cannot be told at all is offered nothing rather than a control
+   * that sets something it never hears.
+   */
+  const offered = $derived(ui.models[id] ?? []);
+  const runsOn = $derived(settings.model?.[id] ?? "");
+
+  /**
+   * What the dropdown holds, which is not only what the tool published.
+   *
+   * The name the reader is on comes first among the names even when the tool
+   * never offered it: two of these tools publish no names at all and take
+   * whatever they are given, so a choice typed in last week would otherwise
+   * vanish from the list that is meant to be showing it.
+   */
+  const choices = $derived(
+    runsOn && !offered.includes(runsOn) ? [runsOn, ...offered] : offered,
+  );
+
+  /** Typing a name the tool never published, which is how most of them work. */
+  let naming = $state(false);
+  let typed = $state("");
+
+  /** The marker for that entry. Not a model name, and could not be one. */
+  const OTHER = "\u0000other";
+
+  function runOn(name: string): void {
+    settings.model = { ...(settings.model ?? {}), [id]: name };
+  }
+
+  function picked(name: string): void {
+    if (name === OTHER) {
+      typed = runsOn;
+      naming = true;
+      return;
+    }
+    naming = false;
+    runOn(name);
+  }
+
+  /** The typed name, taken as a name: trimmed, and nothing else done to it. */
+  function takeTyped(): void {
+    runOn(typed.trim());
+    naming = false;
+  }
+
   /** The conversation this agent is carrying here, when it is carrying one. */
   const conversation = $derived(ui.sessions[id] ?? "");
   const named = $derived(ui.labels[id] ?? "");
@@ -895,6 +947,36 @@
     </span>
 
     <!--
+      What it runs on.
+
+      A dropdown rather than a row of buttons like the rungs beside it: the
+      rungs are four and they are the same four everywhere, where the models
+      are however many that tool can run — thirty-odd for one of them — and a
+      strip of thirty buttons is not a control. Absent entirely for a tool with
+      no way of being told, which is an honest blank rather than a dead one.
+
+      "Default" is first and is a real answer: it passes no flag at all, so the
+      agent runs on whatever that tool is set to everywhere else.
+    -->
+    {#if offered.length > 0 || ui.models[id]}
+      <select
+        class="model"
+        aria-label="Which model {name} runs on"
+        title={runsOn ? `${name} runs on ${runsOn}` : `${name} runs on its own default`}
+        value={runsOn}
+        onchange={(event) => picked(event.currentTarget.value)}
+      >
+        <option value="">Default</option>
+        {#each choices as one (one)}
+          <option value={one}>{one}</option>
+        {/each}
+        <!-- Two of these tools publish no names and take whatever they are
+             given, so the list is never the whole of what can be asked for. -->
+        <option value={OTHER}>Other…</option>
+      </select>
+    {/if}
+
+    <!--
       The two records this agent leaves, as two tabs.
 
       Beside the rungs rather than above the log, because they are the same kind
@@ -948,6 +1030,25 @@
       </button>
     {/if}
   </div>
+
+  {#if naming}
+    <!-- A model name the tool never published. It goes on a command line as a
+         single argument and nowhere else; the tool itself is what decides
+         whether it means anything. -->
+    <div class="terminal-rename">
+      <input
+        class="rename-box"
+        value={typed}
+        placeholder="The model name this tool expects"
+        oninput={(event) => (typed = event.currentTarget.value)}
+        onkeydown={(event) => {
+          if (event.key === "Enter") takeTyped();
+          if (event.key === "Escape") naming = false;
+        }}
+      />
+      <button class="terminal-act" title="Use it" aria-label="Use this model" onclick={takeTyped}>done</button>
+    </div>
+  {/if}
 
   {#if renaming}
     <!-- A name rather than an instruction: it never leaves this side and no
@@ -1620,6 +1721,35 @@
     border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
     border-radius: 4px;
     overflow: hidden;
+  }
+
+  /* What it runs on.
+
+     Narrow on purpose, and allowed to shrink: the names are long — one tool's
+     are a provider and a model joined by a slash — and a bar that widened to
+     fit `anthropic/claude-haiku-4-5` would push the tabs beside it off the end
+     of a terminal somebody has dragged narrow. The whole name is in the title
+     and in the list; what is on show is enough to tell one from another. */
+  .model {
+    max-width: 104px;
+    min-width: 0;
+    padding: 1px 2px;
+    border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .model:hover { color: var(--text); }
+
+  /* The list itself is drawn by the editor rather than by this page, and it
+     inherits nothing: left alone, a dark theme gets white-on-white options. */
+  .model option {
+    background: var(--panel);
+    color: var(--text);
   }
 
   /* The gap that used to hang off the rungs. It belongs to whatever is last on

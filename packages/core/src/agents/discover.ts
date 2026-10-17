@@ -30,6 +30,48 @@ export interface AgentKind {
   /** Asked for a version, which is the cheapest proof it will actually run. */
   version: string[];
   /**
+   * Whether the last of `once` takes the prompt as its value.
+   *
+   * Most of these tools are told to answer once with a switch — `--print`,
+   * `exec` — and the prompt goes at the end as an argument of its own, so
+   * anything else may sit between the two. Gemini's is not a switch: `--prompt`
+   * takes the prompt itself, and a flag inserted after it is read as the
+   * prompt while the real one becomes a stray argument. Measured against the
+   * tool rather than reasoned about — it answers "Not enough arguments
+   * following: prompt" and prints its usage, which is what a reader got for
+   * every turn that carried any flag at all.
+   *
+   * So for a tool that says this, everything else is said first and these
+   * arguments go last, immediately before what they take.
+   */
+  holdsPrompt?: boolean;
+  /**
+   * How to tell it which model to use, for a tool that can be told.
+   *
+   * Which model an agent runs on is the reader's call rather than ours: it is
+   * their account paying for it, and the choice between a cheap fast one for
+   * marks and an expensive careful one for a refactor is exactly the sort of
+   * thing somebody wants per agent and per afternoon.
+   *
+   * Absent for a tool with no such flag, and the control is then not drawn for
+   * it at all — a dropdown that sets something the tool never hears is worse
+   * than no dropdown.
+   *
+   * `offers` are names the tool itself answers to, taken from what it says
+   * rather than from a catalogue somebody wrote down: they are aliases its own
+   * help names, and they go stale far more slowly than model ids do. `list`
+   * is for a tool that can be asked outright, which is the honest version of
+   * the same thing — what it prints is what it can actually run.
+   */
+  models?: {
+    /** The arguments that name a model. */
+    flag(name: string): string[];
+    /** Names it is known to answer to, for a tool that cannot be asked. */
+    offers?: readonly string[];
+    /** Arguments that make it print what it can run, one per line. */
+    list?: string[];
+  };
+  /**
    * How a conversation is carried from one turn to the next, if it can be.
    *
    * Absent for most tools, and that absence is the honest answer rather than a
@@ -112,6 +154,17 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     once: ["--print"],
     version: ["--version"],
     /*
+     * The aliases its own help names — "an alias for the latest model (e.g.
+     * 'fable', 'opus', or 'sonnet') or a model's full name" — plus the small
+     * one, measured the same way the rest of this file is: the tool says
+     * outright when it does not recognise a name, and it recognised all four.
+     *
+     * Aliases rather than ids. An id names one model and stops being the
+     * latest anything the week after; an alias is what the reader means when
+     * they say "the fast one", and it is still true next month.
+     */
+    models: { flag: (name) => ["--model", name], offers: ["fable", "opus", "sonnet", "haiku"] },
+    /*
      * Its own streaming mode, measured against the tool: `stream-json` needs
      * `--verbose` alongside it, and emits one JSON object per event —
      * assistant text, thinking, each tool call, and a final result.
@@ -162,6 +215,14 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     once: ["exec"],
     version: ["--version"],
     /*
+     * `-m, --model <MODEL>`, and no names: it publishes none, validates none
+     * and takes whatever it is given — the one it was handed is printed back
+     * in the header of the session it starts. So the control offers this
+     * tool's default and whatever the reader types, which is the whole of
+     * what can honestly be said about it.
+     */
+    models: { flag: (name) => ["--model", name] },
+    /*
      * A sandbox rather than a permission mode, so the rungs are about what the
      * process can reach. The top one is both halves at once: full access alone
      * still leaves the approval prompts, and a prompt here has nobody to
@@ -179,6 +240,10 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     command: "gemini",
     once: ["--prompt"],
     version: ["--version"],
+    // `--prompt` takes the prompt, so nothing may come between them.
+    holdsPrompt: true,
+    /* `-m, --model`, with no names published. */
+    models: { flag: (name) => ["--model", name] },
     agency: {
       read: ["--approval-mode", "plan"],
       edits: ["--approval-mode", "auto_edit"],
@@ -211,6 +276,14 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
      */
     once: ["run"],
     version: ["--version"],
+    /*
+     * The one tool here that can be asked. `opencode models` prints what it
+     * can actually run, one `provider/model` to a line, in about half a
+     * second — which is both better than a list written down here and the only
+     * workable answer for a tool whose names are a provider and a model joined
+     * by a slash. Nobody is going to guess `anthropic/claude-haiku-4-5`.
+     */
+    models: { flag: (name) => ["--model", name], list: ["models"] },
     /*
      * No streaming mode to ask for, so nothing is added to the command line:
      * this is the tool's ordinary output, read rather than requested. What it
@@ -254,6 +327,14 @@ export interface FoundAgent extends AgentKind {
   path: string;
   /** Whatever it printed for `--version`, trimmed. Empty if it printed nothing. */
   version_: string;
+  /**
+   * What it said it can run, for a tool that can be asked.
+   *
+   * Absent where there is nothing to ask — not the same as empty, which would
+   * be a tool that answered and named nothing. The control falls back to the
+   * names written down beside the tool, and to whatever the reader types.
+   */
+  models_?: string[];
 }
 
 export interface DiscoverRequest {
@@ -328,7 +409,32 @@ export async function discoverAgents(
       batch.map(async ({ kind, path }): Promise<FoundAgent | undefined> => {
         try {
           const { stdout } = await run(kind.command, kind.version, options);
-          return { ...kind, path, version_: stdout.trim().split("\n")[0] ?? "" };
+          /*
+           * And what it can run, for the one kind of tool that will say.
+           *
+           * After the version rather than beside it: this is a second process
+           * for a tool that is already known to start, and asking it of a
+           * command that does not exist would be a spawn to find out something
+           * `which` has already answered. A tool that refuses the question, or
+           * takes too long over it, simply has no list — the control still
+           * offers its default and whatever the reader types.
+           */
+          const models = kind.models?.list
+            ? await run(kind.command, kind.models.list, options)
+                .then(({ stdout: said }) =>
+                  said
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter(Boolean),
+                )
+                .catch(() => undefined)
+            : undefined;
+          return {
+            ...kind,
+            path,
+            version_: stdout.trim().split("\n")[0] ?? "",
+            ...(models && models.length > 0 ? { models_: models } : {}),
+          };
         } catch {
           /*
            * On PATH and will not run.

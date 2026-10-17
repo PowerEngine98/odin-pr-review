@@ -66,6 +66,23 @@ describe("a conversation with the agents on this machine", () => {
       `${last}\necho "ARGS: $@" >&2\necho "thinking about it" >&2\necho "CLAUDE SAYS: $p"`);
     put("codex", 'if [ "$1" = "--version" ]; then echo "codex 1"; exit 0; fi\n' +
       `${last}\necho "CODEX SAYS: $p"`);
+    /*
+     * One that says which models it can run, and one that does not.
+     *
+     * The real difference between these tools: opencode answers `models` with
+     * a line per model, where gemini publishes none and takes whatever it is
+     * given. Both are stood up here because the control drawn for them is
+     * decided by which of the two they are.
+     *
+     * Gemini also takes the prompt as the value of a flag, which is the whole
+     * of why its invocation is assembled the other way round — so it writes
+     * its arguments down for a test to read.
+     */
+    put("opencode", 'if [ "$1" = "--version" ]; then echo "opencode 1"; exit 0; fi\n' +
+      'if [ "$1" = "models" ]; then echo "anthropic/claude-haiku-4-5"; echo "openai/gpt-5"; exit 0; fi\n' +
+      `${last}\necho "OPENCODE SAYS: $p"`);
+    put("gemini", 'if [ "$1" = "--version" ]; then echo "gemini 1"; exit 0; fi\n' +
+      `${last}\necho "ARGS: $@" >&2\necho "GEMINI SAYS: $p"`);
 
     path = process.env.PATH;
     process.env.PATH = `${bin}:${path ?? ""}`;
@@ -418,6 +435,106 @@ describe("a conversation with the agents on this machine", () => {
     paired.ask({ ...where, body: "one" });
     await until(() => paired.local().some((c) => c.agent === "claude"));
     expect(paired.transcript("claude")).not.toContain("--permission-mode");
+  }, 25_000);
+
+  it("runs an agent on the model the reader picked", async () => {
+    /*
+     * Which model an agent runs on is the reader's call: it is their account
+     * paying for the turn, and the difference between the quick cheap one and
+     * the careful expensive one is a decision about this afternoon's work.
+     *
+     * Read off the arguments the tool was actually started with, because that
+     * is the only place the answer exists — a model chosen in a panel and not
+     * passed to anything is a control that reads as set and is not.
+     */
+    const { paired } = await session(["claude"]);
+    paired.setModels({ claude: "haiku" });
+    paired.ask({ ...where, body: "one" });
+    await until(() => paired.local().some((c) => c.agent === "claude"));
+    expect(paired.transcript("claude")).toContain("--model haiku");
+  }, 25_000);
+
+  it("passes no model at all when the reader has picked none", async () => {
+    /*
+     * The tool's own default, which is a real answer rather than a missing
+     * one: it is what the reader gets everywhere else they use that tool, and
+     * naming one here because something had to be named would quietly
+     * override a choice they made in the tool's own settings.
+     */
+    const { paired } = await session(["claude"]);
+    paired.ask({ ...where, body: "one" });
+    await until(() => paired.local().some((c) => c.agent === "claude"));
+    expect(paired.transcript("claude")).not.toContain("--model");
+  }, 25_000);
+
+  it("says nothing to a tool that cannot be told which model to use", async () => {
+    // A tool with no way of being told has no entry, and the page draws no
+    // control for it: a dropdown that sets something the tool never hears is
+    // worse than no dropdown.
+    const { paired } = await session([]);
+    expect(paired.modelsOffered().cursor).toBeUndefined();
+  }, 20_000);
+
+  it("offers what the tool itself said it can run", async () => {
+    /*
+     * Asked rather than written down. One of these tools will say what it can
+     * run and the answer depends on the account it is signed into, so a list
+     * in our source would be wrong on somebody's machine the day it was
+     * written — and nobody is going to guess `anthropic/claude-haiku-4-5`.
+     */
+    const { paired } = await session([]);
+    expect(paired.modelsOffered().opencode).toEqual([
+      "anthropic/claude-haiku-4-5",
+      "openai/gpt-5",
+    ]);
+  }, 20_000);
+
+  it("offers the names a tool publishes when it cannot be asked", async () => {
+    // Claude names its aliases in its own help and will not say more. Aliases
+    // rather than ids, because an id stops being the latest anything a week
+    // later and an alias is still what the reader meant.
+    const { paired } = await session([]);
+    expect(paired.modelsOffered().claude).toEqual(
+      expect.arrayContaining(["opus", "sonnet", "haiku"]),
+    );
+  }, 20_000);
+
+  it("names the model before the flag that takes the prompt", async () => {
+    /*
+     * Gemini's "answer once" switch is not a switch: `--prompt` takes the
+     * prompt as its value, so a flag inserted after it is read as the prompt
+     * and the real one becomes a stray argument. The tool refuses outright —
+     * "Not enough arguments following: prompt" — and prints its usage, which
+     * is what a reader got back for every turn that carried any flag at all.
+     *
+     * So for a tool that says it holds the prompt, everything else is said
+     * first. Read off the arguments rather than asserted about the source: the
+     * order is the whole of the fault.
+     */
+    /*
+     * Its own copy of the tool, because a test above this one replaced the
+     * shared stub with a tool that fails — which is the thing that test is
+     * about, and leaves the name pointing at a failure for everything after
+     * it. Written here and looked for again, so this reads the arguments of a
+     * tool that runs.
+     */
+    const good = join(bin, "gemini");
+    writeFileSync(
+      good,
+      '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "gemini 1"; exit 0; fi\n' +
+        'for a in "$@"; do p="$a"; done\necho "ARGS: $@" >&2\necho "GEMINI SAYS: $p"\n',
+    );
+    chmodSync(good, 0o755);
+
+    const { paired } = await session([]);
+    await paired.look(true);
+    paired.setOrder(["gemini"]);
+    paired.setModels({ gemini: "gemini-2.5-flash" });
+    paired.ask({ ...where, body: "one" });
+    // Waited for by the log rather than by the reply: what is being read is
+    // the invocation, which the tool writes down as it starts.
+    await until(() => paired.transcript("gemini").includes("ARGS:"), 20_000);
+    expect(paired.transcript("gemini")).toContain("--model gemini-2.5-flash --prompt");
   }, 25_000);
 
   it("offers only the rungs a tool has a word for", async () => {

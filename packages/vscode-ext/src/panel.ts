@@ -1257,6 +1257,7 @@ export class GraphPanel {
     const held = GraphPanel.settings?.read();
     this.pairing().setOrder(readOrder(held));
     this.pairing().setAgency(readAgency(held));
+    this.pairing().setModels(readModels(held));
     void this.panel.webview.postMessage({ type: "agents", payload: agents });
     /*
      * And everything that hangs off knowing which agents exist.
@@ -1455,6 +1456,11 @@ export class GraphPanel {
       // that silently does nothing.
       labels: this.paired?.labelled() ?? {},
       rungs: this.paired?.rungs() ?? {},
+      // And which models each tool can be put on. Sent rather than written
+      // into the page, because the good answer comes from asking the tool and
+      // the answer differs by machine: what one checkout can run is a matter
+      // of what that account has.
+      models: this.paired?.modelsOffered() ?? {},
       // And which of them narrate a turn, since that is what the ledger is
       // read from. An empty ledger under a tool that cannot say is not the
       // same fact as an empty ledger under one that has written nothing.
@@ -3032,6 +3038,7 @@ export class GraphPanel {
         // somebody above it who is free.
         this.paired?.setOrder(readOrder(message.payload));
         this.paired?.setAgency(readAgency(message.payload));
+        this.paired?.setModels(readModels(message.payload));
         return;
       }
       if (message.type === "viewed") {
@@ -3338,6 +3345,25 @@ function readAgency(settings: unknown): Record<string, Agency> {
     if (level === "read" || level === "ask" || level === "edits" || level === "full") {
       out[id] = level;
     }
+  }
+  return out;
+}
+
+/**
+ * Which model each agent has been put on, out of stored settings.
+ *
+ * Read defensively, like the rungs beside it. A name is passed to a tool on a
+ * command line, so it is taken as a name and nothing else: anything that is
+ * not a plain non-empty string is no choice at all, and the tool keeps its own
+ * default.
+ */
+function readModels(settings: unknown): Record<string, string> {
+  if (!settings || typeof settings !== "object") return {};
+  const held = (settings as Record<string, unknown>).model;
+  if (!held || typeof held !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [id, name] of Object.entries(held as Record<string, unknown>)) {
+    if (typeof name === "string" && name.trim()) out[id] = name.trim();
   }
   return out;
 }

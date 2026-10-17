@@ -292,6 +292,7 @@ const DEFAULTS: ReaderSettings = {
   terminals: [],
   terminalsFolded: [],
   agency: {},
+  model: {},
   terminalWidth: 360,
   terminalHeight: 320,
   diagrams: {},
@@ -450,6 +451,16 @@ export const ui = $state({
    * tool has never heard of is a control that silently does nothing.
    */
   rungs: {} as Record<string, string[]>,
+  /**
+   * Which models each tool can be put on, as the host found them.
+   *
+   * From the machine rather than from this file: the good answer is the one
+   * the tool gives when it is asked, and what a tool can run depends on the
+   * account it is signed into. A tool with no entry cannot be told which model
+   * to use at all, and is offered no choice rather than a choice that does
+   * nothing.
+   */
+  models: {} as Record<string, string[]>,
   /** The conversation id each agent is carrying, for copying out. */
   sessions: {} as Record<string, string>,
   /**
@@ -1099,6 +1110,9 @@ export function listen(): void {
         }
         if (message.rungs && typeof message.rungs === "object") {
           ui.rungs = message.rungs as Record<string, string[]>;
+        }
+        if (message.models && typeof message.models === "object") {
+          ui.models = message.models as Record<string, string[]>;
         }
         if (message.sessions && typeof message.sessions === "object") {
           ui.sessions = message.sessions as Record<string, string>;

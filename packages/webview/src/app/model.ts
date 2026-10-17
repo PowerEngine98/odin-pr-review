@@ -436,6 +436,16 @@ export interface ReaderSettings {
    */
   agency?: Record<string, "read" | "ask" | "edits" | "full">;
   /**
+   * Which model each agent runs on, by agent id.
+   *
+   * Per agent for the same reason the rung is: the one marking up a diff and
+   * the one rewriting a module are not the same job, and a reader paying for
+   * both wants to say so. Absent, or empty, means the tool's own default —
+   * which is a real answer rather than a missing one: it is what they get
+   * everywhere else they use that tool.
+   */
+  model?: Record<string, string>;
+  /**
    * How big the terminals are, once somebody has dragged one.
    *
    * One size for all of them rather than one each: they are stacked in a
