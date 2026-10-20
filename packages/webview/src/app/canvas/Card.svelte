@@ -2115,10 +2115,18 @@
    * on the scrubber would otherwise start a pan and the drawing would slide
    * away under a finger that was trying to seek.
    */
-  .sound-view {
+  /*
+   * Padded on all four sides, and said against `.card-body` rather than beside
+   * it: the body's own rule is `var(--padding) 0`, it is written further down
+   * this sheet, and a bare `.sound-view` ties with it and loses — which is how
+   * the player came to sit against the card's edges with the title inset above
+   * it. The card is drawn wide enough for the player plus this padding, so the
+   * scrubber keeps the room it was given.
+   */
+  .card-body.sound-view {
     display: flex;
     align-items: center;
-    padding: 0 var(--padding, 12px);
+    padding: var(--padding, 12px);
   }
   .card-sound {
     width: 100%;

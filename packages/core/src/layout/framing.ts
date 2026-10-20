@@ -71,7 +71,10 @@ export const PLAYER_WIDTH = 360;
  */
 export function played(metrics: LayoutMetrics): { width: number; height: number } {
   return {
-    width: Math.max(metrics.minCardWidth, PLAYER_WIDTH),
+    // The padding either side is the card's, not the player's: `PLAYER_WIDTH`
+    // is how much room the control wants, so the card has to be that much
+    // wider than its own inset or the scrubber pays for the margin.
+    width: Math.max(metrics.minCardWidth, PLAYER_WIDTH + metrics.padding * 2),
     height: metrics.titleHeight + metrics.padding * 2 + PLAYER_HEIGHT,
   };
 }
