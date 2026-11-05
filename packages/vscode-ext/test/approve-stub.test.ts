@@ -90,14 +90,36 @@ describe("the permission tool Claude spawns", () => {
     editor.close();
   }, 20_000);
 
-  it("offers exactly one tool", async () => {
+  it("offers the permission tool and the tour's two", async () => {
     const editor = await listening(() => ({ behavior: "allow" }));
     const mcp = talk(editor.path);
     mcp.send({ jsonrpc: "2.0", id: 1, method: "tools/list" });
 
     const said = await mcp.next();
     const tools = (said.result as { tools: { name: string }[] }).tools;
-    expect(tools.map((t) => t.name)).toEqual(["approve"]);
+    expect(tools.map((t) => t.name)).toEqual(["approve", "tour_read", "tour_update"]);
+    mcp.stop();
+    editor.close();
+  }, 20_000);
+
+  it("carries a corrected tour to the editor and its verdict back", async () => {
+    const editor = await listening(() => ({ ok: false, errors: ["topics must be a non-empty array"] }));
+    const mcp = talk(editor.path);
+    mcp.send({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "tour_update", arguments: { tour: { version: 1, title: "Orders", topics: [] } } },
+    });
+
+    const said = await mcp.next();
+    const text = (said.result as { content: { text: string }[] }).content[0]!.text;
+    expect(JSON.parse(text)).toEqual({ ok: false, errors: ["topics must be a non-empty array"] });
+    expect(editor.asked[0]).toEqual({
+      kind: "tour",
+      action: "update",
+      tour: { version: 1, title: "Orders", topics: [] },
+    });
     mcp.stop();
     editor.close();
   }, 20_000);

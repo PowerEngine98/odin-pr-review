@@ -306,6 +306,29 @@
         {/if}
 
         <span class="settings-rule"></span>
+        <span class="settings-group">Narrator</span>
+        <Viewed
+          label="Narrate file extensions"
+          title="Read Main.kt as &quot;Main dot kt&quot;. Off, it is read as &quot;Main&quot;."
+          bind:checked={settings.narrateExtensions}
+        />
+        <Viewed
+          label="Auto narrate new content"
+          title="Read each new block of an agent's answer aloud as it arrives"
+          bind:checked={settings.autoNarrate}
+        />
+        <Viewed
+          label="Use OS narrator"
+          title="Read aloud with the voice chosen in the system's settings (macOS). Falls back to the browser's voice when it cannot be reached."
+          bind:checked={settings.systemVoice}
+        />
+        <Viewed
+          label="Use Kokoro voice"
+          title="A neural voice that runs on this machine. Odin sets it up in the background; run &quot;Odin: Set Up the Kokoro Narrator&quot; to try again."
+          bind:checked={settings.kokoroVoice}
+        />
+
+        <span class="settings-rule"></span>
         <!--
           The keys, and what they do: a section of the panel like any other,
           rather than a list a button had to be found and pressed to see.

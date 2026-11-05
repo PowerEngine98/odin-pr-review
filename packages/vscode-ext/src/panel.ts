@@ -40,6 +40,11 @@ import * as vscode from "vscode";
 
 import { viewSuffix, type Fresh } from "./views.js";
 import { SettingsStore } from "./settings.js";
+import { SystemVoice } from "./voice.js";
+import type { Kokoro } from "./kokoro.js";
+import { isStale, makeTour, pickAgent, START, tourContext, type Making, type TourProgress, type TourStore } from "./tour.js";
+import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
+import { log } from "./log.js";
 
 import { baseUri } from "./baseContent.js";
 import { imageFolder, keepPasted, readImage, withImages } from "./images.js";
@@ -119,6 +124,53 @@ interface SettingsMessage {
   payload: Record<string, unknown>;
 }
 
+/** A sentence of an answer for the system's voice to read aloud. */
+interface SayMessage {
+  type: "say";
+  payload: { id: number; text: string };
+}
+
+/** A sentence for Kokoro to turn into audio. */
+interface SpeakMessage {
+  type: "speak";
+  payload: { id: number; text: string };
+}
+
+/** Whatever is being read aloud, stopped. */
+interface HushMessage {
+  type: "hush";
+}
+
+/** Asking for a tour of the change, or for a new one in place of the one kept. */
+interface TourMakeMessage {
+  type: "tourMake";
+  payload?: { fresh?: boolean };
+}
+
+/** The kept tour corrected: to the change as it is now, and to what the reader asks. */
+interface TourReviseMessage {
+  type: "tourRevise";
+  payload?: { note?: string };
+}
+
+/** The tour being made, abandoned. */
+interface TourCancelMessage {
+  type: "tourCancel";
+  payload?: Record<string, never>;
+}
+
+/** Where the reader has got to in the tour, to be kept. */
+interface TourProgressMessage {
+  type: "tourProgress";
+  payload: { topic: number; frame: number; watched: string[]; frames?: Record<string, number> };
+}
+
+/** The reader entering or leaving the tour. */
+interface TourModeMessage {
+  type: "tourMode";
+  payload: { on: boolean };
+}
+
 /** Asking the forge how the branch stands, now rather than on a timer. */
 interface ChecksMessage {
   type: "refreshChecks";
@@ -175,6 +227,8 @@ interface AskMessage {
     to?: string;
     /** Pictures pasted into the box, as data URIs the page could draw. */
     images?: { name?: string; data: string }[];
+    /** Sent by the agent to itself: signed with its name, shown in its log as `label`. */
+    self?: { name: string; label: string };
   };
 }
 
@@ -318,6 +372,14 @@ type Message =
   | ChecksMessage
   | RerunMessage
   | SettingsMessage
+  | SayMessage
+  | SpeakMessage
+  | HushMessage
+  | TourMakeMessage
+  | TourCancelMessage
+  | TourProgressMessage
+  | TourModeMessage
+  | TourReviseMessage
   | PartMessage
   | HereMessage
   | NavigateMessage
@@ -1311,6 +1373,7 @@ export class GraphPanel {
         // file on disk the file the reader was looking at.
         this.graph.meta.worktree === true,
       );
+      this.paired.tours = (asked) => this.answerTour(asked);
       /*
        * A conversation the store has settled, settled on the forge as well.
        *
@@ -1364,6 +1427,196 @@ export class GraphPanel {
   }
 
   private paired: PairingSession | undefined;
+  private readonly voice = new SystemVoice();
+
+  /** The tour being made for this reading, while it is. */
+  private touring: Making | undefined;
+  /** What the page was last told about making one, for a page that reloads. */
+  private tourNote = "";
+
+  /** What this reading's tour is filed under: the same change as its conversation. */
+  private tourKey(): string {
+    return conversationKey({
+      repo: this.repo,
+      ...(this.graph.meta.baseRef ? { baseRef: this.graph.meta.baseRef } : {}),
+      ...(this.graph.meta.headRef ? { headRef: this.graph.meta.headRef } : {}),
+      ...(this.graph.meta.worktree === true ? { worktree: true } : {}),
+    });
+  }
+
+  /**
+   * The kept tour, handed to a page that has just loaded.
+   *
+   * With the reader's place in it, and flagged stale when the change has moved
+   * on since it was written. A page loading while one is being made is told
+   * that instead, so a reload does not lose the spinner.
+   */
+  private deliverTour(): void {
+    if (this.touring) {
+      this.tourStatus("making", this.tourNote);
+      return;
+    }
+    const saved = GraphPanel.tours?.read(this.tourKey());
+    if (!saved) return;
+    void this.panel.webview.postMessage({
+      type: "tour",
+      tour: saved.tour,
+      progress: saved.progress,
+      ...(isStale(saved, this.graph) ? { stale: true } : {}),
+    });
+  }
+
+  private tourStatus(status: "none" | "making" | "failed", note?: string): void {
+    void this.panel.webview.postMessage({
+      type: "tourStatus",
+      status,
+      ...(note ? { note } : {}),
+    });
+  }
+
+  /**
+   * A tour of this change, made by an agent and kept.
+   *
+   * The kept one is handed back unless the reader asked for a fresh one. A
+   * fresh one that fails leaves the kept one where it was.
+   */
+  private async makeTour(fresh: boolean, revise?: { note?: string }): Promise<void> {
+    if (this.touring) return;
+    const key = this.tourKey();
+    const kept = GraphPanel.tours?.read(key);
+    if (!fresh && kept) {
+      this.deliverTour();
+      return;
+    }
+    const context = tourContext(this.graph);
+    if (context.files.length === 0) {
+      this.tourStatus("failed", "There are no changed files to tour.");
+      return;
+    }
+    this.tourNote = "Looking for an agent";
+    this.tourStatus("making", this.tourNote);
+    const agent = pickAgent(await this.pairing().look().catch(() => []));
+    if (!agent) {
+      this.tourNote = "";
+      this.tourStatus("failed", "No coding agent is installed to write a tour.");
+      return;
+    }
+
+    const graph = this.graph;
+    const started = Date.now();
+    log(`tour: making one for ${key} with ${agent.name}`);
+    const making = makeTour({
+      agent,
+      context,
+      cwd: this.repo,
+      ...(revise && kept ? { prompt: revisePrompt(context, kept.tour, revise.note) } : {}),
+      step: (note) => {
+        this.tourNote = note;
+        this.tourStatus("making", note);
+      },
+    });
+    this.touring = making;
+    const made = await making.done.finally(() => {
+      this.touring = undefined;
+      this.tourNote = "";
+    });
+    const seconds = Math.round((Date.now() - started) / 1000);
+
+    if (!made.ok) {
+      log(`tour: ${made.stopped ? "stopped" : "failed"} after ${seconds}s: ${made.why}`);
+      if (made.stopped) this.tourStatus("none");
+      else this.tourStatus("failed", made.why);
+      return;
+    }
+    log(`tour: ${revise && kept ? "revised" : "made"} "${made.tour.title}", ${made.tour.topics.length} topics, in ${seconds}s`);
+    this.keepTour(made.tour, graph, revise && kept ? kept.progress : START);
+  }
+
+  /**
+   * A tour written down and shown, whoever wrote it.
+   *
+   * A correction keeps the reader's place where the tour still has it: the
+   * same topic, by id, and the frame clamped to what that topic now holds.
+   */
+  private keepTour(tour: Tour, graph: ChangeGraph, progress: TourProgress): void {
+    const was = GraphPanel.tours?.read(this.tourKey())?.tour.topics[progress.topic]?.id;
+    const topic = Math.max(0, was ? tour.topics.findIndex((one) => one.id === was) : progress.topic);
+    const kept: TourProgress = {
+      topic: Math.min(topic, tour.topics.length - 1),
+      frame: Math.min(progress.frame, (tour.topics[topic]?.frames.length ?? 1) - 1),
+      watched: progress.watched.filter((id) => tour.topics.some((one) => one.id === id)),
+      frames: Object.fromEntries(
+        tour.topics
+          .filter((one) => typeof progress.frames[one.id] === "number")
+          .map((one) => [one.id, Math.max(0, Math.min(progress.frames[one.id]!, one.frames.length - 1))]),
+      ),
+    };
+    GraphPanel.tours?.write(this.tourKey(), {
+      tour,
+      ...(graph.meta.headSha ? { headSha: graph.meta.headSha } : {}),
+      ...(graph.meta.mergeBase ? { mergeBase: graph.meta.mergeBase } : {}),
+      progress: kept,
+      at: new Date().toISOString(),
+    });
+    void this.panel.webview.postMessage({
+      type: "tour",
+      tour,
+      progress: kept,
+      ...(graph.meta.headSha !== this.graph.meta.headSha ||
+      graph.meta.mergeBase !== this.graph.meta.mergeBase
+        ? { stale: true }
+        : {}),
+    });
+  }
+
+  /**
+   * The tour, as an agent pairing on this change reads and corrects it.
+   *
+   * Asked through Odin's own tools, so the agent that just moved the code can
+   * move the tour with it. A correction is held to the same rules as a tour
+   * from scratch, and what was wrong goes back to the agent to fix.
+   */
+  private answerTour(asked: { action?: string; tour?: unknown }): unknown {
+    const saved = GraphPanel.tours?.read(this.tourKey());
+    const files = tourContext(this.graph).files.map((file) => file.path);
+    if (asked.action === "read") {
+      return saved
+        ? { tour: saved.tour, files, stale: isStale(saved, this.graph) }
+        : { tour: null, files, note: "There is no tour of this change yet. Write one with tour_update." };
+    }
+    if (asked.action !== "update") return { ok: false, errors: ["unknown tour action"] };
+    const text = typeof asked.tour === "string" ? asked.tour : JSON.stringify(asked.tour ?? null);
+    const parsed = parseTour(text, files);
+    if (!parsed.ok) return { ok: false, errors: parsed.errors };
+    this.keepTour(parsed.tour, this.graph, saved?.progress ?? START);
+    log(`tour: corrected by an agent, ${parsed.tour.topics.length} topics`);
+    return { ok: true, warnings: parsed.warnings };
+  }
+
+  /** The reading whose tour put Odin's side bar away, and so may bring it back. */
+  private static tourHid: GraphPanel | undefined;
+
+  /**
+   * The side bar, put away for the tour and back after it.
+   *
+   * Only brought back when it was the tour that put it away: a reader who had
+   * closed it themselves before starting does not have it opened on them.
+   */
+  private async tourMode(on: boolean): Promise<void> {
+    try {
+      if (on) {
+        if (GraphPanel.tourHid || !GraphPanel.sidebarShown?.()) return;
+        GraphPanel.tourHid = this;
+        await vscode.commands.executeCommand("workbench.action.closeSidebar");
+        return;
+      }
+      if (GraphPanel.tourHid !== this) return;
+      GraphPanel.tourHid = undefined;
+      await vscode.commands.executeCommand("workbench.view.extension.odin");
+    } catch {
+      // A side bar that will not move is not worth stopping a tour over.
+    }
+  }
 
   /**
    * Where this reading keeps pictures pasted into a conversation.
@@ -1461,6 +1714,7 @@ export class GraphPanel {
       // the answer differs by machine: what one checkout can run is a matter
       // of what that account has.
       models: this.paired?.modelsOffered() ?? {},
+      modelsInUse: this.paired?.modelsInUse() ?? {},
       // And which of them narrate a turn, since that is what the ledger is
       // read from. An empty ledger under a tool that cannot say is not the
       // same fact as an empty ledger under one that has written nothing.
@@ -1846,6 +2100,22 @@ export class GraphPanel {
    */
   static settings: SettingsStore | undefined;
 
+  /** The neural voice on this machine, once the extension has made one. */
+  static kokoro: Kokoro | undefined;
+
+  /** Where tours are kept, when the editor gave this extension somewhere. */
+  static tours: TourStore | undefined;
+
+  /** Whether Odin's own side bar is on screen, which the tour asks before hiding it. */
+  static sidebarShown: (() => boolean) | undefined;
+
+  /** Kokoro has just been set up, so every open page switches to it. */
+  static kokoroReady(): void {
+    for (const open of GraphPanel.open.values()) {
+      void open.panel.webview.postMessage({ type: "kokoroReady" });
+    }
+  }
+
   /**
    * Whether the reader asked for import arrows.
    *
@@ -1999,6 +2269,9 @@ export class GraphPanel {
         (await inlineAvatar(`https://github.com/${login}.png?size=64`).catch(
           () => undefined,
         )) ?? "";
+      // A picture that failed to arrive is asked for again next time, rather
+      // than every remark for the rest of the session going out faceless.
+      if (!face) this.identity = undefined;
       return { login, face };
     })();
     return this.identity;
@@ -2007,7 +2280,8 @@ export class GraphPanel {
   /** Learns who is reading, and signs anything already written as nobody. */
   private async learnViewer(): Promise<{ login: string; face: string }> {
     const me = await this.whoAmI();
-    if (!me.login || me.login === this.viewer) return me;
+    if (!me.login) return me;
+    if (me.login === this.viewer && (this.viewerFace || !me.face)) return me;
 
     this.viewer = me.login;
     this.viewerFace = me.face;
@@ -2747,6 +3021,7 @@ export class GraphPanel {
 
     // Marks made in an earlier session are restored once the page is up.
     const marked = this.viewed?.all() ?? [];
+    setTimeout(() => this.deliverTour(), 0);
     if (marked.length > 0) {
       setTimeout(() => {
         void this.panel.webview.postMessage({
@@ -3020,15 +3295,19 @@ export class GraphPanel {
          * this conversation next week should be able to see that a screenshot
          * was part of the question.
          */
-        const { images, ...asked } = message.payload;
+        const { images, self, ...asked } = message.payload;
         const paths = images?.length
           ? keepPasted(images, (this.images ??= imageFolder()))
           : [];
         paired.ask({
           ...asked,
           body: withImages(asked.body, paths),
-          author: this.viewer || PLACEHOLDER,
-          ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
+          ...(self && asked.to
+            ? { author: self.name, selfAsked: asked.to, label: self.label }
+            : {
+                author: this.viewer || PLACEHOLDER,
+                ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
+              }),
         });
         void this.learnViewer().catch(() => undefined);
         return;
@@ -3039,6 +3318,60 @@ export class GraphPanel {
       }
       if (message.type === "rerunCheck") {
         await this.rerun(message.payload);
+        return;
+      }
+      if (message.type === "say") {
+        const { id, text } = message.payload;
+        this.voice.say(
+          text,
+          () => void this.panel.webview.postMessage({ type: "saying", id }),
+          (ok) => void this.panel.webview.postMessage({ type: "said", id, ok }),
+        );
+        return;
+      }
+      if (message.type === "speak") {
+        const { id, text } = message.payload;
+        const kokoro = GraphPanel.kokoro;
+        if (!kokoro || !(await kokoro.ready())) {
+          void this.panel.webview.postMessage({ type: "spoken", id, ok: false, unavailable: true });
+          return;
+        }
+        const spoken = await kokoro.speak(text);
+        void this.panel.webview.postMessage({ type: "spoken", id, ...spoken });
+        return;
+      }
+      if (message.type === "hush") {
+        this.voice.hush();
+        return;
+      }
+      if (message.type === "tourMake") {
+        await this.makeTour(message.payload?.fresh === true);
+        return;
+      }
+      if (message.type === "tourRevise") {
+        const note = typeof message.payload?.note === "string" ? message.payload.note.trim() : "";
+        await this.makeTour(true, { ...(note ? { note } : {}) });
+        return;
+      }
+      if (message.type === "tourCancel") {
+        this.touring?.stop();
+        return;
+      }
+      if (message.type === "tourProgress") {
+        const { topic, frame, watched, frames } = message.payload;
+        GraphPanel.tours?.progress(this.tourKey(), {
+          topic: Number(topic) || 0,
+          frame: Number(frame) || 0,
+          watched: Array.isArray(watched) ? watched.map(String) : [],
+          frames: Object.fromEntries(
+            Object.entries(frames && typeof frames === "object" ? frames : {})
+              .filter(([, at]) => typeof at === "number" && at >= 0),
+          ),
+        });
+        return;
+      }
+      if (message.type === "tourMode") {
+        await this.tourMode(message.payload.on === true);
         return;
       }
       if (message.type === "settings") {
@@ -3168,6 +3501,7 @@ export class GraphPanel {
   }
 
   dispose(): void {
+    this.voice.hush();
     /*
      * Whether the reader was looking at this one, asked before it is forgotten.
      *
@@ -3178,7 +3512,12 @@ export class GraphPanel {
      * whether any of that has to move.
      */
     const front = GraphPanel.active === this;
-    GraphPanel.open.delete(this.key);
+    // Only the frame filed under this key may take its registration with it.
+    // A second frame for the same reading — one the editor restored beside a
+    // fresh one — closing took the live tab's watcher down, and that tab went on
+    // saying "live" over a picture nothing was updating any more.
+    const owner = GraphPanel.open.get(this.key) === this;
+    if (owner) GraphPanel.open.delete(this.key);
     // Whatever is left, so the next press has somewhere to land. The editor
     // will correct this the moment the reader looks at a tab.
     const next: GraphPanel | undefined = GraphPanel.open.values().next().value;
@@ -3190,6 +3529,9 @@ export class GraphPanel {
     // Turns in flight belong to this reading, and there is nowhere left for
     // them to write. What they have already said is on disk.
     this.paired?.dispose();
+    this.touring?.stop();
+    GraphPanel.tours?.flush(this.tourKey());
+    void this.tourMode(false);
     // Pictures pasted into this reading's conversations. They were copies of
     // something the reader already had, kept only so an agent could open them.
     if (this.images) {
@@ -3200,7 +3542,7 @@ export class GraphPanel {
       }
       this.images = undefined;
     }
-    GraphPanel.onClosed?.(this.key);
+    if (owner) GraphPanel.onClosed?.(this.key);
     // Only when it was the one in front. A tab closed in the background takes
     // nothing with it that the reader can see, and moving the list because of
     // one would pull the bar off the change they are actually reading.

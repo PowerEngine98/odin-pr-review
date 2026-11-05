@@ -13,6 +13,8 @@ import {
   type Spot,
 } from "./keys.js";
 import { composeOnFile, drop } from "./picking.svelte.js";
+import { leaveTour, next, previous, toggle } from "../tour/player.svelte.js";
+import { tour } from "../tour/state.svelte.js";
 
 /**
  * Reading a change from the keyboard.
@@ -166,6 +168,8 @@ function press(event: KeyboardEvent): void {
    */
   if (waitingFor()) return;
 
+  if (tour.active && drive(event)) return;
+
   const action = actionFor(event, readKeys(store()));
   if (!action) return;
 
@@ -225,6 +229,37 @@ function press(event: KeyboardEvent): void {
     notify("open", { path });
     event.preventDefault();
   }
+}
+
+/**
+ * A tour's keys, which are a video player's: space plays and pauses, the arrows
+ * step a frame, escape leaves.
+ *
+ * Ahead of the reading keys while a tour is on, because the same arrows walk
+ * the cards otherwise, and a walk in the middle of a tour is the camera pulled
+ * two ways. With a modifier held the press is somebody else's, and left alone.
+ * Answers whether it took the press.
+ */
+function drive(event: KeyboardEvent): boolean {
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  switch (event.key) {
+    case " ":
+      if (!event.repeat) toggle();
+      break;
+    case "ArrowLeft":
+      if (!event.repeat) previous();
+      break;
+    case "ArrowRight":
+      if (!event.repeat) next();
+      break;
+    case "Escape":
+      leaveTour();
+      break;
+    default:
+      return false;
+  }
+  event.preventDefault();
+  return true;
 }
 
 /**

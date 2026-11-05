@@ -1416,7 +1416,9 @@ describe("choosing what an agent runs on", () => {
     // An empty name, which the host reads as "say nothing": the agent then
     // runs on whatever that tool is set to everywhere else, which is what the
     // reader gets every other time they use it.
-    expect(terminal).toMatch(/<option value="">Default<\/option>/);
+    // Labelled with the model it lands on once the tool has said, and still
+    // the empty value either way.
+    expect(terminal).toMatch(/<option value="">\{runsOn === "" \? shownAs\("", inUse\) : "Default"\}<\/option>/);
   });
 
   it("draws nothing for a tool that cannot be told", () => {

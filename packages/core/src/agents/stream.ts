@@ -28,6 +28,8 @@ export interface Said {
    * for afterwards, and the two want different shapes and different lifetimes.
    */
   did?: Change[];
+  /** The exact model answering, when the event names it: an alias resolved to an id. */
+  model?: string;
 }
 
 /**
@@ -54,53 +56,64 @@ export function readClaude(line: string): Said | undefined {
     return answer ? { answer } : undefined;
   }
 
-  if (event.type === "assistant") {
-    const message = event.message as { content?: unknown[] } | undefined;
-    const said: string[] = [];
-    for (const block of message?.content ?? []) {
-      const part = block as Record<string, unknown>;
-      if (part.type === "text" && typeof part.text === "string") {
-        said.push(part.text);
-      } else if (part.type === "thinking" && typeof part.thinking === "string") {
-        /*
-         * Marked, because it is the agent working rather than the agent
-         * answering — and a reader skimming a log should be able to tell.
-         *
-         * Every line of it, not only the first. A page of reasoning marked once
-         * at the top is one marked line followed by a dozen that look exactly
-         * like the answer, and whatever reads this back has no way to tell
-         * where the thinking stopped.
-         *
-         * Blank lines are not marked, because a mark on a blank line is a log
-         * entry carrying nothing. Reasoning arrives with the paragraph breaks
-         * still in it, and interleaved turns emit thinking blocks that are
-         * whitespace and nothing else, so marking every line without asking
-         * whether there was a line produced exactly what the panel was showing:
-         * runs of entries reading `…` and no more, one after another, between
-         * the tool calls that were the only things left saying anything. The
-         * break is a thing a paragraph has, not a thing an agent thought.
-         */
-        for (const line of part.thinking.trim().split("\n")) {
-          if (line.trim()) said.push(`… ${line}`);
-        }
-      } else if (part.type === "tool_use") {
-        said.push(`→ ${describeTool(part)}`);
-      }
-    }
-    const did = changesIn(event);
-    if (said.length === 0 && did.length === 0) return undefined;
-    return {
-      ...(said.length ? { show: said.join("\n") } : {}),
-      ...(did.length ? { did } : {}),
-    };
+  if (event.type === "system" && event.subtype === "init") {
+    return typeof event.model === "string" && event.model ? { model: event.model } : undefined;
   }
 
+  if (event.type === "assistant") {
+    const message = event.message as { content?: unknown[]; model?: unknown } | undefined;
+    const model = typeof message?.model === "string" && message.model ? message.model : undefined;
+    const read = readAssistant(event);
+    if (!model) return read;
+    return { ...(read ?? {}), model };
+  }
   /*
    * Everything else is machinery: the hooks that ran at startup, the session
    * banner, rate limit accounting, and the results coming back from tools. The
    * reader is watching to see what the agent is doing, and none of that is it.
    */
   return undefined;
+}
+
+function readAssistant(event: Record<string, unknown>): Said | undefined {
+  const message = event.message as { content?: unknown[] } | undefined;
+  const said: string[] = [];
+  for (const block of message?.content ?? []) {
+    const part = block as Record<string, unknown>;
+    if (part.type === "text" && typeof part.text === "string") {
+      said.push(part.text);
+    } else if (part.type === "thinking" && typeof part.thinking === "string") {
+      /*
+       * Marked, because it is the agent working rather than the agent
+       * answering — and a reader skimming a log should be able to tell.
+       *
+       * Every line of it, not only the first. A page of reasoning marked once
+       * at the top is one marked line followed by a dozen that look exactly
+       * like the answer, and whatever reads this back has no way to tell
+       * where the thinking stopped.
+       *
+       * Blank lines are not marked, because a mark on a blank line is a log
+       * entry carrying nothing. Reasoning arrives with the paragraph breaks
+       * still in it, and interleaved turns emit thinking blocks that are
+       * whitespace and nothing else, so marking every line without asking
+       * whether there was a line produced exactly what the panel was showing:
+       * runs of entries reading `…` and no more, one after another, between
+       * the tool calls that were the only things left saying anything. The
+       * break is a thing a paragraph has, not a thing an agent thought.
+       */
+      for (const line of part.thinking.trim().split("\n")) {
+        if (line.trim()) said.push(`… ${line}`);
+      }
+    } else if (part.type === "tool_use") {
+      said.push(`→ ${describeTool(part)}`);
+    }
+  }
+  const did = changesIn(event);
+  if (said.length === 0 && did.length === 0) return undefined;
+  return {
+    ...(said.length ? { show: said.join("\n") } : {}),
+    ...(did.length ? { did } : {}),
+  };
 }
 
 /**

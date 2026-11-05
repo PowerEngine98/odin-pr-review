@@ -163,7 +163,15 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
      * latest anything the week after; an alias is what the reader means when
      * they say "the fast one", and it is still true next month.
      */
-    models: { flag: (name) => ["--model", name], offers: ["fable", "opus", "sonnet", "haiku"] },
+    models: {
+      flag: (name) => ["--model", name],
+      offers: [
+        "fable", "claude-fable-5-1",
+        "opus", "claude-opus-5-5",
+        "sonnet", "claude-sonnet-5-5",
+        "haiku", "claude-haiku-5-5",
+      ],
+    },
     /*
      * Its own streaming mode, measured against the tool: `stream-json` needs
      * `--verbose` alongside it, and emits one JSON object per event —

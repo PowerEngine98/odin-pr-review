@@ -25,6 +25,7 @@ import {
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
 import { execFile } from "node:child_process";
+import { join } from "node:path";
 
 import * as vscode from "vscode";
 
@@ -41,9 +42,12 @@ import { activeTheme } from "./theme.js";
 import { SeenStore } from "./seen.js";
 import { BaseStore } from "./base.js";
 import { keyOf, SessionStore, type Session } from "./session.js";
+import { Kokoro } from "./kokoro.js";
+import { log } from "./log.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
 import { FoldedStore } from "./folded.js";
+import { TourStore } from "./tour.js";
 import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 
@@ -221,6 +225,20 @@ export function activate(context: vscode.ExtensionContext): void {
   // Global rather than per-workspace: which files somebody has read is about
   // this change, but whether they want to see import arrows is about them.
   GraphPanel.settings = new SettingsStore(context.globalState);
+  if (context.globalStorageUri) {
+    GraphPanel.kokoro = new Kokoro(
+      join(context.globalStorageUri.fsPath, "kokoro"),
+      join(context.extensionUri.fsPath, "media", "kokoro", "server.py"),
+      () => {
+        const config = vscode.workspace.getConfiguration("odin.kokoro");
+        return { voice: config.get("voice", "af_heart"), speed: config.get("speed", 1) };
+      },
+    );
+    context.subscriptions.push({ dispose: () => GraphPanel.kokoro?.dispose() });
+    void setUpKokoro(context, false);
+    GraphPanel.tours = new TourStore(context.globalStorageUri.fsPath);
+    context.subscriptions.push({ dispose: () => GraphPanel.tours?.flush() });
+  }
   // Per workspace, unlike the settings above: a conversation with an agent is
   // about this repository's code and belongs nowhere else.
   GraphPanel.store = context.workspaceState;
@@ -282,6 +300,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // change they had just decided they were finished with.
   GraphPanel.onNone = () => sidebar.forgetChange();
   sidebar = new ChangeSidebar(viewed, seen, GraphPanel.settings);
+  GraphPanel.sidebarShown = () => sidebar.shown();
   sidebar.onUntouched = (on) => GraphPanel.showUntouched(on);
   GraphPanel.onUntouched = (on) => sidebar.setUntouched(on);
 
@@ -385,6 +404,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("odin.showTests", () =>
       GraphPanel.showTests(),
     ),
+    vscode.commands.registerCommand("odin.setUpKokoro", () => setUpKokoro(context, true)),
     vscode.commands.registerCommand(
       "odin.followEdge",
       (target: { toPath: string; toLine: number; toSide: "base" | "head" }) =>
@@ -1490,6 +1510,58 @@ function gh(args: string[], cwd: string): Promise<string> {
   });
 }
 
+/**
+ * Kokoro made ready, and switched on for the reader once it is.
+ *
+ * Unasked, it runs once per setup version, in the background, with its progress
+ * in the status bar: a failure is said once and then left alone until the reader
+ * asks again from the command, which shows its progress up front.
+ */
+async function setUpKokoro(context: vscode.ExtensionContext, asked: boolean): Promise<void> {
+  const kokoro = GraphPanel.kokoro;
+  if (!kokoro) return;
+  if (!Kokoro.supported()) {
+    if (asked) {
+      void vscode.window.showWarningMessage(
+        `The Kokoro narrator is not available on ${process.platform} ${process.arch}.`,
+      );
+    }
+    return;
+  }
+  if (await kokoro.ready()) {
+    if (asked) void vscode.window.showInformationMessage("The Kokoro narrator is already set up.");
+    return;
+  }
+  const TRIED = "odin.kokoro.tried";
+  if (!asked) {
+    const enabled = vscode.workspace.getConfiguration("odin.kokoro").get("autoSetup", true);
+    if (!enabled || context.globalState.get(TRIED) === Kokoro.version) return;
+  }
+  await context.globalState.update(TRIED, Kokoro.version);
+
+  try {
+    await vscode.window.withProgress(
+      {
+        location: asked ? vscode.ProgressLocation.Notification : vscode.ProgressLocation.Window,
+        title: "Setting up the Kokoro narrator",
+      },
+      (progress) => kokoro.setUp((what) => progress.report({ message: what })),
+    );
+  } catch (error) {
+    const retry = await vscode.window.showWarningMessage(
+      `Odin could not set up the Kokoro narrator: ${String(error).slice(0, 300)}`,
+      "Try again",
+    );
+    if (retry) void setUpKokoro(context, true);
+    return;
+  }
+  await GraphPanel.settings?.merge({ kokoroVoice: true });
+  GraphPanel.kokoroReady();
+  void vscode.window.showInformationMessage(
+    "The Kokoro narrator is ready, and Odin reads aloud with it now.",
+  );
+}
+
 export function deactivate(): void {
   // Temporary checkouts are removed as they are used. The watchers are the one
   // thing here that outlives a command, so they are what there is to put away.
@@ -2120,6 +2192,7 @@ function armLive(
 ): void {
   // This reading's own watcher, and only this one. Standing the graph up again
   // replaces it; standing a different one up leaves it alone.
+  if (live.has(key)) log(`live: stopped following ${repo} to start again`);
   live.get(key)?.dispose();
   live.delete(key);
 
@@ -2179,9 +2252,11 @@ function armLive(
       // whichever answer was last delivered, and dropped outright if the
       // expensive half fails: the provisional graph is missing arrows on
       // purpose, and treating it as the truth would make them missing for good.
+      const began = Date.now();
       const staged = await stageGraphForRepo(request, known);
       fresh = staged.first;
       known = staged.first;
+      log(`live: ${describeBuild(staged.first.graph)} in ${Date.now() - began}ms${staged.rest ? ", resolving references" : ""}`);
       if (!staged.rest) return { graph: staged.first.graph };
 
       return {
@@ -2190,9 +2265,11 @@ function armLive(
           try {
             fresh = await staged.rest!();
             known = fresh;
+            log(`live: references resolved, ${describeBuild(fresh.graph)} in ${Date.now() - began}ms`);
             return fresh.graph;
           } catch (error) {
             known = undefined;
+            log(`live: resolving references failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
             throw error;
           }
         },
@@ -2201,7 +2278,8 @@ function armLive(
     // Said in the frame this watcher belongs to. The reader may be reading
     // something else by now, and a rebuild of what they left is not news about
     // what they are looking at.
-    onRebuilding: (files, history) =>
+    onRebuilding: (files, history) => {
+      log(`live: rebuilding ${repo}, ${history ? "the branch moved" : `${files} file${files === 1 ? "" : "s"} changed`}`);
       GraphPanel.setRefreshingIn(
         shown,
         repo,
@@ -2211,7 +2289,8 @@ function armLive(
         history
           ? "Rebuilding — the branch moved"
           : `Rebuilding — ${files} file${files === 1 ? "" : "s"} changed`,
-      ),
+      );
+    },
     // Cleared whatever came of it, including a rebuild that found nothing
     // worth redrawing. A spinner left running says the tool is still working
     // when it has finished and decided there was nothing to do.
@@ -2236,6 +2315,7 @@ function armLive(
     onError: (error) => {
       // Said once, quietly. A watcher that pops an error dialog on every
       // broken intermediate state — which is most keystrokes — is unusable.
+      log(`live: could not rebuild ${repo}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       vscode.window.setStatusBarMessage(
         `Odin: could not rebuild — ${error instanceof Error ? error.message : String(error)}`,
         6000,
@@ -2247,6 +2327,16 @@ function armLive(
   // exactly once — on the first edit, which is the one being watched for.
   watcher.seed(shown);
   live.set(key, watcher);
+  log(`live: following ${repo} against ${base ?? "the detected base"}, ${describeBuild(shown)}`);
+}
+
+/** A build in one line: which branch, from where, and how much of it. */
+function describeBuild(graph: ChangeGraph): string {
+  const files = graph.nodes.filter((node) => node.status !== "phantom" && node.kind !== "database");
+  const added = files.reduce((sum, node) => sum + node.stats.additions, 0);
+  const removed = files.reduce((sum, node) => sum + node.stats.deletions, 0);
+  const pull = graph.meta.pullRequest ? ` #${graph.meta.pullRequest.number}` : "";
+  return `${graph.meta.headRef}${pull} from ${graph.meta.mergeBase?.slice(0, 9) ?? "?"}: ${files.length} files +${added} -${removed}`;
 }
 
 /**

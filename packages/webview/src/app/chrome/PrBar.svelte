@@ -16,6 +16,8 @@
   import Settings from "./Settings.svelte";
   import { host, model, notify, ui } from "../state.svelte.js";
   import { CARET, COPY_ICON, HISTORY, PR_ICON, RING } from "./icons.js";
+  import { openTour } from "../tour/panel.svelte.js";
+  import { tour } from "../tour/state.svelte.js";
 
   /**
    * Repeated from Chrome rather than shared, because there is nowhere to share
@@ -308,6 +310,32 @@
     </button>
   {/if}
 
+  <!-- "Give me a tour": plays the tour when there is one, and otherwise opens
+       the agent console's Tour tab, where one is asked for and made. Away while
+       a tour plays — the player has its own way out. -->
+  {#if (host || tour.data) && !tour.active}
+    <button
+      class="tour-button"
+      class:making={tour.status === "making"}
+      title={tour.status === "ready"
+        ? "Play the guided tour of this change"
+        : tour.status === "making"
+          ? tour.note || "Making a tour of this change…"
+          : "Give me a tour: an agent walks you through the change"}
+      onclick={openTour}
+    >
+      <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+        {#if tour.status === "ready"}
+          <path d="M5 2.8v10.4L13 8z" fill="currentColor" />
+        {:else}
+          <circle cx="8" cy="8" r="5.6" fill="none" stroke="currentColor" stroke-width="1.4" />
+          <path d="M6.6 5.4v5.2L10.8 8z" fill="currentColor" />
+        {/if}
+      </svg>
+      <span class="label">{tour.status === "ready" ? "Play tour" : tour.status === "making" ? "Making tour…" : "Tour"}</span>
+    </button>
+  {/if}
+
   <!-- Which part of the change to draw: all of it, what came after the last
        review, or what is not committed. Beside the settings rather than up in
        the editor's own bar, where it sat among the editor's buttons and could
@@ -341,6 +369,26 @@
     cursor: pointer;
   }
   .view-button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  /* The same family of control, with room for a word. */
+  .tour-button {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 6px;
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tour-button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
+  .tour-button.making svg { animation: tour-pulse 1.2s ease-in-out infinite; }
+  @keyframes tour-pulse { 50% { opacity: 0.35; } }
   /*
    * What the bar gives up first, and what it never gives up.
    *
@@ -424,7 +472,8 @@
   @container prbar (max-width: 560px) {
     /* The word, not the number: "0 / 118" is the answer, "viewed" is the
        label on an answer the ring beside it already explains. */
-    .viewed-count .label {
+    .viewed-count .label,
+    .tour-button .label {
       display: none;
     }
   }

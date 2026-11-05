@@ -290,6 +290,8 @@ export interface PullRequest {
    * they disagree the reader almost always means this one.
    */
   baseRefName?: string;
+  /** The branch the change is on, as the forge has it. */
+  headRefName?: string;
   /**
    * The commit that carried this change onto its base, once it has landed.
    *

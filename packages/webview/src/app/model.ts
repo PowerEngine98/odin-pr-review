@@ -233,6 +233,9 @@ export interface CommentView {
   local?: boolean;
   /** The agent that wrote it, when an agent did. */
   agent?: string;
+  /** The agent that asked this of itself, and the line the log shows for it. */
+  selfAsked?: string;
+  label?: string;
   /** How the work this message asked for is going. */
   task?: "queued" | "working" | "done" | "failed" | "asking" | "stopped";
   /**
@@ -242,7 +245,7 @@ export interface CommentView {
    * decided and what happened next are one record. A modal settles the same
    * question and leaves nothing behind.
    */
-  approval?: { id: string; what: string; state: "waiting" | "allowed" | "denied" };
+  approval?: { id: string; what: string; state: "waiting" | "allowed" | "denied"; tool?: string };
   /**
    * Whether the conversation this begins has been settled.
    *
@@ -399,6 +402,16 @@ export interface ReaderSettings {
    * within one.
    */
   clusters: boolean;
+  /** Read `Main.kt` as "Main dot kt" rather than as "Main". */
+  narrateExtensions: boolean;
+  /** Read each new block of an answer aloud as it arrives. */
+  autoNarrate: boolean;
+  /** Read aloud with the operating system's voice rather than the browser's. */
+  systemVoice: boolean;
+  /** Read aloud with Kokoro, the neural voice the host sets up on this machine. */
+  kokoroVoice: boolean;
+  /** The narrator reads a tour aloud. Its subtitles show either way. */
+  tourNarration: boolean;
   hud: {
     reviewers: boolean;
     comments: boolean;

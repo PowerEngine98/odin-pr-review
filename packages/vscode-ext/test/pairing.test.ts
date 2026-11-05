@@ -384,7 +384,16 @@ describe("a conversation with the agents on this machine", () => {
   it("says nothing changed when there was nothing to sign", async () => {
     // A page is only redrawn when it would look different.
     const { paired } = await session([]);
+    paired.ask({ ...where, body: "one", author: "marcoacosta", avatarUrl: "face" });
+    expect(paired.identify("marcoacosta", "face")).toBe(false);
+  }, 20_000);
+
+  it("gives a face to remarks signed while the picture had not arrived", async () => {
+    // The login came back and the picture did not, once; every remark written
+    // after that was signed faceless, and stayed that way after it arrived.
+    const { paired } = await session([]);
     paired.ask({ ...where, body: "one", author: "marcoacosta" });
+    expect(paired.identify("marcoacosta", "face")).toBe(true);
     expect(paired.identify("marcoacosta", "face")).toBe(false);
   }, 20_000);
 

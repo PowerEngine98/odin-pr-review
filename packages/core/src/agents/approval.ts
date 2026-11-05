@@ -92,6 +92,7 @@ export function describeRequest(tool: string, input: unknown): string {
         ? held.path
         : "";
 
+  if (tool === "ExitPlanMode") return "leave planning and carry out the plan";
   if (doing === "runs" && command) return `run \`${short(command)}\``;
   if (doing === "writes" && path) return `write \`${path}\``;
   if (doing === "reads" && path) return `read \`${path}\``;

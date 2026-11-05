@@ -126,6 +126,11 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     private readonly settings?: SettingsStore,
   ) {}
 
+  /** Whether the bar is on screen now. */
+  shown(): boolean {
+    return this.view?.visible === true;
+  }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     // Said once at the start too, so the title bar is right before anything

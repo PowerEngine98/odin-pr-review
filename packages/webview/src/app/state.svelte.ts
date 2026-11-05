@@ -4,12 +4,14 @@
 // called in the file it lives in.
 import type { Delta as LedgerEntry } from "@odin/core/agents/deltas.js";
 import type { Step } from "@odin/core/agents/deciding.js";
+import { titled } from "@odin/core/tour/tour.js";
 import { deltaOf, type Delta } from "./canvas/deltas.js";
 import { fileDrafts, load, shelfOf, type Draft } from "./panels/drafts.js";
 import { partPaths } from "./parts.js";
 
 import type { RowView } from "./canvas/rows.js";
 import type { CommentView, ReaderSettings, ViewModel } from "./model.js";
+import { tour } from "./tour/state.svelte.js";
 
 /**
  * What the page is showing, as data the components react to.
@@ -276,6 +278,11 @@ const DEFAULTS: ReaderSettings = {
   hideViewed: false,
   showInfra: true,
   clusters: false,
+  narrateExtensions: true,
+  autoNarrate: false,
+  systemVoice: false,
+  kokoroVoice: false,
+  tourNarration: true,
   hud: {
     reviewers: true,
     comments: true,
@@ -319,6 +326,12 @@ function remembered(): ReaderSettings {
 }
 
 export const settings = $state<ReaderSettings>(remembered());
+
+/*
+ * The tour reads the reader's choice from its own state, so the player has one
+ * place to ask; the setting is what survives the reload.
+ */
+tour.narrated = settings.tourNarration;
 
 /**
  * Hands the reader's choices to the host, which is the only thing here that
@@ -462,6 +475,7 @@ export const ui = $state({
    * nothing.
    */
   models: {} as Record<string, string[]>,
+  modelsInUse: {} as Record<string, string>,
   /** The conversation id each agent is carrying, for copying out. */
   sessions: {} as Record<string, string>,
   /**
@@ -1115,6 +1129,9 @@ export function listen(): void {
         if (message.models && typeof message.models === "object") {
           ui.models = message.models as Record<string, string[]>;
         }
+        if (message.modelsInUse && typeof message.modelsInUse === "object") {
+          ui.modelsInUse = message.modelsInUse as Record<string, string>;
+        }
         if (message.sessions && typeof message.sessions === "object") {
           ui.sessions = message.sessions as Record<string, string>;
         }
@@ -1197,6 +1214,51 @@ export function listen(): void {
       // folding the list is not a request to take anything out of the picture.
       case "showTests":
         settings.showTests = true;
+        return;
+
+      /*
+       * A tour the host made or kept, and where the reader had got to in it.
+       *
+       * Progress only when it comes with one: a tour arriving again after a
+       * rebuild is the same tour, and the reader is wherever they are now.
+       */
+      case "tour":
+        if (message.tour && Array.isArray(message.tour.topics)) {
+          tour.data = titled(message.tour);
+          tour.status = "ready";
+          tour.note = "";
+          tour.stale = message.stale === true;
+          const progress = message.progress;
+          if (progress && typeof progress === "object") {
+            const last = Math.max(0, message.tour.topics.length - 1);
+            if (typeof progress.topic === "number") tour.topic = Math.min(Math.max(0, progress.topic), last);
+            if (typeof progress.frame === "number") tour.frame = Math.max(0, progress.frame);
+            if (Array.isArray(progress.watched)) {
+              tour.watched = progress.watched.filter((id: unknown) => typeof id === "string");
+            }
+            if (progress.frames && typeof progress.frames === "object") {
+              tour.frames = Object.fromEntries(
+                Object.entries(progress.frames).filter(([, at]) => typeof at === "number" && at >= 0),
+              ) as Record<string, number>;
+            }
+          }
+        }
+        return;
+
+      /*
+       * How making one is going. "none" with a tour already in hand is a
+       * cancelled remake, and the tour the reader had is still theirs.
+       */
+      case "tourStatus": {
+        const status = message.status;
+        if (status === "making" || status === "failed") tour.status = status;
+        else if (status === "none") tour.status = tour.data ? "ready" : "none";
+        tour.note = typeof message.note === "string" ? message.note : "";
+        return;
+      }
+
+      case "kokoroReady":
+        settings.kokoroVoice = true;
         return;
 
       case "showUntouched":

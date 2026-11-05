@@ -512,3 +512,29 @@ describe("a file leaving the change beside an edit to another", () => {
     editor.extension.deactivate();
   }, 120_000);
 });
+
+describe("a branch split off under a live reading", () => {
+  let repo: string;
+  beforeAll(() => {
+    repo = forkedRepo();
+  });
+  afterAll(() => rmSync(repo, { recursive: true, force: true }));
+
+  it("follows the commits and the checkout that carry part of the change away", async () => {
+    const { editor, panel } = await reading(repo);
+    expect(showing(panel)).toEqual(["feature.ts", "shared.ts"]);
+
+    git(repo, "merge", "--quiet", "--no-edit", "development");
+    await quiet(panel);
+    git(repo, "rm", "--quiet", "feature.ts");
+    git(repo, "commit", "--quiet", "-m", "move the feature to its own branch");
+    git(repo, "checkout", "--quiet", "-b", "split");
+    writeFileSync(join(repo, "split.ts"), "export const split = 1;\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "--quiet", "-m", "the split-off part");
+    await until(() => showing(panel).includes("split.ts"));
+
+    expect(showing(panel)).toEqual(["shared.ts", "split.ts"]);
+    editor.extension.deactivate();
+  }, 120_000);
+});

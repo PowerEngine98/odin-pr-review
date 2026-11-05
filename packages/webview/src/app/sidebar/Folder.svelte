@@ -100,7 +100,7 @@
       class="folder"
       hidden={!survives}
       style:padding-left="{8 + depth * 10}px"
-      style:top="calc({depth - 1} * var(--folder-row))"
+      style:top="max(0px, calc({depth - 1} * var(--folder-row) - 1px))"
       style:z-index={100 - depth}
       role="button"
       tabindex="0"

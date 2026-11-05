@@ -55,6 +55,9 @@
   } from "./state.svelte.js";
   import type { Drawn } from "./svg/card.js";
   import Drawing from "./svg/Drawing.svelte";
+  import TourControls from "./tour/Controls.svelte";
+  import TourTitle from "./tour/Title.svelte";
+  import { tour } from "./tour/state.svelte.js";
 
   let {
     model,
@@ -463,11 +466,20 @@
     <Pairing />
   </div>
 
-  <Minimap window={onScreen} {visible} here={centred} />
+  <!-- Away while a tour plays, without touching the setting: the canvas is the
+       player's then, and the corner is where the player's bar runs. -->
+  {#if !tour.active}
+    <Minimap window={onScreen} {visible} here={centred} />
+  {/if}
 
   <!-- The far corner from the file list: a log is read while looking at the
        code it is about, so it takes the side the change is not on. -->
   <Terminals />
+
+  <!-- A tour's player, along the bottom of the canvas. The consoles stand on it
+       rather than over it, by the height it reports. -->
+  <TourControls />
+  <TourTitle top={chromeBottom} />
 
   <!-- The other corner: where the reader is, saying whether what is under them
        is still current. -->
@@ -514,7 +526,7 @@
        is stretched between them rather than positioned twice. */
     left: 12px;
     right: auto;
-    bottom: 96px;
+    bottom: max(96px, calc(var(--tour-room, 0px) + 12px));
     z-index: var(--z-hud, 25);
     display: flex;
     flex-direction: column;

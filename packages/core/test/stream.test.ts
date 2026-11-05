@@ -262,3 +262,20 @@ describe("a tool call worth reading at a glance", () => {
     expect(said.startsWith("→ Bash(echo xxx")).toBe(true);
   });
 });
+
+describe("the model a turn runs on", () => {
+  it("is read from the start of the stream and from each answer", async () => {
+    const { readClaude } = await import("../src/agents/stream.js");
+    expect(readClaude(JSON.stringify({ type: "system", subtype: "init", model: "claude-opus-5-5" }))).toEqual({
+      model: "claude-opus-5-5",
+    });
+    expect(
+      readClaude(
+        JSON.stringify({
+          type: "assistant",
+          message: { model: "claude-sonnet-5-5", content: [{ type: "text", text: "Done." }] },
+        }),
+      ),
+    ).toEqual({ show: "Done.", model: "claude-sonnet-5-5" });
+  });
+});

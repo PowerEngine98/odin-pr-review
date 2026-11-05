@@ -60,6 +60,12 @@ export interface LocalComment extends ReviewComment {
   local: true;
   /** The agent that wrote it, when an agent did. */
   agent?: string;
+  /**
+   * An agent prompting itself, from a button the reader pressed: the body is
+   * the full instruction it is sent, `label` the line its log shows instead.
+   */
+  selfAsked?: string;
+  label?: string;
   /** How the work this message asked for is going, for the badge. */
   task?: "queued" | "working" | "done" | "failed" | "asking" | "stopped";
   /**
@@ -75,6 +81,8 @@ export interface LocalComment extends ReviewComment {
     /** What the agent wants to do, as a sentence rather than a tool name. */
     what: string;
     state: "waiting" | "allowed" | "denied";
+    /** The tool it asked for, for the page to word the buttons. */
+    tool?: string;
   };
   /**
    * The code this remark was written against, so it can be found again.
@@ -245,6 +253,13 @@ export class PairingSession {
    * every turn, which is what they do anyway.
    */
   private sessions: Record<string, string> = {};
+
+  /** The exact model each agent last answered on, as its tool reported it. */
+  private inUse: Record<string, string> = {};
+
+  modelsInUse(): Record<string, string> {
+    return { ...this.inUse };
+  }
 
   /** What the reader calls each conversation, where they have named one. */
   private labels: Record<string, string> = {};
@@ -947,6 +962,8 @@ export class PairingSession {
      * wins, because that is the reader saying it in as many words.
      */
     to?: string;
+    selfAsked?: string;
+    label?: string;
   }): LocalComment {
     const id = this.next--;
     const at = new Date().toISOString();
@@ -969,6 +986,8 @@ export class PairingSession {
       ...(where.inReplyTo !== undefined ? { inReplyTo: where.inReplyTo } : {}),
       local: true,
       task: "queued",
+      ...(where.selfAsked ? { selfAsked: where.selfAsked } : {}),
+      ...(where.label ? { label: where.label } : {}),
     };
 
     /*
@@ -1138,6 +1157,11 @@ export class PairingSession {
         ...(args ? { args } : {}),
         onOutput: say,
         onEdit: (change) => this.record(agentId, change),
+        onModel: (model) => {
+          if (this.inUse[agentId] === model) return;
+          this.inUse = { ...this.inUse, [agentId]: model };
+          this.changed();
+        },
       });
       this.running.set(agentId, handle);
       return handle;
@@ -1169,7 +1193,7 @@ export class PairingSession {
        * routinely several lines long.
        */
       const root = this.rootOf(Number(ask.id));
-      const asked = ask.body
+      const asked = (ask.label || ask.body)
         .split("\n")
         .map((line) => `[odin:ask ${root?.id ?? ask.id}] ${line}`)
         .join("\n");
@@ -1475,7 +1499,12 @@ export class PairingSession {
   identify(login: string, face: string): boolean {
     let touched = false;
     this.comments = this.comments.map((comment) => {
-      if (comment.agent || comment.author === login) return comment;
+      if (comment.agent) return comment;
+      if (comment.author === login) {
+        if (comment.avatarUrl || !face || comment.selfAsked) return comment;
+        touched = true;
+        return { ...comment, avatarUrl: face };
+      }
       if (comment.author !== PLACEHOLDER) return comment;
       touched = true;
       return {
@@ -1648,6 +1677,9 @@ export class PairingSession {
   /** Where the spawnable stub lives. Set once, at activation. */
   static stub = "";
 
+  /** Answers an agent reading or correcting the tour, when the reading has one to keep. */
+  tours: ((asked: { action?: string; tour?: unknown }) => unknown) | undefined;
+
   private opened(): string {
     if (this.door) return this.doorPath;
 
@@ -1661,7 +1693,7 @@ export class PairingSession {
         held += String(chunk);
         const at = held.indexOf("\n");
         if (at < 0) return;
-        let asked: { tool?: string; input?: unknown; agent?: string };
+        let asked: { tool?: string; input?: unknown; agent?: string; kind?: string; action?: string; tour?: unknown };
         try {
           asked = JSON.parse(held.slice(0, at));
         } catch {
@@ -1669,6 +1701,16 @@ export class PairingSession {
           return;
         }
         held = held.slice(at + 1);
+        if (asked.kind === "tour") {
+          let answer: unknown;
+          try {
+            answer = this.tours?.(asked) ?? { ok: false, errors: ["this reading cannot keep a tour"] };
+          } catch (error) {
+            answer = { ok: false, errors: [String(error)] };
+          }
+          socket.end(`${JSON.stringify(answer)}\n`);
+          return;
+        }
         void this.decide(asked).then((decision) => {
           try {
             socket.end(`${JSON.stringify(decision)}\n`);
@@ -1715,13 +1757,22 @@ export class PairingSession {
       });
     }
 
+    // Odin's own tour tools touch nothing but the tour, which is Odin's.
+    if (tool === "mcp__odin__tour_read" || tool === "mcp__odin__tour_update") {
+      return Promise.resolve({ behavior: "allow", updatedInput: asked.input ?? {} });
+    }
+
     if (permitted(rung, doingOf(tool))) {
       return Promise.resolve({ behavior: "allow", updatedInput: asked.input ?? {} });
     }
 
     const what = describeRequest(tool, asked.input);
     const id = randomUUID();
-    const comment = this.say(agentId, `May I ${what}?`, { id, what, state: "waiting" });
+    const plan = tool === "ExitPlanMode" ? (asked.input as { plan?: unknown } | undefined)?.plan : undefined;
+    const body = typeof plan === "string" && plan.trim()
+      ? `${plan.trim()}\n\nMay I ${what}?`
+      : `May I ${what}?`;
+    const comment = this.say(agentId, body, { id, what, state: "waiting", tool });
 
     return new Promise((settle) => {
       this.waitingOn.set(id, { settle, comment });

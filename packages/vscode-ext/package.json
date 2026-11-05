@@ -160,6 +160,11 @@
       {
         "command": "odin.openAtLine",
         "title": "Odin: Open File at This Line"
+      },
+      {
+        "command": "odin.setUpKokoro",
+        "title": "Set Up the Kokoro Narrator",
+        "category": "Odin"
       }
     ],
     "configuration": {
@@ -184,6 +189,23 @@
           "type": "boolean",
           "default": true,
           "description": "Keep a graph of the working tree in step with the working tree. Only applies to a local reading, where the change includes work that has not been committed. The whole project is watched, not only the files under review: renaming a function in an untouched file changes the references leaving the files that are."
+        },
+        "odin.kokoro.autoSetup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Set up the Kokoro narrator in the background the first time Odin starts. It downloads about 250 MB (uv, Python 3.12, kokoro-onnx and the model) into the extension's own storage. Run \"Odin: Set Up the Kokoro Narrator\" to set it up by hand."
+        },
+        "odin.kokoro.voice": {
+          "type": "string",
+          "default": "af_heart",
+          "description": "The Kokoro voice to read aloud with, such as af_heart, af_bella, am_michael or bf_emma."
+        },
+        "odin.kokoro.speed": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.5,
+          "maximum": 2,
+          "description": "How fast the Kokoro narrator reads, where 1 is its natural pace."
         }
       }
     },
