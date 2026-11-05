@@ -1787,6 +1787,13 @@ export class GraphPanel {
     void GraphPanel.active?.panel.webview.postMessage({ type: "showTests" });
   }
 
+  /** Untouched files shown or hidden from the list, in every open drawing. */
+  static showUntouched(on: boolean): void {
+    for (const open of GraphPanel.open.values()) {
+      void open.panel.webview.postMessage({ type: "showUntouched", value: on });
+    }
+  }
+
   /**
    * Follows a reference from the file list, on the canvas.
    *
@@ -1826,6 +1833,9 @@ export class GraphPanel {
    * list exists, and either can be present without the other.
    */
   static onHere: ((path: string) => void) | undefined;
+
+  /** Told when a drawing shows or hides untouched files, for the list to follow. */
+  static onUntouched: ((on: boolean) => void) | undefined;
 
   /**
    * Where the reader's own choices are kept between pages.
@@ -3033,6 +3043,7 @@ export class GraphPanel {
       }
       if (message.type === "settings") {
         await GraphPanel.settings?.write(message.payload);
+        GraphPanel.onUntouched?.(message.payload.showUntouched !== false);
         // The order is the priority rule, so a reorder is not merely a
         // preference to file: a message waiting on a busy agent may now have
         // somebody above it who is free.

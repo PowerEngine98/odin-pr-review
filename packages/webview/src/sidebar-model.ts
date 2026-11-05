@@ -25,6 +25,8 @@ export interface SidebarModel {
   change?: ChangeView;
   /** What to choose from when there is not. */
   picker: PickerView;
+  /** Whether files the change never touched are listed, shared with the drawing. */
+  showUntouched?: boolean;
 }
 
 /** The change under review, grouped the way the project is laid out. */

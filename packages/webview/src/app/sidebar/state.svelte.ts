@@ -82,9 +82,16 @@ export const model = $state<{ current: SidebarModel }>({ current: embedded() });
 export const ui = $state({
   /** A fetch is in flight. Told by the host; the page cannot know. */
   loading: embedded().loading,
-  /** What the change is being narrowed to, lowercased. */
-  needle: "",
+  /** What the reader typed into the filter, as typed. */
+  filter: "",
+  /** Files the change never touched are listed. Kept by the host for the drawing too. */
+  showUntouched: embedded().showUntouched !== false,
 });
+
+/** What the change is being narrowed to, lowercased. */
+export function needle(): string {
+  return ui.filter.trim().toLowerCase();
+}
 
 /** Anything the extension is meant to act on. */
 export function notify(type: string, payload: Record<string, unknown> = {}): void {
@@ -216,6 +223,12 @@ export function foldAll(open: boolean): void {
   if (open) notify("showTests");
 }
 
+/** Untouched files listed or not, here and in the drawing. */
+export function showUntouched(on: boolean): void {
+  ui.showUntouched = on;
+  notify("showUntouched", { value: on });
+}
+
 /** Asks the host for a different set of pull requests. */
 export function ask(change: Partial<Query>): void {
   notify("asked", { ...change });
@@ -276,6 +289,7 @@ export function forget(key: string): void {
 export function apply(next: SidebarModel): void {
   model.current = next;
   ui.loading = next.loading;
+  ui.showUntouched = next.showUntouched !== false;
 
   const tree = next.change?.tree;
   const at = next.change?.here ?? "";
@@ -351,6 +365,10 @@ export function listen(): void {
     // throw away the reader's scroll and whatever they had typed.
     if (message.type === "here") {
       goTo(message.path ?? "");
+      return;
+    }
+    if (message.type === "showUntouched") {
+      ui.showUntouched = message.value !== false;
       return;
     }
     if (message.type === "setViewed") {

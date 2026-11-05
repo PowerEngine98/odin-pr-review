@@ -24,6 +24,7 @@ const reading = $derived({
   showTests: settings.showTests,
   showImports: settings.showImports,
   showUnchanged: settings.showUnchanged,
+  showUntouched: settings.showUntouched,
   showInfra: settings.showInfra,
   hideViewed: settings.hideViewed,
   part: ui.part,

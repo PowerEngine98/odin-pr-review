@@ -383,6 +383,8 @@ export interface ReaderSettings {
   showTests: boolean;
   showImports: boolean;
   showUnchanged: boolean;
+  /** Files the change never touched, here and in the sidebar's list. */
+  showUntouched: boolean;
   hideViewed: boolean;
   showInfra: boolean;
   /**

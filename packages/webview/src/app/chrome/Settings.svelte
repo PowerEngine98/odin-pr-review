@@ -260,6 +260,11 @@
           bind:checked={settings.showTests}
         />
         <Viewed
+          label="Untouched files"
+          title="Files the change never touched, here and in the sidebar's list"
+          bind:checked={settings.showUntouched}
+        />
+        <Viewed
           label="Hide viewed relations"
           title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."
           bind:checked={settings.hideViewed}

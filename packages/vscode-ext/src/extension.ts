@@ -281,7 +281,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // who shut the drawing kept its file list — rows offering to open files of a
   // change they had just decided they were finished with.
   GraphPanel.onNone = () => sidebar.forgetChange();
-  sidebar = new ChangeSidebar(viewed, seen);
+  sidebar = new ChangeSidebar(viewed, seen, GraphPanel.settings);
+  sidebar.onUntouched = (on) => GraphPanel.showUntouched(on);
+  GraphPanel.onUntouched = (on) => sidebar.setUntouched(on);
 
   // Populated in the background so activation is not held up by the network.
   void refreshPullRequests();

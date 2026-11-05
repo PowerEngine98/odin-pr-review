@@ -17,6 +17,34 @@
 
   let { change }: { change: ChangeView } = $props();
 
+  let list: HTMLElement | undefined = $state();
+  let edge: Element | undefined;
+  let queued = false;
+
+  function markEdge(): void {
+    queued = false;
+    if (!list) return;
+    const top = list.getBoundingClientRect().top;
+    let last: Element | undefined;
+    if (list.scrollTop > 0) {
+      for (const row of list.querySelectorAll<HTMLElement>(".folder")) {
+        if (row.offsetParent === null) continue;
+        const at = row.getBoundingClientRect().top - top;
+        if (Math.abs(at - parseFloat(getComputedStyle(row).top)) < 1) last = row;
+      }
+    }
+    if (last === edge) return;
+    edge?.classList.remove("edge");
+    last?.classList.add("edge");
+    edge = last;
+  }
+
+  function scrolled(): void {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(markEdge);
+  }
+
   /**
    * Whether there is a local copy worth offering to make.
    *
@@ -37,7 +65,7 @@
   something to go looking for. A change of any size put the button a few hundred
   files below the fold, which is indistinguishable from its not being there.
 -->
-<div class="scroll">
+<div class="scroll" bind:this={list} onscroll={scrolled}>
   <Folder folder={change.tree} depth={0} />
 </div>
 
@@ -73,6 +101,7 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    --folder-row: 22px;
 
     /* The dot at the end of a file row that says the file moved since the last
        reading, and the air before it.

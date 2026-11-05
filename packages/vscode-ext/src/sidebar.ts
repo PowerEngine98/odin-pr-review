@@ -33,6 +33,7 @@ import {
   type Folder,
 } from "./tree-model.js";
 import type { SeenStore } from "./seen.js";
+import type { SettingsStore } from "./settings.js";
 import type { Fresh } from "./views.js";
 import type { ViewedStore } from "./viewed.js";
 
@@ -116,9 +117,13 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /** What this view subscribed to, let go of when the view goes. */
   private readonly disposables: vscode.Disposable[] = [];
 
+  /** Told when the list shows or hides untouched files, for the drawings to follow. */
+  onUntouched: ((on: boolean) => void) | undefined;
+
   constructor(
     private readonly viewed: ViewedStore,
     private readonly seen?: SeenStore,
+    private readonly settings?: SettingsStore,
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -174,6 +179,12 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       // not a request to take anything out of the picture.
       if (message.type === "showTests") {
         void vscode.commands.executeCommand("odin.showTests");
+        return;
+      }
+      if (message.type === "showUntouched") {
+        const on = message.value !== false;
+        void this.settings?.merge({ showUntouched: on });
+        this.onUntouched?.(on);
         return;
       }
       if (message.type === "viewed" && message.paths) {
@@ -358,6 +369,11 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ type: "loading", value: on });
   }
 
+  /** Untouched files shown or hidden from a drawing, without redrawing the list. */
+  setUntouched(on: boolean): void {
+    void this.view?.webview.postMessage({ type: "showUntouched", value: on });
+  }
+
   /** Reflects a change made elsewhere, without redrawing the list. */
   apply(paths: string[], viewed: boolean): void {
     void this.view?.webview.postMessage({ type: "setViewed", paths, viewed });
@@ -394,6 +410,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     const graph = this.showing();
     return {
       loading: this.loading,
+      showUntouched: this.settings?.read()?.showUntouched !== false,
       ...(graph
         ? {
             change: changeView(

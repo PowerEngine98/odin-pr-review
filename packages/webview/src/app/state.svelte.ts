@@ -272,6 +272,7 @@ const DEFAULTS: ReaderSettings = {
   showTests: false,
   showImports: true,
   showUnchanged: false,
+  showUntouched: true,
   hideViewed: false,
   showInfra: true,
   clusters: false,
@@ -1196,6 +1197,10 @@ export function listen(): void {
       // folding the list is not a request to take anything out of the picture.
       case "showTests":
         settings.showTests = true;
+        return;
+
+      case "showUntouched":
+        settings.showUntouched = message.value !== false;
         return;
 
       // One of the references under a file. It names where it lands rather than

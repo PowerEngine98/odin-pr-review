@@ -233,6 +233,7 @@
     threads,
     settings.unified,
     settings.showTests,
+    settings.showUntouched,
     settings.hideViewed,
     ui.part,
     ui.viewed,

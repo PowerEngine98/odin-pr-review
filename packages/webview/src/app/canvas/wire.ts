@@ -283,6 +283,7 @@ export interface Reading {
   showTests: boolean;
   showImports: boolean;
   showUnchanged: boolean;
+  showUntouched: boolean;
   showInfra: boolean;
   hideViewed: boolean;
   part: string | null;
@@ -379,11 +380,18 @@ export function wantedEdges(
   // references that did not change.
   const structural = (edge: EdgeView) => schema.has(edge.from) || schema.has(edge.to);
 
+  const untouched = new Set(
+    model.nodes.filter((n) => n.untouched && !schema.has(n.id)).map((n) => n.id),
+  );
+
   const wanted = (edge: EdgeView): boolean => {
     const infra = structural(edge);
     if (edge.kind === "import" && !reading.showImports) return false;
     if (edge.change === "unchanged" && !infra && !reading.showUnchanged) return false;
     if (infra && !reading.showInfra) return false;
+    if (!reading.showUntouched && (untouched.has(edge.from) || untouched.has(edge.to))) {
+      return false;
+    }
     if (part && (!part.has(edge.from) || !part.has(edge.to))) return false;
     if (
       reading.hideViewed &&
@@ -496,6 +504,7 @@ function sameReading(one: Reading, two: Reading): boolean {
     one.showTests === two.showTests &&
     one.showImports === two.showImports &&
     one.showUnchanged === two.showUnchanged &&
+    one.showUntouched === two.showUntouched &&
     one.showInfra === two.showInfra &&
     one.hideViewed === two.hideViewed &&
     one.part === two.part &&

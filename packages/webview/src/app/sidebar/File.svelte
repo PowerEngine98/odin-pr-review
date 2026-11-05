@@ -14,7 +14,7 @@
   import Hit from "./Hit.svelte";
   import type { FileView } from "./model.js";
   import Ref from "./Ref.svelte";
-  import { here as readerAt, mark, notify, ui } from "./state.svelte.js";
+  import { here as readerAt, mark, needle, notify, ui } from "./state.svelte.js";
 
   let { file, depth }: { file: FileView; depth: number } = $props();
 
@@ -60,11 +60,11 @@
   /** What the reader last did to the fold, when nothing is being searched. */
   let unfolded = $state(false);
 
-  const searching = $derived(ui.needle !== "");
+  const searching = $derived(needle() !== "");
   /** Whether the file's own name is what matched. */
-  const itself = $derived(fileMatches(file, ui.needle));
+  const itself = $derived(fileMatches(file, needle()));
   const refs = $derived(
-    file.refs.filter((ref) => itself || refMatches(ref, ui.needle)),
+    file.refs.filter((ref) => itself || refMatches(ref, needle())),
   );
 
   /*
@@ -75,10 +75,19 @@
    * two facts, so there is nothing to put back: the reader's own fold is what
    * the row returns to the moment the box is empty.
    */
-  const open = $derived(searching ? !itself && refs.length > 0 : unfolded);
+  let pressed = $state<boolean | null>(null);
+  $effect(() => {
+    needle();
+    pressed = null;
+  });
+  const open = $derived(
+    searching ? (pressed ?? (!itself && refs.length > 0)) : unfolded,
+  );
 
   /** The row survives if it matched, or if something it points at did. */
-  const survives = $derived(itself || refs.length > 0);
+  const survives = $derived(
+    (itself || refs.length > 0) && (ui.showUntouched || file.status !== "phantom"),
+  );
 
   /* A file the diff never touched has nothing to review, so it gets no box. */
   const reviewable = $derived(file.status !== "phantom");
@@ -96,7 +105,8 @@
    */
   function press(event: MouseEvent): void {
     if ((event.target as Element | null)?.closest(".fold")) {
-      unfolded = !unfolded;
+      if (searching) pressed = !open;
+      else unfolded = !unfolded;
       return;
     }
     notify("focus", { path: file.path });
@@ -110,6 +120,7 @@
   class:here
   hidden={!survives}
   style:padding-left="{indent}px"
+  style:scroll-margin-top="calc({depth} * var(--folder-row))"
   title={file.path}
   role="button"
   tabindex="0"
@@ -122,7 +133,7 @@
     <Chevron {open} blank={file.refs.length === 0} />
   </span>
   <StatusBadge status={file.status} />
-  <span class="name"><Hit text={file.name} needle={ui.needle} /></span>
+  <span class="name"><Hit text={file.name} needle={needle()} /></span>
   <span class="counts">
     {#if file.status === "phantom"}
       <span class="untouched">untouched</span>

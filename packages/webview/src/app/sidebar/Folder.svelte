@@ -26,7 +26,7 @@
   import type { FolderView } from "./model.js";
   import Self from "./Folder.svelte";
   import { trailTo } from "./shut.js";
-  import { folderOpen, markAll, toggleFolder, ui } from "./state.svelte.js";
+  import { folderOpen, markAll, needle, toggleFolder, ui } from "./state.svelte.js";
   import { reviewableIn } from "./tree.js";
   import Viewed from "../shared/Viewed.svelte";
 
@@ -56,7 +56,7 @@
   const open = $derived(folderOpen(path));
 
   const root = $derived(folder.label === "");
-  const survives = $derived(folderSurvives(folder, ui.needle));
+  const survives = $derived(folderSurvives(folder, needle(), ui.showUntouched));
 
   /*
    * Everything under here that can be marked off, however deep.
@@ -95,45 +95,51 @@
 {#if root}
   {@render body()}
 {:else}
-  <div
-    class="folder"
-    hidden={!survives}
-    style:padding-left="{8 + depth * 10}px"
-    role="button"
-    tabindex="0"
-    onclick={press}
-    onkeydown={(event) => {
-      // Space is how a checkbox is set, and the box is inside this row: without
-      // the same guard the press carries, one press would set the box and fold
-      // the folder out from under it.
-      if (event.key === "Enter" || event.key === " ") press(event);
-    }}
-  >
-    <Chevron {open} />
-    <span class="dir">{folder.label}</span>
-    {#if under.length > 0}
-      <Viewed
-        checked={allSeen}
-        title={allSeen
-          ? `Unmark the ${under.length} files under ${folder.label}`
-          : `Mark all ${under.length} files under ${folder.label} as reviewed`}
-        onchange={(on) => markAll(under.map((file) => file.path), on)}
-      />
-    {/if}
-  </div>
-  <div class="folder-body" hidden={!open || !survives}>
-    {@render body()}
+  <div class="branch">
+    <div
+      class="folder"
+      hidden={!survives}
+      style:padding-left="{8 + depth * 10}px"
+      style:top="calc({depth - 1} * var(--folder-row))"
+      style:z-index={100 - depth}
+      role="button"
+      tabindex="0"
+      onclick={press}
+      onkeydown={(event) => {
+        // Space is how a checkbox is set, and the box is inside this row: without
+        // the same guard the press carries, one press would set the box and fold
+        // the folder out from under it.
+        if (event.key === "Enter" || event.key === " ") press(event);
+      }}
+    >
+      <Chevron {open} />
+      <span class="dir">{folder.label}</span>
+      {#if under.length > 0}
+        <Viewed
+          checked={allSeen}
+          title={allSeen
+            ? `Unmark the ${under.length} files under ${folder.label}`
+            : `Mark all ${under.length} files under ${folder.label} as reviewed`}
+          onchange={(on) => markAll(under.map((file) => file.path), on)}
+        />
+      {/if}
+    </div>
+    <div class="folder-body" hidden={!open || !survives}>
+      {@render body()}
+    </div>
   </div>
 {/if}
 
 <style>
   .folder {
+    position: sticky;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding-top: 3px;
-    padding-bottom: 2px;
+    box-sizing: border-box;
+    height: var(--folder-row);
     padding-right: 20px;
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
     cursor: pointer;
     white-space: nowrap;
     color: var(--muted);
@@ -147,10 +153,17 @@
     --viewed-quiet: 0;
   }
   .folder:hover {
-    background: var(--vscode-list-hoverBackground);
+    background-image: linear-gradient(
+      var(--vscode-list-hoverBackground),
+      var(--vscode-list-hoverBackground)
+    );
     --viewed-quiet: 1;
   }
   .folder .dir { overflow: hidden; text-overflow: ellipsis; }
+  .folder:global(.edge) {
+    border-bottom: 1px solid var(--vscode-sideBarStickyScroll-border, var(--vscode-panel-border, rgba(255, 255, 255, 0.12)));
+    box-shadow: 0 3px 6px -2px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
+  }
 
   /* At the end of the row, in the same column the file rows keep their boxes
      in, so a press travels straight down the list rather than hunting left and
