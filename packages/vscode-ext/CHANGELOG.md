@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1 — 2026-11-07
+
+- ci: count the last release tag as published, and publish to Open VSX
+- docs: Marketplace version, installs and publish status badges
+
 ## 0.2.0 — 2026-11-07
 
 - ci: a version tagged before the store existed is published, not recorded twice
