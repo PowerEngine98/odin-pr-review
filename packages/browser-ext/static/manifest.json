@@ -21,7 +21,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["viewer.html", "page.html", "sandbox.js", "icon16.png"],
+      "resources": ["viewer.html", "page.html", "sandbox.js"],
       "matches": ["https://github.com/*"]
     }
   ],

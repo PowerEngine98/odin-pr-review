@@ -1,3 +1,5 @@
+import { ODIN_MARK } from "../../webview/src/mark.js";
+
 import { placeOf, type Place } from "./github.js";
 
 type Mode = "repo" | "pull";
@@ -35,14 +37,15 @@ function hrefOf(place: Place, mode: Mode): string {
   return `/${place.owner}/${place.repo}/pulls${HASH}`;
 }
 
-function icon(): HTMLImageElement {
-  const image = document.createElement("img");
-  image.src = chrome.runtime.getURL("icon16.png");
-  image.width = 16;
-  image.height = 16;
-  image.alt = "";
-  image.className = "odin-tab-icon";
-  return image;
+function icon(): SVGSVGElement {
+  const parsed = new DOMParser().parseFromString(ODIN_MARK, "image/svg+xml").documentElement;
+  const mark = document.importNode(parsed, true) as unknown as SVGSVGElement;
+  mark.setAttribute("width", "16");
+  mark.setAttribute("height", "16");
+  mark.setAttribute("aria-hidden", "true");
+  mark.setAttribute("focusable", "false");
+  mark.classList.add("octicon", "odin-tab-icon");
+  return mark;
 }
 
 function holderOf(link: HTMLAnchorElement): HTMLElement {

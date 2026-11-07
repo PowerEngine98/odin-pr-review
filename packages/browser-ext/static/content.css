@@ -16,5 +16,6 @@
 
 .odin-tab-icon {
   vertical-align: text-bottom;
-  border-radius: 3px;
+  fill: currentColor;
+  color: var(--fgColor-muted, #8d96a0);
 }
