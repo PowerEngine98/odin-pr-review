@@ -36,9 +36,12 @@ let close: (() => void) | undefined;
 afterEach(() => close?.());
 
 async function served(): Promise<number> {
-  const opened = await listen(() => ({ token: TOKEN, origin: ORIGIN }), backend);
+  const opened = await listen(() => ({ token: TOKEN, origin: ORIGIN }), backend, [0]);
   if (!opened) throw new Error("no port");
-  close = () => opened.server.close();
+  close = () => {
+    opened.server.closeAllConnections();
+    opened.server.close();
+  };
   return opened.port;
 }
 

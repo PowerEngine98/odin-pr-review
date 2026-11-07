@@ -197,8 +197,10 @@ export async function handle(
 export async function listen(
   pairing: () => Pairing | undefined,
   backend: BridgeBackend,
+  ports: number[] = BRIDGE_PORTS,
 ): Promise<{ server: Server; port: number } | undefined> {
-  for (const port of BRIDGE_PORTS) {
+  for (const wanted of ports) {
+    let port = wanted;
     const server = createServer((request, response) => {
       const paired = pairing();
       if (!paired) return send(response, 403, { error: "Not paired" });
@@ -206,9 +208,12 @@ export async function listen(
     });
     const bound = await new Promise<boolean>((resolve) => {
       server.once("error", () => resolve(false));
-      server.listen(port, "127.0.0.1", () => resolve(true));
+      server.listen(wanted, "127.0.0.1", () => resolve(true));
     });
-    if (bound) return { server, port };
+    if (!bound) continue;
+    const address = server.address();
+    if (address && typeof address === "object") port = address.port;
+    return { server, port };
   }
   return undefined;
 }

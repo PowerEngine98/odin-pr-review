@@ -141,6 +141,7 @@ export class BrowserBridge implements vscode.Disposable {
   }
 
   private close(): void {
+    this.server?.closeAllConnections();
     this.server?.close();
     this.server = undefined;
   }
