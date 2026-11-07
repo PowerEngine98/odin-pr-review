@@ -7,6 +7,20 @@
   border-top: 1px solid var(--borderColor-default, #30363d);
 }
 
+.odin-overlay::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 100vh;
+  background: inherit;
+}
+
+html.odin-open {
+  overscroll-behavior-y: none;
+}
+
 .odin-overlay iframe {
   display: block;
   width: 100%;

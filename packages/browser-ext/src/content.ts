@@ -185,6 +185,7 @@ function close() {
   if (!overlay) return;
   overlay.remove();
   overlay = null;
+  document.documentElement.classList.remove("odin-open");
   for (const mode of ["repo", "pull"] as const) {
     const nav = navOf(mode);
     const link = nav && ours(nav);
@@ -219,6 +220,7 @@ function open() {
   frame.allow = "clipboard-write";
   overlay.append(frame);
   document.body.append(overlay);
+  document.documentElement.classList.add("odin-open");
   markCurrent(mode);
   settle();
 }
