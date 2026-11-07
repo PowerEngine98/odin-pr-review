@@ -138,6 +138,12 @@ function stuckHeight(): number {
   return bottom;
 }
 
+let furthest = 0;
+
+function holdScroll() {
+  if (overlay && window.scrollY > furthest + 1) window.scrollTo({ top: furthest, behavior: "instant" });
+}
+
 function fit(scroll = false) {
   if (!overlay) return;
   const nav = navOf(overlay.dataset.mode as Mode);
@@ -146,7 +152,8 @@ function fit(scroll = false) {
   const navBottom = nav.getBoundingClientRect().bottom + window.scrollY;
   if (scroll) window.scrollTo({ top: navTop, behavior: "instant" });
   const stuck = stuckHeight();
-  if (scroll && stuck > 0) window.scrollTo({ top: navTop - stuck, behavior: "instant" });
+  furthest = Math.max(navTop - stuck, 0);
+  if (scroll && stuck > 0) window.scrollTo({ top: furthest, behavior: "instant" });
   overlay.style.top = `${navBottom}px`;
   overlay.style.height = `${Math.max(window.innerHeight - stuck - (navBottom - navTop), 320)}px`;
 }
@@ -245,6 +252,7 @@ function alive(): boolean {
   clearInterval(ticking);
   window.removeEventListener("popstate", followUrl);
   window.removeEventListener("resize", onResize);
+  window.removeEventListener("scroll", holdScroll);
   return false;
 }
 
@@ -280,6 +288,7 @@ window.addEventListener("message", (event) => {
 
 window.addEventListener("popstate", followUrl);
 window.addEventListener("resize", onResize);
+window.addEventListener("scroll", holdScroll, { passive: true });
 const ticking = setInterval(() => {
   if (alive()) followUrl();
 }, 500);
