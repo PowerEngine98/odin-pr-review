@@ -87,10 +87,17 @@ export class Kokoro {
   async ready(): Promise<boolean> {
     try {
       const marker = JSON.parse(await readFile(join(this.root, "ready.json"), "utf8"));
-      return marker.version === SETUP_VERSION;
+      return marker.version === SETUP_VERSION && existsSync(this.python);
     } catch {
       return false;
     }
+  }
+
+  async repair(): Promise<boolean> {
+    if (!existsSync(join(this.root, "ready.json")) || existsSync(this.python)) return false;
+    await rm(join(this.root, "venv"), { recursive: true, force: true });
+    await rm(join(this.root, "ready.json"), { force: true });
+    return true;
   }
 
   static readonly version = SETUP_VERSION;

@@ -18,7 +18,7 @@ export interface Remote {
 export async function openSession(
   port: number,
   token: string,
-  query: { owner: string; repo: string; number: number; base: string },
+  query: { owner: string; repo: string; number: number; base: string; head: string },
   on: SessionEvents,
 ): Promise<Remote | undefined> {
   const stop = new AbortController();

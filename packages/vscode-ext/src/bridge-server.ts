@@ -24,7 +24,7 @@ export interface BridgeBackend {
   version: string;
   where(owner: string, repo: string): Promise<Where>;
   graph(owner: string, repo: string, number: number, base: string): Promise<Served>;
-  session?(owner: string, repo: string, number: number, base: string, sink: Sink): Promise<Session>;
+  session?(owner: string, repo: string, number: number, base: string, sink: Sink, head?: string): Promise<Session>;
 }
 
 export interface Sink {
@@ -143,6 +143,8 @@ export async function handle(
   if (url.pathname === "/odin/session") {
     const number = Number(url.searchParams.get("number") ?? "");
     const base = url.searchParams.get("base") ?? "";
+    const head = url.searchParams.get("head") ?? "";
+    if (!/^[\w./-]*$/.test(head)) return send(response, 400, { error: "Bad request" }, origin);
     if (!backend.session) return send(response, 404, { error: "Not offered" }, origin);
     if (!name.test(owner) || !name.test(repo) || !Number.isInteger(number) || number < 1 || !/^[\w./-]*$/.test(base)) {
       return send(response, 400, { error: "Bad request" }, origin);
@@ -163,7 +165,7 @@ export async function handle(
       }
     });
     try {
-      session = await backend.session(owner, repo, number, base, sink);
+      session = await backend.session(owner, repo, number, base, sink, head || undefined);
       if (gone) {
         session.close();
         return;

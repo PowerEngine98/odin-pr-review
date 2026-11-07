@@ -275,7 +275,7 @@ async function openInVsCode(number: number): Promise<boolean> {
   const opened = await openSession(
     port,
     settings.token!,
-    { owner, repo, number, base: pull.base.ref },
+    { owner, repo, number, base: pull.base.ref, head: pull.head.ref },
     {
       note: (text) => {
         if (!drawn) say(text);

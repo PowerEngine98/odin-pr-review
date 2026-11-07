@@ -12,7 +12,7 @@ import { buildGraphForRepo } from "./graph.js";
 import type { GraphPanel } from "./panel.js";
 import { githubRepositories, Repositories } from "./repositories.js";
 
-export type Presenter = (repo: string, number: number, base: string) => Promise<GraphPanel | undefined>;
+export type Presenter = (repo: string, number: number, base: string, head?: string) => Promise<GraphPanel | undefined>;
 
 const TOKEN = "odin.browser.token";
 const ORIGIN = "odin.browser.origin";
@@ -132,7 +132,7 @@ export class BrowserBridge implements vscode.Disposable {
     const opened = await listen(() => this.pairing, {
       version,
       where: (owner, repo) => this.where(owner, repo),
-      session: (owner, repo, number, base, sink) => this.session(owner, repo, number, base, sink),
+      session: (owner, repo, number, base, sink, head) => this.session(owner, repo, number, base, sink, head),
       graph: (owner, repo, number, base) => this.serialized(() => this.graph(owner, repo, number, base)),
     });
     if (!opened) return undefined;
@@ -274,13 +274,20 @@ export class BrowserBridge implements vscode.Disposable {
     void this.openFolder(path);
   }
 
-  private async session(owner: string, repo: string, number: number, base: string, sink: Sink): Promise<Session> {
+  private async session(
+    owner: string,
+    repo: string,
+    number: number,
+    base: string,
+    sink: Sink,
+    head?: string,
+  ): Promise<Session> {
     if (!this.present) throw new Error("This window cannot show readings.");
     const found = await this.where(owner, repo);
     if (!found.path) throw new NotHere(`${owner}/${repo} has no folder in VS Code yet.`);
     const cwd = found.path;
     sink.send({ type: "note", message: `VS Code is reading #${number}…` });
-    const panel = await this.serialized(() => this.present!(cwd, number, base));
+    const panel = await this.serialized(() => this.present!(cwd, number, base, head));
     if (!panel) throw new Error(`VS Code could not draw #${number}.`);
     sink.send({ type: "graph", graph: panel.changeGraph });
     const detach = panel.attach({
