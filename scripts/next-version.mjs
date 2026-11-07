@@ -29,6 +29,18 @@ export function bumpOf(messages) {
   return bump;
 }
 
+/**
+ * What has been published, as far as anything can tell: the store lists a
+ * version only once it has been verified, minutes after the upload, so a merge
+ * landing in between reads an older version than the one just sent. The last
+ * release tag says what was sent.
+ */
+export function publishedOf(live, tagged) {
+  if (!live) return tagged || "";
+  if (!tagged) return live;
+  return newer(tagged, live) ? tagged : live;
+}
+
 export function nextVersion({ manifest, live, messages }) {
   if (!live) return manifest;
   if (newer(manifest, live)) return manifest;
@@ -52,7 +64,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const manifest = JSON.parse(readFileSync("packages/vscode-ext/package.json", "utf8")).version;
   const live = process.env.LIVE ?? "";
   const since = git("describe", "--tags", "--abbrev=0", "--match", "v*");
+  const published = publishedOf(live, since.replace(/^v/, ""));
   const log = git("log", "--format=%B%x1e", since ? `${since}..HEAD` : "HEAD");
   const messages = log.split("\x1e").map((one) => one.trim()).filter(Boolean);
-  console.log(nextVersion({ manifest, live, messages }));
+  console.log(nextVersion({ manifest, live: published, messages }));
 }

@@ -93,6 +93,7 @@ jobs:
       # The published version written back, so the repository says what is live.
       # A push made with this workflow's own token starts no further runs.
       - name: Record the release
+        id: record
         if: steps.can.outputs.publish == 'true'
         env:
           NEXT: ${{ steps.version.outputs.next }}
@@ -121,9 +122,10 @@ jobs:
           git commit -m "chore(release): v$NEXT [skip ci]"
           git tag "v$NEXT"
           git push origin HEAD:main "v$NEXT"
+          echo "recorded=true" >> "$GITHUB_OUTPUT"
 
       - name: Release
-        if: steps.can.outputs.publish == 'true' && steps.version.outputs.next != '0.1.0'
+        if: steps.record.outputs.recorded == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.next }}

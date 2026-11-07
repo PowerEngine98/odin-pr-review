@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 // @ts-expect-error a plain script, without types
-import { bumpOf, nextVersion } from "../../../scripts/next-version.mjs";
+import { bumpOf, nextVersion, publishedOf } from "../../../scripts/next-version.mjs";
 
 describe("the version a merge publishes as", () => {
   it("reads the kind of change from the commit subjects", () => {
@@ -21,5 +21,15 @@ describe("the version a merge publishes as", () => {
   it("takes the manifest as it stands when it is ahead, or nothing is live yet", () => {
     expect(nextVersion({ manifest: "0.1.0", live: "", messages: ["feat: a"] })).toBe("0.1.0");
     expect(nextVersion({ manifest: "1.0.0", live: "0.9.4", messages: ["fix: a"] })).toBe("1.0.0");
+  });
+});
+
+describe("what counts as published", () => {
+  it("is the release tag while the store still lists the version before it", () => {
+    expect(publishedOf("0.1.0", "0.2.0")).toBe("0.2.0");
+    expect(publishedOf("0.2.0", "0.2.0")).toBe("0.2.0");
+    expect(publishedOf("0.3.0", "0.2.0")).toBe("0.3.0");
+    expect(publishedOf("", "0.2.0")).toBe("0.2.0");
+    expect(publishedOf("0.2.0", "")).toBe("0.2.0");
   });
 });

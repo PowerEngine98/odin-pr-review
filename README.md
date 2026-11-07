@@ -2,6 +2,7 @@
 
 [![Marketplace version](https://vsmarketplacebadges.dev/version-short/powerengine98.odin-pr-review.svg?label=VS%20Code%20Marketplace&colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
 [![Installs](https://vsmarketplacebadges.dev/installs-short/powerengine98.odin-pr-review.svg?colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
+[![Open VSX version](https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
 [![Publish](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml)
 
 <img src="docs/odin.svg" alt="" width="200" align="left">
