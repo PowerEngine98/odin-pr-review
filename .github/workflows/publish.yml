@@ -97,6 +97,12 @@ jobs:
         env:
           NEXT: ${{ steps.version.outputs.next }}
         run: |
+          # A version whose tag is already in the repository was released here
+          # before the store existed; it is not written down twice.
+          if git rev-parse -q --verify "refs/tags/v$NEXT" >/dev/null; then
+            echo "::notice::v$NEXT is already tagged; published, not recorded again."
+            exit 0
+          fi
           since=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           notes=$(git log --format='- %s' ${since:+$since..}HEAD | grep -v 'chore(release)' || true)
           changelog=packages/vscode-ext/CHANGELOG.md
@@ -117,7 +123,7 @@ jobs:
           git push origin HEAD:main "v$NEXT"
 
       - name: Release
-        if: steps.can.outputs.publish == 'true'
+        if: steps.can.outputs.publish == 'true' && steps.version.outputs.next != '0.1.0'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.next }}
