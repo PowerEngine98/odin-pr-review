@@ -5,6 +5,12 @@ type Mode = "repo" | "pull";
 const TAB = "data-odin-tab";
 const HASH = "#odin";
 
+function odinHash(): { on: boolean; number?: number } {
+  const match = /^#odin(\d*)$/.exec(location.hash);
+  if (!match) return { on: false };
+  return match[1] ? { on: true, number: Number(match[1]) } : { on: true };
+}
+
 let overlay: HTMLDivElement | null = null;
 let quieted: HTMLAnchorElement[] = [];
 let seen = location.href;
@@ -119,12 +125,30 @@ function theme(): "dark" | "light" {
   return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-function fit() {
+function stuckHeight(): number {
+  let bottom = 0;
+  for (const element of document.elementsFromPoint(window.innerWidth / 2, 1)) {
+    for (let node: Element | null = element; node && node !== document.body; node = node.parentElement) {
+      const position = getComputedStyle(node).position;
+      if (position !== "fixed" && position !== "sticky") continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.top <= 1) bottom = Math.max(bottom, rect.bottom);
+    }
+  }
+  return bottom;
+}
+
+function fit(scroll = false) {
   if (!overlay) return;
   const nav = navOf(overlay.dataset.mode as Mode);
-  const top = nav ? nav.getBoundingClientRect().bottom + window.scrollY : 0;
-  overlay.style.top = `${top}px`;
-  overlay.style.height = `${Math.max(window.innerHeight - top, 480)}px`;
+  if (!nav) return;
+  const navTop = nav.getBoundingClientRect().top + window.scrollY;
+  const navBottom = nav.getBoundingClientRect().bottom + window.scrollY;
+  if (scroll) window.scrollTo({ top: navTop, behavior: "instant" });
+  const stuck = stuckHeight();
+  if (scroll && stuck > 0) window.scrollTo({ top: navTop - stuck, behavior: "instant" });
+  overlay.style.top = `${navBottom}px`;
+  overlay.style.height = `${Math.max(window.innerHeight - stuck - (navBottom - navTop), 320)}px`;
 }
 
 let selectedClasses: string[] = [];
@@ -151,7 +175,6 @@ function close() {
   if (!overlay) return;
   overlay.remove();
   overlay = null;
-  document.documentElement.classList.remove("odin-open");
   for (const mode of ["repo", "pull"] as const) {
     const nav = navOf(mode);
     const link = nav && ours(nav);
@@ -174,9 +197,9 @@ function open() {
   ensureTabs();
   const mode: Mode = place.number ? "pull" : "repo";
   const query = new URLSearchParams({ owner: place.owner, repo: place.repo, theme: theme() });
-  if (place.number) query.set("number", String(place.number));
+  const number = place.number ?? odinHash().number;
+  if (number) query.set("number", String(number));
 
-  window.scrollTo(0, 0);
   overlay = document.createElement("div");
   overlay.className = "odin-overlay";
   overlay.dataset.mode = mode;
@@ -186,16 +209,34 @@ function open() {
   frame.allow = "clipboard-write";
   overlay.append(frame);
   document.body.append(overlay);
-  document.documentElement.classList.add("odin-open");
   markCurrent(mode);
-  fit();
+  settle();
+}
+
+let settling: number[] = [];
+
+function settle() {
+  for (const timer of settling) clearTimeout(timer);
+  const stop = () => {
+    for (const timer of settling) clearTimeout(timer);
+    settling = [];
+  };
+  for (const kind of ["wheel", "touchstart", "keydown", "mousedown"]) {
+    window.addEventListener(kind, stop, { once: true, passive: true });
+  }
+  fit(true);
+  settling = [300, 1000, 2500].map((delay) => window.setTimeout(() => fit(true), delay));
 }
 
 function followUrl() {
   if (location.href === seen) return;
   seen = location.href;
-  if (location.hash === HASH) open();
+  if (odinHash().on) open();
   else close();
+}
+
+function onResize() {
+  fit();
 }
 
 function alive(): boolean {
@@ -203,7 +244,7 @@ function alive(): boolean {
   observer.disconnect();
   clearInterval(ticking);
   window.removeEventListener("popstate", followUrl);
-  window.removeEventListener("resize", fit);
+  window.removeEventListener("resize", onResize);
   return false;
 }
 
@@ -226,17 +267,22 @@ observer.observe(document.body, { childList: true, subtree: true });
 const EXTENSION = new URL(chrome.runtime.getURL("")).origin;
 
 window.addEventListener("message", (event) => {
-  if (event.origin !== EXTENSION || typeof event.data?.odinOpen !== "number") return;
+  if (event.origin !== EXTENSION || typeof event.data?.odinReading !== "number") return;
   const place = placeOf(location.pathname);
-  if (!place) return;
-  location.assign(`/${place.owner}/${place.repo}/pull/${event.data.odinOpen}${HASH}`);
+  if (!place || !overlay || overlay.dataset.mode !== "repo") return;
+  const number = event.data.odinReading;
+  const path = number > 0
+    ? `/${place.owner}/${place.repo}/pulls${HASH}${number}`
+    : `/${place.owner}/${place.repo}/pulls${HASH}`;
+  history.replaceState(history.state, "", path);
+  seen = location.href;
 });
 
 window.addEventListener("popstate", followUrl);
-window.addEventListener("resize", fit);
+window.addEventListener("resize", onResize);
 const ticking = setInterval(() => {
   if (alive()) followUrl();
 }, 500);
 
 ensureTabs();
-if (location.hash === HASH) open();
+if (odinHash().on) open();

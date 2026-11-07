@@ -1,11 +1,7 @@
 import {
-  cardTitle,
   DARK_THEME,
-  differs,
   LIGHT_THEME,
   type ChangeGraph,
-  type Edge,
-  type FileNode,
   type LocalBranch,
   type PullRequestSummary,
   type Theme,
@@ -13,25 +9,12 @@ import {
 import {
   renderSidebar,
   sidebarTokens,
-  type ChangeView,
-  type FileView,
-  type FolderView,
-  type PickerView,
-  type PullView,
   type Query,
-  type RefView,
   type SidebarModel,
 } from "@odin/webview";
 import * as vscode from "vscode";
 
-import {
-  ago,
-  buildTree,
-  partOf,
-  progressOf,
-  rowSearchText,
-  type Folder,
-} from "./tree-model.js";
+import { changeView, partOf, pickerView } from "@odin/webview";
 import type { SeenStore } from "./seen.js";
 import type { SettingsStore } from "./settings.js";
 import type { Fresh } from "./views.js";
@@ -489,180 +472,4 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   }
 }
 
-/**
- * The change, as something the view can draw without asking any more questions.
- *
- * Everything that needs the repository, the graph or this machine is settled
- * here; what crosses into the webview is plain data. What is deliberately *not*
- * settled is the reader's progress — the view counts the marks it is showing,
- * so the bar cannot disagree with the boxes under it.
- */
-export function changeView(
-  graph: ChangeGraph,
-  isViewed: (path: string) => boolean,
-  /**
-   * The file the reader is standing on in the drawing, when the panel has said.
-   *
-   * Only ever a file that is in this graph. A part of the change on screen and a
-   * reader standing outside it is a real situation — they opened the part after
-   * arriving — and a mark naming a file the list is not showing would have the
-   * tree opening folders to reveal a row that is not there.
-   */
-  here = "",
-  /** Files that also moved in the narrower view, for the orange dot. */
-  fresh?: Fresh,
-): ChangeView {
-  const totals = progressOf(graph, isViewed);
-  const known = here !== "" && graph.nodes.some((node) => node.path === here);
-
-  return {
-    tree: folderView(buildTree(graph.nodes), graph, isViewed, freshNote(fresh)),
-    ...(known ? { here } : {}),
-    totals: {
-      additions: totals.additions,
-      deletions: totals.deletions,
-      authors: totals.authors,
-      authorsFull: totals.authorsFull,
-    },
-    reading: {
-      ...(graph.meta.pullRequest ? { number: graph.meta.pullRequest.number } : {}),
-      branch: graph.meta.headRef,
-      // The head of a working-tree reading is the files themselves; anything
-      // else is a commit, and a commit does not change while it is being read.
-      local: graph.meta.worktree === true,
-    },
-  };
-}
-
-/** Why a path wears the dot, or nothing when it does not. */
-function freshNote(fresh: Fresh | undefined): (path: string) => string | undefined {
-  if (!fresh) return () => undefined;
-  const paths = new Set(fresh.paths);
-  const says =
-    fresh.means === "uncommitted"
-      ? "Has changes that are not committed yet"
-      : "Changed since your last review";
-  return (path) => (paths.has(path) ? says : undefined);
-}
-
-function folderView(
-  folder: Folder,
-  graph: ChangeGraph,
-  isViewed: (path: string) => boolean,
-  fresh: (path: string) => string | undefined = () => undefined,
-): FolderView {
-  return {
-    label: folder.label,
-    folders: folder.folders.map((child) => folderView(child, graph, isViewed, fresh)),
-    files: folder.files.map((node) => fileView(node, graph, isViewed, fresh(node.path))),
-  };
-}
-
-function fileView(
-  node: FileNode,
-  graph: ChangeGraph,
-  isViewed: (path: string) => boolean,
-  fresh?: string,
-): FileView {
-  const title = cardTitle(node);
-
-  return {
-    path: node.path,
-    ...(fresh ? { fresh } : {}),
-    name: title.name,
-    status: node.status,
-    viewed: isViewed(node.path),
-    additions: title.additions,
-    deletions: title.deletions,
-    search: rowSearchText(title),
-    // Said out loud rather than left as a file that quietly points nowhere: a
-    // file with no arrows otherwise looks like a file that references nothing.
-    ...(node.resolution === "unsupported"
-      ? { note: `no ${node.language} resolver`, language: node.language }
-      : {}),
-    refs: graph.edges
-      .filter((e) => e.from.nodeId === node.id)
-      .map((edge) => refView(edge, graph)),
-  };
-}
-
-function refView(edge: Edge, graph: ChangeGraph): RefView {
-  const target = graph.nodes.find((n) => n.id === edge.to.nodeId);
-  const where = target
-    ? `${basename(target.path)}:${edge.to.line}`
-    : `line ${edge.to.line}`;
-
-  return {
-    id: edge.id,
-    symbol: edge.to.symbolName ?? "reference",
-    where,
-    change: edge.change,
-    label: edge.label ?? "",
-    search: `${edge.to.symbolName ?? ""} ${where} ${edge.label ?? ""}`.toLowerCase(),
-  };
-}
-
-/**
- * The pull requests to choose from, before a graph has been built.
- *
- * Choosing what to review is the step before reviewing it, and doing that in
- * the browser and then finding the branch by hand is the part of the loop that
- * has nothing to do with reading code. What the forge is waiting on this reader
- * for goes first and under its own heading: everything else is context, and
- * this is the queue.
- */
-export function pickerView(
-  pulls: PullRequestSummary[],
-  branch: string,
-  moved: (pr: PullRequestSummary) => boolean,
-  viewer = "",
-  asked: Query = { state: "open", author: "" },
-  reached = true,
-  local: (pr: PullRequestSummary) => LocalBranch | undefined = () => undefined,
-): PickerView {
-  const mine = viewer
-    ? pulls.filter((pr) => (pr.requestedFrom ?? []).includes(viewer))
-    : [];
-  const rest = pulls.filter((pr) => !mine.includes(pr));
-  const row = (pr: PullRequestSummary) => pullView(pr, branch, moved(pr), local(pr));
-
-  return {
-    mine: mine.map(row),
-    everythingElse: rest.map(row),
-    asked,
-    viewer,
-    reached,
-  };
-}
-
-function pullView(
-  pr: PullRequestSummary,
-  branch: string,
-  moved: boolean,
-  local: LocalBranch | undefined,
-): PullView {
-  /*
-   * Whether this machine's copy is a second reading of the change.
-   *
-   * A change that has already landed has no branch to be ahead of anything, and
-   * is read where it lies rather than checked out — whatever a stale local copy
-   * of its branch says is not a choice worth offering. Settled here rather than
-   * in the row, so the row has one fact to draw from rather than two rules to
-   * apply.
-   */
-  const open = pr.state === undefined || pr.state === "open";
-  const drifted = open && differs(local);
-
-  return {
-    pr,
-    ...(drifted && local ? { local } : {}),
-    current: pr.branch === branch,
-    moved,
-    when: ago(pr.updatedAt ?? pr.createdAt),
-    opened: ago(pr.createdAt),
-  };
-}
-
-function basename(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1);
-}
+export { changeView, pickerView };

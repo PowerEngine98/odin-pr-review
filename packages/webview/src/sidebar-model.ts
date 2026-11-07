@@ -64,6 +64,8 @@ export interface ReadingView {
   branch: string;
   /** The files on disk, which means edits show up as they are made. */
   local: boolean;
+  /** Read in a web browser, where there is no checkout to move to the branch. */
+  browser?: boolean;
 }
 
 export interface TotalsView {

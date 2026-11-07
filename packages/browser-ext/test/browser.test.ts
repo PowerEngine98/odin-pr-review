@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PullJson } from "../src/github.js";
 import { graphOf, pageOf } from "../src/page.js";
-import { ago, pickerOf, pickerPage } from "../src/picker.js";
+import { ago, changeModel, pickerOf, sidebarPage } from "../src/picker.js";
 import { sha1Hex } from "../src/shims/sha1.js";
 import { relayedStorage } from "../src/storage.js";
 
@@ -69,12 +69,22 @@ describe("the pull requests to choose from", () => {
   });
 
   it("is drawn by the sidebar itself", () => {
-    const html = pickerPage(pickerOf([PULL], "", { state: "open", author: "" }), true);
+    const html = sidebarPage({ loading: false, picker: pickerOf([PULL], "", { state: "open", author: "" }) }, true);
     expect(html).toContain("Orders know their total");
-    expect(html).toContain("max-width:760px");
+    expect(html).toContain("--vscode-sideBar-background");
     const markup = html.slice(0, html.indexOf("<script>"));
     expect(markup).toContain("Orders know their total");
     expect(markup).not.toContain("Review This Branch");
+  });
+
+  it("lists the change's files the way the editor does, with no checkout to offer", () => {
+    const graph = graphOf(PULL, DIFF);
+    const model = changeModel(graph, new Set(["src/order.ts"]), pickerOf([], "", { state: "open", author: "" }));
+    expect(model.change?.reading).toMatchObject({ number: 42, branch: "feature/total", browser: true });
+    const html = sidebarPage(model, false);
+    const markup = html.slice(0, html.indexOf("<script>"));
+    expect(markup).toContain("order.ts");
+    expect(markup).not.toContain("Check out feature/total");
   });
 
   it("says when in the coarsest unit that still says something", () => {

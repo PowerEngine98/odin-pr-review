@@ -1,3 +1,6 @@
+import type { ChangeGraph } from "@odin/core";
+import type { PickerView, SidebarModel } from "@odin/webview";
+
 import {
   GitHubError,
   listPulls,
@@ -7,20 +10,23 @@ import {
   type Asked,
   type Place,
 } from "./github.js";
-import { pageOf } from "./page.js";
-import { pickerOf, pickerPage } from "./picker.js";
+import { graphOf, pageOf } from "./page.js";
+import { changeModel, pickerOf, sidebarPage } from "./picker.js";
 
 const params = new URLSearchParams(location.search);
 const owner = params.get("owner") ?? "";
 const repo = params.get("repo") ?? "";
-const number = Number(params.get("number") ?? "");
+const first = Number(params.get("number") ?? "");
 const dark = params.get("theme") !== "light";
 const place: Place = { owner, repo };
 
 document.documentElement.dataset.theme = dark ? "dark" : "light";
 
 const status = document.getElementById("status")!;
-const frame = document.getElementById("page") as HTMLIFrameElement;
+const graphFrame = document.getElementById("page") as HTMLIFrameElement;
+const sideFrame = document.getElementById("side") as HTMLIFrameElement;
+const back = document.getElementById("back") as HTMLButtonElement;
+const sideTitle = document.getElementById("side-title")!;
 
 function say(text: string, detail = "") {
   status.hidden = false;
@@ -45,7 +51,7 @@ function offerToken(why: string) {
 }
 
 function explain(error: unknown) {
-  frame.hidden = true;
+  graphFrame.hidden = true;
   if (error instanceof GitHubError) {
     if (error.reason === "missing") return offerToken("GitHub did not show Odin this repository.");
     if (error.reason === "denied") return offerToken("GitHub refused the token Odin has.");
@@ -81,76 +87,157 @@ function keep(key: string, value: string | null): Promise<void> {
   return keeping;
 }
 
-type HostMessage = { type?: string; number?: number; state?: Asked; author?: string };
-let onHost: (message: HostMessage) => void = () => {};
+function viewedKey(number: number): string {
+  return `viewed:${owner}/${repo}#${number}`.toLowerCase();
+}
+
+async function viewedOf(number: number): Promise<Set<string>> {
+  const stored = await chrome.storage.local.get(viewedKey(number));
+  const paths = stored[viewedKey(number)];
+  return new Set(Array.isArray(paths) ? paths.filter((p): p is string => typeof p === "string") : []);
+}
+
+type HostMessage = {
+  type?: string;
+  number?: number;
+  state?: Asked;
+  author?: string;
+  path?: string;
+  paths?: string[];
+  viewed?: boolean;
+};
 
 window.addEventListener("message", (event) => {
-  if (event.source !== frame.contentWindow) return;
+  const frame = [graphFrame, sideFrame].find((f) => f.contentWindow === event.source);
+  if (!frame) return;
   const data = event.data ?? {};
   if (typeof data.odinError === "string") console.error(`Odin page: ${data.odinError}`);
   if (data.odinStore && typeof data.odinStore.key === "string") {
     void keep(data.odinStore.key, data.odinStore.value ?? null);
   }
-  if (data.odinHost && typeof data.odinHost === "object") onHost(data.odinHost as HostMessage);
+  if (frame === sideFrame && data.odinHost && typeof data.odinHost === "object") {
+    void fromSidebar(data.odinHost as HostMessage);
+  }
 });
 
-function sandboxReady(): Promise<void> {
+function ready(frame: HTMLIFrameElement): Promise<void> {
   return new Promise((resolve) => {
-    const ready = (event: MessageEvent) => {
+    const listener = (event: MessageEvent) => {
       if (event.source !== frame.contentWindow || event.data?.odinReady !== true) return;
-      window.removeEventListener("message", ready);
+      window.removeEventListener("message", listener);
       resolve();
     };
-    window.addEventListener("message", ready);
+    window.addEventListener("message", listener);
   });
 }
 
-async function show(html: string, hosted: boolean) {
-  const ready = sandboxReady();
+async function show(frame: HTMLIFrameElement, html: string, hosted: boolean) {
+  const loaded = ready(frame);
   frame.src = "page.html";
-  await ready;
+  await loaded;
   frame.contentWindow!.postMessage({ odinPage: html, saved: await savedPage(), hosted }, "*");
   frame.hidden = false;
+}
+
+function toSidebar(message: unknown) {
+  sideFrame.contentWindow?.postMessage(message, "*");
+}
+
+function toGraph(message: unknown) {
+  graphFrame.contentWindow?.postMessage(message, "*");
+}
+
+let reader: Api = {};
+let viewer = "";
+let asked: { state: Asked; author: string } = { state: "open", author: "" };
+let picker: PickerView = pickerOf([], "", asked);
+let reading: { number: number; graph: ChangeGraph; viewed: Set<string> } | null = null;
+let sidebarShown = false;
+
+async function drawSidebar(model: SidebarModel) {
+  if (!sidebarShown) {
+    sidebarShown = true;
+    await show(sideFrame, sidebarPage(model, dark), true);
+    return;
+  }
+  toSidebar({ type: "model", model });
+}
+
+function showPicker() {
+  reading = null;
+  back.hidden = true;
+  sideTitle.hidden = false;
+  graphFrame.hidden = true;
+  say("Choose a pull request to draw it.");
+  void drawSidebar({ loading: false, picker });
+}
+
+async function readPicker() {
+  try {
+    picker = pickerOf(await listPulls(place, reader, asked), viewer, asked);
+  } catch (error) {
+    picker = pickerOf([], viewer, asked, false);
+    if (!reading) explain(error);
+  }
+}
+
+async function openPull(number: number) {
+  graphFrame.hidden = true;
+  say(`Reading #${number}…`);
+  const { pull, diff } = await readPull({ owner, repo, number }, reader);
+  say(`Drawing #${pull.number} ${pull.title}…`);
+  const graph = graphOf(pull, diff);
+  const viewed = await viewedOf(number);
+  reading = { number, graph, viewed };
+  back.hidden = false;
+  sideTitle.hidden = true;
+  void drawSidebar(changeModel(graph, viewed, picker));
+  await show(graphFrame, await pageOf(pull, diff, { dark }), false);
+  toGraph({ type: "setViewed", paths: [...viewed], viewed: true });
   status.hidden = true;
+  window.parent.postMessage({ odinReading: number }, "https://github.com");
 }
 
-async function showPull(pull: Required<Place>) {
-  say(`Reading #${pull.number}…`);
-  const { pull: json, diff } = await readPull(pull, await api());
-  say(`Drawing #${json.number} ${json.title}…`);
-  await show(await pageOf(json, diff, { dark }), false);
-}
-
-async function showPicker() {
-  say("Reading pull requests…");
-  const reader = await api();
-  const viewer = await whoAmI(reader).catch(() => "");
-  let asked: { state: Asked; author: string } = { state: "open", author: "" };
-  const picker = pickerOf(await listPulls(place, reader, asked), viewer, asked);
-
-  onHost = (message) => {
-    if (message.type === "read" && typeof message.number === "number") {
-      window.parent.postMessage({ odinOpen: message.number }, "https://github.com");
-      return;
-    }
-    if (message.type !== "asked") return;
+async function fromSidebar(message: HostMessage) {
+  if (message.type === "read" && typeof message.number === "number") {
+    await openPull(message.number).catch(explain);
+    return;
+  }
+  if (message.type === "asked") {
     asked = {
       state: message.state ?? asked.state,
       author: typeof message.author === "string" ? message.author : asked.author,
     };
-    frame.contentWindow?.postMessage({ type: "loading", value: true }, "*");
-    listPulls(place, reader, asked)
-      .then((pulls) => pickerOf(pulls, viewer, asked))
-      .catch(() => pickerOf([], viewer, asked, false))
-      .then((next) => {
-        frame.contentWindow?.postMessage({ type: "model", model: { loading: false, picker: next } }, "*");
-      });
-  };
-
-  await show(pickerPage(picker, dark), true);
+    toSidebar({ type: "loading", value: true });
+    await readPicker();
+    toSidebar({ type: "model", model: { loading: false, picker } });
+    return;
+  }
+  if (message.type === "focus" && typeof message.path === "string") {
+    toGraph({ type: "focus", path: message.path });
+    return;
+  }
+  if (message.type === "viewed" && Array.isArray(message.paths) && reading) {
+    for (const path of message.paths) {
+      if (message.viewed === true) reading.viewed.add(path);
+      else reading.viewed.delete(path);
+    }
+    await chrome.storage.local.set({ [viewedKey(reading.number)]: [...reading.viewed] });
+    toGraph({ type: "setViewed", paths: message.paths, viewed: message.viewed === true });
+  }
 }
 
-const shown = Number.isInteger(number) && number > 0
-  ? showPull({ owner, repo, number })
-  : showPicker();
-shown.catch(explain);
+back.addEventListener("click", () => {
+  window.parent.postMessage({ odinReading: 0 }, "https://github.com");
+  showPicker();
+});
+
+async function start() {
+  reader = await api();
+  viewer = await whoAmI(reader).catch(() => "");
+  await readPicker();
+  if (Number.isInteger(first) && first > 0) await openPull(first);
+  else showPicker();
+}
+
+start().catch(explain);

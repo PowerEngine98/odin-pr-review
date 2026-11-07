@@ -1,23 +1,11 @@
-import type { PullRequestSummary } from "@odin/core";
+import type { ChangeGraph, PullRequestSummary } from "@odin/core";
 import { DARK_THEME, LIGHT_THEME } from "@odin/core";
-import { renderSidebar, type PickerView, type SidebarModel } from "@odin/webview";
+import { ago, changeView, renderSidebar, type PickerView, type SidebarModel } from "@odin/webview";
 
 import type { Asked, PullJson } from "./github.js";
+import { editorVariables } from "./vscode-vars.js";
 
-export function ago(iso: string | undefined, now = Date.now()): string {
-  const then = Date.parse(iso ?? "");
-  if (Number.isNaN(then)) return "";
-  const minutes = Math.floor((now - then) / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor((now - then) / 86_400_000);
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return months === 1 ? "1mo ago" : `${months}mo ago`;
-}
+export { ago };
 
 export function summaryOf(pull: PullJson): PullRequestSummary {
   const state: "open" | "merged" | "closed" = pull.merged_at ? "merged" : pull.state === "closed" ? "closed" : "open";
@@ -69,9 +57,11 @@ export function pickerOf(
   };
 }
 
-const NARROW = "<style>body{max-width:760px;margin:0 auto;}</style>";
+export function changeModel(graph: ChangeGraph, viewed: ReadonlySet<string>, picker: PickerView): SidebarModel {
+  const change = changeView(graph, (path) => viewed.has(path));
+  return { loading: false, picker, change: { ...change, reading: { ...change.reading, browser: true } } };
+}
 
-export function pickerPage(picker: PickerView, dark: boolean): string {
-  const model: SidebarModel = { loading: false, picker };
-  return renderSidebar(model, dark ? DARK_THEME : LIGHT_THEME).replace("</head>", `${NARROW}</head>`);
+export function sidebarPage(model: SidebarModel, dark: boolean): string {
+  return renderSidebar(model, dark ? DARK_THEME : LIGHT_THEME).replace("</head>", `${editorVariables(dark)}</head>`);
 }
