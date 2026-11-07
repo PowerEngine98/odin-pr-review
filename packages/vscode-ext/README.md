@@ -42,6 +42,11 @@ walk you through it.
 - **Narration.** Answers and tours can be read aloud, with the word being spoken
   boxed as it goes — by the browser, your system's voice, or an optional local
   neural voice (Kokoro).
+- **Odin on GitHub.** A companion browser extension adds an **Odin** tab to
+  GitHub's pull requests. Paired with this extension, that tab shows the same
+  reading as the editor — arrows, AI pairing, tours, narration and reviews, all
+  run here. VS Code finds the repository among the folders it knows, asks which
+  when there are several, and offers to clone it when there is none.
 
 ## Requirements
 
@@ -81,6 +86,18 @@ walk you through it.
 | **Odin: Choose What to Show** | All changes, since your last review, or uncommitted only |
 | **Odin: Export Change Graph as JSON** | Opens the document the graph is drawn from |
 | **Odin: Set Up the Kokoro Narrator** | Installs the optional local neural voice |
+| **Odin: Connect the Browser Extension** | Lets Odin's GitHub tab draw arrows from the repositories open here |
+| **Odin: Disconnect the Browser Extension** | Forgets the browser extension and stops answering it |
+
+## The browser extension
+
+Odin for GitHub is built from this repository; each
+[release](https://github.com/PowerEngine98/odin-pr-review/releases) attaches it
+as `odin-pr-review-browser.zip` for Chrome, Edge or Brave (unzip it, open
+`chrome://extensions`, turn on Developer mode and choose **Load unpacked**).
+In its Odin tab, choose **Enable all features → Sync with the VS Code
+extension** and allow the connection here. VS Code then answers it on
+`127.0.0.1` only, and only with the token it was given.
 
 ## Settings
 
@@ -96,7 +113,9 @@ walk you through it.
 
 ## Privacy
 
-Odin collects no telemetry. Reviewing never modifies your repository: the base
+Odin collects no telemetry. The browser extension's connection listens on
+`127.0.0.1` only, answers only the paired extension, and is off until you pair
+it. Reviewing never modifies your repository: the base
 is read into a temporary directory, never a worktree. Pull request data comes
 from GitHub through your own `gh` session. Agents run as the command line tools
 installed on your machine, under your own accounts, and only when you ask them
@@ -106,7 +125,8 @@ of voice model into Odin's storage, and only when you run its setup command.
 
 ## Limitations
 
-- A review needs the branch checked out locally.
+- A review needs the repository on this computer (Odin can clone it for the
+  browser extension).
 - Kotlin, Python, Clojure and SQL arrows are heuristic, not compiler-resolved.
 - Very large pull requests — thousands of files — get heavy.
 

@@ -123,8 +123,7 @@ export function utter(text: string, onWord: OnWord, done: () => void): void {
     rendered.delete(text);
     if (mine !== turn) return;
     if (buffer) play(buffer, text, onWord, done);
-    else if (!kokoroUp) fallBack(text, onWord, done);
-    else done();
+    else fallBack(text, onWord, done);
   });
 }
 

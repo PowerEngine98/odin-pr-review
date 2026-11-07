@@ -463,6 +463,44 @@ The extension reuses the same compiler-API resolver the command line uses, so
 the picture in the editor is the picture `odin graph` produces — which matters,
 because the layout is meant to be something you remember.
 
+### Browser extension — on GitHub
+
+`packages/browser-ext` puts Odin into GitHub itself, the way Le Git Graph adds a
+commits graph. It adds an **Odin** tab in two places:
+
+- **On a pull request**, first in the bar beside Overview, Commits, Checks and
+  Files changed. It draws that pull request as the change graph, with the same
+  renderer the editor uses.
+- **On the repository**, beside Pull requests. It opens the pull request list
+  from the editor's sidebar: what is waiting on you first, filters for open,
+  merged, closed and author. Choosing a pull request opens its graph.
+
+The extension reads GitHub's API directly and builds the graph in the browser
+from the pull request's diff, the same way `odin --patch-file` does. Public
+repositories need no sign-in. Private ones, or more than 60 reads an hour, need
+a fine-grained token with read-only *Pull requests* and *Contents* access, saved
+in the extension's options.
+
+That basic view has no arrows: they need the whole repository. **Enable all
+features** offers two ways further:
+
+- **Sync with the VS Code extension** makes the tab a second screen on Odin for
+  VS Code: the editor reads the pull request and the browser shows that same
+  reading, with arrows, AI pairing, guided tours, Kokoro narration, comments and
+  reviews, all run by the editor. VS Code finds the repository among the folders
+  it knows, asks when there is more than one, and offers to clone it when there
+  is none.
+- **Compute data in browser** downloads the repository from GitHub and runs
+  Odin's resolvers in the browser, for arrows without the editor.
+
+See [`packages/browser-ext`](packages/browser-ext/README.md) for how pairing,
+the local bridge and its security work.
+
+Each release attaches `odin-pr-review-browser.zip`. To try it in Chrome, Edge or
+Brave: build with `yarn build` (or unzip a release), open `chrome://extensions`,
+turn on Developer mode, choose **Load unpacked** and select
+`packages/browser-ext/dist/extension`.
+
 ### Static — `--format svg`
 
 The same layout, frozen. Useful for attaching to a pull request, and as a
@@ -582,6 +620,7 @@ the tool exists to build.
 | `@odin/highlight` | Syntax colouring, from VS Code's own grammars by way of Shiki. |
 | `@odin/cli` | `odin` — render a change graph, and review through it, from the terminal. |
 | `odin-pr-review` | The VS Code extension. Bundled to CommonJS, since the editor loads extensions that way. |
+| `@odin/browser-ext` | The browser extension: an Odin tab on GitHub, built from the same core and renderer. |
 
 Reference resolution sits behind an interface, so the same graph can be produced
 headlessly by the compiler API or inside the editor by a language server.

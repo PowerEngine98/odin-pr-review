@@ -52,7 +52,9 @@
    * already follows the reader's typing, and offering to fetch it would be
    * offering to replace what they are looking at with itself.
    */
-  const offerCheckout = $derived(!change.reading.local && !!change.reading.number);
+  const offerCheckout = $derived(
+    !change.reading.local && !change.reading.browser && !!change.reading.number,
+  );
 </script>
 
 <Head {change} />

@@ -40,7 +40,9 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onWebviewPanel:odin.graph",
-    "onView:odin.changes"
+    "onView:odin.changes",
+    "onUri",
+    "onStartupFinished"
   ],
   "contributes": {
     "commands": [
@@ -176,6 +178,16 @@
       {
         "command": "odin.setUpKokoro",
         "title": "Set Up the Kokoro Narrator",
+        "category": "Odin"
+      },
+      {
+        "command": "odin.connectBrowser",
+        "title": "Connect the Browser Extension",
+        "category": "Odin"
+      },
+      {
+        "command": "odin.disconnectBrowser",
+        "title": "Disconnect the Browser Extension",
         "category": "Odin"
       }
     ],

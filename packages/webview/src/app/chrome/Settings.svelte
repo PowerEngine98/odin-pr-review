@@ -14,6 +14,13 @@
   import Viewed from "../shared/Viewed.svelte";
   import { GEAR } from "./icons.js";
 
+  const locked = $derived(model.current.locked ?? {});
+
+  function unlock(): void {
+    window.parent.postMessage({ odinUnlock: true }, "*");
+    open = false;
+  }
+
   let {
     hasSchema = false,
     notes,
@@ -218,6 +225,9 @@
            list the moment the reader moves. -->
       <span class="settings-scroll" bind:this={pane} onscroll={measure}>
         <span class="settings-title">Settings</span>
+        {#if model.current.unlock}
+          <button class="settings-unlock" onclick={unlock}>Enable all features</button>
+        {/if}
         <span class="settings-rule"></span>
 
         <span class="settings-group">Diff display</span>
@@ -250,10 +260,16 @@
              drawing. -->
         <Viewed
           label="Imports"
-          title="Import statements and the arrows they produce"
+          disabled={!!locked.imports}
+          title={locked.imports ?? "Import statements and the arrows they produce"}
           bind:checked={settings.showImports}
         />
-        <Viewed label="Unchanged references" bind:checked={settings.showUnchanged} />
+        <Viewed
+          label="Unchanged references"
+          disabled={!!locked.unchanged}
+          title={locked.unchanged}
+          bind:checked={settings.showUnchanged}
+        />
         <Viewed
           label="Tests"
           title="Test files reference a great deal of what they exercise, which buries the change under them"
@@ -297,10 +313,11 @@
         <!-- Only worth offering over a reading that has one. Over the forge's
              copy the switch would turn on a panel that does not appear, which
              reads as the switch being broken. -->
-        {#if model.current.meta.worktree}
+        {#if model.current.meta.worktree || locked.agents}
           <Viewed
             label="AI pairing"
-            title="Agents on this machine that can take work from your comments"
+            disabled={!!locked.agents}
+            title={locked.agents ?? "Agents on this machine that can take work from your comments"}
             bind:checked={settings.hud.agents}
           />
         {/if}
@@ -314,17 +331,20 @@
         />
         <Viewed
           label="Auto narrate new content"
-          title="Read each new block of an agent's answer aloud as it arrives"
+          disabled={!!locked.autoNarrate}
+          title={locked.autoNarrate ?? "Read each new block of an agent's answer aloud as it arrives"}
           bind:checked={settings.autoNarrate}
         />
         <Viewed
           label="Use OS narrator"
-          title="Read aloud with the voice chosen in the system's settings (macOS). Falls back to the browser's voice when it cannot be reached."
+          disabled={!!locked.systemVoice}
+          title={locked.systemVoice ?? "Read aloud with the voice chosen in the system's settings (macOS). Falls back to the browser's voice when it cannot be reached."}
           bind:checked={settings.systemVoice}
         />
         <Viewed
           label="Use Kokoro voice"
-          title="A neural voice that runs on this machine. Odin sets it up in the background; run &quot;Odin: Set Up the Kokoro Narrator&quot; to try again."
+          disabled={!!locked.kokoroVoice}
+          title={locked.kokoroVoice ?? "A neural voice that runs on this machine. Odin sets it up in the background; run \"Odin: Set Up the Kokoro Narrator\" to try again."}
           bind:checked={settings.kokoroVoice}
         />
 
@@ -389,6 +409,22 @@
 </span>
 
 <style>
+  .settings-unlock {
+    margin: 6px 0 2px;
+    padding: 4px 10px;
+    border: 1px solid var(--vscode-button-background, #238636);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--vscode-foreground, #e6edf3);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .settings-unlock:hover {
+    background: var(--vscode-button-background, #238636);
+    color: var(--vscode-button-foreground, #ffffff);
+  }
+
   .settings-menu { position: relative; display: inline-flex; }
   .icon-button {
     display: inline-flex;

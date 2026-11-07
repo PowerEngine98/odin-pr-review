@@ -64,6 +64,8 @@ export interface ReadingView {
   branch: string;
   /** The files on disk, which means edits show up as they are made. */
   local: boolean;
+  /** Read in a web browser, where there is no checkout to move to the branch. */
+  browser?: boolean;
 }
 
 export interface TotalsView {
@@ -142,6 +144,8 @@ export interface PickerView {
   viewer: string;
   /** Whether the forge answered at all, as opposed to answering with nothing. */
   reached: boolean;
+  /** Drawn in a web browser, which reads GitHub directly and has no branch of its own to review. */
+  browser?: boolean;
 }
 
 export interface PullView {

@@ -25,10 +25,12 @@ import {
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
 import { execFile } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import * as vscode from "vscode";
+
+import { BrowserBridge } from "./bridge.js";
 
 import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo, forgetBase, stageGraphForRepo } from "./graph.js";
@@ -211,6 +213,9 @@ function questionInFront(): Question | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  const bridge = new BrowserBridge(context, presentForBrowser);
+  browserBridge = bridge;
+  void bridge.start();
   // The graph's tab wears the extension's own mark, which is a file on disk:
   // the tab belongs to the editor rather than to the page inside it.
   GraphPanel.assets = context.extensionUri;
@@ -237,7 +242,10 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     );
     context.subscriptions.push({ dispose: () => GraphPanel.kokoro?.dispose() });
-    void setUpKokoro(context, false);
+    void GraphPanel.kokoro
+      .repair()
+      .catch(() => false)
+      .then((repairing) => setUpKokoro(context, false, repairing));
     GraphPanel.tours = new TourStore(context.globalStorageUri.fsPath);
     context.subscriptions.push({ dispose: () => GraphPanel.tours?.flush() });
   }
@@ -423,6 +431,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerUriHandler({
       handleUri: (uri) => void handleUri(uri),
     }),
+    bridge,
+    vscode.commands.registerCommand("odin.connectBrowser", () => bridge.pairByCode()),
+    vscode.commands.registerCommand("odin.disconnectBrowser", () => bridge.disconnect()),
     /*
      * Coming back to the window, which is when what is on screen is oldest.
      *
@@ -689,7 +700,17 @@ function reopen(reading: Session, key: string): void {
  * Useful for triggering a review from outside the editor — a script, a chat
  * message, a code-review checklist — without hunting through the palette.
  */
+let browserBridge: BrowserBridge | undefined;
+
 async function handleUri(uri: vscode.Uri): Promise<void> {
+  if (uri.path.startsWith("/connect")) {
+    await browserBridge?.pairFromUri(uri);
+    return;
+  }
+  if (uri.path.startsWith("/repository")) {
+    await browserBridge?.resolveFromUri(uri);
+    return;
+  }
   if (!uri.path.startsWith("/review")) return;
   const base = new URLSearchParams(uri.query).get("base") ?? undefined;
   await review(base);
@@ -1324,6 +1345,41 @@ async function checkoutLocal(number: number): Promise<void> {
   );
 }
 
+async function presentForBrowser(
+  repo: string,
+  number: number,
+  base: string,
+  branch?: string,
+): Promise<GraphPanel | undefined> {
+  const open = GraphPanel.find(repo, number);
+  if (open) return open;
+  const baseRef = base || undefined;
+
+  if (branch) {
+    const here = await currentBranch({ cwd: repo }).catch(() => undefined);
+    if (here === branch) {
+      await review(baseRef, undefined, true, repo, number);
+      const live = GraphPanel.find(repo, number);
+      if (live) return live;
+    }
+    await git(["fetch", "--quiet", "origin", branch], { cwd: repo }).catch(() => "");
+    if (await revision(repo, `refs/remotes/origin/${branch}`)) {
+      await review(baseRef, `origin/${branch}`, false, repo, number);
+      const tracked = GraphPanel.find(repo, number, `origin/${branch}`);
+      if (tracked) return tracked;
+    }
+  }
+
+  await git(["fetch", "--quiet", "origin", `refs/pull/${number}/head`], { cwd: repo }).catch(() => "");
+  const head = await revision(repo, "FETCH_HEAD");
+  if (!head) throw new Error(`Could not fetch the commits of #${number}.`);
+  if (base) await git(["fetch", "--quiet", "origin", base], { cwd: repo }).catch(() => "");
+  const baseRev = base ? await revision(repo, `origin/${base}`) ?? base : undefined;
+  const forked = baseRev ? await mergeBase(repo, baseRev, head) : undefined;
+  await review(forked ?? baseRev, head, false, repo, number);
+  return GraphPanel.find(repo, number, head);
+}
+
 async function readFinished(pull: PullRequestSummary): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
@@ -1519,7 +1575,11 @@ function gh(args: string[], cwd: string): Promise<string> {
  * in the status bar: a failure is said once and then left alone until the reader
  * asks again from the command, which shows its progress up front.
  */
-async function setUpKokoro(context: vscode.ExtensionContext, asked: boolean): Promise<void> {
+async function setUpKokoro(
+  context: vscode.ExtensionContext,
+  asked: boolean,
+  repairing = false,
+): Promise<void> {
   const kokoro = GraphPanel.kokoro;
   if (!kokoro) return;
   if (!Kokoro.supported()) {
@@ -1535,7 +1595,7 @@ async function setUpKokoro(context: vscode.ExtensionContext, asked: boolean): Pr
     return;
   }
   const TRIED = "odin.kokoro.tried";
-  if (!asked) {
+  if (!asked && !repairing) {
     const enabled = vscode.workspace.getConfiguration("odin.kokoro").get("autoSetup", false);
     if (!enabled || context.globalState.get(TRIED) === Kokoro.version) return;
   }
@@ -2627,6 +2687,8 @@ function carryOver(storage: string): void {
     const voice = join(earlier, "kokoro");
     if (existsSync(voice) && !existsSync(join(storage, "kokoro"))) {
       renameSync(voice, join(storage, "kokoro"));
+      rmSync(join(storage, "kokoro", "venv"), { recursive: true, force: true });
+      rmSync(join(storage, "kokoro", "ready.json"), { force: true });
     }
   } catch (error) {
     log(`carrying over the earlier install's storage failed: ${String(error)}`);

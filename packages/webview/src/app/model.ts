@@ -327,6 +327,10 @@ export interface ViewModel {
    */
   agents?: AgentView[];
   canReview: boolean;
+  /** Settings this page cannot offer, each with what it would take to have it. */
+  locked?: Record<string, string>;
+  /** Whoever drew the page can turn more on, and listens for the reader asking. */
+  unlock?: boolean;
   /** What a half-written review is filed under between page loads. */
   review: string;
   /**

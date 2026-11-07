@@ -86,6 +86,7 @@ function createStub(): Stub {
       getConfiguration: () => ({ get: (_k: string, d: unknown) => d }),
       workspaceFolders: undefined,
       openTextDocument: () => Promise.resolve({}),
+      onDidChangeWorkspaceFolders: () => disposable,
     },
     window: {
       registerUriHandler: () => disposable,
@@ -202,10 +203,11 @@ describe("the built extension", () => {
 
     // Every command, plus the content provider, the URI handler, the sidebar,
     // the viewed store's listener, the serializer that reopens the graph after
-    // a window reload, and the focus listener that re-asks the forge about a
-    // review left open. Anything registered but not collected here leaks on
-    // reload — which is exactly the moment the serializer exists for.
-    const nonCommands = 6;
+    // a window reload, the focus listener that re-asks the forge about a
+    // review left open, and the bridge the browser extension talks to.
+    // Anything registered but not collected here leaks on reload — which is
+    // exactly the moment the serializer exists for.
+    const nonCommands = 7;
     expect(subscriptions).toHaveLength(
       manifest.contributes.commands.length + nonCommands,
     );

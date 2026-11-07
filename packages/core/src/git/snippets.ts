@@ -6,6 +6,8 @@ import type { ChangeGraph, FileNode, Side } from "../model/types.js";
 import { git, type GitOptions } from "./exec.js";
 
 export interface SnippetOptions extends GitOptions {
+  /** Reads a file's text on one side, in place of git, for a caller with no repository on disk. */
+  read?: (path: string, side: Side) => Promise<string | undefined>;
   /** Lines of surrounding context to show around a target. */
   context?: number;
   /**
@@ -174,6 +176,15 @@ async function readBlob(
   cache: Map<string, string[] | null>,
 ): Promise<string[] | null> {
   const path = side === "base" ? (node.prevPath ?? node.path) : node.path;
+  const read = (options as SnippetOptions).read;
+  if (read) {
+    const key = `${side}:${path}`;
+    if (!cache.has(key)) {
+      const text = await read(path, side).catch(() => undefined);
+      cache.set(key, text === undefined ? null : text.split("\n"));
+    }
+    return cache.get(key) ?? null;
+  }
 
   /*
    * A live reading is of the working tree, so the head of it is the file on
