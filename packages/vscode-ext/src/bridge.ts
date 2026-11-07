@@ -259,14 +259,10 @@ export class BrowserBridge implements vscode.Disposable {
     await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(path), { forceNewWindow: true });
   }
 
-  private offerToOpen(name: string, path: string): void {
+  private openOnce(path: string): void {
     if (this.isOpenHere(path) || this.offered.has(path)) return;
     this.offered.add(path);
-    void vscode.window
-      .showInformationMessage(`Odin drew ${name} for the browser from ${path}.`, "Open Folder")
-      .then((choice) => {
-        if (choice === "Open Folder") void this.openFolder(path);
-      });
+    void this.openFolder(path);
   }
 
   private async graph(owner: string, repo: string, number: number, base: string): Promise<Served> {
@@ -281,7 +277,7 @@ export class BrowserBridge implements vscode.Disposable {
     const cwd = found.path;
     const remotes = await git(["remote", "-v"], { cwd });
     const remote = remoteFor(remotes, owner, repo) ?? "origin";
-    this.offerToOpen(`${owner}/${repo}`, cwd);
+    this.openOnce(cwd);
     await git(["fetch", "--quiet", remote, `refs/pull/${number}/head`], { cwd });
     const head = (await git(["rev-parse", "FETCH_HEAD"], { cwd })).trim();
     if (base) await git(["fetch", "--quiet", remote, base], { cwd }).catch(() => "");
