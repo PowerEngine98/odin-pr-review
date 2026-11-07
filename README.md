@@ -482,10 +482,19 @@ a fine-grained token with read-only *Pull requests* and *Contents* access, saved
 in the extension's options.
 
 That basic view has no arrows: they need the whole repository. **Enable all
-features** gets them one of two ways: **Sync with the VS Code extension**, which
-pairs with Odin for VS Code and lets it serve graphs over `127.0.0.1` for the
-repositories open there, or **Compute data in browser**, which downloads the
-repository from GitHub and runs Odin's resolvers in the browser.
+features** offers two ways further:
+
+- **Sync with the VS Code extension** makes the tab a second screen on Odin for
+  VS Code: the editor reads the pull request and the browser shows that same
+  reading, with arrows, AI pairing, guided tours, Kokoro narration, comments and
+  reviews, all run by the editor. VS Code finds the repository among the folders
+  it knows, asks when there is more than one, and offers to clone it when there
+  is none.
+- **Compute data in browser** downloads the repository from GitHub and runs
+  Odin's resolvers in the browser, for arrows without the editor.
+
+See [`packages/browser-ext`](packages/browser-ext/README.md) for how pairing,
+the local bridge and its security work.
 
 Each release attaches `odin-pr-review-browser.zip`. To try it in Chrome, Edge or
 Brave: build with `yarn build` (or unzip a release), open `chrome://extensions`,
