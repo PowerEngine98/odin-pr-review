@@ -17,8 +17,10 @@
   background: inherit;
 }
 
-html.odin-open {
-  overscroll-behavior-y: none;
+html.odin-open,
+html.odin-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .odin-overlay iframe {
