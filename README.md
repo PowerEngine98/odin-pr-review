@@ -25,6 +25,8 @@ its base into a change graph: every file is a vertex, every call-site reference
 in the change is a directed edge, and the colour of an edge tells you whether
 the change added that relationship or took it away.
 
+[![Odin in a minute](docs/demo.gif)](docs/demo.mp4)
+
 ![The interactive renderer](docs/interactive.png)
 
 Every picture in this README is generated from the same fixture by

@@ -74,7 +74,9 @@ export async function drive(step: DriveStep): Promise<boolean> {
   if (step.action === "key") {
     const target = (step.selector || step.text ? find(step) : undefined) ?? (document.activeElement as HTMLElement | null) ?? document.body;
     for (const type of ["keydown", "keyup"]) {
-      target.dispatchEvent(new KeyboardEvent(type, { key: step.key ?? "", bubbles: true, cancelable: true }));
+      const key = step.key ?? "";
+      const code = /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : /^\d$/.test(key) ? `Digit${key}` : key;
+      target.dispatchEvent(new KeyboardEvent(type, { key, code, bubbles: true, cancelable: true }));
     }
     return true;
   }

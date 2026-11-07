@@ -10,7 +10,9 @@ showing its diff; every call the change makes, adds or removes is an arrow from
 the exact line that calls to the exact line that is called. Then let an agent
 walk you through it.
 
-![The change graph](https://raw.githubusercontent.com/PowerEngine98/odin-pr-review/main/docs/interactive.png)
+[![Odin in a minute: the change graph, a narrated tour, pairing with Claude, and the same reading on GitHub](https://raw.githubusercontent.com/PowerEngine98/odin-pr-review/main/docs/demo.gif)](https://github.com/PowerEngine98/odin-pr-review/raw/main/docs/demo.mp4)
+
+*A minute of Odin on its own pull request: the change graph, a narrated tour, pairing with Claude, and the same reading on GitHub. [Watch the video](https://github.com/PowerEngine98/odin-pr-review/raw/main/docs/demo.mp4).*
 
 > **Preview.** Odin is young and moving fast. Feedback and issues are welcome at
 > [github.com/PowerEngine98/odin-pr-review](https://github.com/PowerEngine98/odin-pr-review/issues).
