@@ -60,6 +60,36 @@ export async function bridgeGraph(
   return response.json() as Promise<BridgeAnswer>;
 }
 
+export interface Where {
+  path?: string;
+  need?: "pick" | "clone";
+}
+
+export async function bridgeWhere(port: number, token: string, owner: string, repo: string): Promise<Where> {
+  const query = new URLSearchParams({ owner, repo });
+  let response: Response;
+  try {
+    response = await call(port, `/odin/where?${query}`, token);
+  } catch {
+    throw new BridgeError("VS Code is not answering.", "unreachable");
+  }
+  if (response.status === 404) return { path: "" };
+  if (!response.ok) throw new BridgeError(`VS Code answered ${response.status}.`, "failed");
+  return response.json() as Promise<Where>;
+}
+
+export function repositoryLink(owner: string, repo: string): string {
+  return `vscode://${EXTENSION_ID}/repository?${new URLSearchParams({ owner, repo })}`;
+}
+
+export function launch(url: string): void {
+  const frame = document.createElement("iframe");
+  frame.hidden = true;
+  frame.src = url;
+  document.body.append(frame);
+  setTimeout(() => frame.remove(), 10_000);
+}
+
 export function pairingLink(token: string, extensionId: string): string {
   const query = new URLSearchParams({ token, from: `chrome-extension://${extensionId}` });
   return `vscode://${EXTENSION_ID}/connect?${query}`;

@@ -10,7 +10,7 @@ import {
   type Asked,
   type Place,
 } from "./github.js";
-import { BridgeError, findBridge, newToken, pairingLink } from "./bridge.js";
+import { BridgeError, findBridge, launch, newToken, pairingLink } from "./bridge.js";
 import { pageOf } from "./page.js";
 import { changeModel, pickerOf, sidebarPage } from "./picker.js";
 import { draw, readSettings, saveSettings, type Settings, type SourceKind } from "./sources.js";
@@ -302,11 +302,7 @@ async function connectVsCode() {
     settings = { ...settings, token };
     await saveSettings({ token });
   }
-  const launcher = document.createElement("iframe");
-  launcher.hidden = true;
-  launcher.src = pairingLink(token, chrome.runtime.id);
-  document.body.append(launcher);
-  setTimeout(() => launcher.remove(), 10_000);
+  launch(pairingLink(token, chrome.runtime.id));
   pairing.hidden = false;
   pairing.replaceChildren(line("Opening VS Code… Allow Odin there, then come back."));
 

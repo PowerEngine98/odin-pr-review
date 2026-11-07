@@ -1,13 +1,22 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { listen, NotHere, type BridgeBackend } from "../src/bridge-server.js";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { pairingFrom, remoteFor } from "../src/bridge.js";
+import { githubRepositories, Repositories } from "../src/repositories.js";
 
 const TOKEN = "a".repeat(48);
 const ORIGIN = `chrome-extension://${"b".repeat(32)}`;
 
 const backend: BridgeBackend = {
   version: "1.2.3",
+  async where(_owner, repo) {
+    if (repo === "twice") return { need: "pick" };
+    return { path: `/code/${repo}` };
+  },
   async graph(owner, repo, number, base) {
     if (repo === "elsewhere") throw new NotHere(`${owner}/${repo} is not open in VS Code.`);
     return { graph: { owner, repo, number, base }, snippets: [] };
@@ -46,6 +55,52 @@ describe("the bridge the browser extension talks to", () => {
     expect(missing.status).toBe(404);
     const bad = await fetch(`http://127.0.0.1:${port}/odin/graph?owner=acme&repo=shop&number=x`, { headers: auth });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("asking where a repository is", () => {
+  it("answers with its folder, or with what the reader has to decide", async () => {
+    const port = await served();
+    const auth = { authorization: `Bearer ${TOKEN}` };
+    const one = await fetch(`http://127.0.0.1:${port}/odin/where?owner=acme&repo=shop`, { headers: auth });
+    expect(await one.json()).toEqual({ path: "/code/shop" });
+    const two = await fetch(`http://127.0.0.1:${port}/odin/where?owner=acme&repo=twice`, { headers: auth });
+    expect(await two.json()).toEqual({ need: "pick" });
+    const bad = await fetch(`http://127.0.0.1:${port}/odin/where?owner=acme&repo=a%20b`, { headers: auth });
+    expect(bad.status).toBe(400);
+  });
+});
+
+describe("the folders Odin remembers for each repository", () => {
+  const registry = () => new Repositories(join(mkdtempSync(join(tmpdir(), "odin-")), "repositories.json"));
+
+  it("reads every GitHub repository a folder's remotes point at", () => {
+    const remotes = "origin\tgit@github.com:Acme/Shop.git (fetch)\nfork\thttps://github.com/ada/shop (fetch)\nlab\thttps://gitlab.com/x/y (fetch)";
+    expect(githubRepositories(remotes)).toEqual(["acme/shop", "ada/shop"]);
+  });
+
+  it("keeps each folder once, and the reader's choice among them", async () => {
+    const known = registry();
+    const here = mkdtempSync(join(tmpdir(), "shop-"));
+    const there = mkdtempSync(join(tmpdir(), "shop-"));
+    known.record("Acme/Shop", here);
+    known.record("acme/shop", here);
+    known.record("acme/shop", there);
+    expect(await known.candidates("acme/shop", async () => true)).toEqual({ paths: [here, there] });
+    known.choose("acme/shop", there);
+    expect((await known.candidates("acme/shop", async () => true)).chosen).toBe(there);
+  });
+
+  it("forgets folders that are gone or no longer that repository", async () => {
+    const known = registry();
+    const kept = mkdtempSync(join(tmpdir(), "shop-"));
+    const moved = mkdtempSync(join(tmpdir(), "shop-"));
+    known.record("acme/shop", "/nowhere/shop");
+    known.record("acme/shop", kept);
+    known.record("acme/shop", moved);
+    known.choose("acme/shop", moved);
+    const left = await known.candidates("acme/shop", async (path) => path !== moved);
+    expect(left).toEqual({ paths: [kept] });
   });
 });
 

@@ -1,10 +1,13 @@
+import { existsSync } from "node:fs";
 import type { Server } from "node:http";
+import { basename, join } from "node:path";
 
 import { git } from "@odin/core";
 import * as vscode from "vscode";
 
-import { listen, NotHere, type Pairing, type Served } from "./bridge-server.js";
+import { listen, NotHere, type Pairing, type Served, type Where } from "./bridge-server.js";
 import { buildGraphForRepo } from "./graph.js";
+import { githubRepositories, Repositories } from "./repositories.js";
 
 const TOKEN = "odin.browser.token";
 const ORIGIN = "odin.browser.origin";
@@ -34,9 +37,18 @@ export class BrowserBridge implements vscode.Disposable {
   private server: Server | undefined;
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  private readonly repositories: Repositories;
+  private readonly offered = new Set<string>();
+  private readonly watching: vscode.Disposable | undefined;
+
+  constructor(private readonly context: vscode.ExtensionContext) {
+    this.repositories = new Repositories(join(context.globalStorageUri?.fsPath ?? "", "repositories.json"));
+    this.watching = vscode.workspace.onDidChangeWorkspaceFolders?.((change) => this.recordFolders(change.added));
+  }
 
   async start(): Promise<void> {
+    void this.recordOpen();
+    void this.recordRecent();
     const token = await this.context.secrets?.get(TOKEN).then(undefined, () => undefined);
     const origin = this.context.globalState?.get<string>(ORIGIN);
     if (!token || !origin) return;
@@ -78,6 +90,7 @@ export class BrowserBridge implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.watching?.dispose();
     this.close();
   }
 
@@ -110,6 +123,7 @@ export class BrowserBridge implements vscode.Disposable {
     const version = String(this.context.extension.packageJSON.version ?? "");
     const opened = await listen(() => this.pairing, {
       version,
+      where: (owner, repo) => this.where(owner, repo),
       graph: (owner, repo, number, base) => this.serialized(() => this.graph(owner, repo, number, base)),
     });
     if (!opened) return undefined;
@@ -128,20 +142,146 @@ export class BrowserBridge implements vscode.Disposable {
     return next;
   }
 
-  private async repositoryFor(owner: string, repo: string): Promise<{ cwd: string; remote: string } | undefined> {
-    for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      const cwd = folder.uri.fsPath;
-      const remotes = await git(["remote", "-v"], { cwd }).catch(() => "");
-      const remote = remoteFor(remotes, owner, repo);
-      if (remote) return { cwd, remote };
+  recordFolders(folders: readonly vscode.WorkspaceFolder[]): void {
+    void this.recordPaths(folders.map((folder) => folder.uri.fsPath));
+  }
+
+  private async recordOpen(): Promise<void> {
+    await this.recordPaths((vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath));
+  }
+
+  private async recordRecent(): Promise<void> {
+    const recent = await vscode.commands
+      .executeCommand<{ workspaces?: { folderUri?: vscode.Uri }[] }>("_workbench.getRecentlyOpened")
+      .then(undefined, () => undefined);
+    const paths = (recent?.workspaces ?? [])
+      .map((entry) => entry.folderUri)
+      .filter((uri): uri is vscode.Uri => uri?.scheme === "file")
+      .map((uri) => uri.fsPath);
+    await this.recordPaths(paths);
+  }
+
+  private async recordPaths(paths: string[]): Promise<void> {
+    for (const path of paths) {
+      if (!existsSync(join(path, ".git"))) continue;
+      const remotes = await git(["remote", "-v"], { cwd: path }).catch(() => "");
+      for (const name of githubRepositories(remotes)) this.repositories.record(name, path);
     }
-    return undefined;
+  }
+
+  private async candidates(owner: string, repo: string) {
+    const name = `${owner}/${repo}`;
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      const remotes = await git(["remote", "-v"], { cwd: folder.uri.fsPath }).catch(() => "");
+      if (remoteFor(remotes, owner, repo)) this.repositories.record(name, folder.uri.fsPath);
+    }
+    return this.repositories.candidates(name, async (path) => {
+      const remotes = await git(["remote", "-v"], { cwd: path }).catch(() => "");
+      return remoteFor(remotes, owner, repo) !== undefined;
+    });
+  }
+
+  private async where(owner: string, repo: string): Promise<Where> {
+    const { paths, chosen } = await this.candidates(owner, repo);
+    if (chosen) return { path: chosen };
+    if (paths.length === 1) return { path: paths[0]! };
+    return { need: paths.length === 0 ? "clone" : "pick" };
+  }
+
+  async resolveFromUri(uri: vscode.Uri): Promise<void> {
+    const params = new URLSearchParams(uri.query);
+    const owner = params.get("owner") ?? "";
+    const repo = params.get("repo") ?? "";
+    if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(repo)) return;
+    const name = `${owner}/${repo}`;
+    const { paths, chosen } = await this.candidates(owner, repo);
+    let path = chosen ?? (paths.length === 1 ? paths[0] : undefined);
+    if (!path && paths.length > 1) path = await this.pick(name, paths);
+    if (!path && paths.length === 0) path = await this.clone(owner, repo);
+    if (!path) return;
+    this.repositories.choose(name, path);
+    await this.openFolder(path);
+  }
+
+  private async pick(name: string, paths: string[]): Promise<string | undefined> {
+    const picked = await vscode.window.showQuickPick(
+      paths.map((path) => ({ label: basename(path), description: path, path })),
+      {
+        title: `Odin: which copy of ${name} should the browser read?`,
+        placeHolder: "Odin remembers the choice for this repository",
+        ignoreFocusOut: true,
+      },
+    );
+    return picked?.path;
+  }
+
+  private async clone(owner: string, repo: string): Promise<string | undefined> {
+    const name = `${owner}/${repo}`;
+    const choice = await vscode.window.showInformationMessage(
+      `${name} is not on this computer yet. Clone it so Odin can draw its arrows?`,
+      { modal: true, detail: `Odin will run git clone https://github.com/${name}.git into a folder you choose.` },
+      "Choose Folder…",
+    );
+    if (choice !== "Choose Folder…") return undefined;
+    const parent = await vscode.window.showOpenDialog({
+      title: `Where should ${name} be cloned?`,
+      openLabel: "Clone Here",
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+    });
+    const into = parent?.[0]?.fsPath;
+    if (!into) return undefined;
+    const target = join(into, repo);
+    if (existsSync(target)) {
+      void vscode.window.showErrorMessage(`Odin: ${target} already exists. Choose another folder.`);
+      return undefined;
+    }
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Odin: cloning ${name}…` },
+        () => git(["clone", "--quiet", `https://github.com/${name}.git`, target], { cwd: into }),
+      );
+    } catch (error) {
+      void vscode.window.showErrorMessage(`Odin: could not clone ${name}. ${(error as Error).message}`);
+      return undefined;
+    }
+    this.repositories.record(name, target);
+    return target;
+  }
+
+  private isOpenHere(path: string): boolean {
+    return (vscode.workspace.workspaceFolders ?? []).some((folder) => folder.uri.fsPath === path);
+  }
+
+  private async openFolder(path: string): Promise<void> {
+    if (this.isOpenHere(path)) return;
+    await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(path), { forceNewWindow: true });
+  }
+
+  private offerToOpen(name: string, path: string): void {
+    if (this.isOpenHere(path) || this.offered.has(path)) return;
+    this.offered.add(path);
+    void vscode.window
+      .showInformationMessage(`Odin drew ${name} for the browser from ${path}.`, "Open Folder")
+      .then((choice) => {
+        if (choice === "Open Folder") void this.openFolder(path);
+      });
   }
 
   private async graph(owner: string, repo: string, number: number, base: string): Promise<Served> {
-    const found = await this.repositoryFor(owner, repo);
-    if (!found) throw new NotHere(`${owner}/${repo} is not open in VS Code. Open its folder there, then try again.`);
-    const { cwd, remote } = found;
+    const found = await this.where(owner, repo);
+    if (!found.path) {
+      throw new NotHere(
+        found.need === "pick"
+          ? `${owner}/${repo} is in more than one folder. Choose one in VS Code.`
+          : `${owner}/${repo} is not on this computer yet. Clone it from VS Code.`,
+      );
+    }
+    const cwd = found.path;
+    const remotes = await git(["remote", "-v"], { cwd });
+    const remote = remoteFor(remotes, owner, repo) ?? "origin";
+    this.offerToOpen(`${owner}/${repo}`, cwd);
     await git(["fetch", "--quiet", remote, `refs/pull/${number}/head`], { cwd });
     const head = (await git(["rev-parse", "FETCH_HEAD"], { cwd })).trim();
     if (base) await git(["fetch", "--quiet", remote, base], { cwd }).catch(() => "");

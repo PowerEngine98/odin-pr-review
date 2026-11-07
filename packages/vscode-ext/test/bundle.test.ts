@@ -86,6 +86,7 @@ function createStub(): Stub {
       getConfiguration: () => ({ get: (_k: string, d: unknown) => d }),
       workspaceFolders: undefined,
       openTextDocument: () => Promise.resolve({}),
+      onDidChangeWorkspaceFolders: () => disposable,
     },
     window: {
       registerUriHandler: () => disposable,

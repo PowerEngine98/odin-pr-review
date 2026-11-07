@@ -704,6 +704,10 @@ async function handleUri(uri: vscode.Uri): Promise<void> {
     await browserBridge?.pairFromUri(uri);
     return;
   }
+  if (uri.path.startsWith("/repository")) {
+    await browserBridge?.resolveFromUri(uri);
+    return;
+  }
   if (!uri.path.startsWith("/review")) return;
   const base = new URLSearchParams(uri.query).get("base") ?? undefined;
   await review(base);

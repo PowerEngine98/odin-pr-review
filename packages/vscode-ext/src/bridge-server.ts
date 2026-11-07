@@ -15,8 +15,14 @@ export interface Served {
 
 export class NotHere extends Error {}
 
+export interface Where {
+  path?: string;
+  need?: "pick" | "clone";
+}
+
 export interface BridgeBackend {
   version: string;
+  where(owner: string, repo: string): Promise<Where>;
   graph(owner: string, repo: string, number: number, base: string): Promise<Served>;
 }
 
@@ -75,12 +81,20 @@ export async function handle(
   if (url.pathname === "/odin/hello") {
     return send(response, 200, { odin: true, version: backend.version }, origin);
   }
+  const owner = url.searchParams.get("owner") ?? "";
+  const repo = url.searchParams.get("repo") ?? "";
+  const name = /^[\w.-]+$/;
+  if (url.pathname === "/odin/where") {
+    if (!name.test(owner) || !name.test(repo)) return send(response, 400, { error: "Bad request" }, origin);
+    try {
+      return send(response, 200, await backend.where(owner, repo), origin);
+    } catch (error) {
+      return send(response, 500, { error: (error as Error).message }, origin);
+    }
+  }
   if (url.pathname === "/odin/graph") {
-    const owner = url.searchParams.get("owner") ?? "";
-    const repo = url.searchParams.get("repo") ?? "";
     const number = Number(url.searchParams.get("number") ?? "");
     const base = url.searchParams.get("base") ?? "";
-    const name = /^[\w.-]+$/;
     if (!name.test(owner) || !name.test(repo) || !Number.isInteger(number) || number < 1 || !/^[\w./-]*$/.test(base)) {
       return send(response, 400, { error: "Bad request" }, origin);
     }

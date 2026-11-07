@@ -1,6 +1,6 @@
 import type { ChangeGraph, Snippet } from "@odin/core";
 
-import { bridgeGraph, findBridge, BridgeError } from "./bridge.js";
+import { bridgeGraph, findBridge, BridgeError, bridgeWhere, launch, repositoryLink } from "./bridge.js";
 import { readPull, type Api, type PullJson } from "./github.js";
 import { graphOf } from "./page.js";
 
@@ -37,6 +37,31 @@ export async function saveSettings(next: Partial<Settings>): Promise<void> {
   await chrome.storage.local.set(write);
 }
 
+async function locate(
+  port: number,
+  token: string,
+  owner: string,
+  repo: string,
+  say: (text: string) => void,
+): Promise<void> {
+  let where = await bridgeWhere(port, token, owner, repo);
+  if (where.path !== undefined) return;
+  launch(repositoryLink(owner, repo));
+  const started = Date.now();
+  while (where.path === undefined) {
+    say(
+      where.need === "pick"
+        ? `${owner}/${repo} is in more than one folder. Choose the one to read in VS Code…`
+        : `${owner}/${repo} is not on this computer yet. Choose where to clone it in VS Code…`,
+    );
+    if (Date.now() - started > 5 * 60_000) {
+      throw new BridgeError(`VS Code did not get a folder for ${owner}/${repo}.`, "no-repository");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    where = await bridgeWhere(port, token, owner, repo);
+  }
+}
+
 export async function draw(
   settings: Settings,
   owner: string,
@@ -54,6 +79,7 @@ export async function draw(
     const port = await findBridge(settings.token, settings.port);
     if (!port) throw new BridgeError("VS Code is not answering.", "unreachable");
     if (port !== settings.port) await saveSettings({ port });
+    await locate(port, settings.token, owner, repo, say);
     say(`VS Code is reading #${number}…`);
     const answer = await bridgeGraph(port, settings.token, owner, repo, number, pull.base.ref);
     const graph = {
