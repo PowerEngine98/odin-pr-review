@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Odin PR Review",
+  "version": "0.1.0",
+  "description": "Read a GitHub pull request as a graph of the files it touches, in an Odin tab beside Files changed.",
+  "homepage_url": "https://github.com/PowerEngine98/odin-pr-review",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["https://api.github.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer.html", "page.html", "sandbox.js", "icon16.png"],
+      "matches": ["https://github.com/*"]
+    }
+  ],
+  "sandbox": {
+    "pages": ["page.html"]
+  },
+  "options_page": "options.html"
+}

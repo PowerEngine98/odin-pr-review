@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Odin options</title>
+<style>
+  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 560px; margin: 32px auto; padding: 0 16px; }
+  input { width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; }
+  .row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  code { font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Odin PR Review</h1>
+<p>Odin reads public repositories without signing in, up to GitHub's 60 requests an hour.
+For private repositories, or more reads, save a GitHub
+<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>
+with read-only <code>Pull requests</code> and <code>Contents</code> access to the repositories you review.</p>
+<p>The token stays in this browser's extension storage and is only sent to <code>api.github.com</code>.</p>
+<label for="token">GitHub token</label>
+<input id="token" type="password" autocomplete="off" spellcheck="false">
+<div class="row">
+  <button id="save">Save</button>
+  <button id="forget">Forget the token</button>
+  <span id="saved" role="status"></span>
+</div>
+<script src="options.js"></script>
+</body>
+</html>

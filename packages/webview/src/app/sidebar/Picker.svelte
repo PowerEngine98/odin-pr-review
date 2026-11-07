@@ -85,11 +85,18 @@
     {#if !picker.reached}
       <!-- The question was never answered, which is not an answer of none. -->
       <p class="empty">The forge did not answer.</p>
-      <p class="empty small">
-        Odin asks the <code>gh</code> command line, so this needs it installed and
-        signed in — and a slow or unreachable forge looks the same from here. You can
-        review the current branch regardless.
-      </p>
+      {#if picker.browser}
+        <p class="empty small">
+          Odin asks GitHub directly. Private repositories, and more than 60 reads an
+          hour, need a GitHub token in Odin's options.
+        </p>
+      {:else}
+        <p class="empty small">
+          Odin asks the <code>gh</code> command line, so this needs it installed and
+          signed in — and a slow or unreachable forge looks the same from here. You can
+          review the current branch regardless.
+        </p>
+      {/if}
     {:else}
       <p class="empty">
         No {picker.asked.state === "all" ? "" : `${picker.asked.state} `}pull requests{picker
@@ -97,10 +104,12 @@
           ? ` by ${picker.asked.author}`
           : ""} found.
       </p>
-      <p class="empty small">
-        Odin asks the <code>gh</code> command line, so this needs it installed and
-        signed in. You can review the current branch regardless.
-      </p>
+      {#if !picker.browser}
+        <p class="empty small">
+          Odin asks the <code>gh</code> command line, so this needs it installed and
+          signed in. You can review the current branch regardless.
+        </p>
+      {/if}
     {/if}
   {:else if picker.mine.length > 0}
     <!-- The queue, and then everything else. What the forge is waiting on this
@@ -129,9 +138,11 @@
     </div>
   {/if}
 
-  <div class="footer">
-    <button class="review" onclick={() => notify("review")}>Review This Branch</button>
-  </div>
+  {#if !picker.browser}
+    <div class="footer">
+      <button class="review" onclick={() => notify("review")}>Review This Branch</button>
+    </div>
+  {/if}
 </div>
 
 <style>

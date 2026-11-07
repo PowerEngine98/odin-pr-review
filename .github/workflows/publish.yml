@@ -71,7 +71,10 @@ jobs:
 
       - name: Package
         if: steps.can.outputs.publish == 'true'
-        run: yarn workspace odin-pr-review run package
+        run: |
+          yarn workspace odin-pr-review run package
+          (cd packages/browser-ext && npm pkg set version="${{ steps.version.outputs.next }}")
+          yarn package:browser
 
       # Signed in by the trusted publishing policy on the powerengine98 publisher,
       # which names this repository and this workflow file.
@@ -118,7 +121,7 @@ jobs:
           mv "$changelog.next" "$changelog"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/vscode-ext/package.json "$changelog"
+          git add packages/vscode-ext/package.json packages/browser-ext/package.json "$changelog"
           git commit -m "chore(release): v$NEXT [skip ci]"
           git tag "v$NEXT"
           git push origin HEAD:main "v$NEXT"
@@ -130,5 +133,7 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.next }}
           name: v${{ steps.version.outputs.next }}
-          files: dist/odin-pr-review.vsix
+          files: |
+            dist/odin-pr-review.vsix
+            dist/odin-pr-review-browser.zip
           generate_release_notes: true
