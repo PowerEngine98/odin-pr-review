@@ -31,6 +31,7 @@ import { dirname, join } from "node:path";
 import * as vscode from "vscode";
 
 import { BrowserBridge } from "./bridge.js";
+import { Driver } from "./driver.js";
 
 import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo, forgetBase, stageGraphForRepo } from "./graph.js";
@@ -216,6 +217,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const bridge = new BrowserBridge(context, presentForBrowser);
   browserBridge = bridge;
   void bridge.start();
+  const driver = new Driver(context.globalStorageUri?.fsPath ?? "", (step) =>
+    bridge.openReading(step.owner, step.repo, step.number, step.base ?? "", step.head),
+  );
+  if (context.globalStorageUri) driver.start();
   // The graph's tab wears the extension's own mark, which is a file on disk:
   // the tab belongs to the editor rather than to the page inside it.
   GraphPanel.assets = context.extensionUri;
@@ -432,6 +437,7 @@ export function activate(context: vscode.ExtensionContext): void {
       handleUri: (uri) => void handleUri(uri),
     }),
     bridge,
+    driver,
     vscode.commands.registerCommand("odin.connectBrowser", () => bridge.pairByCode()),
     vscode.commands.registerCommand("odin.disconnectBrowser", () => bridge.disconnect()),
     /*

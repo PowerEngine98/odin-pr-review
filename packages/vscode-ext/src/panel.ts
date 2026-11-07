@@ -2774,6 +2774,7 @@ export class GraphPanel {
       },
       message: (message) => {
         const kind = (message as { type?: unknown } | null)?.type;
+        if (kind === "drive") return;
         if (kind !== "spoken" && kind !== "saying" && kind !== "said") this.sent.push(message);
         if (this.sent.length > REPLAYED) this.sent.splice(0, this.sent.length - REPLAYED);
         for (const mirror of this.mirrors) mirror.message(message);
@@ -3179,7 +3180,34 @@ export class GraphPanel {
    * reference should show you the destination without evicting you from the
    * picture you are reading.
    */
+  private static driving = 0;
+  private static readonly driven = new Map<number, (done: boolean) => void>();
+
+  static drive(step: Record<string, unknown>, timeout = 15_000): Promise<boolean> {
+    const panel = GraphPanel.active;
+    if (!panel) return Promise.resolve(false);
+    const id = ++GraphPanel.driving;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        GraphPanel.driven.delete(id);
+        resolve(false);
+      }, timeout);
+      GraphPanel.driven.set(id, (done) => {
+        clearTimeout(timer);
+        resolve(done);
+      });
+      void panel.panel.webview.postMessage({ type: "drive", id, step });
+    });
+  }
+
   private async handle(message: Message): Promise<void> {
+    const reply = message as unknown as { type?: string; payload?: { id?: number; done?: boolean } };
+    if (reply.type === "driven") {
+      const id = Number(reply.payload?.id);
+      GraphPanel.driven.get(id)?.(reply.payload?.done === true);
+      GraphPanel.driven.delete(id);
+      return;
+    }
     try {
       if (message.type === "part") {
         GraphPanel.onPart?.(message.payload.paths ?? undefined);

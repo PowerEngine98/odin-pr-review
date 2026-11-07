@@ -2,6 +2,7 @@
 // rebuild's difference from the last drawing; the ledger's is one edit an agent
 // made. Aliased at the door rather than renamed, so each stays what it is
 // called in the file it lives in.
+import { drive, type DriveStep } from "./drive.js";
 import type { Delta as LedgerEntry } from "@odin/core/agents/deltas.js";
 import type { Step } from "@odin/core/agents/deciding.js";
 import { titled } from "@odin/core/tour/tour.js";
@@ -1259,6 +1260,10 @@ export function listen(): void {
 
       case "kokoroReady":
         settings.kokoroVoice = true;
+        return;
+
+      case "drive":
+        void drive(message.step as DriveStep).then((done) => notify("driven", { id: message.id, done }));
         return;
 
       case "showUntouched":

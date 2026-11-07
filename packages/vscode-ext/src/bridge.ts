@@ -275,6 +275,15 @@ export class BrowserBridge implements vscode.Disposable {
     void this.openFolder(path);
   }
 
+  async openReading(owner: string, repo: string, number: number, base: string, head?: string): Promise<boolean> {
+    if (!this.present) return false;
+    const found = await this.where(owner, repo);
+    if (!found.path) return false;
+    const cwd = found.path;
+    const panel = await this.serialized(() => this.present!(cwd, number, base, head));
+    return panel !== undefined;
+  }
+
   private async session(
     owner: string,
     repo: string,
