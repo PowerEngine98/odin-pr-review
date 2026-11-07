@@ -302,9 +302,11 @@ async function connectVsCode() {
     settings = { ...settings, token };
     await saveSettings({ token });
   }
-  const link = document.createElement("a");
-  link.href = pairingLink(token, chrome.runtime.id);
-  link.click();
+  const launcher = document.createElement("iframe");
+  launcher.hidden = true;
+  launcher.src = pairingLink(token, chrome.runtime.id);
+  document.body.append(launcher);
+  setTimeout(() => launcher.remove(), 10_000);
   pairing.hidden = false;
   pairing.replaceChildren(line("Opening VS Code… Allow Odin there, then come back."));
 
