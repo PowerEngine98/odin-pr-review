@@ -7,7 +7,7 @@
   reader looks when making one takes longer than they expected.
 -->
 <script lang="ts">
-  import { clock, frameSeconds, topicSeconds, type Topic } from "@odin/core/tour/tour.js";
+  import { clock, frameSeconds, roman, topicSeconds, type Topic } from "@odin/core/tour/tour.js";
 
   import { notify, settings } from "../state.svelte.js";
   import { startTour } from "./player.svelte.js";
@@ -90,7 +90,7 @@
             </svg>
           </button>
           <span class="topic-text">
-            <span class="topic-title">{topic.title}</span>
+            <span class="topic-title"><span class="numeral">{roman(at + 1)}</span>{topic.title}</span>
             <span class="topic-summary">{topic.summary}</span>
             {#if resume}
               <button class="resume-at" onclick={() => startTour(at, tour.frames[topic.id] ?? 0)}>
@@ -338,6 +338,11 @@
     flex-direction: column;
   }
   .topic-title { font-weight: 600; }
+  .numeral {
+    margin-right: 0.5em;
+    color: var(--status-renamed);
+    font-variant-numeric: tabular-nums;
+  }
   .topic-summary { color: var(--muted); }
 
   .topic-time {

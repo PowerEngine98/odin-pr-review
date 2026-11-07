@@ -1,0 +1,98 @@
+name: Publish the extension
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        run: yarn build
+
+      - name: Test
+        run: yarn test
+
+      - name: Can publish
+        id: can
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::VSCE_PAT is not set; built and tested, nothing published."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Every merge publishes, so every merge needs a version the Marketplace has
+      # not seen: the manifest's own when it is ahead, otherwise one patch past
+      # what is live. Set for this build only; nothing is committed back.
+      - name: Next version
+        id: version
+        if: steps.can.outputs.publish == 'true'
+        run: |
+          live=$(npx --yes @vscode/vsce show powerengine98.odin-pr-review --json 2>/dev/null \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).versions[0].version)}catch{console.log("")}})')
+          next=$(LIVE="$live" node -e '
+            const local = require("./packages/vscode-ext/package.json").version;
+            const live = process.env.LIVE;
+            const parts = (v) => v.split(".").map(Number);
+            const newer = (a, b) => { const x = parts(a), y = parts(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+            if (!live || newer(local, live)) console.log(local);
+            else { const [a, b, c] = parts(live); console.log(`${a}.${b}.${c + 1}`); }
+          ')
+          echo "live ${live:-none}, publishing $next"
+          (cd packages/vscode-ext && npm pkg set version="$next")
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        if: steps.can.outputs.publish == 'true'
+        run: yarn workspace odin-pr-review run package
+
+      - name: Publish to the Visual Studio Marketplace
+        if: steps.can.outputs.publish == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish --packagePath dist/odin-pr-review.vsix
+
+      - name: Publish to Open VSX
+        if: steps.can.outputs.publish == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::notice::OVSX_PAT is not set; skipped Open VSX."
+            exit 0
+          fi
+          npx --yes ovsx publish dist/odin-pr-review.vsix -p "$OVSX_PAT"
+
+      - name: Release
+        if: steps.can.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.next }}
+          name: v${{ steps.version.outputs.next }}
+          target_commitish: ${{ github.sha }}
+          files: dist/odin-pr-review.vsix
+          generate_release_notes: true

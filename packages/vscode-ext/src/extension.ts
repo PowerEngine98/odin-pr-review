@@ -25,7 +25,8 @@ import {
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { cpSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import * as vscode from "vscode";
 
@@ -226,6 +227,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // this change, but whether they want to see import arrows is about them.
   GraphPanel.settings = new SettingsStore(context.globalState);
   if (context.globalStorageUri) {
+    carryOver(context.globalStorageUri.fsPath);
     GraphPanel.kokoro = new Kokoro(
       join(context.globalStorageUri.fsPath, "kokoro"),
       join(context.extensionUri.fsPath, "media", "kokoro", "server.py"),
@@ -682,7 +684,7 @@ function reopen(reading: Session, key: string): void {
 }
 
 /**
- * Opens a review from a link, e.g. `vscode://odin.odin-pr-review/review?base=main`.
+ * Opens a review from a link, e.g. `vscode://powerengine98.odin-pr-review/review?base=main`.
  *
  * Useful for triggering a review from outside the editor — a script, a chat
  * message, a code-review checklist — without hunting through the palette.
@@ -1534,7 +1536,7 @@ async function setUpKokoro(context: vscode.ExtensionContext, asked: boolean): Pr
   }
   const TRIED = "odin.kokoro.tried";
   if (!asked) {
-    const enabled = vscode.workspace.getConfiguration("odin.kokoro").get("autoSetup", true);
+    const enabled = vscode.workspace.getConfiguration("odin.kokoro").get("autoSetup", false);
     if (!enabled || context.globalState.get(TRIED) === Kokoro.version) return;
   }
   await context.globalState.update(TRIED, Kokoro.version);
@@ -2601,4 +2603,32 @@ async function repositoryRoot(quiet = false): Promise<string | undefined> {
 async function listBranches(repo: string): Promise<string[]> {
   const refs = await listRefs({ cwd: repo });
   return refs.length > 0 ? refs : ["main", "master"];
+}
+
+/**
+ * What an earlier install kept, brought across once.
+ *
+ * The extension was installed under another publisher before it was published,
+ * and the editor keys its storage folder by the extension's id: the saved tours
+ * and a voice that took minutes to set up sit in a sibling folder the new id
+ * never looks in. Tours are copied; the voice, hundreds of megabytes, is moved.
+ */
+const EARLIER = "odin.odin-pr-review";
+
+function carryOver(storage: string): void {
+  const earlier = join(dirname(storage), EARLIER);
+  if (earlier === storage || !existsSync(earlier)) return;
+  try {
+    mkdirSync(storage, { recursive: true });
+    const tours = join(earlier, "tours");
+    if (existsSync(tours) && !existsSync(join(storage, "tours"))) {
+      cpSync(tours, join(storage, "tours"), { recursive: true });
+    }
+    const voice = join(earlier, "kokoro");
+    if (existsSync(voice) && !existsSync(join(storage, "kokoro"))) {
+      renameSync(voice, join(storage, "kokoro"));
+    }
+  } catch (error) {
+    log(`carrying over the earlier install's storage failed: ${String(error)}`);
+  }
 }

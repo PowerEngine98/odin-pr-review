@@ -25,8 +25,8 @@ function test(name, fn) {
 }
 
 test("the extension is present and activates", async () => {
-  const extension = vscode.extensions.getExtension("odin.odin-pr-review");
-  assert.ok(extension, "extension odin.odin-pr-review is not installed");
+  const extension = vscode.extensions.getExtension("powerengine98.odin-pr-review");
+  assert.ok(extension, "extension powerengine98.odin-pr-review is not installed");
   await extension.activate();
   assert.ok(extension.isActive, "extension did not activate");
 });

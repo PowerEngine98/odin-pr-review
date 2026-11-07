@@ -96,7 +96,7 @@ say "Packaging the extension"
 mkdir -p "$ROOT/dist"
 yarn --cwd packages/vscode-ext package
 
-VSIX="$ROOT/dist/odin-pr-review-0.1.0.vsix"
+VSIX="$ROOT/dist/odin-pr-review.vsix"
 [ -f "$VSIX" ] || fail "The package did not appear at $VSIX."
 
 # --------------------------------------------------------------- the install
@@ -104,6 +104,12 @@ VSIX="$ROOT/dist/odin-pr-review-0.1.0.vsix"
 if [ -n "$CODE" ]; then
   say "Installing into the editor"
   "$CODE" --install-extension "$VSIX" --force
+  # Installed under another publisher before it was published. Two copies of
+  # one extension register the same commands, and the older one wins half of them.
+  if "$CODE" --list-extensions 2>/dev/null | grep -qx "odin.odin-pr-review"; then
+    "$CODE" --uninstall-extension odin.odin-pr-review >/dev/null 2>&1 || true
+    note "removed the earlier install, odin.odin-pr-review"
+  fi
 else
   say "Built, but not installed"
   note "Install it by hand: code --install-extension $VSIX"

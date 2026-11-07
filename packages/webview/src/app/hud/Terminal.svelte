@@ -1476,7 +1476,14 @@
       -->
       {#if working}
         <p class="still">
-          <span class="caret"></span>
+          <svg class="still-face" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+            <rect width="24" height="24" rx="12" fill={mark.color} />
+            {#if mark.stroke}
+              <path d={mark.path} fill="none" stroke={mark.ink} stroke-width="2" stroke-linecap="round" />
+            {:else}
+              <path d={mark.path} fill={mark.ink} />
+            {/if}
+          </svg>
           <span class="still-what">working</span>
         </p>
       {/if}
@@ -2587,23 +2594,20 @@
     background: color-mix(in srgb, var(--removed) 16%, transparent);
   }
 
-  /* A block where the next character would go, which is what a terminal does
-     while it waits and what nothing else in this page looks like. */
-  .caret {
-    display: inline-block;
-    width: 6px;
-    height: 12px;
-    background: currentColor;
-    animation: caret-blink 1.1s steps(1, end) infinite;
-  }
-
-  @keyframes caret-blink {
-    0%, 55% { opacity: 1; }
-    56%, 100% { opacity: 0.15; }
-  }
-
   .still-what {
     animation: still-breathing 1.7s ease-in-out infinite;
+  }
+
+  /* The agent itself, breathing while it works. */
+  .still-face {
+    flex: 0 0 auto;
+    vertical-align: -2px;
+    animation: still-face 1.3s ease-in-out infinite;
+  }
+
+  @keyframes still-face {
+    0%, 100% { opacity: 0.55; transform: scale(0.88); }
+    50% { opacity: 1; transform: scale(1.08); }
   }
 
   @keyframes still-breathing {

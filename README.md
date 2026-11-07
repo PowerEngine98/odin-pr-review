@@ -434,7 +434,7 @@ Then run **Odin: Review Pull Request as a Graph** from the command palette, or
 trigger it from anywhere with a link:
 
 ```sh
-code --open-url "vscode://odin.odin-pr-review/review?base=main"
+code --open-url "vscode://powerengine98.odin-pr-review/review?base=main"
 ```
 
 The extension requires a trusted workspace. It runs git and type-checks your

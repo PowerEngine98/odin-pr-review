@@ -2566,17 +2566,19 @@ export class GraphPanel {
       return;
     }
 
-    // The bar is drawn from the graph, so the graph is what has to change.
+    // Kept in the graph for the next build, and told to the page as news: the
+    // bar is what changed, and replacing the document for it reloads the view.
+    const changed = { ...pull, draft };
     this.graph = {
       ...this.graph,
-      meta: { ...this.graph.meta, pullRequest: { ...pull, draft } },
+      meta: { ...this.graph.meta, pullRequest: changed },
     };
+    void this.panel.webview.postMessage({ type: "pullRequest", payload: changed });
     vscode.window.showInformationMessage(
       draft
         ? `Odin: #${pull.number} is a draft again.`
         : `Odin: #${pull.number} is ready for review.`,
     );
-    this.render(this.layout);
   }
 
   /**
