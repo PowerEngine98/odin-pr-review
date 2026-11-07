@@ -91,6 +91,7 @@ function addTab(mode: Mode, place: Place) {
   const link = tabLike(model, hrefOf(place, mode));
   link.addEventListener("click", (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!alive()) return;
     event.preventDefault();
     history.pushState(history.state, "", link.href);
     seen = location.href;
@@ -241,7 +242,7 @@ function settle() {
 }
 
 function followUrl() {
-  if (location.href === seen) return;
+  if (!alive() || location.href === seen) return;
   seen = location.href;
   if (odinHash().on) open();
   else close();
@@ -252,7 +253,7 @@ function onResize() {
 }
 
 function alive(): boolean {
-  if (chrome.runtime?.id) return true;
+  if (globalThis.chrome?.runtime?.id) return true;
   observer.disconnect();
   clearInterval(ticking);
   window.removeEventListener("popstate", followUrl);
@@ -277,7 +278,7 @@ const observer = new MutationObserver(() => {
 });
 observer.observe(document.body, { childList: true, subtree: true });
 
-const EXTENSION = new URL(chrome.runtime.getURL("")).origin;
+const EXTENSION = `chrome-extension://${chrome.runtime.id}`;
 
 window.addEventListener("message", (event) => {
   if (event.origin !== EXTENSION || typeof event.data?.odinReading !== "number") return;
@@ -294,9 +295,7 @@ window.addEventListener("message", (event) => {
 window.addEventListener("popstate", followUrl);
 window.addEventListener("resize", onResize);
 window.addEventListener("scroll", holdScroll, { passive: true });
-const ticking = setInterval(() => {
-  if (alive()) followUrl();
-}, 500);
+const ticking = setInterval(followUrl, 500);
 
 ensureTabs();
 if (odinHash().on) open();
