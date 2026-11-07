@@ -123,7 +123,7 @@ window.addEventListener("message", (event) => {
     void keep(data.odinStore.key, data.odinStore.value ?? null);
   }
   if (frame === graphFrame && data.odinUnlock === true) toggleFeatures(true);
-  if (frame === graphFrame && remote && data.odinHost && typeof data.odinHost === "object") remote.post(data.odinHost);
+  if (frame === graphFrame && remote && data.odinHost && typeof data.odinHost === "object") remote.post(outgoing(data.odinHost as Record<string, unknown>));
   if (frame === sideFrame && data.odinHost && typeof data.odinHost === "object") {
     void fromSidebar(data.odinHost as HostMessage);
   }
@@ -233,6 +233,23 @@ function offerBasic(why: string, detail: string, number: number) {
 
 let remote: Remote | undefined;
 
+const OWN = 1_000_000_000;
+const ASKED = new Set(["say", "speak"]);
+const ANSWERED = new Set(["saying", "said", "spoken"]);
+
+function outgoing(message: Record<string, unknown>): Record<string, unknown> {
+  const payload = message.payload as { id?: unknown } | undefined;
+  if (!ASKED.has(String(message.type)) || typeof payload?.id !== "number") return message;
+  return { ...message, payload: { ...payload, id: payload.id + OWN } };
+}
+
+function incoming(message: unknown): unknown {
+  const answer = message as { type?: unknown; id?: unknown } | null;
+  if (!answer || !ANSWERED.has(String(answer.type)) || typeof answer.id !== "number") return message;
+  if (answer.id < OWN) return undefined;
+  return { ...answer, id: answer.id - OWN };
+}
+
 function closeRemote() {
   remote?.close();
   remote = undefined;
@@ -276,7 +293,10 @@ async function openInVsCode(number: number): Promise<boolean> {
           window.parent.postMessage({ odinReading: number }, "https://github.com");
         });
       },
-      message: (message) => toGraph(message),
+      message: (message) => {
+        const mine = incoming(message);
+        if (mine !== undefined) toGraph(mine);
+      },
       ended: (error) => {
         if (error && reading?.number === number) explainBridge(error, number);
       },

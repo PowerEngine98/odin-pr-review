@@ -216,6 +216,7 @@ function open() {
   overlay.className = "odin-overlay";
   overlay.dataset.mode = mode;
   const frame = document.createElement("iframe");
+  frame.allow = "autoplay; clipboard-write";
   frame.src = chrome.runtime.getURL(`viewer.html?${query}`);
   frame.title = "Odin";
   frame.allow = "clipboard-write";

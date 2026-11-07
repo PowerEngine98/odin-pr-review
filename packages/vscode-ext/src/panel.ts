@@ -2773,7 +2773,8 @@ export class GraphPanel {
         for (const mirror of this.mirrors) mirror.html(html);
       },
       message: (message) => {
-        this.sent.push(message);
+        const kind = (message as { type?: unknown } | null)?.type;
+        if (kind !== "spoken" && kind !== "saying" && kind !== "said") this.sent.push(message);
         if (this.sent.length > REPLAYED) this.sent.splice(0, this.sent.length - REPLAYED);
         for (const mirror of this.mirrors) mirror.message(message);
       },
