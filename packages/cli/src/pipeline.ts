@@ -1,24 +1,12 @@
 import {
   annotateCoverage,
-  attachEdges,
-  collectProbes,
-  CompositeResolver,
-  languageLookup,
   materializeTree,
   revParse,
   type ChangeGraph,
   type Checkout,
-  type ReferenceResolver,
 } from "@odin/core";
-import { KotlinResolver } from "@odin/resolver-kotlin";
-import {
-  ClojureResolver,
-  PostgresResolver,
-  PythonResolver,
-  SqlResolver,
-  withDatabase,
-} from "@odin/resolver-lang";
-import { TsResolver } from "@odin/resolver-ts";
+
+import { languagesOf, probesOf, resolveAt } from "./resolving.js";
 
 export interface ResolveRequest {
   cwd: string;
@@ -30,8 +18,6 @@ export interface ResolveRequest {
   /** Emit edges for import statements. */
   includeImports?: boolean;
 }
-
-
 
 /**
  * Adds edges to a change graph.
@@ -45,38 +31,15 @@ export async function resolveEdges(
   graph: ChangeGraph,
   request: ResolveRequest,
 ): Promise<ChangeGraph> {
-  // Built before probing so the language list is known, and so coverage can be
-  // reported even when nothing resolves.
-  const resolveImports =
+  const includeImports =
     request.includeImports !== false || request.alwaysResolveImports === true;
-
-  const build = (roots: { head: string; base?: string }): ReferenceResolver[] => [
-    new TsResolver({
-      roots,
-      ...(resolveImports ? {} : { includeImports: false }),
-    }),
-    new KotlinResolver({
-      roots,
-      ...(resolveImports ? {} : { includeImports: false }),
-    }),
-    new PythonResolver({
-      roots,
-      ...(resolveImports ? {} : { includeImports: false }),
-    }),
-    new ClojureResolver({
-      roots,
-      ...(resolveImports ? {} : { includeImports: false }),
-    }),
-    new SqlResolver({ roots }),
-    new PostgresResolver({ roots }),
-  ];
-  const languages = build({ head: request.cwd }).flatMap((r) => [...r.languages]);
-
-  const probes = collectProbes(graph, {
-    languages,
+  const options = {
+    includeImports,
     ...(request.includeContext ? { includeContext: true } : {}),
-  });
-  if (probes.length === 0) return annotateCoverage(graph, languages);
+  };
+
+  const probes = probesOf(graph, options);
+  if (probes.length === 0) return annotateCoverage(graph, languagesOf(includeImports));
 
   const needsBase = probes.some((p) => p.side === "base");
   const checkouts: Checkout[] = [];
@@ -104,19 +67,7 @@ export async function resolveEdges(
       headRoot = checkout.dir;
     }
 
-    const roots = { head: headRoot, ...(baseRoot ? { base: baseRoot } : {}) };
-    const resolver = new CompositeResolver(build(roots), languageLookup(graph));
-
-    try {
-      const results = await resolver.resolve(probes);
-      const withEdges = attachEdges(graph, results, { resolver: "ts" });
-      // Schema objects become a vertex of their own, so a migration points at
-      // the table it touches rather than at whichever file declared it.
-      const withSchema = withDatabase(withEdges, { root: headRoot });
-      return annotateCoverage(withSchema, languages);
-    } finally {
-      await resolver.dispose();
-    }
+    return await resolveAt(graph, { head: headRoot, ...(baseRoot ? { base: baseRoot } : {}) }, options);
   } finally {
     for (const checkout of checkouts) checkout.dispose();
   }

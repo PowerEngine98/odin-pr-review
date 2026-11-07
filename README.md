@@ -476,12 +476,16 @@ commits graph. It adds an **Odin** tab in two places:
   merged, closed and author. Choosing a pull request opens its graph.
 
 The extension reads GitHub's API directly and builds the graph in the browser
-from the pull request's diff, the same way `odin --patch-file` does. Nothing is
-sent anywhere else. Public repositories need no sign-in. Private ones, or more
-than 60 reads an hour, need a fine-grained token with read-only *Pull requests*
-and *Contents* access, saved in the extension's options. A browser has no
-checkout to resolve references against, so the graph draws cards and diffs
-without arrows; open the pull request in VS Code for those.
+from the pull request's diff, the same way `odin --patch-file` does. Public
+repositories need no sign-in. Private ones, or more than 60 reads an hour, need
+a fine-grained token with read-only *Pull requests* and *Contents* access, saved
+in the extension's options.
+
+That basic view has no arrows: they need the whole repository. **Enable all
+features** gets them one of two ways: **Sync with the VS Code extension**, which
+pairs with Odin for VS Code and lets it serve graphs over `127.0.0.1` for the
+repositories open there, or **Compute data in browser**, which downloads the
+repository from GitHub and runs Odin's resolvers in the browser.
 
 Each release attaches `odin-pr-review-browser.zip`. To try it in Chrome, Edge or
 Brave: build with `yarn build` (or unzip a release), open `chrome://extensions`,

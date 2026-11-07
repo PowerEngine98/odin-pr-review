@@ -1,5 +1,6 @@
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
+import { builtinModules } from "node:module";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,14 +9,22 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, "dist", "extension");
 const pkg = JSON.parse(readFileSync(join(HERE, "package.json"), "utf8"));
 
+const SHIMS = {
+  crypto: "crypto.ts",
+  fs: "fs.ts",
+  "fs/promises": "fs.ts",
+  path: "path.ts",
+  "path/posix": "path.ts",
+};
+
 const browserOnly = {
   name: "browser-only",
   setup(context) {
-    context.onResolve({ filter: /^node:/ }, (args) => ({
-      path: args.path === "node:crypto"
-        ? join(HERE, "src", "shims", "crypto.ts")
-        : join(HERE, "src", "shims", "node.cjs"),
-    }));
+    const builtins = new RegExp(`^(node:)?(${builtinModules.map((m) => m.replace(/[/]/g, "\\/")).join("|")})$`);
+    context.onResolve({ filter: builtins }, (args) => {
+      const name = args.path.replace(/^node:/, "");
+      return { path: join(HERE, "src", "shims", SHIMS[name] ?? "node.cjs") };
+    });
   },
 };
 
@@ -37,7 +46,11 @@ const shared = {
   plugins: [browserOnly],
   define: { "process.env.NODE_ENV": '"production"' },
   banner: {
-    js: 'var process = globalThis.process ?? { env: {}, platform: "browser", versions: {}, cwd: () => "/" };',
+    js: [
+      'var process = globalThis.process ?? { env: {}, platform: "browser", versions: {}, cwd: () => "/" };',
+      "globalThis.setImmediate ??= (run, ...args) => setTimeout(run, 0, ...args);",
+      "globalThis.clearImmediate ??= (id) => clearTimeout(id);",
+    ].join("\n"),
   },
 };
 

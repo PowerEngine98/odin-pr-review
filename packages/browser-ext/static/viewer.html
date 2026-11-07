@@ -12,9 +12,28 @@
     <div class="side-head">
       <button id="back" class="back" hidden>← Pull requests</button>
       <span id="side-title" class="side-title">Pull requests</span>
+      <button id="enable" class="enable" aria-haspopup="dialog">Enable all features</button>
     </div>
     <iframe id="side" title="Odin pull requests and files"></iframe>
   </aside>
+  <section id="features" class="features" role="dialog" aria-label="Enable all features" hidden>
+    <h2>Enable all features</h2>
+    <p class="lead">Arrows between files need the whole repository. Choose where Odin reads it from.</p>
+    <button class="choice" data-source="vscode">
+      <strong>Sync with the VS Code extension</strong>
+      <span>Uses the repositories you have open in VS Code. The same arrows as the editor. Needs Odin for VS Code.</span>
+    </button>
+    <button class="choice" data-source="browser">
+      <strong>Compute data in browser</strong>
+      <span>Downloads the repository from GitHub and finds the arrows here. Works anywhere; slower on large repositories.</span>
+    </button>
+    <button class="choice quiet" data-source="github">
+      <strong>Basic</strong>
+      <span>Cards and diffs only, read straight from GitHub.</span>
+    </button>
+    <div id="pairing" class="pairing" hidden></div>
+    <button id="features-close" class="close" aria-label="Close">×</button>
+  </section>
   <main class="main">
     <section id="status" class="status"><p>Choose a pull request to draw it.</p></section>
     <iframe id="page" title="Odin change graph" hidden></iframe>

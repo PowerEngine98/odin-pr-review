@@ -10,7 +10,7 @@
     "128": "icon128.png"
   },
   "permissions": ["storage"],
-  "host_permissions": ["https://api.github.com/*"],
+  "host_permissions": ["https://api.github.com/*", "https://codeload.github.com/*", "http://127.0.0.1/*"],
   "content_scripts": [
     {
       "matches": ["https://github.com/*"],

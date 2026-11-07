@@ -30,12 +30,14 @@ body {
 }
 
 .shell {
+  position: relative;
   display: grid;
   grid-template-columns: 320px 1fr;
   height: 100%;
 }
 
 .side {
+  position: relative;
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
@@ -71,6 +73,135 @@ body {
 
 .back:hover {
   background: var(--hover);
+}
+
+.side-head .enable {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid #238636;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.side-head .enable:hover,
+.side-head .enable[aria-expanded="true"] {
+  background: #238636;
+  color: #ffffff;
+}
+
+.side-head .enable.on {
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.features {
+  position: absolute;
+  top: 44px;
+  left: 8px;
+  z-index: 10;
+  display: grid;
+  gap: 8px;
+  width: 360px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(1, 4, 9, 0.6);
+}
+
+.features h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.features .lead {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.features .choice {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.features .choice:hover {
+  background: var(--hover);
+}
+
+.features .choice.chosen {
+  border-color: var(--accent);
+}
+
+.features .choice span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.features .choice.quiet strong {
+  font-weight: 500;
+}
+
+.features .close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.pairing {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--hover);
+  font-size: 12px;
+}
+
+.pairing p {
+  margin: 0;
+}
+
+.pairing code {
+  display: block;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.pairing a {
+  color: var(--accent);
+}
+
+.pairing button {
+  justify-self: start;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
 }
 
 .main {

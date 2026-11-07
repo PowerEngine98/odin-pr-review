@@ -52,9 +52,19 @@ describe("a pull request read from GitHub", () => {
   });
 
   it("becomes Odin's page", async () => {
-    const html = await pageOf(PULL, DIFF, { dark: true });
+    const html = await pageOf(PULL, graphOf(PULL, DIFF), { dark: true });
     expect(html).toContain("<title>#42 Orders know their total · Odin</title>");
     expect(html).toContain("window.__ODIN__");
+  });
+
+  it("carries the settings it cannot offer, and the way to unlock them", async () => {
+    const html = await pageOf(PULL, graphOf(PULL, DIFF), {
+      dark: true,
+      locked: { imports: "Needs Enable all features" },
+      unlock: true,
+    });
+    expect(html).toContain('"locked":{"imports":"Needs Enable all features"}');
+    expect(html).toContain('"unlock":true');
   });
 });
 

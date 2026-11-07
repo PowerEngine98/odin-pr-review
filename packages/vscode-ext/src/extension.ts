@@ -30,6 +30,8 @@ import { dirname, join } from "node:path";
 
 import * as vscode from "vscode";
 
+import { BrowserBridge } from "./bridge.js";
+
 import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo, forgetBase, stageGraphForRepo } from "./graph.js";
 import { LiveGraph } from "./live.js";
@@ -211,6 +213,9 @@ function questionInFront(): Question | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  const bridge = new BrowserBridge(context);
+  browserBridge = bridge;
+  void bridge.start();
   // The graph's tab wears the extension's own mark, which is a file on disk:
   // the tab belongs to the editor rather than to the page inside it.
   GraphPanel.assets = context.extensionUri;
@@ -423,6 +428,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerUriHandler({
       handleUri: (uri) => void handleUri(uri),
     }),
+    bridge,
+    vscode.commands.registerCommand("odin.connectBrowser", () => bridge.pairByCode()),
+    vscode.commands.registerCommand("odin.disconnectBrowser", () => bridge.disconnect()),
     /*
      * Coming back to the window, which is when what is on screen is oldest.
      *
@@ -689,7 +697,13 @@ function reopen(reading: Session, key: string): void {
  * Useful for triggering a review from outside the editor — a script, a chat
  * message, a code-review checklist — without hunting through the palette.
  */
+let browserBridge: BrowserBridge | undefined;
+
 async function handleUri(uri: vscode.Uri): Promise<void> {
+  if (uri.path.startsWith("/connect")) {
+    await browserBridge?.pairFromUri(uri);
+    return;
+  }
   if (!uri.path.startsWith("/review")) return;
   const base = new URLSearchParams(uri.query).get("base") ?? undefined;
   await review(base);

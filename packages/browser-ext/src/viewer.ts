@@ -10,8 +10,10 @@ import {
   type Asked,
   type Place,
 } from "./github.js";
-import { graphOf, pageOf } from "./page.js";
+import { BridgeError, findBridge, newToken, pairingLink } from "./bridge.js";
+import { pageOf } from "./page.js";
 import { changeModel, pickerOf, sidebarPage } from "./picker.js";
+import { draw, readSettings, saveSettings, type Settings, type SourceKind } from "./sources.js";
 
 const params = new URLSearchParams(location.search);
 const owner = params.get("owner") ?? "";
@@ -27,6 +29,9 @@ const graphFrame = document.getElementById("page") as HTMLIFrameElement;
 const sideFrame = document.getElementById("side") as HTMLIFrameElement;
 const back = document.getElementById("back") as HTMLButtonElement;
 const sideTitle = document.getElementById("side-title")!;
+const enable = document.getElementById("enable") as HTMLButtonElement;
+const features = document.getElementById("features")!;
+const pairing = document.getElementById("pairing")!;
 
 function say(text: string, detail = "") {
   status.hidden = false;
@@ -115,6 +120,7 @@ window.addEventListener("message", (event) => {
   if (data.odinStore && typeof data.odinStore.key === "string") {
     void keep(data.odinStore.key, data.odinStore.value ?? null);
   }
+  if (frame === graphFrame && data.odinUnlock === true) toggleFeatures(true);
   if (frame === sideFrame && data.odinHost && typeof data.odinHost === "object") {
     void fromSidebar(data.odinHost as HostMessage);
   }
@@ -181,21 +187,174 @@ async function readPicker() {
   }
 }
 
-async function openPull(number: number) {
+const IN_VS_CODE = "Comes with Odin for VS Code.";
+const NEEDS_ARROWS = "Needs Enable all features: arrows are found from the whole repository.";
+
+function lockedFor(arrows: boolean): Record<string, string> {
+  return {
+    ...(arrows ? {} : { imports: NEEDS_ARROWS }),
+    unchanged: arrows ? IN_VS_CODE : NEEDS_ARROWS,
+    agents: IN_VS_CODE,
+    autoNarrate: IN_VS_CODE,
+    systemVoice: IN_VS_CODE,
+    kokoroVoice: IN_VS_CODE,
+  };
+}
+
+let settings: Settings = { source: "github" };
+
+function showSource() {
+  const label: Record<SourceKind, string> = {
+    github: "Enable all features",
+    vscode: "Arrows: VS Code",
+    browser: "Arrows: browser",
+  };
+  enable.textContent = label[settings.source];
+  enable.classList.toggle("on", settings.source !== "github");
+  for (const choice of features.querySelectorAll<HTMLElement>(".choice")) {
+    choice.classList.toggle("chosen", choice.dataset.source === settings.source);
+  }
+}
+
+function offerBasic(why: string, detail: string, number: number) {
+  say(why, detail);
+  const retry = document.createElement("button");
+  retry.textContent = "Try again";
+  retry.addEventListener("click", () => void openPull(number).catch(explain));
+  const basic = document.createElement("button");
+  basic.textContent = "Draw without arrows";
+  basic.addEventListener("click", () => void openPull(number, "github").catch(explain));
+  status.append(retry, basic);
+}
+
+async function openPull(number: number, once?: SourceKind) {
   graphFrame.hidden = true;
   say(`Reading #${number}…`);
-  const { pull, diff } = await readPull({ owner, repo, number }, reader);
+  const using: Settings = once ? { ...settings, source: once } : settings;
+  let drawing;
+  try {
+    drawing = await draw(using, owner, repo, number, reader, (text) => say(text));
+  } catch (error) {
+    if (error instanceof BridgeError) {
+      const detail = error.reason === "no-repository"
+        ? "Open that repository's folder in VS Code, or draw this one without arrows."
+        : "Is VS Code open, with Odin installed and connected?";
+      offerBasic(error.message, detail, number);
+      return;
+    }
+    throw error;
+  }
+  const { pull, graph } = drawing;
   say(`Drawing #${pull.number} ${pull.title}…`);
-  const graph = graphOf(pull, diff);
   const viewed = await viewedOf(number);
   reading = { number, graph, viewed };
   back.hidden = false;
   sideTitle.hidden = true;
   void drawSidebar(changeModel(graph, viewed, picker));
-  await show(graphFrame, await pageOf(pull, diff, { dark }), false);
+  const html = await pageOf(pull, graph, {
+    dark,
+    snippets: drawing.snippets,
+    locked: lockedFor(drawing.arrows),
+    unlock: true,
+  });
+  await show(graphFrame, html, false);
   toGraph({ type: "setViewed", paths: [...viewed], viewed: true });
   status.hidden = true;
   window.parent.postMessage({ odinReading: number }, "https://github.com");
+}
+
+function redraw() {
+  if (reading) void openPull(reading.number).catch(explain);
+}
+
+let waiting = 0;
+
+function line(text: string): HTMLParagraphElement {
+  const p = document.createElement("p");
+  p.textContent = text;
+  return p;
+}
+
+function pairingHelp(token: string) {
+  const code = `${chrome.runtime.id}:${token}`;
+  const install = document.createElement("a");
+  install.href = "https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review";
+  install.target = "_blank";
+  install.rel = "noopener";
+  install.textContent = "Install Odin for VS Code";
+  const shown = document.createElement("code");
+  shown.textContent = code;
+  const copy = document.createElement("button");
+  copy.textContent = "Copy code";
+  copy.addEventListener("click", () => void navigator.clipboard.writeText(code).then(() => (copy.textContent = "Copied")));
+  pairing.replaceChildren(
+    line("VS Code has not answered yet."),
+    install,
+    line("Or, in VS Code, run “Odin: Connect the Browser Extension” and paste:"),
+    shown,
+    copy,
+  );
+}
+
+async function connectVsCode() {
+  const token = settings.token ?? newToken();
+  if (!settings.token) {
+    settings = { ...settings, token };
+    await saveSettings({ token });
+  }
+  const link = document.createElement("a");
+  link.href = pairingLink(token, chrome.runtime.id);
+  link.click();
+  pairing.hidden = false;
+  pairing.replaceChildren(line("Opening VS Code… Allow Odin there, then come back."));
+
+  const attempt = ++waiting;
+  const started = Date.now();
+  while (attempt === waiting && !features.hidden) {
+    const port = await findBridge(token, settings.port);
+    if (port) {
+      settings = { ...settings, source: "vscode", port };
+      await saveSettings({ source: "vscode", port });
+      pairing.hidden = true;
+      features.hidden = true;
+      enable.setAttribute("aria-expanded", "false");
+      showSource();
+      redraw();
+      return;
+    }
+    if (Date.now() - started > 8000) pairingHelp(token);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+}
+
+async function choose(source: SourceKind) {
+  waiting++;
+  if (source === "vscode") {
+    await connectVsCode();
+    return;
+  }
+  settings = { ...settings, source };
+  await saveSettings({ source });
+  pairing.hidden = true;
+  features.hidden = true;
+  enable.setAttribute("aria-expanded", "false");
+  showSource();
+  redraw();
+}
+
+function toggleFeatures(open = features.hidden) {
+  features.hidden = !open;
+  enable.setAttribute("aria-expanded", String(open));
+  if (!open) {
+    waiting++;
+    pairing.hidden = true;
+  }
+}
+
+enable.addEventListener("click", () => toggleFeatures());
+document.getElementById("features-close")!.addEventListener("click", () => toggleFeatures(false));
+for (const choice of features.querySelectorAll<HTMLButtonElement>(".choice")) {
+  choice.addEventListener("click", () => void choose(choice.dataset.source as SourceKind));
 }
 
 async function fromSidebar(message: HostMessage) {
@@ -233,6 +392,8 @@ back.addEventListener("click", () => {
 });
 
 async function start() {
+  settings = await readSettings();
+  showSource();
   reader = await api();
   viewer = await whoAmI(reader).catch(() => "");
   await readPicker();

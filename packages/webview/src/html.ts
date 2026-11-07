@@ -102,6 +102,10 @@ export interface RenderOptions {
   merging?: unknown;
   /** Whether the host can post a review; without it the composer is pointless. */
   canReview?: boolean;
+  /** Settings the page draws switched off, each with what it would take to have it. */
+  locked?: Record<string, string>;
+  /** Offer a button that asks whoever drew the page to turn the rest on. */
+  unlock?: boolean;
   /** Who the reader is signed in as, for deciding what they may edit. */
   viewer?: string;
   /** Their picture, as a data uri, for the box they write in. */
@@ -413,6 +417,8 @@ export function renderHtml(
       ...(graph.meta.worktree ? { worktree: true } : {}),
     },
     canReview: options.canReview === true,
+    ...(options.locked ? { locked: options.locked } : {}),
+    ...(options.unlock ? { unlock: true } : {}),
     ...(options.fresh ? { fresh: options.fresh } : {}),
     // What a half-written review is filed under between page loads: the pull
     // request if there is one, the pair of refs if there is not. Left exactly

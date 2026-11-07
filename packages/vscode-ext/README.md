@@ -81,6 +81,8 @@ walk you through it.
 | **Odin: Choose What to Show** | All changes, since your last review, or uncommitted only |
 | **Odin: Export Change Graph as JSON** | Opens the document the graph is drawn from |
 | **Odin: Set Up the Kokoro Narrator** | Installs the optional local neural voice |
+| **Odin: Connect the Browser Extension** | Lets Odin's GitHub tab draw arrows from the repositories open here |
+| **Odin: Disconnect the Browser Extension** | Forgets the browser extension and stops answering it |
 
 ## Settings
 

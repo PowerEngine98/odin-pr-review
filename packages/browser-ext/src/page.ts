@@ -6,6 +6,7 @@ import {
   parseUnifiedDiff,
   withoutTests,
   type ChangeGraph,
+  type Snippet,
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
 import { renderHtml } from "@odin/webview";
@@ -38,12 +39,16 @@ export function graphOf(pull: PullJson, diff: string): ChangeGraph {
 
 export async function pageOf(
   pull: PullJson,
-  diff: string,
-  options: { dark: boolean },
+  everything: ChangeGraph,
+  options: {
+    dark: boolean;
+    snippets?: [string, Snippet[]][];
+    locked?: Record<string, string>;
+    unlock?: boolean;
+  },
 ): Promise<string> {
-  const everything = graphOf(pull, diff);
   const graph = withoutTests(everything);
-  const snippets = new Map();
+  const snippets = new Map(options.snippets ?? []);
   const shape = (g: ChangeGraph, unified: boolean) =>
     layoutGraph(g, { snippets, unified, includeImports: true });
   const highlight = await loadHighlighter(
@@ -60,5 +65,7 @@ export async function pageOf(
       withTests: shape(everything, true),
     },
     highlight,
+    ...(options.locked ? { locked: options.locked } : {}),
+    ...(options.unlock ? { unlock: true } : {}),
   });
 }
