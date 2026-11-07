@@ -12,10 +12,16 @@ concurrency:
 
 permissions:
   contents: write
+  # Trusted Publishing: the Marketplace takes GitHub's own proof of which
+  # workflow is running instead of a stored token, so nothing expires.
+  id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The trusted publishing policy names this environment: only a job running
+    # in it can publish as powerengine98.
+    environment: marketplace
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,13 +43,13 @@ jobs:
       - name: Test
         run: yarn test
 
+      # Publishing is turned off by setting the repository variable PUBLISH to
+      # false, for a stretch of merges that should not reach the store.
       - name: Can publish
         id: can
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          if [ -z "$VSCE_PAT" ]; then
-            echo "::notice::VSCE_PAT is not set; built and tested, nothing published."
+          if [ "${{ vars.PUBLISH }}" = "false" ]; then
+            echo "::notice::PUBLISH is false; built and tested, nothing published."
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
@@ -67,11 +73,11 @@ jobs:
         if: steps.can.outputs.publish == 'true'
         run: yarn workspace odin-pr-review run package
 
+      # Signed in by the trusted publishing policy on the powerengine98 publisher,
+      # which names this repository and this workflow file.
       - name: Publish to the Visual Studio Marketplace
         if: steps.can.outputs.publish == 'true'
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx @vscode/vsce publish --packagePath dist/odin-pr-review.vsix
+        run: npx --yes @vscode/vsce@4.1.0 publish --oidc --packagePath dist/odin-pr-review.vsix
 
       - name: Publish to Open VSX
         if: steps.can.outputs.publish == 'true'
