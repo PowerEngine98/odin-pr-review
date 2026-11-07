@@ -18,6 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The whole history and its tags: the next version is read from the
+          # commits since the last release.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -45,23 +49,16 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Every merge publishes, so every merge needs a version the Marketplace has
-      # not seen: the manifest's own when it is ahead, otherwise one patch past
-      # what is live. Set for this build only; nothing is committed back.
+      # feat → minor, a breaking change → major (minor while 0.x), anything else
+      # → patch, counted from what is live; a manifest bumped by hand past what
+      # is live is published as it stands. See scripts/next-version.mjs.
       - name: Next version
         id: version
         if: steps.can.outputs.publish == 'true'
         run: |
           live=$(npx --yes @vscode/vsce show powerengine98.odin-pr-review --json 2>/dev/null \
             | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).versions[0].version)}catch{console.log("")}})')
-          next=$(LIVE="$live" node -e '
-            const local = require("./packages/vscode-ext/package.json").version;
-            const live = process.env.LIVE;
-            const parts = (v) => v.split(".").map(Number);
-            const newer = (a, b) => { const x = parts(a), y = parts(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
-            if (!live || newer(local, live)) console.log(local);
-            else { const [a, b, c] = parts(live); console.log(`${a}.${b}.${c + 1}`); }
-          ')
+          next=$(LIVE="$live" node scripts/next-version.mjs)
           echo "live ${live:-none}, publishing $next"
           (cd packages/vscode-ext && npm pkg set version="$next")
           echo "next=$next" >> "$GITHUB_OUTPUT"
@@ -87,12 +84,37 @@ jobs:
           fi
           npx --yes ovsx publish dist/odin-pr-review.vsix -p "$OVSX_PAT"
 
+      # The published version written back, so the repository says what is live.
+      # A push made with this workflow's own token starts no further runs.
+      - name: Record the release
+        if: steps.can.outputs.publish == 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          since=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          notes=$(git log --format='- %s' ${since:+$since..}HEAD | grep -v 'chore(release)' || true)
+          changelog=packages/vscode-ext/CHANGELOG.md
+          {
+            echo "# Changelog"
+            echo
+            echo "## $NEXT — $(date -u +%Y-%m-%d)"
+            echo
+            echo "$notes"
+            tail -n +2 "$changelog"
+          } > "$changelog.next"
+          mv "$changelog.next" "$changelog"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/vscode-ext/package.json "$changelog"
+          git commit -m "chore(release): v$NEXT [skip ci]"
+          git tag "v$NEXT"
+          git push origin HEAD:main "v$NEXT"
+
       - name: Release
         if: steps.can.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.next }}
           name: v${{ steps.version.outputs.next }}
-          target_commitish: ${{ github.sha }}
           files: dist/odin-pr-review.vsix
           generate_release_notes: true
