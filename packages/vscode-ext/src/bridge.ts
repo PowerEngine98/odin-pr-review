@@ -5,9 +5,14 @@ import { basename, join } from "node:path";
 import { git } from "@odin/core";
 import * as vscode from "vscode";
 
-import { listen, NotHere, type Pairing, type Served, type Where } from "./bridge-server.js";
+import { randomUUID } from "node:crypto";
+
+import { listen, NotHere, type Pairing, type Served, type Session, type Sink, type Where } from "./bridge-server.js";
 import { buildGraphForRepo } from "./graph.js";
+import type { GraphPanel } from "./panel.js";
 import { githubRepositories, Repositories } from "./repositories.js";
+
+export type Presenter = (repo: string, number: number, base: string) => Promise<GraphPanel | undefined>;
 
 const TOKEN = "odin.browser.token";
 const ORIGIN = "odin.browser.origin";
@@ -41,7 +46,10 @@ export class BrowserBridge implements vscode.Disposable {
   private readonly offered = new Set<string>();
   private readonly watching: vscode.Disposable | undefined;
 
-  constructor(private readonly context: vscode.ExtensionContext) {
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly present?: Presenter,
+  ) {
     this.repositories = new Repositories(join(context.globalStorageUri?.fsPath ?? "", "repositories.json"));
     this.watching = vscode.workspace.onDidChangeWorkspaceFolders?.((change) => this.recordFolders(change.added));
   }
@@ -124,6 +132,7 @@ export class BrowserBridge implements vscode.Disposable {
     const opened = await listen(() => this.pairing, {
       version,
       where: (owner, repo) => this.where(owner, repo),
+      session: (owner, repo, number, base, sink) => this.session(owner, repo, number, base, sink),
       graph: (owner, repo, number, base) => this.serialized(() => this.graph(owner, repo, number, base)),
     });
     if (!opened) return undefined;
@@ -263,6 +272,26 @@ export class BrowserBridge implements vscode.Disposable {
     if (this.isOpenHere(path) || this.offered.has(path)) return;
     this.offered.add(path);
     void this.openFolder(path);
+  }
+
+  private async session(owner: string, repo: string, number: number, base: string, sink: Sink): Promise<Session> {
+    if (!this.present) throw new Error("This window cannot show readings.");
+    const found = await this.where(owner, repo);
+    if (!found.path) throw new NotHere(`${owner}/${repo} has no folder in VS Code yet.`);
+    const cwd = found.path;
+    sink.send({ type: "note", message: `VS Code is reading #${number}…` });
+    const panel = await this.serialized(() => this.present!(cwd, number, base));
+    if (!panel) throw new Error(`VS Code could not draw #${number}.`);
+    sink.send({ type: "graph", graph: panel.changeGraph });
+    const detach = panel.attach({
+      html: (html) => sink.send({ type: "html", html }),
+      message: (message) => sink.send({ type: "message", message }),
+    });
+    return {
+      id: randomUUID(),
+      deliver: (message) => panel.receive(message),
+      close: detach,
+    };
   }
 
   private async graph(owner: string, repo: string, number: number, base: string): Promise<Served> {

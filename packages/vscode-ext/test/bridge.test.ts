@@ -11,7 +11,16 @@ import { githubRepositories, Repositories } from "../src/repositories.js";
 const TOKEN = "a".repeat(48);
 const ORIGIN = `chrome-extension://${"b".repeat(32)}`;
 
+const delivered: unknown[] = [];
+let closed = 0;
+
 const backend: BridgeBackend = {
+  async session(_owner, repo, number, _base, sink) {
+    if (repo === "elsewhere") throw new NotHere("not here");
+    sink.send({ type: "html", html: `<p>#${number}</p>` });
+    sink.send({ type: "message", message: { type: "agents" } });
+    return { id: "s1", deliver: (message) => delivered.push(message), close: () => closed++ };
+  },
   version: "1.2.3",
   async where(_owner, repo) {
     if (repo === "twice") return { need: "pick" };
@@ -55,6 +64,43 @@ describe("the bridge the browser extension talks to", () => {
     expect(missing.status).toBe(404);
     const bad = await fetch(`http://127.0.0.1:${port}/odin/graph?owner=acme&repo=shop&number=x`, { headers: auth });
     expect(bad.status).toBe(400);
+  });
+});
+
+describe("a reading shared with the browser", () => {
+  it("streams the page and what the host says, and carries the page's messages back", async () => {
+    const port = await served();
+    const auth = { authorization: `Bearer ${TOKEN}` };
+    const stop = new AbortController();
+    const stream = await fetch(`http://127.0.0.1:${port}/odin/session?owner=acme&repo=shop&number=7&base=main`, {
+      headers: auth,
+      signal: stop.signal,
+    });
+    const reader = stream.body!.pipeThrough(new TextDecoderStream()).getReader();
+    let text = "";
+    while (text.split("\n").length < 4) text += (await reader.read()).value ?? "";
+    const events = text.trim().split("\n").map((line) => JSON.parse(line) as { type: string });
+    expect(events.map((e) => e.type)).toEqual(["html", "message", "session"]);
+
+    const sent = await fetch(`http://127.0.0.1:${port}/odin/session/s1`, {
+      method: "POST",
+      headers: { ...auth, "content-type": "application/json" },
+      body: JSON.stringify({ type: "askAgent", text: "why?" }),
+    });
+    expect(sent.status).toBe(200);
+    expect(delivered).toEqual([{ type: "askAgent", text: "why?" }]);
+
+    stop.abort();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(closed).toBe(1);
+  });
+
+  it("says when the repository has no folder yet", async () => {
+    const port = await served();
+    const stream = await fetch(`http://127.0.0.1:${port}/odin/session?owner=acme&repo=elsewhere&number=7`, {
+      headers: { authorization: `Bearer ${TOKEN}` },
+    });
+    expect(JSON.parse((await stream.text()).trim())).toEqual({ type: "error", missing: true, error: "not here" });
   });
 });
 

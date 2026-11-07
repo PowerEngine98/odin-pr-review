@@ -213,7 +213,7 @@ function questionInFront(): Question | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const bridge = new BrowserBridge(context);
+  const bridge = new BrowserBridge(context, presentForBrowser);
   browserBridge = bridge;
   void bridge.start();
   // The graph's tab wears the extension's own mark, which is a file on disk:
@@ -1340,6 +1340,19 @@ async function checkoutLocal(number: number): Promise<void> {
     number,
     readingsOf(number, false, known.get(number)?.branch),
   );
+}
+
+async function presentForBrowser(repo: string, number: number, base: string): Promise<GraphPanel | undefined> {
+  const open = GraphPanel.find(repo, number);
+  if (open) return open;
+  await git(["fetch", "--quiet", "origin", `refs/pull/${number}/head`], { cwd: repo }).catch(() => "");
+  const head = await revision(repo, "FETCH_HEAD");
+  if (!head) throw new Error(`Could not fetch the commits of #${number}.`);
+  if (base) await git(["fetch", "--quiet", "origin", base], { cwd: repo }).catch(() => "");
+  const baseRev = base ? await revision(repo, `origin/${base}`) ?? base : undefined;
+  const forked = baseRev ? await mergeBase(repo, baseRev, head) : undefined;
+  await review(forked ?? baseRev, head, false, repo, number);
+  return GraphPanel.find(repo, number, head);
 }
 
 async function readFinished(pull: PullRequestSummary): Promise<void> {

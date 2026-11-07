@@ -13,7 +13,9 @@ import {
 import { BridgeError, findBridge, launch, newToken, pairingLink } from "./bridge.js";
 import { pageOf } from "./page.js";
 import { changeModel, pickerOf, sidebarPage } from "./picker.js";
-import { draw, readSettings, saveSettings, type Settings, type SourceKind } from "./sources.js";
+import { openSession, type Remote } from "./session.js";
+import { draw, readSettings, saveSettings, vsCodePort, type Settings, type SourceKind } from "./sources.js";
+import { rootVariables } from "./vscode-vars.js";
 
 const params = new URLSearchParams(location.search);
 const owner = params.get("owner") ?? "";
@@ -121,6 +123,7 @@ window.addEventListener("message", (event) => {
     void keep(data.odinStore.key, data.odinStore.value ?? null);
   }
   if (frame === graphFrame && data.odinUnlock === true) toggleFeatures(true);
+  if (frame === graphFrame && remote && data.odinHost && typeof data.odinHost === "object") remote.post(data.odinHost);
   if (frame === sideFrame && data.odinHost && typeof data.odinHost === "object") {
     void fromSidebar(data.odinHost as HostMessage);
   }
@@ -170,6 +173,7 @@ async function drawSidebar(model: SidebarModel) {
 }
 
 function showPicker() {
+  closeRemote();
   reading = null;
   back.hidden = true;
   sideTitle.hidden = false;
@@ -227,19 +231,84 @@ function offerBasic(why: string, detail: string, number: number) {
   status.append(retry, basic);
 }
 
+let remote: Remote | undefined;
+
+function closeRemote() {
+  remote?.close();
+  remote = undefined;
+}
+
+function withVariables(html: string): string {
+  const vars = rootVariables(dark);
+  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (open) => open + vars) : vars + html;
+}
+
+function explainBridge(error: BridgeError, number: number) {
+  const detail = error.reason === "no-repository"
+    ? "Open that repository's folder in VS Code, or draw this one without arrows."
+    : "Is VS Code open, with Odin installed and connected?";
+  offerBasic(error.message, detail, number);
+}
+
+async function openInVsCode(number: number): Promise<boolean> {
+  const { pull } = await readPull({ owner, repo, number }, reader);
+  const port = await vsCodePort(settings, owner, repo, (text) => say(text));
+  const viewed = await viewedOf(number);
+  let drawn = false;
+  const opened = await openSession(
+    port,
+    settings.token!,
+    { owner, repo, number, base: pull.base.ref },
+    {
+      note: (text) => {
+        if (!drawn) say(text);
+      },
+      graph: (graph) => {
+        reading = { number, graph, viewed };
+        back.hidden = false;
+        sideTitle.hidden = true;
+        void drawSidebar(changeModel(graph, viewed, picker));
+      },
+      html: (html) => {
+        drawn = true;
+        void show(graphFrame, withVariables(html), true).then(() => {
+          status.hidden = true;
+          window.parent.postMessage({ odinReading: number }, "https://github.com");
+        });
+      },
+      message: (message) => toGraph(message),
+      ended: (error) => {
+        if (error && reading?.number === number) explainBridge(error, number);
+      },
+    },
+  );
+  if (!opened) return false;
+  remote = opened;
+  return true;
+}
+
 async function openPull(number: number, once?: SourceKind) {
+  closeRemote();
   graphFrame.hidden = true;
   say(`Reading #${number}…`);
+  if (!once && settings.source === "vscode") {
+    try {
+      if (await openInVsCode(number)) return;
+    } catch (error) {
+      if (error instanceof BridgeError) {
+        explainBridge(error, number);
+        return;
+      }
+      throw error;
+    }
+  }
   const using: Settings = once ? { ...settings, source: once } : settings;
   let drawing;
   try {
     drawing = await draw(using, owner, repo, number, reader, (text) => say(text));
   } catch (error) {
     if (error instanceof BridgeError) {
-      const detail = error.reason === "no-repository"
-        ? "Open that repository's folder in VS Code, or draw this one without arrows."
-        : "Is VS Code open, with Odin installed and connected?";
-      offerBasic(error.message, detail, number);
+      explainBridge(error, number);
       return;
     }
     throw error;

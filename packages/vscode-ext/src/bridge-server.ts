@@ -24,6 +24,43 @@ export interface BridgeBackend {
   version: string;
   where(owner: string, repo: string): Promise<Where>;
   graph(owner: string, repo: string, number: number, base: string): Promise<Served>;
+  session?(owner: string, repo: string, number: number, base: string, sink: Sink): Promise<Session>;
+}
+
+export interface Sink {
+  send(event: Record<string, unknown>): void;
+}
+
+export interface Session {
+  id: string;
+  deliver(message: unknown): void;
+  close(): void;
+}
+
+const sessions = new Map<string, Session>();
+
+function readBody(request: IncomingMessage, limit = 4 * 1024 * 1024): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new Error("Too large"));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch (error) {
+        reject(error as Error);
+      }
+    });
+    request.on("error", reject);
+  });
 }
 
 function same(a: string, b: string): boolean {
@@ -44,8 +81,8 @@ function send(
   };
   if (origin) {
     headers["access-control-allow-origin"] = origin;
-    headers["access-control-allow-headers"] = "authorization";
-    headers["access-control-allow-methods"] = "GET, OPTIONS";
+    headers["access-control-allow-headers"] = "authorization, content-type";
+    headers["access-control-allow-methods"] = "GET, POST, OPTIONS";
     headers.vary = "origin";
   }
   response.writeHead(status, headers);
@@ -75,9 +112,20 @@ export async function handle(
   const origin = request.headers.origin;
   if (request.method === "OPTIONS") return send(response, 204, null, origin);
   if (verdict === "token") return send(response, 401, { error: "Not paired" }, origin);
+  const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+  const posted = /^\/odin\/session\/([\w-]+)$/.exec(url.pathname);
+  if (request.method === "POST" && posted) {
+    const session = sessions.get(posted[1]!);
+    if (!session) return send(response, 404, { error: "No such session" }, origin);
+    try {
+      session.deliver(await readBody(request));
+    } catch {
+      return send(response, 400, { error: "Bad message" }, origin);
+    }
+    return send(response, 200, { ok: true }, origin);
+  }
   if (request.method !== "GET") return send(response, 405, { error: "Only GET" }, origin);
 
-  const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (url.pathname === "/odin/hello") {
     return send(response, 200, { odin: true, version: backend.version }, origin);
   }
@@ -91,6 +139,42 @@ export async function handle(
     } catch (error) {
       return send(response, 500, { error: (error as Error).message }, origin);
     }
+  }
+  if (url.pathname === "/odin/session") {
+    const number = Number(url.searchParams.get("number") ?? "");
+    const base = url.searchParams.get("base") ?? "";
+    if (!backend.session) return send(response, 404, { error: "Not offered" }, origin);
+    if (!name.test(owner) || !name.test(repo) || !Number.isInteger(number) || number < 1 || !/^[\w./-]*$/.test(base)) {
+      return send(response, 400, { error: "Bad request" }, origin);
+    }
+    response.writeHead(200, {
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-store",
+      ...(origin ? { "access-control-allow-origin": origin, vary: "origin" } : {}),
+    });
+    const sink: Sink = { send: (event) => response.write(`${JSON.stringify(event)}\n`) };
+    let session: Session | undefined;
+    let gone = false;
+    request.on("close", () => {
+      gone = true;
+      if (session) {
+        sessions.delete(session.id);
+        session.close();
+      }
+    });
+    try {
+      session = await backend.session(owner, repo, number, base, sink);
+      if (gone) {
+        session.close();
+        return;
+      }
+      sessions.set(session.id, session);
+      sink.send({ type: "session", id: session.id });
+    } catch (error) {
+      sink.send({ type: "error", missing: error instanceof NotHere, error: (error as Error).message });
+      response.end();
+    }
+    return;
   }
   if (url.pathname === "/odin/graph") {
     const number = Number(url.searchParams.get("number") ?? "");

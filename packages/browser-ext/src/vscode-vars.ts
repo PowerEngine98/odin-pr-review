@@ -58,3 +58,9 @@ export function editorVariables(dark: boolean): string {
   const lines = Object.entries(values).map(([name, value]) => `--vscode-${name}: ${value};`);
   return `<style>:root{${lines.join("")}}body{margin:0;background:var(--vscode-sideBar-background);color:var(--vscode-foreground);font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);}</style>`;
 }
+
+export function rootVariables(dark: boolean): string {
+  const values = dark ? DARK : LIGHT;
+  const lines = Object.entries(values).map(([name, value]) => `--vscode-${name}: ${value};`);
+  return `<style>:root{${lines.join("")}}</style>`;
+}

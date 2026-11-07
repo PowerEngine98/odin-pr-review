@@ -424,7 +424,90 @@ function readingKey(graph: ChangeGraph, repo: string): string {
   });
 }
 
+export interface Mirror {
+  html(html: string): void;
+  message(message: unknown): void;
+}
+
+const REPLAYED = 2000;
+
+function mirrored(
+  panel: vscode.WebviewPanel,
+  hooks: { html(html: string): void; message(message: unknown): void },
+): vscode.WebviewPanel {
+  const webview = panel.webview as vscode.Webview & { odinMirrored?: boolean };
+  if (!webview || webview.odinMirrored) return panel;
+  const post = webview.postMessage.bind(webview);
+  let owner: object | null = webview;
+  let html: PropertyDescriptor | undefined;
+  while (owner && !html) {
+    html = Object.getOwnPropertyDescriptor(owner, "html");
+    owner = Object.getPrototypeOf(owner) as object | null;
+  }
+  try {
+    Object.defineProperty(webview, "postMessage", {
+      configurable: true,
+      value: (message: unknown) => {
+        hooks.message(message);
+        return post(message);
+      },
+    });
+    if (html?.set) {
+      const { get, set } = html;
+      Object.defineProperty(webview, "html", {
+        configurable: true,
+        get: () => get?.call(webview),
+        set: (value: string) => {
+          set.call(webview, value);
+          hooks.html(value);
+        },
+      });
+    } else if (html && "value" in html) {
+      let current = String(html.value ?? "");
+      Object.defineProperty(webview, "html", {
+        configurable: true,
+        get: () => current,
+        set: (value: string) => {
+          current = value;
+          hooks.html(value);
+        },
+      });
+    }
+    Object.defineProperty(webview, "odinMirrored", { value: true });
+  } catch {
+    return panel;
+  }
+  return panel;
+}
+
 export class GraphPanel {
+  private readonly mirrors = new Set<Mirror>();
+  private shownHtml = "";
+  private sent: unknown[] = [];
+
+  static find(repo: string, number: number, head?: string): GraphPanel | undefined {
+    return GraphPanel.readings().find(
+      (one) =>
+        one.repo === repo &&
+        (one.graph.meta.pullRequest?.number === number || (head !== undefined && one.graph.meta.headRef === head)),
+    );
+  }
+
+  get changeGraph(): ChangeGraph {
+    return this.graph;
+  }
+
+  attach(mirror: Mirror): () => void {
+    if (this.shownHtml) mirror.html(this.shownHtml);
+    for (const message of this.sent) mirror.message(message);
+    this.mirrors.add(mirror);
+    return () => this.mirrors.delete(mirror);
+  }
+
+  receive(message: unknown): void {
+    void this.handle(message as Message);
+  }
+
   /**
    * Every reading on screen, by what it is a reading of.
    *
@@ -2683,7 +2766,18 @@ export class GraphPanel {
     alternate?: { layout: GraphLayout; withTests?: GraphLayout },
     folded?: FoldedStore,
   ) {
-    this.panel = panel;
+    this.panel = mirrored(panel, {
+      html: (html) => {
+        this.shownHtml = html;
+        this.sent = [];
+        for (const mirror of this.mirrors) mirror.html(html);
+      },
+      message: (message) => {
+        this.sent.push(message);
+        if (this.sent.length > REPLAYED) this.sent.splice(0, this.sent.length - REPLAYED);
+        for (const mirror of this.mirrors) mirror.message(message);
+      },
+    });
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;

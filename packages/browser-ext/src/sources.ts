@@ -62,6 +62,21 @@ async function locate(
   }
 }
 
+export async function vsCodePort(
+  settings: Settings,
+  owner: string,
+  repo: string,
+  say: (text: string) => void,
+): Promise<number> {
+  if (!settings.token) throw new BridgeError("Odin is not connected to VS Code yet.", "unreachable");
+  say("Asking VS Code…");
+  const port = await findBridge(settings.token, settings.port);
+  if (!port) throw new BridgeError("VS Code is not answering.", "unreachable");
+  if (port !== settings.port) await saveSettings({ port });
+  await locate(port, settings.token, owner, repo, say);
+  return port;
+}
+
 export async function draw(
   settings: Settings,
   owner: string,
@@ -74,14 +89,9 @@ export async function draw(
   const plain = graphOf(pull, diff);
 
   if (settings.source === "vscode") {
-    if (!settings.token) throw new BridgeError("Odin is not connected to VS Code yet.", "unreachable");
-    say("Asking VS Code…");
-    const port = await findBridge(settings.token, settings.port);
-    if (!port) throw new BridgeError("VS Code is not answering.", "unreachable");
-    if (port !== settings.port) await saveSettings({ port });
-    await locate(port, settings.token, owner, repo, say);
+    const port = await vsCodePort(settings, owner, repo, say);
     say(`VS Code is reading #${number}…`);
-    const answer = await bridgeGraph(port, settings.token, owner, repo, number, pull.base.ref);
+    const answer = await bridgeGraph(port, settings.token!, owner, repo, number, pull.base.ref);
     const graph = {
       ...answer.graph,
       meta: { ...answer.graph.meta, pullRequest: answer.graph.meta.pullRequest ?? plain.meta.pullRequest },
