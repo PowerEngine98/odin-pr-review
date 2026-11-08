@@ -130,6 +130,10 @@
   }
 
   function bind(event: KeyboardEvent) {
+    if (open && !rebinding && event.key === "Escape") {
+      open = false;
+      return;
+    }
     if (!rebinding) return;
     // Somebody typing is typing, even in the middle of rebinding: a press in a
     // field is text, and taking it for an answer binds an action to whatever
@@ -218,7 +222,15 @@
   >{@html GEAR}</button>
 
   {#if open}
-    <span class="settings-panel">
+    <span
+      class="settings-backdrop"
+      role="presentation"
+      onclick={() => {
+        open = false;
+        rebinding = null;
+      }}
+    ></span>
+    <span class="settings-panel" role="dialog" aria-modal="true" aria-label="Settings">
       <!-- The panel's contents are their own scrolling column rather than the
            panel itself scrolling, so the fade below can be placed against the
            panel: anything absolute inside a scrolling box scrolls away with the
@@ -247,6 +259,9 @@
             <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
+        {#if model.current.version}
+          <span class="settings-version">Odin {model.current.version}</span>
+        {/if}
         <span class="settings-rule"></span>
         <span class="settings-title">Settings</span>
         {#if model.current.unlock}
@@ -464,14 +479,23 @@
   }
   .icon-button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
 
+  .settings-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-menu);
+    background: color-mix(in srgb, #000 55%, transparent);
+  }
+
   .settings-panel {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(520px, calc(100vw - 32px));
     /* A menu, and the scale says where menus sit. Read from the scale rather
        than written out, because the number is only ever meaningful next to the
        panels and the threads it has to come out over. */
-    z-index: var(--z-menu);
+    z-index: calc(var(--z-menu) + 1);
     display: flex;
     flex-direction: column;
     min-width: 230px;
@@ -480,7 +504,7 @@
        ran off the bottom of the screen and took the last rows with it — there
        is no scrolling past the end of a box that has no end. The rest of the
        height is the bar above and a margin at the foot. */
-    max-height: min(70vh, 520px);
+    max-height: min(85vh, 760px);
     /* Named, because the fade at the foot has to be this exact colour: a
        gradient that ends a shade off the panel it lies on draws a band across
        the bottom of the panel instead of disappearing into it. */
@@ -504,7 +528,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 12px;
+    padding: 20px 24px;
     overflow-y: auto;
     /* The canvas behind this zooms on a wheel. Reaching the end of the list and
        carrying on would otherwise hand the rest of the gesture to the drawing,
@@ -723,5 +747,10 @@
     flex: none;
     margin-left: auto;
     color: var(--vscode-descriptionForeground, #8b949e);
+  }
+
+  .settings-version {
+    color: var(--vscode-descriptionForeground, #8b949e);
+    font-size: 11px;
   }
 </style>

@@ -327,6 +327,7 @@ export interface ViewModel {
    */
   agents?: AgentView[];
   canReview: boolean;
+  version?: string;
   /** Settings this page cannot offer, each with what it would take to have it. */
   locked?: Record<string, string>;
   /** Whoever drew the page can turn more on, and listens for the reader asking. */

@@ -3007,6 +3007,7 @@ export class GraphPanel {
       ...(this.highlight ? { highlight: this.highlight } : {}),
       comments: this.everything(),
       canReview: Boolean(this.graph.meta.pullRequest),
+      ...(GraphPanel.version ? { version: GraphPanel.version } : {}),
       ...(this.viewer ? { viewer: this.viewer } : {}),
       ...(this.viewerFace ? { viewerFace: this.viewerFace } : {}),
       // Written into the document rather than sent after it, so the page never
