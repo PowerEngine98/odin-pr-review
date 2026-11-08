@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-11-08
+
+- docs: privacy policy for the browser extension and the VS Code extension
+
 ## 0.4.0 — 2026-11-08
 
 - fix(webview): attachments sit inside the composer's padding, and their remove button is centred

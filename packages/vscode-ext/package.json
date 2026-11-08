@@ -3,7 +3,7 @@
   "displayName": "Odin PR Review",
   "description": "Review a pull request as a graph of the files it touches, with guided tours narrated by AI agents and agents you can pair with on the change.",
   "icon": "media/icon.png",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "preview": true,
   "license": "MIT",
   "publisher": "powerengine98",
