@@ -56,6 +56,27 @@
   }
 </script>
 
+<svelte:window
+  ondragenter={(event) => {
+    if (attachments && carriesFiles(event)) dragDepth++;
+  }}
+  ondragleave={(event) => {
+    if (attachments && carriesFiles(event)) dragDepth = Math.max(0, dragDepth - 1);
+  }}
+  ondrop={() => {
+    dragDepth = 0;
+    over = false;
+  }}
+  ondragend={() => {
+    dragDepth = 0;
+    over = false;
+  }}
+  onfocus={() => {
+    if (attachments) void peekClipboard();
+  }}
+/>
+
+
 <script lang="ts">
   import type { Attached } from "./attached.js";
   import { tick } from "svelte";
@@ -141,6 +162,26 @@
     event.preventDefault();
     attach(files);
   }
+
+  let dragDepth = $state(0);
+  let over = $state(false);
+  let clipped = $state(false);
+
+  function carriesFiles(event: DragEvent): boolean {
+    return Boolean(event.dataTransfer?.types.includes("Files"));
+  }
+
+  async function peekClipboard() {
+    if (!attachments || !navigator.clipboard?.read) return;
+    try {
+      const items = await navigator.clipboard.read();
+      clipped = items.some((item) => item.types.some((type) => type.startsWith("image/") || type.startsWith("video/")));
+    } catch {
+      clipped = false;
+    }
+  }
+
+  const inviting = $derived(Boolean(attachments) && (dragDepth > 0 || clipped));
 
   function unattach(id: string) {
     if (!attachments) return;
@@ -545,7 +586,32 @@
 {#if readonly}
   <div class="rendered">{@render rendered()}</div>
 {:else}
-  <div class="editor">
+  <div
+    class="editor"
+    class:inviting
+    class:over
+    role="group"
+    ondragover={(event) => {
+      if (!attachments || !carriesFiles(event)) return;
+      event.preventDefault();
+      over = true;
+    }}
+    ondragleave={(event) => {
+      if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node)) over = false;
+    }}
+    ondrop={(event) => {
+      over = false;
+      dragDepth = 0;
+      dropped(event);
+    }}
+    onfocusin={() => void peekClipboard()}
+    onpaste={() => (clipped = false)}
+  >
+    {#if inviting}
+      <div class="drop-hint" aria-hidden="true">
+        {over ? "Drop to attach" : dragDepth > 0 ? "Drop images or videos here" : "Paste to attach the image or video you copied"}
+      </div>
+    {/if}
     <div class="editor-tabs">
       <button class="tab" class:is-on={tab === "write"} onclick={(event) => { event.preventDefault(); tab = "write"; }}>Write</button>
       <button class="tab" class:is-on={tab === "preview"} onclick={(event) => { event.preventDefault(); tab = "preview"; }}>Preview</button>
@@ -602,10 +668,7 @@
         oninput={look}
         onclick={look}
         onpaste={pasted}
-        ondragover={(event) => {
-          if (attachments && event.dataTransfer?.types.includes("Files")) event.preventDefault();
-        }}
-        ondrop={dropped}
+
         onkeyup={(event) => {
           // Arrows and Home move the caret without changing the text, which is
           // half of what decides whether a name is being typed.
@@ -715,6 +778,7 @@
      bar and another over the page. That was the seam under the chosen tab:
      not a stray border but a translucent fill picking up what was behind it. */
   .editor {
+    position: relative;
     border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
     border-radius: 7px;
     overflow: hidden;
@@ -1220,5 +1284,27 @@
     align-self: center;
     color: var(--vscode-errorForeground, #f85149);
     font-size: 11px;
+  }
+
+  .editor.inviting {
+    outline: 2px dashed var(--vscode-focusBorder, #388bfd);
+    outline-offset: 3px;
+  }
+
+  .editor.over {
+    background: color-mix(in srgb, var(--vscode-focusBorder, #388bfd) 12%, var(--bg));
+  }
+
+  .drop-hint {
+    position: absolute;
+    right: 8px;
+    bottom: 6px;
+    z-index: 1;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--vscode-focusBorder, #388bfd);
+    color: #fff;
+    font-size: 11px;
+    pointer-events: none;
   }
 </style>
