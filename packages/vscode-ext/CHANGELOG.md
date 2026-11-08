@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-11-08
+
+- fix(browser): the synced reading no longer stays under "refreshing"
+
 ## 0.3.0 — 2026-11-08
 
 - docs: a one-minute demo of Odin on its own pull request
