@@ -76,6 +76,7 @@ body {
 }
 
 .side-head .enable {
+  position: relative;
   margin-left: auto;
   padding: 2px 8px;
   border: 1px solid #238636;
@@ -252,4 +253,34 @@ iframe {
 
 [hidden] {
   display: none !important;
+}
+
+.link {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  cursor: help;
+}
+
+.link[data-state="ok"] {
+  background: #3fb950;
+}
+
+.link[data-state="retrying"] {
+  background: #d29922;
+  animation: link-pulse 1s ease-in-out infinite;
+}
+
+.link[data-state="down"] {
+  background: #f85149;
+}
+
+@keyframes link-pulse {
+  50% {
+    opacity: 0.35;
+  }
 }

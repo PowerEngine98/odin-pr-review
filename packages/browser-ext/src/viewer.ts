@@ -32,6 +32,24 @@ const sideFrame = document.getElementById("side") as HTMLIFrameElement;
 const back = document.getElementById("back") as HTMLButtonElement;
 const sideTitle = document.getElementById("side-title")!;
 const enable = document.getElementById("enable") as HTMLButtonElement;
+const enableLabel = document.getElementById("enable-label")!;
+const link = document.getElementById("link")!;
+
+type Link = "ok" | "retrying" | "down" | "off";
+
+const LINK_TIPS: Record<Exclude<Link, "off">, string> = {
+  ok: "Connected to VS Code. Agents, tours and narration run there, and what you do here goes back to it.",
+  retrying: "VS Code stopped answering, often because it reloaded or updated an extension. Reconnecting every two seconds; the graph stays as it was.",
+  down: "VS Code is not answering. Check it is open with Odin installed, then press Try again, or switch to another source here.",
+};
+
+function setLink(state: Link) {
+  link.hidden = state === "off";
+  if (state === "off") return;
+  link.dataset.state = state;
+  link.title = LINK_TIPS[state];
+  link.setAttribute("aria-label", LINK_TIPS[state]);
+}
 const features = document.getElementById("features")!;
 const pairing = document.getElementById("pairing")!;
 
@@ -213,7 +231,8 @@ function showSource() {
     vscode: "Synced with: VS Code",
     browser: "Computed in: browser",
   };
-  enable.textContent = label[settings.source];
+  enableLabel.textContent = label[settings.source];
+  if (settings.source !== "vscode") setLink("off");
   enable.classList.toggle("on", settings.source !== "github");
   for (const choice of features.querySelectorAll<HTMLElement>(".choice")) {
     choice.classList.toggle("chosen", choice.dataset.source === settings.source);
@@ -294,6 +313,7 @@ async function openInVsCode(number: number, quiet = false): Promise<boolean> {
       html: (html) => {
         drawn = true;
         reconnects = 0;
+        setLink("ok");
         const page = ++pages;
         held = [];
         void show(graphFrame, withVariables(html), true).then(() => {
@@ -315,12 +335,14 @@ async function openInVsCode(number: number, quiet = false): Promise<boolean> {
         if (reading?.number !== number || remote !== opened) return;
         if (drawn && reconnects < 15) {
           reconnects++;
+          setLink("retrying");
           setTimeout(() => {
             if (reading?.number === number && remote === opened) void reconnect(number);
           }, 2000);
           return;
         }
         if (error) {
+          setLink("down");
           graphFrame.hidden = true;
           explainBridge(error, number);
         }
@@ -346,6 +368,8 @@ async function reconnect(number: number) {
       return;
     }
   }
+  setLink("down");
+  graphFrame.hidden = true;
   explainBridge(new BridgeError("VS Code stopped answering.", "unreachable"), number);
 }
 
@@ -358,6 +382,7 @@ async function openPull(number: number, once?: SourceKind) {
       if (await openInVsCode(number)) return;
     } catch (error) {
       if (error instanceof BridgeError) {
+        if (error.reason === "unreachable") setLink("down");
         explainBridge(error, number);
         return;
       }
@@ -523,6 +548,9 @@ back.addEventListener("click", () => {
 async function start() {
   settings = await readSettings();
   showSource();
+  if (settings.source === "vscode" && settings.token) {
+    void findBridge(settings.token, settings.port).then((port) => setLink(port ? "ok" : "down"));
+  }
   reader = await api();
   viewer = await whoAmI(reader).catch(() => "");
   await readPicker();
