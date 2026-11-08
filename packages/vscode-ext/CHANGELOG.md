@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 — 2026-11-08
+
+- fix(webview): attachments sit inside the composer's padding, and their remove button is centred
+- feat(webview): the composer is a drop zone, outlined while media is dragged or copied
+- feat(webview): settings open as a centred modal with a backdrop, and show Odin's version
+- feat(webview): Support entry with an icon and a description
+- feat: Support from the graph, and pictures and videos in remarks
+- fix: the start-up cover ends with the drawing, and the VS Code dot sits in its button
+- feat(browser): a connection dot on the VS Code source button
+- feat(browser): say "Synced with: VS Code", and reconnect when VS Code restarts
+- feat(webview): "Go live in" a branch, and say what going live allows
+- feat(webview): name the checkout button for what it enables
+
 ## 0.3.1 — 2026-11-08
 
 - fix(browser): the synced reading no longer stays under "refreshing"
