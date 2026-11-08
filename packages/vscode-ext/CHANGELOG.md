@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-11-08
+
+- docs: a one-minute demo of Odin on its own pull request
+- feat: a local script can steer Odin for demos
+- test(vscode): bridge tests bind their own port and drop keep-alive sockets
+- feat(browser): an Odin tab on GitHub, synced with VS Code (#4)
+
 ## 0.2.1 — 2026-11-07
 
 - ci: count the last release tag as published, and publish to Open VSX
