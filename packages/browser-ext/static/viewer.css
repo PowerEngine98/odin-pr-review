@@ -220,6 +220,8 @@ iframe {
 .status {
   position: absolute;
   inset: 0;
+  z-index: 1;
+  background: var(--bg);
   display: grid;
   place-content: center;
   justify-items: center;

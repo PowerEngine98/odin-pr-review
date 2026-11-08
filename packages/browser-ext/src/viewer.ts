@@ -210,8 +210,8 @@ let settings: Settings = { source: "github" };
 function showSource() {
   const label: Record<SourceKind, string> = {
     github: "Enable all features",
-    vscode: "Arrows: VS Code",
-    browser: "Arrows: browser",
+    vscode: "Synced with: VS Code",
+    browser: "Computed in: browser",
   };
   enable.textContent = label[settings.source];
   enable.classList.toggle("on", settings.source !== "github");
@@ -267,9 +267,12 @@ function explainBridge(error: BridgeError, number: number) {
   offerBasic(error.message, detail, number);
 }
 
-async function openInVsCode(number: number): Promise<boolean> {
+async function openInVsCode(number: number, quiet = false): Promise<boolean> {
+  const tell = (text: string) => {
+    if (!quiet) say(text);
+  };
   const { pull } = await readPull({ owner, repo, number }, reader);
-  const port = await vsCodePort(settings, owner, repo, (text) => say(text));
+  const port = await vsCodePort(settings, owner, repo, tell);
   const viewed = await viewedOf(number);
   let drawn = false;
   let pages = 0;
@@ -280,7 +283,7 @@ async function openInVsCode(number: number): Promise<boolean> {
     { owner, repo, number, base: pull.base.ref, head: pull.head.ref },
     {
       note: (text) => {
-        if (!drawn) say(text);
+        if (!drawn) tell(text);
       },
       graph: (graph) => {
         reading = { number, graph, viewed };
@@ -290,6 +293,7 @@ async function openInVsCode(number: number): Promise<boolean> {
       },
       html: (html) => {
         drawn = true;
+        reconnects = 0;
         const page = ++pages;
         held = [];
         void show(graphFrame, withVariables(html), true).then(() => {
@@ -308,13 +312,41 @@ async function openInVsCode(number: number): Promise<boolean> {
         else toGraph(mine);
       },
       ended: (error) => {
-        if (error && reading?.number === number) explainBridge(error, number);
+        if (reading?.number !== number || remote !== opened) return;
+        if (drawn && reconnects < 15) {
+          reconnects++;
+          setTimeout(() => {
+            if (reading?.number === number && remote === opened) void reconnect(number);
+          }, 2000);
+          return;
+        }
+        if (error) {
+          graphFrame.hidden = true;
+          explainBridge(error, number);
+        }
       },
     },
   );
   if (!opened) return false;
   remote = opened;
   return true;
+}
+
+let reconnects = 0;
+
+async function reconnect(number: number) {
+  try {
+    if (await openInVsCode(number, true)) return;
+  } catch {
+    if (reconnects < 15) {
+      reconnects++;
+      setTimeout(() => {
+        if (reading?.number === number) void reconnect(number);
+      }, 2000);
+      return;
+    }
+  }
+  explainBridge(new BridgeError("VS Code stopped answering.", "unreachable"), number);
 }
 
 async function openPull(number: number, once?: SourceKind) {
