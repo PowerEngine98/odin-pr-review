@@ -87,7 +87,7 @@
       title="Fetch this branch, check it out, and follow the files on disk"
       onclick={() => notify("checkoutLocal", { number: change.reading.number })}
     >
-      Check out {change.reading.branch}
+      Check out and Enable changes to: {change.reading.branch}
     </button>
     <span class="go-local-why">
       Reading the forge's copy. This checkout is untouched.

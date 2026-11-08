@@ -94,7 +94,7 @@ describe("the pull requests to choose from", () => {
     const html = sidebarPage(model, false);
     const markup = html.slice(0, html.indexOf("<script>"));
     expect(markup).toContain("order.ts");
-    expect(markup).not.toContain("Check out feature/total");
+    expect(markup).not.toContain("Check out and Enable changes to: feature/total");
   });
 
   it("says when in the coarsest unit that still says something", () => {
