@@ -18,6 +18,7 @@
 /** One remark written here and not yet sent to the forge. */
 export interface Draft {
   path: string;
+  attachments?: { name: string; data: string }[];
   /** Absent for a remark about the file itself, which has no line to sit on. */
   line?: number;
   /**

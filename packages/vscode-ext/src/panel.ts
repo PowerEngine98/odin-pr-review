@@ -31,6 +31,17 @@ import {
   type ReviewComment,
   type ReviewEvent,
   standingOf,
+  attachmentBranch,
+  ghAt,
+  ghStatus,
+  openIssue,
+  repoOfUrl,
+  storeAttachments,
+  SUPPORT_LABELS,
+  SUPPORT_REPO,
+  withAttachments,
+  type Attachment,
+  type SupportKind,
 } from "@odin/core";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
@@ -93,7 +104,17 @@ interface FoldedMessage {
 
 interface SubmitMessage {
   type: "submitReview";
-  payload: { event: ReviewEvent; body: string; comments: DraftComment[] };
+  payload: {
+    event: ReviewEvent;
+    body: string;
+    comments: (DraftComment & { attachments?: Attachment[] })[];
+    attachments?: Attachment[];
+  };
+}
+
+interface SupportMessage {
+  type: "supportIssue";
+  payload: { kind: SupportKind; title: string; body: string; attachments?: Attachment[] };
 }
 
 interface DraftMessage {
@@ -110,7 +131,7 @@ interface HighlightMessage {
 /** Acting on one remark in a thread. */
 interface RemarkMessage {
   type: "react" | "reply" | "editComment" | "deleteComment";
-  payload: { id: number; content?: string; body?: string };
+  payload: { id: number; content?: string; body?: string; attachments?: Attachment[] };
 }
 
 /**
@@ -2185,6 +2206,7 @@ export class GraphPanel {
 
   /** The neural voice on this machine, once the extension has made one. */
   static kokoro: Kokoro | undefined;
+  static version: string | undefined;
 
   /** Where tours are kept, when the editor gave this extension somewhere. */
   static tours: TourStore | undefined;
@@ -2557,8 +2579,56 @@ export class GraphPanel {
    * then shows what is actually there, including anything someone else wrote
    * in the meantime.
    */
+  private async withMedia(body: string, files: Attachment[] | undefined): Promise<string> {
+    if (!files || files.length === 0) return body;
+    const gh = ghAt(this.repo);
+    const who = await ghStatus(gh);
+    if (!who.ok || !who.login) throw new Error("Attaching files needs the GitHub CLI signed in: run gh auth login.");
+    const pull = this.graph.meta.pullRequest;
+    const repo = pull?.url ? repoOfUrl(pull.url) : undefined;
+    if (!repo) throw new Error("Odin could not tell which GitHub repository this change belongs to.");
+    void this.panel.webview.postMessage({ type: "note", message: `Uploading ${files.length} attachment${files.length === 1 ? "" : "s"}…` });
+    const branch = attachmentBranch(pull?.headRefName ?? this.graph.meta.headRef, who.login);
+    return withAttachments(body, await storeAttachments(gh, repo, branch, files));
+  }
+
+  private mediaFailed(error: unknown): undefined {
+    void vscode.window.showErrorMessage(`Odin: could not attach the files — ${(error as Error).message ?? error}`);
+    return undefined;
+  }
+
+  private async reportIssue(payload: SupportMessage["payload"]): Promise<void> {
+    const gh = ghAt(this.repo);
+    try {
+      const who = await ghStatus(gh);
+      if (!who.ok || !who.login) {
+        void this.panel.webview.postMessage({ type: "supportFailed", problem: who.problem ?? "signed-out" });
+        return;
+      }
+      const label = SUPPORT_LABELS[payload.kind] ?? SUPPORT_LABELS.suggestion;
+      const files = payload.attachments ?? [];
+      const stored = files.length
+        ? await storeAttachments(gh, SUPPORT_REPO, attachmentBranch(undefined, who.login), files)
+        : [];
+      const body = withAttachments(
+        `${payload.body.trim()}\n\n---\n_Sent from Odin ${GraphPanel.version ?? ""} in VS Code._`,
+        stored,
+      );
+      const url = await openIssue(gh, SUPPORT_REPO, { title: payload.title.trim(), body, label });
+      void this.panel.webview.postMessage({ type: "supportPosted", url });
+    } catch (error) {
+      void this.panel.webview.postMessage({ type: "supportFailed", error: String((error as Error).message ?? error) });
+    }
+  }
+
   private async remark(message: RemarkMessage): Promise<void> {
-    const { id, content, body } = message.payload;
+    const { id, content, attachments } = message.payload;
+    let body = message.payload.body;
+    if (body !== undefined && attachments?.length) {
+      const attached = await this.withMedia(body, attachments).catch((error) => this.mediaFailed(error));
+      if (attached === undefined) return;
+      body = attached;
+    }
 
     /*
      * A remark the forge never issued an id for.
@@ -3534,7 +3604,29 @@ export class GraphPanel {
         return;
       }
       if (message.type === "submitReview") {
-        await this.submit(message.payload);
+        const { attachments, comments, ...review } = message.payload;
+        const posted = await this.withMedia(review.body, attachments).catch((error) => this.mediaFailed(error));
+        if (posted === undefined) return;
+        const drafts: DraftComment[] = [];
+        for (const { attachments: files, ...draft } of comments) {
+          const body = await this.withMedia(draft.body, files).catch((error) => this.mediaFailed(error));
+          if (body === undefined) return;
+          drafts.push({ ...draft, body });
+        }
+        await this.submit({ ...review, body: posted, comments: drafts });
+        return;
+      }
+      if (reply.type === "supportStatus") {
+        void this.panel.webview.postMessage({ type: "supportStatus", ...(await ghStatus(ghAt(this.repo))) });
+        return;
+      }
+      if (message.type === "supportIssue") {
+        await this.reportIssue(message.payload);
+        return;
+      }
+      if (reply.type === "openExternal") {
+        const url = String((reply as { payload?: { url?: unknown } }).payload?.url ?? "");
+        if (/^https:\/\/github\.com\//.test(url)) void vscode.env.openExternal(vscode.Uri.parse(url));
         return;
       }
       if (message.type === "setDraft") {

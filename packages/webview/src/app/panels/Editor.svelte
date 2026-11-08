@@ -57,6 +57,7 @@
 </script>
 
 <script lang="ts">
+  import type { Attached } from "./attached.js";
   import { tick } from "svelte";
   import { model, notify, host } from "../state.svelte.js";
   import { showPicture } from "../hud/picture.svelte.js";
@@ -82,6 +83,7 @@
     /** A remark already posted: the same rendering, with nothing to type in. */
     readonly = false,
     autofocus = false,
+    attachments = $bindable(undefined),
   }: {
     value?: string;
     placeholder?: string;
@@ -89,7 +91,61 @@
     context?: Suggestion | null;
     readonly?: boolean;
     autofocus?: boolean;
+    attachments?: Attached[] | undefined;
   } = $props();
+
+  const MEDIA_LIMIT = 25 * 1024 * 1024;
+  let picker = $state<HTMLInputElement | null>(null);
+  let refused = $state("");
+
+  function media(file: File): boolean {
+    return file.type.startsWith("image/") || file.type.startsWith("video/");
+  }
+
+  function attach(files: Iterable<File>) {
+    if (!attachments) return;
+    refused = "";
+    for (const file of files) {
+      if (!media(file)) {
+        refused = `${file.name} is not an image or a video.`;
+        continue;
+      }
+      if (file.size > MEDIA_LIMIT) {
+        refused = `${file.name} is over 25 MB.`;
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== "string" || !attachments) return;
+        attachments = [
+          ...attachments,
+          { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name: file.name, type: file.type, data: reader.result },
+        ];
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function pasted(event: ClipboardEvent) {
+    if (!attachments) return;
+    const files = [...(event.clipboardData?.files ?? [])].filter(media);
+    if (files.length === 0) return;
+    event.preventDefault();
+    attach(files);
+  }
+
+  function dropped(event: DragEvent) {
+    if (!attachments) return;
+    const files = [...(event.dataTransfer?.files ?? [])];
+    if (files.length === 0) return;
+    event.preventDefault();
+    attach(files);
+  }
+
+  function unattach(id: string) {
+    if (!attachments) return;
+    attachments = attachments.filter((one) => one.id !== id);
+  }
 
   let tab = $state<"write" | "preview">("write");
   let field = $state<HTMLTextAreaElement | null>(null);
@@ -506,6 +562,14 @@
             </svg>
           </button>
         {/if}
+        {#if attachments}
+          <button class="md" data-md="attach" title="Attach images or videos (or paste, or drop them on the box)" aria-label="Attach images or videos" onclick={(event) => { event.preventDefault(); picker?.click(); }}>
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path d="M10.5 4.5 5.4 9.6a1.6 1.6 0 0 0 2.3 2.3l5.4-5.4a3 3 0 0 0-4.3-4.3L3.4 7.6a4.4 4.4 0 0 0 6.2 6.2l4.1-4.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <input bind:this={picker} type="file" accept="image/*,video/*" multiple hidden onchange={(event) => { const input = event.currentTarget; attach(input.files ?? []); input.value = ""; }} />
+        {/if}
         {#each TOOLS as item}
           <button class="md" data-md={item.kind} title={item.label} aria-label={item.label} onclick={(event) => { event.preventDefault(); apply(item.kind); }}>
             <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
@@ -537,6 +601,11 @@
         hidden={tab !== "write"}
         oninput={look}
         onclick={look}
+        onpaste={pasted}
+        ondragover={(event) => {
+          if (attachments && event.dataTransfer?.types.includes("Files")) event.preventDefault();
+        }}
+        ondrop={dropped}
         onkeyup={(event) => {
           // Arrows and Home move the caret without changing the text, which is
           // half of what decides whether a name is being typed.
@@ -596,6 +665,23 @@
         </ul>
       {/if}
     </div>
+    {#if attachments && (attachments.length > 0 || refused)}
+      <div class="attached">
+        {#each attachments as one (one.id)}
+          <span class="attached-one" title={one.name}>
+            {#if one.type.startsWith("image/")}
+              <img src={one.data} alt={one.name} />
+            {:else}
+              <span class="attached-video">▶ {one.name}</span>
+            {/if}
+            <button type="button" class="attached-drop" title="Do not attach {one.name}" aria-label="Remove {one.name}" onclick={(event) => { event.preventDefault(); unattach(one.id); }}>×</button>
+          </span>
+        {/each}
+        {#if refused}
+          <span class="attached-refused">{refused}</span>
+        {/if}
+      </div>
+    {/if}
     <div class="editor-preview" hidden={tab === "write"}>
       {#if value.trim()}
         {@render rendered()}
@@ -1080,5 +1166,59 @@
 
   .suggestion .add {
     background: color-mix(in srgb, var(--added) 16%, transparent);
+  }
+
+  .attached {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 0 0;
+  }
+
+  .attached-one {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    max-width: 160px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .attached-one img {
+    height: 100%;
+    width: auto;
+    display: block;
+  }
+
+  .attached-video {
+    padding: 0 22px 0 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .attached-drop {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 12px;
+    line-height: 16px;
+    cursor: pointer;
+  }
+
+  .attached-refused {
+    align-self: center;
+    color: var(--vscode-errorForeground, #f85149);
+    font-size: 11px;
   }
 </style>

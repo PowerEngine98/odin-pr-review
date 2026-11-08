@@ -19,6 +19,9 @@
   model, one arrangement, one piece of arithmetic behind every arrow.
 -->
 <script lang="ts">
+  import SupportModal from "./support/SupportModal.svelte";
+  import Toasts from "./support/Toasts.svelte";
+  import { support } from "./support/support.svelte.js";
   import { tick, untrack } from "svelte";
 
   import * as camera from "./canvas/camera.svelte.js";
@@ -496,6 +499,10 @@
        here rather than in the console it usually comes from: it covers the
        window, and a component inside a panel cannot cover the panel. -->
   <Picture />
+  {#if support.open}
+    <SupportModal />
+  {/if}
+  <Toasts />
 
   <!-- Bound, not merely rendered.
        Both of these are `$bindable`, and neither was tied to anything: the

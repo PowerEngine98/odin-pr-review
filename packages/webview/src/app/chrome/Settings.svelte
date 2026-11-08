@@ -9,6 +9,7 @@
   fields are the setting, and the components that draw from them redraw.
 -->
 <script lang="ts">
+  import { openSupport } from "../support/support.svelte.js";
   import { ACTIONS, KEYS_KEY, defaults, readKeys, waitFor } from "../shared/bindings.js";
   import { model, settings } from "../state.svelte.js";
   import Viewed from "../shared/Viewed.svelte";
@@ -224,6 +225,18 @@
            text it was covering, which puts the gradient in the middle of the
            list the moment the reader moves. -->
       <span class="settings-scroll" bind:this={pane} onscroll={measure}>
+        <span class="settings-title">Support</span>
+        <button
+          class="settings-support"
+          title="Report a bug, suggest something, or ask for a feature: it becomes an issue on GitHub"
+          onclick={() => {
+            open = false;
+            openSupport();
+          }}
+        >
+          Report a bug or suggest something
+        </button>
+        <span class="settings-rule"></span>
         <span class="settings-title">Settings</span>
         {#if model.current.unlock}
           <button class="settings-unlock" onclick={unlock}>Enable all features</button>
@@ -651,5 +664,22 @@
 
   @media (prefers-reduced-motion: reduce) {
     .settings-edge { transition: none; }
+  }
+
+  .settings-support {
+    justify-self: start;
+    margin: 4px 0 2px;
+    padding: 4px 10px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .settings-support:hover {
+    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
   }
 </style>

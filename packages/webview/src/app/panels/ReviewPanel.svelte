@@ -10,6 +10,8 @@
   everything pending, not a remark about one line.
 -->
 <script lang="ts">
+  import { forHost, type Attached } from "./attached.js";
+  let attachments = $state<Attached[]>([]);
   import { onMount } from "svelte";
 
   import type { CommentView } from "../model.js";
@@ -103,7 +105,8 @@
     }
     // The host confirms before anything is sent; nothing leaves here on the
     // strength of a single click.
-    notify("submitReview", { event, body, comments: drafts });
+    const files = forHost(attachments);
+    notify("submitReview", { event, body, comments: drafts, ...(files ? { attachments: files } : {}) });
   }
 
   /**
@@ -129,6 +132,7 @@
       clearAll(shelfOf(model.current));
       drafts = [];
       summary = "";
+      attachments = [];
       open = false;
       if (message.data.comments) {
         model.current.comments = message.data.comments as CommentView[];
@@ -173,6 +177,7 @@
     {#key nudges}
       <Editor
         bind:value={summary}
+        bind:attachments
         placeholder="Summary (required to comment or request changes)"
         rows={3}
         autofocus={nudges > 0}

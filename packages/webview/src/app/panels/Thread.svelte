@@ -162,6 +162,7 @@
 </script>
 
 <script lang="ts">
+  import { forHost, type Attached } from "./attached.js";
   import type { CommentView } from "../model.js";
   import { host, model, notify, ui } from "../state.svelte.js";
   // The exact module, not the package: `@odin/core` reaches git and spawns
@@ -395,6 +396,7 @@
   /** Rewriting a remark reuses the reply box, which is already the right shape. */
   let editing = $state<string | null>(null);
   let reply = $state("");
+  let attachments = $state<Attached[]>([]);
 
   const key = $derived(thread ? threadKey(thread.root.id) : "");
 
@@ -445,10 +447,12 @@
     } else {
       // Answering belongs to the thread, not to the line: a second remark
       // beside the first is how one conversation becomes two.
-      notify("reply", { id: thread.root.id, body });
+      const files = forHost(attachments);
+      notify("reply", { id: thread.root.id, body, ...(files ? { attachments: files } : {}) });
     }
     forget(shelfOf(model.current), key);
     reply = "";
+    attachments = [];
   }
 
   /**
@@ -780,7 +784,7 @@
         <!-- Re-keyed on the conversation: a box carried from one thread to the
              next arrives holding the last one's half-written sentence. -->
         {#key thread.root.id}
-          <Editor bind:value={reply} placeholder="Reply…" rows={3} context={contextOf(thread.root)} />
+          <Editor bind:value={reply} bind:attachments placeholder="Reply…" rows={3} context={contextOf(thread.root)} />
         {/key}
         <div class="reply-actions">
           <button class="reply-send primary" onclick={send}>{editing === null ? "Reply" : "Save"}</button>

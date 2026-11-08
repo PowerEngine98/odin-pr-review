@@ -44,6 +44,16 @@ walk you through it.
 - **Narration.** Answers and tours can be read aloud, with the word being spoken
   boxed as it goes — by the browser, your system's voice, or an optional local
   neural voice (Kokoro).
+- **Pictures and videos in remarks.** Attach images or videos to a comment, a
+  reply or a review summary: paste them, drop them on the box, or pick them.
+  GitHub has no API for attachments, so Odin commits them to a branch of their
+  own, `odin-attachments/<reviewed branch>/<you>`, in the pull request's
+  repository (or in your fork when you cannot push there), and links them in
+  the remark.
+- **Support from the graph.** Settings → *Support* opens a composer for a bug,
+  a suggestion or a feature request. It becomes an issue on this repository,
+  labelled accordingly, posted through your own `gh` session, with any media
+  attached; a notice in the corner links to it.
 - **Odin on GitHub.** A companion browser extension adds an **Odin** tab to
   GitHub's pull requests. Paired with this extension, that tab shows the same
   reading as the editor — arrows, AI pairing, tours, narration and reviews, all
