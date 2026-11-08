@@ -272,6 +272,8 @@ async function openInVsCode(number: number): Promise<boolean> {
   const port = await vsCodePort(settings, owner, repo, (text) => say(text));
   const viewed = await viewedOf(number);
   let drawn = false;
+  let pages = 0;
+  let held: unknown[] | undefined = [];
   const opened = await openSession(
     port,
     settings.token!,
@@ -288,14 +290,22 @@ async function openInVsCode(number: number): Promise<boolean> {
       },
       html: (html) => {
         drawn = true;
+        const page = ++pages;
+        held = [];
         void show(graphFrame, withVariables(html), true).then(() => {
+          if (page !== pages) return;
+          const waiting = held;
+          held = undefined;
+          for (const message of waiting ?? []) toGraph(message);
           status.hidden = true;
           window.parent.postMessage({ odinReading: number }, "https://github.com");
         });
       },
       message: (message) => {
         const mine = incoming(message);
-        if (mine !== undefined) toGraph(mine);
+        if (mine === undefined) return;
+        if (held) held.push(mine);
+        else toGraph(mine);
       },
       ended: (error) => {
         if (error && reading?.number === number) explainBridge(error, number);

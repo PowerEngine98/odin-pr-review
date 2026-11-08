@@ -82,16 +82,20 @@ jobs:
         if: steps.can.outputs.publish == 'true'
         run: npx --yes @vscode/vsce@4.1.0 publish --oidc --packagePath dist/odin-pr-review.vsix
 
+      # Trusted publishing as well: Open VSX exchanges GitHub's OIDC token for a
+      # short-lived one, under the trusted publisher registered on the
+      # powerengine98 namespace. A stored OVSX_PAT, while one exists, is used
+      # instead.
       - name: Publish to Open VSX
         if: steps.can.outputs.publish == 'true'
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          if [ -z "$OVSX_PAT" ]; then
-            echo "::notice::OVSX_PAT is not set; skipped Open VSX."
-            exit 0
+          if [ -n "$OVSX_PAT" ]; then
+            npx --yes ovsx@1.3.0 publish dist/odin-pr-review.vsix -p "$OVSX_PAT"
+          else
+            npx --yes ovsx@1.3.0 publish dist/odin-pr-review.vsix --trusted-publishing
           fi
-          npx --yes ovsx publish dist/odin-pr-review.vsix -p "$OVSX_PAT"
 
       # The published version written back, so the repository says what is live.
       # A push made with this workflow's own token starts no further runs.
