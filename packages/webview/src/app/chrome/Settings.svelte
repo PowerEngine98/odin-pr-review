@@ -228,13 +228,24 @@
         <span class="settings-title">Support</span>
         <button
           class="settings-support"
-          title="Report a bug, suggest something, or ask for a feature: it becomes an issue on GitHub"
+          title="Opens a composer that posts an issue on GitHub through your gh session"
           onclick={() => {
             open = false;
             openSupport();
           }}
         >
-          Report a bug or suggest something
+          <svg class="settings-support-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M2.75 3.25h10.5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H8.5L5.25 14v-2.25h-2.5a1 1 0 0 1-1-1v-6.5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+            <path d="M8 5.4v2.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+            <circle cx="8" cy="9.6" r="0.8" fill="currentColor" />
+          </svg>
+          <span class="settings-support-text">
+            <span class="settings-support-name">Send feedback</span>
+            <span class="settings-support-note">Report a bug, share an idea or ask for a feature</span>
+          </span>
+          <svg class="settings-support-go" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
         </button>
         <span class="settings-rule"></span>
         <span class="settings-title">Settings</span>
@@ -667,9 +678,12 @@
   }
 
   .settings-support {
-    justify-self: start;
-    margin: 4px 0 2px;
-    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 6px 0 4px;
+    padding: 8px 10px;
     border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
     border-radius: 6px;
     background: transparent;
@@ -680,6 +694,34 @@
   }
 
   .settings-support:hover {
+    border-color: var(--vscode-focusBorder, #388bfd);
     background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+  }
+
+  .settings-support-icon {
+    flex: none;
+    color: var(--vscode-textLink-foreground, #58a6ff);
+  }
+
+  .settings-support-text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .settings-support-name {
+    font-weight: 600;
+  }
+
+  .settings-support-note {
+    color: var(--vscode-descriptionForeground, #8b949e);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .settings-support-go {
+    flex: none;
+    margin-left: auto;
+    color: var(--vscode-descriptionForeground, #8b949e);
   }
 </style>
