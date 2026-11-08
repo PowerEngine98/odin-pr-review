@@ -737,7 +737,9 @@
             {:else}
               <span class="attached-video">▶ {one.name}</span>
             {/if}
-            <button type="button" class="attached-drop" title="Do not attach {one.name}" aria-label="Remove {one.name}" onclick={(event) => { event.preventDefault(); unattach(one.id); }}>×</button>
+            <button type="button" class="attached-drop" title="Do not attach {one.name}" aria-label="Remove {one.name}" onclick={(event) => { event.preventDefault(); unattach(one.id); }}>
+              <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+            </button>
           </span>
         {/each}
         {#if refused}
@@ -1235,8 +1237,8 @@
   .attached {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    padding: 6px 0 0;
+    gap: 8px;
+    padding: 8px 10px 10px;
   }
 
   .attached-one {
@@ -1272,11 +1274,12 @@
     height: 16px;
     padding: 0;
     border: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.65);
     color: #fff;
-    font-size: 12px;
-    line-height: 16px;
     cursor: pointer;
   }
 
