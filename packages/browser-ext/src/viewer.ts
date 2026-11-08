@@ -40,7 +40,7 @@ type Link = "ok" | "retrying" | "down" | "off";
 const LINK_TIPS: Record<Exclude<Link, "off">, string> = {
   ok: "Connected to VS Code. Agents, tours and narration run there, and what you do here goes back to it.",
   retrying: "VS Code stopped answering, often because it reloaded or updated an extension. Reconnecting every two seconds; the graph stays as it was.",
-  down: "VS Code is not answering. Check it is open with Odin installed, then press Try again, or switch to another source here.",
+  down: "VS Code is not answering. Check it is open with Odin installed, then click this dot to try again, or switch to another source here.",
 };
 
 function setLink(state: Link) {
@@ -504,6 +504,19 @@ function toggleFeatures(open = features.hidden) {
     pairing.hidden = true;
   }
 }
+
+link.addEventListener("click", (event) => {
+  if (link.dataset.state !== "down") return;
+  event.stopPropagation();
+  setLink("retrying");
+  reconnects = 0;
+  if (reading) {
+    void openPull(reading.number).catch(explain);
+    return;
+  }
+  if (!settings.token) return;
+  void findBridge(settings.token, settings.port).then((port) => setLink(port ? "ok" : "down"));
+});
 
 enable.addEventListener("click", () => toggleFeatures());
 document.getElementById("features-close")!.addEventListener("click", () => toggleFeatures(false));

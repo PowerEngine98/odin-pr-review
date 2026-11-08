@@ -76,7 +76,6 @@ body {
 }
 
 .side-head .enable {
-  position: relative;
   margin-left: auto;
   padding: 2px 8px;
   border: 1px solid #238636;
@@ -256,14 +255,17 @@ iframe {
 }
 
 .link {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--bg);
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
   border-radius: 50%;
+  vertical-align: 1px;
   cursor: help;
+}
+
+.link[data-state="down"] {
+  cursor: pointer;
 }
 
 .link[data-state="ok"] {

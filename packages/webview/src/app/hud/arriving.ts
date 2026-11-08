@@ -15,12 +15,12 @@ export function arriving(
   element: HTMLElement,
   what: { id: string; kind: "node" | "tab"; tone: string },
 ) {
-  const say = (one: { id: string; kind: "node" | "tab"; tone: string }) => {
+  const say = (one: { id: string; kind: "node" | "tab"; tone: string }): boolean => {
     const box = element.getBoundingClientRect();
     // A thing with no size is a thing that is not really here yet — a card in
     // a collapsed part, a tab being replaced. Announcing it would fly a square
     // to a point and deliver nothing.
-    if (box.width < 1 || box.height < 1) return;
+    if (box.width < 1 || box.height < 1) return false;
     announce({
       id: one.id,
       kind: one.kind,
@@ -30,16 +30,25 @@ export function arriving(
       height: box.height,
       tone: one.tone,
     });
+    return true;
   };
 
-  say(what);
+  const sayOnceSized = (one: { id: string; kind: "node" | "tab"; tone: string }, tries = 30) => {
+    if (say(one) || tries <= 0 || typeof requestAnimationFrame === "undefined") return;
+    requestAnimationFrame(() => {
+      if (what.id === one.id) sayOnceSized(one, tries - 1);
+    });
+  };
+
+  sayOnceSized(what);
 
   return {
     update(next: { id: string; kind: "node" | "tab"; tone: string }) {
       // The same slot holding a different file is a different arrival. The
       // same file that has merely moved is not: it already arrived.
-      if (next.id !== what.id) say(next);
+      const changed = next.id !== what.id;
       what = next;
+      if (changed) sayOnceSized(next);
     },
   };
 }
