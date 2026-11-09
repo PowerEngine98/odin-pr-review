@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.3 — 2026-11-09
+
+- docs: a shorter README that sells Odin, with the depth moved to each package
+
 ## 0.6.2 — 2026-11-09
 
 - fix: a window reload reopens only the readings that were open (#5) (#7)
