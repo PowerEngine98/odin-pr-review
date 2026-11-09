@@ -3,7 +3,8 @@
   import { closeGhWizard, GH_STEPS, ghWizard, goTo, installGh, signInGh, startGhCheck } from "./gh.svelte.js";
 
   const status = $derived(ghWizard.status);
-  const installed = $derived(status !== null && status.problem !== "missing");
+  const installed = $derived(status !== null && status.problem !== "missing" && status.problem !== "outdated");
+  const outdated = $derived(status?.problem === "outdated");
   const signedIn = $derived(status?.ok === true);
   const where = $derived(
     status?.platform === "darwin" ? "macOS" : status?.platform === "win32" ? "Windows" : "Linux",
@@ -67,11 +68,18 @@
           Without it you can still review your local branches and uncommitted work.
         </p>
       {:else if ghWizard.step === 1}
-        <h3>Install gh</h3>
+        <h3>{outdated ? "Update gh" : "Install gh"}</h3>
         {#if installed}
-          <p class="gh-good">✓ gh is installed.</p>
-        {:else if status?.install}
-          <p>On {where}, this installs it with the package manager you already have:</p>
+          <p class="gh-good">✓ gh {status?.version ?? ""} is installed.</p>
+        {:else}
+          <p>
+            Odin needs gh <strong>{status?.needs ?? "2.99.0"}</strong> or newer: the release that can attach
+            pictures and videos to comments, which Odin uses for media in remarks and feedback.
+            {#if outdated}This machine has {status?.version ?? "an older one"}.{/if}
+          </p>
+        {/if}
+        {#if !installed && status?.install}
+          <p>On {where}, this {outdated ? "updates" : "installs"} it from a source that ships the current release:</p>
           <div class="gh-command">
             <code>{status.install}</code>
             <button class="gh-copy" onclick={() => copy(status.install ?? "")}>Copy</button>
@@ -80,14 +88,14 @@
             It runs in a VS Code terminal so you can see every step; it may ask for your computer's
             password. This window moves on by itself once gh answers.
           </p>
-        {:else}
+        {:else if !installed}
           <p>
             No package manager Odin knows was found. Download the installer for {where} from
             cli.github.com, run it, then come back here.
           </p>
         {/if}
         {#if ghWizard.waiting === "install"}
-          <p class="gh-wait"><span class="gh-spinner"></span>Waiting for gh to be installed…</p>
+          <p class="gh-wait"><span class="gh-spinner"></span>Waiting for gh {status?.needs ?? "2.99.0"} or newer…</p>
         {/if}
       {:else if ghWizard.step === 2}
         <h3>Sign in to GitHub</h3>
@@ -131,9 +139,9 @@
         {#if installed}
           <button class="gh-next" onclick={() => goTo(signedIn ? 3 : 2)}>Next</button>
         {:else if status?.install}
-          <button class="gh-next" disabled={ghWizard.waiting === "install"} onclick={installGh}>Install in terminal</button>
+          <button class="gh-next" disabled={ghWizard.waiting === "install"} onclick={installGh}>{outdated ? "Update in terminal" : "Install in terminal"}</button>
         {:else}
-          <button class="gh-next" onclick={download}>Download gh</button>
+          <button class="gh-next" onclick={download}>{outdated ? "Download the update" : "Download gh"}</button>
         {/if}
       {:else if ghWizard.step === 2}
         {#if signedIn}

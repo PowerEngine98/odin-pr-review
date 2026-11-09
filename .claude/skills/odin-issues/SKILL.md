@@ -25,9 +25,10 @@ gh issue view <n> --json title,body,labels,comments
 - Issues filed from Odin's Support composer end with `Sent from Odin x.y.z`.
   That version tells you whether a fix already shipped since. Compare it
   with `git log --oneline v<that version>..main`.
-- **Media is evidence, not decoration.** Attachments live on
-  `odin-attachments/...` branches and are linked as `?raw=true` URLs. Download
-  videos into the job's temp folder and look at them:
+- **Media is evidence, not decoration.** Attachments are
+  `https://github.com/user-attachments/assets/...` links (older issues used
+  `odin-attachments/...` branches with `?raw=true` links). Download videos into
+  the job's temp folder and look at them:
 
   ```bash
   curl -sL -o rec.mov "<url>"

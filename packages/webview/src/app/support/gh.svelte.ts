@@ -3,9 +3,11 @@ import { host, notify } from "../state.svelte.js";
 export interface GhSetup {
   ok: boolean;
   login?: string;
-  problem?: "missing" | "signed-out";
+  problem?: "missing" | "signed-out" | "outdated";
+  version?: string;
   platform: string;
   install?: string;
+  needs: string;
   download: string;
   signIn: string;
   skipped: boolean;
@@ -31,6 +33,7 @@ export function checkGh(): void {
 
 function stepFor(status: GhSetup): number {
   if (status.ok) return 3;
+  if (status.problem === "outdated") return 1;
   if (status.problem === "signed-out") return 2;
   return ghWizard.step === 0 ? 0 : 1;
 }
@@ -92,9 +95,13 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
     const status: GhSetup = {
       ok: message.ok === true,
       ...(message.login ? { login: message.login } : {}),
-      ...(message.problem === "missing" || message.problem === "signed-out" ? { problem: message.problem } : {}),
+      ...(message.problem === "missing" || message.problem === "signed-out" || message.problem === "outdated"
+        ? { problem: message.problem }
+        : {}),
+      ...(message.version ? { version: message.version } : {}),
       platform: String(message.platform ?? ""),
       ...(message.install ? { install: message.install } : {}),
+      needs: String(message.needs ?? "2.99.0"),
       download: String(message.download ?? "https://cli.github.com/"),
       signIn: String(message.signIn ?? "gh auth login"),
       skipped: message.skipped === true,
@@ -110,8 +117,8 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
     ghWizard.asked = false;
     if (!ghWizard.open) return;
     const moved =
-      (ghWizard.waiting === "install" && status.problem !== "missing") ||
-      (ghWizard.waiting === "signIn" && status.ok);
+      (ghWizard.waiting === "install" && status.problem !== "missing" && status.problem !== "outdated") ||
+      (ghWizard.waiting === "signIn" && (status.ok || status.problem === "outdated"));
     if (moved) {
       ghWizard.waiting = "";
       stopPolling();

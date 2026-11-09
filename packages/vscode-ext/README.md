@@ -47,10 +47,9 @@ walk you through it.
   neural voice (Kokoro).
 - **Pictures and videos in remarks.** Attach images or videos to a comment, a
   reply or a review summary: paste them, drop them on the box, or pick them.
-  GitHub has no API for attachments, so Odin commits them to a branch of their
-  own, `odin-attachments/<reviewed branch>/<you>`, in the pull request's
-  repository (or in your fork when you cannot push there), and links them in
-  the remark.
+  They are uploaded the way GitHub CLI 2.99's `--attach` uploads them, so they
+  render inline exactly as if you had dropped them in the browser, with no
+  branch or fork left behind. Uploading needs write access to the repository.
 - **Support from the graph.** Settings → *Support* opens a composer for a bug,
   a suggestion or a feature request. It becomes an issue on this repository,
   labelled accordingly, posted through your own `gh` session, with any media
@@ -65,7 +64,7 @@ walk you through it.
 ## Requirements
 
 - **git**, and a repository checked out locally.
-- **[GitHub CLI](https://cli.github.com)** (`gh`), signed in with
+- **[GitHub CLI](https://cli.github.com)** (`gh`) **2.99.0 or newer**, signed in with
   `gh auth login`, for pull requests, threads, checks and reviews. Missing or
   signed out, Odin opens a step-by-step setup that installs it with your package
   manager and signs you in through GitHub's own page; the key stays with gh, in
@@ -103,7 +102,7 @@ walk you through it.
 | **Odin: Choose What to Show** | All changes, since your last review, or uncommitted only |
 | **Odin: Export Change Graph as JSON** | Opens the document the graph is drawn from |
 | **Odin: Set Up the Kokoro Narrator** | Installs the optional local neural voice |
-| **Odin: Set Up the GitHub CLI** | Walks you through installing gh and signing in |
+| **Odin: Set Up the GitHub CLI** | Walks you through installing or updating gh and signing in |
 | **Odin: Connect the Browser Extension** | Lets Odin's GitHub tab draw arrows from the repositories open here |
 | **Odin: Disconnect the Browser Extension** | Forgets the browser extension and stops answering it |
 

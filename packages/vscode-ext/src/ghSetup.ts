@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
 
-import { forgeEnv, ghAt, ghInstaller, ghManagers, ghStatus, GH_DOWNLOAD, GH_SIGN_IN, type GhStatus } from "@odin/core";
+import { forgeEnv, ghAt, ghInstaller, ghManagers, ghStatus, GH_ATTACH_VERSION, GH_DOWNLOAD, GH_SIGN_IN, type GhStatus } from "@odin/core";
 import * as vscode from "vscode";
 
 export interface GhSetupState extends GhStatus {
   platform: string;
   install?: string;
+  needs: string;
   download: string;
   signIn: string;
   skipped: boolean;
@@ -24,7 +25,8 @@ function present(command: string): Promise<boolean> {
 export async function ghSetupState(cwd?: string): Promise<GhSetupState> {
   const status = await ghStatus(ghAt(cwd));
   const found = new Set<string>();
-  if (!status.ok && status.problem === "missing") {
+  const installing = !status.ok && (status.problem === "missing" || status.problem === "outdated");
+  if (installing) {
     const checks = await Promise.all(ghManagers(process.platform).map(async (one) => [one, await present(one)] as const));
     for (const [one, there] of checks) if (there) found.add(one);
   }
@@ -32,7 +34,8 @@ export async function ghSetupState(cwd?: string): Promise<GhSetupState> {
   return {
     ...status,
     platform: process.platform,
-    ...(installer ? { install: installer.command } : {}),
+    ...(installer ? { install: status.problem === "outdated" ? installer.upgrade : installer.install } : {}),
+    needs: GH_ATTACH_VERSION,
     download: GH_DOWNLOAD,
     signIn: GH_SIGN_IN,
     skipped,
