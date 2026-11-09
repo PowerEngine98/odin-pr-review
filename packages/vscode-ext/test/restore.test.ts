@@ -421,4 +421,20 @@ describe("state a frame carries across a reload", () => {
     // session answers — rather than a reading invented out of camera numbers.
     expect(seen.written[0]).toContain("Reopening #152");
   });
+
+  it("does not bring back another repository's reading into a frame with nothing to say", async () => {
+    const { serializer } = stub(fresh(), { folder: "/elsewhere", baseRef: "main" });
+    const seen = recorder();
+    await serializer!.deserializeWebviewPanel(seen.panel, undefined);
+    expect(seen.disposed).toBe(true);
+    expect(seen.written.join("")).not.toContain("Reopening #152");
+  });
+
+  it("still falls back to the remembered reading of the repository this window holds", async () => {
+    const { serializer } = stub(fresh(), { folder: "/w", baseRef: "main" });
+    const seen = recorder();
+    await serializer!.deserializeWebviewPanel(seen.panel, undefined);
+    expect(seen.disposed).toBe(false);
+    expect(seen.written[0]).toContain("Reopening #152");
+  });
 });
