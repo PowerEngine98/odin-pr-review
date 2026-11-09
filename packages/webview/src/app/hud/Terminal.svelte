@@ -23,6 +23,7 @@
   import { nameOf, picturesNamed, saidOf } from "../pictures.js";
   import { pictured } from "../pictured.svelte.js";
   import { model, notify, settings, ui } from "../state.svelte.js";
+  import Cli from "./Cli.svelte";
   import Ledger from "./Ledger.svelte";
   import Narrated from "./Narrated.svelte";
   import Lessons from "../tour/Lessons.svelte";
@@ -223,7 +224,7 @@
    * choice that survived a reload would put them back on a ledger when what
    * they opened the window for was to see whether anything is happening.
    */
-  let tab = $state<"log" | "ledger" | "tour">("log");
+  let tab = $state<"log" | "ledger" | "tour" | "cli">("log");
 
   /*
    * Turned to the Tour tab when somewhere else asked for it for this agent —
@@ -1124,6 +1125,16 @@
           <path d="M13.5 6l.4.9.9.4-.9.4-.4.9-.4-.9-.9-.4.9-.4z" fill="currentColor" />
           <path d="M5.5 2l.4.9.9.4-.9.4-.4.9-.4-.9-.9-.4.9-.4z" fill="currentColor" />
         </svg>Tour{#if tour.status === "making"}<span class="record-count">…</span>{/if}</button>
+      <button
+        class="record"
+        class:set={tab === "cli"}
+        aria-pressed={tab === "cli"}
+        title="The {name} CLI itself, interactive: slash commands, /mcp and everything else it offers"
+        onclick={() => (tab = "cli")}
+      ><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+          <path d="M3 4.5l3.5 3.5L3 11.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M8 12h5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>CLI</button>
     </span>
 
     {#if conversation}
@@ -1226,6 +1237,8 @@
     <Ledger agent={id} />
   {:else if tab === "tour"}
     <Lessons onReflect={reflect} />
+  {:else if tab === "cli"}
+    <Cli agent={id} {name} />
   {:else}
   <div class="terminal-body" bind:this={pane} onscroll={scrolled}>
     {#if shown}
@@ -1978,6 +1991,8 @@
   }
 
   .record:hover { color: var(--text); }
+
+  .record:last-child { padding-right: 9px; }
 
   .record.set {
     background: color-mix(in srgb, var(--text) 14%, transparent);

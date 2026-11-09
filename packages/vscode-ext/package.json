@@ -330,6 +330,8 @@
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/xterm": "5.5.0",
     "esbuild": "^0.24.0"
   },
   "capabilities": {

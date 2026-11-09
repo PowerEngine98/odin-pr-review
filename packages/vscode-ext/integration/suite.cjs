@@ -24,6 +24,36 @@ function test(name, fn) {
   tests.push({ name, fn });
 }
 
+test("the editor's own terminal support can run a CLI for the console", async () => {
+  const { join } = require("node:path");
+  let pty;
+  for (const where of ["node_modules", "node_modules.asar", "node_modules.asar.unpacked"]) {
+    try {
+      pty = require(join(vscode.env.appRoot, where, "node-pty"));
+      break;
+    } catch {
+      continue;
+    }
+  }
+  assert.ok(pty, `no node-pty under ${vscode.env.appRoot}`);
+  const term = pty.spawn("sh", ["-c", "stty size; read a; echo got:$a"], {
+    name: "xterm-256color",
+    cols: 91,
+    rows: 21,
+    cwd: process.cwd(),
+    env: process.env,
+  });
+  let seen = "";
+  let code;
+  term.onData((data) => (seen += data));
+  term.onExit((event) => (code = event.exitCode));
+  await waitFor("the shell to report its size", () => seen.includes("21 91"), 15_000);
+  term.write("odin\r");
+  await waitFor("the shell to exit", () => code !== undefined, 15_000);
+  assert.ok(seen.includes("got:odin"), seen);
+  assert.strictEqual(code, 0);
+});
+
 test("the extension is present and activates", async () => {
   const extension = vscode.extensions.getExtension("powerengine98.odin-pr-review");
   assert.ok(extension, "extension powerengine98.odin-pr-review is not installed");

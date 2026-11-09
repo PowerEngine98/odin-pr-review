@@ -121,6 +121,7 @@ export interface RenderOptions {
    * everywhere else, and readable on its own terms.
    */
   mermaid?: string;
+  xterm?: { script: string; fit: string; css: string };
   /**
    * How the reader last had the page set up, if the host remembers such things.
    *
@@ -437,6 +438,7 @@ export function renderHtml(
     viewer: options.viewer ?? "",
     viewerFace: options.viewerFace ?? "",
     ...(options.mermaid ? { mermaid: options.mermaid } : {}),
+    ...(options.xterm ? { xterm: options.xterm } : {}),
     comments: comments.map((c) => ({
       id: c.id,
       path: c.path,
