@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2 — 2026-11-09
+
+- docs: the title's rule under the quote, and the feature pictures centred
+
 ## 0.7.1 — 2026-11-09
 
 - fix(vscode): a browser keeps following a live reading after its frame changes hands
