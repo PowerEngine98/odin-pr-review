@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.0 — 2026-11-09
+
+### New features
+
+- Pictures and videos in remarks and feedback upload the way GitHub's own CLI does: they render inline like a browser upload, with no attachment branches or forks left behind
+
+### Quality of life
+
+- The GitHub CLI setup also updates an outdated gh, installing only from sources that ship current releases
+
+### Bug fixes
+
+- Sending feedback without write access to the Odin repository still opens the issue, and says which files to add on the page
+
+## 0.7.5 — 2026-11-09
+
+### Bug fixes
+
+- Migrations, and other files that only point at something far along the graph, sit in the column beside it instead of the first column
+
+## 0.7.4 — 2026-11-09
+
+- Maintenance release.
+
+## 0.7.3 — 2026-11-09
+
+### Quality of life
+
+- Every release says what changed, grouped into new features, UI/UX, quality of life and bug fixes, on GitHub, the VS Code Marketplace and Open VSX
+
 ## 0.7.2 — 2026-11-09
 
 - Maintenance release.
