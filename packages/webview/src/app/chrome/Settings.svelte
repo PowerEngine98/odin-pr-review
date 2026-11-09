@@ -9,6 +9,7 @@
   fields are the setting, and the components that draw from them redraw.
 -->
 <script lang="ts">
+  import Pairing from "../hud/Pairing.svelte";
   import { openSupport } from "../support/support.svelte.js";
   import { ACTIONS, KEYS_KEY, defaults, readKeys, waitFor } from "../shared/bindings.js";
   import { model, settings } from "../state.svelte.js";
@@ -121,12 +122,28 @@
   });
 
   /** How a key is written where a reader has to recognise it. */
-  function keyName(key: string): string {
-    if (key === " ") return "space";
-    if (key === "Enter") return "enter";
-    if (key === "Escape") return "esc";
-    if (key.startsWith("Arrow")) return `${key.slice(5).toLowerCase()} arrow`;
-    return key;
+  const NAMED: Record<string, string[]> = {
+    " ": ["Space"],
+    Enter: ["↵ Enter"],
+    Escape: ["Esc"],
+    Tab: ["⇥ Tab"],
+    Backspace: ["⌫ Backspace"],
+    Delete: ["Delete"],
+    ArrowRight: ["→ Right"],
+    ArrowLeft: ["← Left"],
+    ArrowUp: ["↑ Up"],
+    ArrowDown: ["↓ Down"],
+    Home: ["Home"],
+    End: ["End"],
+    PageUp: ["Page Up"],
+    PageDown: ["Page Down"],
+  };
+
+  function keyCaps(key: string): string[] {
+    if (NAMED[key]) return NAMED[key];
+    if (/^[a-z]$/.test(key)) return [key.toUpperCase()];
+    if (/^[A-Z]$/.test(key)) return ["⇧ Shift", key];
+    return [key];
   }
 
   function bind(event: KeyboardEvent) {
@@ -195,6 +212,10 @@
     // nothing to announce, and fractional scroll heights mean the bottom is
     // rarely reached to the exact pixel.
     atEnd = room <= 1 || pane.scrollTop >= room - 1;
+    const top = pane.getBoundingClientRect().top;
+    for (const title of pane.querySelectorAll<HTMLElement>(".settings-title")) {
+      title.classList.toggle("stuck", pane.scrollTop > 0 && title.getBoundingClientRect().top <= top + 0.5);
+    }
   }
 
   /*
@@ -260,14 +281,14 @@
           </svg>
         </button>
         {#if model.current.version}
-          <span class="settings-version">Odin {model.current.version}</span>
+          <span class="settings-version">Odin version: {model.current.version}</span>
         {/if}
         <span class="settings-rule"></span>
         <span class="settings-title">Settings</span>
         {#if model.current.unlock}
           <button class="settings-unlock" onclick={unlock}>Enable all features</button>
+          <span class="settings-rule"></span>
         {/if}
-        <span class="settings-rule"></span>
 
         <span class="settings-group">Diff display</span>
         <!-- Two readings of one fact, so they are radios rather than a switch —
@@ -324,16 +345,14 @@
           title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."
           bind:checked={settings.hideViewed}
         />
-        <!-- A switch for something the change does not have is a switch that
-             teaches the reader nothing, so the database only appears in the menu
-             when there is a schema on the canvas. -->
-        {#if hasSchema}
-          <Viewed
-            label="Database"
-            title="The database schema as a card of its own, and the migrations and generated code that reach it"
-            bind:checked={settings.showInfra}
-          />
-        {/if}
+        <Viewed
+          label="Database"
+          disabled={!hasSchema}
+          title={hasSchema
+            ? "The database schema as a card of its own, and the migrations and generated code that reach it"
+            : "Appears when the change touches a database: SQL migrations or schema files"}
+          bind:checked={settings.showInfra}
+        />
 
         <!-- Not beside the filters above, which take things away. This adds a
              shape: the same cards, gathered into the folders they live in. -->
@@ -349,16 +368,27 @@
         <Viewed label="Comments" bind:checked={settings.hud.comments} />
         <Viewed label="Map" bind:checked={settings.hud.map} />
         <Viewed label="Checks" bind:checked={settings.hud.checks} />
-        <!-- Only worth offering over a reading that has one. Over the forge's
-             copy the switch would turn on a panel that does not appear, which
-             reads as the switch being broken. -->
-        {#if model.current.meta.worktree || locked.agents}
-          <Viewed
-            label="AI pairing"
-            disabled={!!locked.agents}
-            title={locked.agents ?? "Agents on this machine that can take work from your comments"}
-            bind:checked={settings.hud.agents}
-          />
+        <span class="settings-rule"></span>
+        <span class="settings-group">AI pairing</span>
+        <Viewed
+          label="Pair with AI agents"
+          disabled={!!locked.agents || !model.current.meta.worktree}
+          title={locked.agents ??
+            (model.current.meta.worktree
+              ? "Agents on this machine take work from your comments, in the order below"
+              : "Only on a live reading of the branch. Press Go live in Odin's side bar to check it out, then turn this on.")}
+          bind:checked={settings.hud.agents}
+        />
+        {#if !locked.agents}
+          {@const usable = model.current.meta.worktree === true && settings.hud.agents !== false}
+          <div
+            class="agents-section"
+            class:off={!usable}
+            inert={!usable}
+            title={usable ? undefined : model.current.meta.worktree ? "Turn on Pair with AI agents to choose agents" : "Go live to choose agents"}
+          >
+            <Pairing embedded />
+          </div>
         {/if}
 
         <span class="settings-rule"></span>
@@ -400,18 +430,38 @@
           button competing with a binding teaches the binding to nobody.
         -->
         <span class="settings-group">Keys</span>
-        {#each ACTIONS as action (action.id)}
-          <div class="key-row">
-            <span class="key-says">{action.says}</span>
-            <button
-              class="key-cap"
-              class:waiting={rebinding === action.id}
-              onclick={() => (rebinding = rebinding === action.id ? null : action.id)}
-            >
-              {rebinding === action.id ? "press a key" : keyName(keys[action.id] ?? "")}
-            </button>
-          </div>
-        {/each}
+        <table class="key-table">
+          <thead>
+            <tr>
+              <th scope="col">Action</th>
+              <th scope="col">Shortcut</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each ACTIONS as action (action.id)}
+              <tr>
+                <td class="key-says">{action.says}</td>
+                <td class="key-cell">
+                  <button
+                    class="key-button"
+                    class:waiting={rebinding === action.id}
+                    title="Click, then press the key to use instead"
+                    onclick={() => (rebinding = rebinding === action.id ? null : action.id)}
+                  >
+                    {#if rebinding === action.id}
+                      <span class="key-wait">Press a key…</span>
+                    {:else}
+                      {#each keyCaps(keys[action.id] ?? "") as cap, at (at)}
+                        {#if at > 0}<span class="key-plus">+</span>{/if}
+                        <kbd class="key-cap">{cap}</kbd>
+                      {/each}
+                    {/if}
+                  </button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
         <button class="key-reset" onclick={resetKeys}>Reset to defaults</button>
 
         <!--
@@ -563,7 +613,23 @@
      the last row from here on is just a row that is harder to read. */
   .settings-edge.spent { opacity: 0; }
 
-  .settings-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .settings-title {
+    position: sticky;
+    top: -20px;
+    z-index: 2;
+    align-self: stretch;
+    margin: -20px -24px 4px;
+    padding: 10px 24px;
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+    background: var(--panel-fill);
+    transition: box-shadow 0.12s ease-out;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    text-align: center;
+  }
+  .settings-rule + .settings-title { margin-top: -10px; }
+  .settings-title.stuck { box-shadow: 0 3px 6px -2px rgba(0, 0, 0, 0.5); }
   .settings-group {
     font-size: 12px;
     font-weight: 600;
@@ -638,9 +704,11 @@
   /* One rule between groups, so the menu reads as sections rather than as a
      column of switches. */
   .settings-rule {
-    height: 1px;
-    margin: 4px 0 2px;
-    background: color-mix(in srgb, var(--text) 12%, transparent);
+    flex: none;
+    align-self: stretch;
+    height: 2px;
+    margin: 10px -24px 8px;
+    background: color-mix(in srgb, var(--text) 14%, transparent);
   }
   /* What the page could not do. Said once, in the place explanations live. */
   .settings-note,
@@ -655,33 +723,65 @@
      own. The list used to be drawn inside a bordered card within the panel —
      the shape it had when it floated over the toolbar in the corner — which
      read as a second panel that had landed on top of the settings. */
-  .key-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .key-says {
-    flex: 1 1 auto;
+  .key-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    border-radius: 8px;
+    overflow: hidden;
     font-size: 12px;
-    color: var(--muted);
   }
-  .key-cap {
-    flex: 0 0 auto;
-    min-width: 76px;
-    font: inherit;
-    font-size: 11px;
+  .key-table th {
+    padding: 6px 12px;
+    background: color-mix(in srgb, var(--text) 6%, transparent);
     color: var(--muted);
-    background: color-mix(in srgb, var(--text) 10%, transparent);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .key-table th:last-child { text-align: right; }
+  .key-table td {
+    padding: 6px 12px;
+    border-top: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    vertical-align: middle;
+  }
+  .key-table tbody tr:hover td { background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .key-says { color: var(--text); }
+  .key-cell { text-align: right; white-space: nowrap; }
+  .key-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px;
     border: 0;
-    border-radius: 5px;
-    padding: 3px 8px;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
     cursor: pointer;
   }
-  .key-cap:hover { color: var(--text); }
-  /* Listening. The next press is the answer, so it says so. */
-  .key-cap.waiting {
-    color: var(--bg);
+  .key-button:hover .key-cap { border-color: var(--muted); }
+  .key-cap {
+    display: inline-flex;
+    align-items: center;
+    min-width: 22px;
+    justify-content: center;
+    padding: 2px 7px;
+    border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    color: var(--text);
+    font: 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .key-plus { color: var(--muted); font-size: 10px; }
+  .key-wait {
+    padding: 2px 8px;
+    border-radius: 5px;
     background: var(--status-renamed);
+    color: var(--bg);
+    font-size: 11px;
   }
   .key-reset {
     margin-top: 8px;
@@ -752,5 +852,10 @@
   .settings-version {
     color: var(--vscode-descriptionForeground, #8b949e);
     font-size: 11px;
+  }
+
+  .agents-section.off {
+    opacity: 0.45;
+    filter: grayscale(0.6);
   }
 </style>

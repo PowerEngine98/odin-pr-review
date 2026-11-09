@@ -19,6 +19,7 @@
   model, one arrangement, one piece of arithmetic behind every arrow.
 -->
 <script lang="ts">
+  import AgentsReminder from "./hud/AgentsReminder.svelte";
   import SupportModal from "./support/SupportModal.svelte";
   import Toasts from "./support/Toasts.svelte";
   import { support } from "./support/support.svelte.js";
@@ -32,7 +33,6 @@
   import Chrome from "./chrome/Chrome.svelte";
   import Checks from "./hud/Checks.svelte";
   import Deciding from "./hud/Deciding.svelte";
-  import Pairing from "./hud/Pairing.svelte";
   import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
   import { cardUnderCentre } from "./hud/here.js";
@@ -466,7 +466,6 @@
   -->
   <div class="left-dock" style="top:{chromeBottom + 14}px">
     <Checks />
-    <Pairing />
   </div>
 
   <!-- Away while a tour plays, without touching the setting: the canvas is the
@@ -499,6 +498,7 @@
        here rather than in the console it usually comes from: it covers the
        window, and a component inside a panel cannot cover the panel. -->
   <Picture />
+  <AgentsReminder />
   {#if support.open}
     <SupportModal />
   {/if}

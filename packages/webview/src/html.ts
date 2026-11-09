@@ -102,6 +102,7 @@ export interface RenderOptions {
   merging?: unknown;
   /** Whether the host can post a review; without it the composer is pointless. */
   canReview?: boolean;
+  version?: string;
   /** Settings the page draws switched off, each with what it would take to have it. */
   locked?: Record<string, string>;
   /** Offer a button that asks whoever drew the page to turn the rest on. */
@@ -417,6 +418,7 @@ export function renderHtml(
       ...(graph.meta.worktree ? { worktree: true } : {}),
     },
     canReview: options.canReview === true,
+    ...(options.version ? { version: options.version } : {}),
     ...(options.locked ? { locked: options.locked } : {}),
     ...(options.unlock ? { unlock: true } : {}),
     ...(options.fresh ? { fresh: options.fresh } : {}),

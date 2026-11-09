@@ -25,6 +25,8 @@
   import type { AgentView } from "../model.js";
   import { model, notify, settings, ui } from "../state.svelte.js";
 
+  let { embedded = false }: { embedded?: boolean } = $props();
+
   const available = $derived(model.current.agents);
   const live = $derived(model.current.meta.worktree === true);
   const folded = $derived(settings.hud.agentsFolded);
@@ -48,7 +50,7 @@
   let asking = $state(false);
 
   $effect(() => {
-    if (!live) return;
+    if (!live && !embedded) return;
     if (untrack(() => asked) || untrack(() => available !== undefined)) return;
     asked = true;
     asking = true;
@@ -218,10 +220,14 @@
   Absent rather than empty over a reading of the forge's copy, and absent when
   the reader has dismissed it.
 -->
-{#if live && settings.hud.agents}
-  <div class="pairing-panel" class:folded>
+{#if embedded || (live && settings.hud.agents)}
+  <div class="pairing-panel" class:folded={folded && !embedded} class:embedded>
     <div class="pairing-head">
-      AI pairing
+      {#if embedded}
+        <span class="pairing-hint">Switched on, in order: a message goes to the first one free.</span>
+      {:else}
+        AI pairing
+      {/if}
       {#if on.length > 0}
         <span class="pairing-count">{on.length}</span>
       {/if}
@@ -260,6 +266,7 @@
           <path d="M13.2 1.9v3h-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </button>
+      {#if !embedded}
       <button
         class="hud-close"
         title={folded ? "Show the agents" : "Fold the agents away"}
@@ -287,9 +294,10 @@
           <path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
         </svg>
       </button>
+      {/if}
     </div>
 
-    {#if !folded}
+    {#if !folded || embedded}
       {#if available === undefined}
         <div class="pairing-empty">Looking for installed agents…</div>
       {:else if ordered.length === 0}
@@ -706,5 +714,24 @@
   .agent-move {
     display: inline-flex;
     flex: 0 0 auto;
+  }
+
+  .pairing-panel.embedded {
+    width: auto;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-size: 12px;
+  }
+
+  .pairing-hint {
+    flex: 1;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: none;
+    letter-spacing: normal;
   }
 </style>

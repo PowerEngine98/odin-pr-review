@@ -45,6 +45,7 @@ export async function pageOf(
     snippets?: [string, Snippet[]][];
     locked?: Record<string, string>;
     unlock?: boolean;
+    version?: string;
   },
 ): Promise<string> {
   const graph = withoutTests(everything);
@@ -67,5 +68,6 @@ export async function pageOf(
     highlight,
     ...(options.locked ? { locked: options.locked } : {}),
     ...(options.unlock ? { unlock: true } : {}),
+    ...(options.version ? { version: options.version } : {}),
   });
 }

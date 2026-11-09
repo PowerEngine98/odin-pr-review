@@ -737,7 +737,11 @@ describe("pairing with an agent", () => {
      * with this one it asked, the answer arrived, and Claude's terminal drew
      * itself with the panel still shut.
      */
-    expect(pairing).toMatch(/\$effect\(\(\) => \{\s*\n\s*if \(!live\) return;/);
+    expect(pairing).toMatch(/\$effect\(\(\) => \{\s*\n\s*if \(!live && !embedded\) return;/);
+    const reminder = source("hud/AgentsReminder.svelte");
+    expect(reminder).toMatch(/if \(!live \|\| looked \|\| found !== undefined\) return;/);
+    expect(reminder).toMatch(/notify\("discoverAgents"/);
+    expect(source("App.svelte")).toMatch(/<AgentsReminder \/>/);
     expect(pairing).not.toMatch(/if \(!live \|\| !settings\.hud\.agents\) return/);
     // And the terminals never depended on the panel to begin with: they are
     // drawn from what is open and what exists.
