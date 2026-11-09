@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 — 2026-11-09
+
+- feat: a step-by-step GitHub CLI setup, and a README with a picture per feature
+
 ## 0.6.3 — 2026-11-09
 
 - docs: a shorter README that sells Odin, with the depth moved to each package
