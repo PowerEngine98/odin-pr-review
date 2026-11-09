@@ -120,8 +120,17 @@ jobs:
           ITEM: publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
         run: |
           api=https://chromewebstore.googleapis.com
-          upload=$(curl -sS --fail-with-body -X POST -H "Authorization: Bearer $TOKEN" \
-            -T dist/odin-pr-review-browser.zip "$api/upload/v2/$ITEM:upload")
+          review=$(curl -sS -H "Authorization: Bearer $TOKEN" "$api/v2/$ITEM:fetchStatus" \
+            | jq -r '.submittedItemRevisionStatus.state // empty')
+          if [ "$review" = "PENDING_REVIEW" ]; then
+            echo "::warning::An earlier version is still in Chrome Web Store review; this one was not uploaded."
+            exit 0
+          fi
+          if ! upload=$(curl -sS --fail-with-body -X POST -H "Authorization: Bearer $TOKEN" \
+            -T dist/odin-pr-review-browser.zip "$api/upload/v2/$ITEM:upload"); then
+            echo "::error::Chrome Web Store refused the upload: $upload"
+            exit 1
+          fi
           echo "upload: $upload"
           state=$(echo "$upload" | jq -r '.uploadState // empty')
           for _ in $(seq 1 30); do
@@ -133,8 +142,12 @@ jobs:
             echo "::error::Chrome Web Store upload ended as ${state:-unknown}"
             exit 1
           fi
-          curl -sS --fail-with-body -X POST -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" -d '{}' "$api/v2/$ITEM:publish"
+          if ! published=$(curl -sS --fail-with-body -X POST -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" -d '{}' "$api/v2/$ITEM:publish"); then
+            echo "::error::Chrome Web Store refused to publish: $published"
+            exit 1
+          fi
+          echo "publish: $published"
 
       # The published version written back, so the repository says what is live.
       # A push made with this workflow's own token starts no further runs.
