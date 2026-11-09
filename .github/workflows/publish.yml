@@ -88,11 +88,12 @@ jobs:
           cat "$RUNNER_TEMP/notes.md"
           node --input-type=module -e '
             import { readFileSync, writeFileSync } from "node:fs";
-            import { withEntry } from "./scripts/release-notes.mjs";
+            import { mergedHistory, withEntry } from "./scripts/release-notes.mjs";
             const path = "packages/vscode-ext/CHANGELOG.md";
             const notes = readFileSync(process.env.RUNNER_TEMP + "/notes.md", "utf8").trim();
             const date = new Date().toISOString().slice(0, 10);
-            writeFileSync(path, withEntry(readFileSync(process.env.RUNNER_TEMP + "/previous.md", "utf8"), process.env.NEXT, date, notes));
+            const history = mergedHistory(readFileSync(path, "utf8"), readFileSync(process.env.RUNNER_TEMP + "/previous.md", "utf8"));
+            writeFileSync(path, withEntry(history, process.env.NEXT, date, notes));
           '
           echo "path=$RUNNER_TEMP/notes.md" >> "$GITHUB_OUTPUT"
 

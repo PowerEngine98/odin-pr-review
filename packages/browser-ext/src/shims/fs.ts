@@ -89,3 +89,7 @@ export default {
   readFile,
   promises,
 };
+
+export const mkdtemp = unavailable("mkdtemp");
+export const writeFile = unavailable("writeFile");
+export const rm = unavailable("rm");

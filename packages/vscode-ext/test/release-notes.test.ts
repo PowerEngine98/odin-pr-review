@@ -66,3 +66,17 @@ describe("the notes a release publishes", () => {
     expect(next).toBe("# Changelog\n\n## 1.1.0 — 2026-02-02\n\n### Bug fixes\n\n- New\n\n## 1.0.0 — 2026-01-01\n\n- Old\n");
   });
 });
+
+describe("the history a release builds on", () => {
+  // @ts-expect-error a plain script, without types
+  const load = () => import("../../../scripts/release-notes.mjs");
+
+  it("keeps the repository's entries and adds the versions only the last tag has", async () => {
+    const { mergedHistory } = await load();
+    const kept = "# Changelog\n\n## 1.0.1 — 2026-01-02\n\n### Bug fixes\n\n- Rewritten\n\n## 1.0.0 — 2026-01-01\n\n- First\n";
+    const released = "# Changelog\n\n## 1.1.0 — 2026-01-03\n\n- Newest\n\n## 1.0.1 — 2026-01-02\n\n- fix: raw subject\n";
+    expect(mergedHistory(kept, released)).toBe(
+      "# Changelog\n\n## 1.1.0 — 2026-01-03\n\n- Newest\n\n## 1.0.1 — 2026-01-02\n\n### Bug fixes\n\n- Rewritten\n\n## 1.0.0 — 2026-01-01\n\n- First\n",
+    );
+  });
+});

@@ -485,6 +485,19 @@ function assignRanks(
     if (!changed) break;
   }
 
+  const fed = new Set(forward.map((edge) => edge.to.nodeId));
+  const nearest = new Map<string, number>();
+  for (const edge of forward) {
+    if (fed.has(edge.from.nodeId)) continue;
+    const at = byId.get(edge.to.nodeId)!.rank;
+    const held = nearest.get(edge.from.nodeId);
+    if (held === undefined || at < held) nearest.set(edge.from.nodeId, at);
+  }
+  for (const [id, at] of nearest) {
+    const node = byId.get(id)!;
+    if (at - 1 > node.rank) node.rank = at - 1;
+  }
+
   // Files with no references of their own form a trailing column rather than
   // crowding the sources; they are changes the reviewer reads on their own.
   const lastRank = nodes.reduce((max, n) => Math.max(max, n.rank), 0);
