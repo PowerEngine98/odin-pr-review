@@ -10,6 +10,7 @@ import {
   ui,
   view,
 } from "../state.svelte.js";
+import { tour } from "../tour/state.svelte.js";
 import { onApple } from "./apple.js";
 import { pinBox, type Drawn } from "./drawn.js";
 import { aimFor, type Spot } from "./keys.js";
@@ -137,7 +138,19 @@ let origin: { x: number; y: number } | null = null;
  */
 const HANDLES = ".card, .card-slot, path.hit, .mark, .port, .cluster-act";
 
+/**
+ * A tour that is playing has the camera.
+ *
+ * The player flies it from frame to frame, and a reader's drag in the middle of
+ * one is a flight landing somewhere the narration is not about. Paused, the
+ * drawing is theirs again, and playing on flies back to where the guide was.
+ */
+function guided(): boolean {
+  return tour.active && tour.playing;
+}
+
 export function beginPan(event: PointerEvent, viewport: HTMLElement): void {
+  if (guided()) return;
   const target = event.target as Element | null;
   if (target?.closest(HANDLES)) return;
   // The reader is moving the drawing themselves, so wherever they were is no
@@ -170,6 +183,7 @@ export function endPan(event: PointerEvent, viewport: HTMLElement): void {
 
 export function wheel(event: WheelEvent, viewport: HTMLElement): void {
   event.preventDefault();
+  if (guided()) return;
   letGo();
 
   /*
@@ -245,6 +259,7 @@ function reading(): Reading {
     showTests: settings.showTests,
     showImports: settings.showImports,
     showUnchanged: settings.showUnchanged,
+    showUntouched: settings.showUntouched,
     showInfra: settings.showInfra,
     hideViewed: settings.hideViewed,
     part: ui.part,
@@ -783,11 +798,12 @@ function fly(x: number, y: number, scale: number): void {
  *
  * The chrome covers the top of the viewport, so the middle of the *visible*
  * canvas is lower than the middle of the element. Landing on the geometric
- * centre puts the line the reader was sent to behind the bar.
+ * centre puts the line the reader was sent to behind the bar. A tour's player
+ * covers the bottom the same way, while it is up.
  */
 function middleOf(rect: { height: number }, y: number, scale: number): number {
   const top = chromeHeight();
-  return top + (rect.height - top) / 2 - y * scale;
+  return top + (rect.height - tourRoom() - top) / 2 - y * scale;
 }
 
 /**
@@ -846,6 +862,102 @@ export function centreOn(x: number, y: number): void {
   fly(x, y, view.scale);
 }
 
+/**
+ * Flies to a point at a scale the caller chose.
+ *
+ * For the tour alone, whose frames name their own distance. Everything the
+ * reader presses goes through `centreOn` or `showFile`, which decide the scale
+ * themselves for the reasons given there.
+ */
+export function showPoint(x: number, y: number, scale: number): void {
+  fly(x, y, clamp(scale, MIN_SCALE, MAX_SCALE));
+}
+
+/** How much of the bottom of the view a tour's player and what stands on it take. */
+function tourRoom(): number {
+  const said = getComputedStyle(document.documentElement).getPropertyValue("--tour-room");
+  const room = Number.parseFloat(said);
+  return Number.isFinite(room) ? room + 44 : 0;
+}
+
+/**
+ * Code shown the way a person would put it on a screen to talk about it.
+ *
+ * As close as lets `across` — the card the code is in — fill the width, so the
+ * lines are as large as they can be without being cut off at the sides; then
+ * no closer than leaves `focus` with room above and below it for the code
+ * around it; and never further out than `floor`, where text stops being drawn.
+ * Placed in what is left of the view between the bar at the top and a tour's
+ * player at the bottom, rather than in the middle of the whole frame, part of
+ * which is covered. `top` puts the start of `focus` at the top instead of its
+ * middle at the middle, for a file being opened at its beginning.
+ */
+type Area = { x: number; y: number; width: number; height: number };
+
+const AROUND_MARGIN = 28;
+
+/** The scale `showAround` would choose, for asking whether the camera is already there. */
+export function aroundScale(
+  focus: Area,
+  across: Area,
+  floor: number,
+  align: "middle" | "top" = "middle",
+): number {
+  if (!framedIn) return view.scale;
+  const rect = framedIn.getBoundingClientRect();
+  const wide = Math.max(1, rect.width - 2 * AROUND_MARGIN);
+  const tall = Math.max(1, rect.height - tourRoom() - chromeHeight() - 2 * AROUND_MARGIN);
+  const room = align === "top" ? focus.height : focus.height * 3;
+  return clamp(
+    Math.max(floor, Math.min(wide / Math.max(1, across.width), tall / Math.max(1, room))),
+    MIN_SCALE,
+    MAX_SCALE,
+  );
+}
+
+export function showAround(
+  focus: Area,
+  across: Area,
+  floor: number,
+  align: "middle" | "top" = "middle",
+): void {
+  if (!framedIn) return;
+  const rect = framedIn.getBoundingClientRect();
+  const margin = AROUND_MARGIN;
+  const top = chromeHeight();
+  const bottom = rect.height - tourRoom();
+  const wide = Math.max(1, rect.width - 2 * margin);
+  const scale = aroundScale(focus, across, floor, align);
+  const fits = across.width * scale <= wide;
+  const middle = fits ? across.x + across.width / 2 : focus.x + Math.min(focus.width, wide / scale) / 2;
+  const toY =
+    align === "top"
+      ? top + margin - focus.y * scale
+      : top + (bottom - top) / 2 - (focus.y + focus.height / 2) * scale;
+  letGo();
+  land(rect.width / 2 - middle * scale, toY, scale);
+}
+
+/**
+ * The scale at which an area of the drawing fits the visible canvas, with room
+ * around it. The chrome is taken off the top and a tour's player off the
+ * bottom, since what is under them is not seen.
+ */
+export function fitScale(
+  area: { width: number; height: number },
+  margin = 48,
+): number {
+  if (!framedIn) return view.scale;
+  const rect = framedIn.getBoundingClientRect();
+  const wide = Math.max(1, rect.width - 2 * margin);
+  const tall = Math.max(1, rect.height - tourRoom() - chromeHeight() - 2 * margin);
+  return clamp(
+    Math.min(wide / Math.max(1, area.width), tall / Math.max(1, area.height)),
+    MIN_SCALE,
+    MAX_SCALE,
+  );
+}
+
 /** Frames the whole drawing, for anything that cannot reach the viewport. */
 export function fitNow(): void {
   if (framedIn) fit(framedIn);
@@ -881,6 +993,25 @@ export function onScreen(): { left: number; top: number; width: number; height: 
     top: -view.y / view.scale,
     width: rect.width / view.scale,
     height: rect.height / view.scale,
+  };
+}
+
+/**
+ * What of the drawing can actually be seen: under the bar at the top and above
+ * a tour's player at the bottom, with a little room inside both, since a line
+ * against either edge is a line half hidden.
+ */
+export function clearOnScreen(): { left: number; top: number; width: number; height: number } {
+  if (!framedIn) return { left: 0, top: 0, width: 0, height: 0 };
+  const rect = framedIn.getBoundingClientRect();
+  const margin = 16;
+  const top = chromeHeight() + margin;
+  const bottom = rect.height - tourRoom() - margin;
+  return {
+    left: (margin - view.x) / view.scale,
+    top: (top - view.y) / view.scale,
+    width: Math.max(0, rect.width - 2 * margin) / view.scale,
+    height: Math.max(0, bottom - top) / view.scale,
   };
 }
 
@@ -959,6 +1090,17 @@ function arriveAt(): number {
  * Answers with the card it flew to, for whoever marks where the reader is.
  */
 export function showFile(path: string): string | null {
+  return showFileAt(path, arriveAt());
+}
+
+/**
+ * Flies to a file's card at a scale the caller chose, by the same landing rule.
+ *
+ * The tour's way in: its guide says how close — the whole card, reading
+ * distance, close up — and means it in both directions, which `showFile`'s
+ * "never zoom out" would refuse.
+ */
+export function showFileAt(path: string, scale: number): string | null {
   if (!framedIn) return null;
   const card = shown().find((placed) => placed.node.path === path);
   // A file the drawing is not currently showing — filtered away, or in another
@@ -966,7 +1108,7 @@ export function showFile(path: string): string | null {
   // model would fly to where the card would have been if nothing were filtered.
   if (!card) return null;
 
-  const scale = arriveAt();
+  scale = clamp(scale, MIN_SCALE, MAX_SCALE);
   const spot: Spot = {
     id: card.node.id,
     x: card.x,

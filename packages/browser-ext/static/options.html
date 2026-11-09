@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Odin · GitHub access</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --card: #161b22;
+    --fg: #e6edf3;
+    --muted: #8d96a0;
+    --line: #30363d;
+    --accent: #4493f8;
+    --go: #238636;
+    --go-hover: #2ea043;
+    --ok: #3fb950;
+    --bad: #f85149;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fa;
+      --card: #ffffff;
+      --fg: #1f2328;
+      --muted: #59636e;
+      --line: #d1d9e0;
+      --accent: #0969da;
+      --ok: #1a7f37;
+      --bad: #d1242f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 48px 16px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+  .brand img { width: 40px; height: 40px; border-radius: 10px; }
+  .brand h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+  .card { padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+  .card + .card { margin-top: 16px; }
+  h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  .lead { margin: 0 0 16px; color: var(--muted); }
+  .step { display: flex; gap: 12px; align-items: flex-start; }
+  .step > div { flex: 1; min-width: 0; }
+  .step + .step { margin-top: 18px; }
+  .num { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-size: 12px; font-weight: 600; }
+  .step h3 { margin: 2px 0 6px; font-size: 14px; font-weight: 600; }
+  .step p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .create { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 6px; background: var(--go); color: #fff; font-weight: 600; text-decoration: none; }
+  .create:hover { background: var(--go-hover); }
+  .field { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  button { padding: 7px 14px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--fg); font: inherit; font-weight: 600; cursor: pointer; }
+  button.primary { border-color: transparent; background: var(--accent); color: #fff; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { min-height: 20px; margin: 10px 0 0; font-size: 13px; }
+  .status.ok { color: var(--ok); }
+  .status.bad { color: var(--bad); }
+  .saved { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .saved p { margin: 0; }
+  .note { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
+  code { padding: 1px 5px; border-radius: 4px; background: color-mix(in srgb, var(--muted) 18%, transparent); font-size: 12px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <img src="icon128.png" alt="">
+    <div>
+      <h1>Connect Odin to GitHub</h1>
+      <p>For private repositories, and more than 60 reads an hour</p>
+    </div>
+  </div>
+
+  <section class="card" id="saved-card" hidden>
+    <div class="saved">
+      <p id="saved-as">A token is saved.</p>
+      <button id="forget">Disconnect</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="step">
+      <span class="num">1</span>
+      <div>
+        <h3>Create a read-only token on GitHub</h3>
+        <p>Opens GitHub with everything filled in: read access to pull requests and contents, nothing else. Choose the repositories, then press <strong>Generate token</strong>.</p>
+        <a class="create" id="create" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Create a token on GitHub ↗</a>
+      </div>
+    </div>
+    <div class="step">
+      <span class="num">2</span>
+      <div>
+        <h3>Paste it here</h3>
+        <p>GitHub shows it once, starting with <code>github_pat_</code>.</p>
+        <div class="field">
+          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+          <button id="save" class="primary" disabled>Connect</button>
+        </div>
+        <p class="status" id="status" role="status"></p>
+      </div>
+    </div>
+  </section>
+
+  <p class="note">Syncing with VS Code? Then you don't need a token: Odin reads through the GitHub CLI signed in there. The token stays in this browser's extension storage and is only ever sent to <code>api.github.com</code>.</p>
+</main>
+<script src="options.js"></script>
+</body>
+</html>

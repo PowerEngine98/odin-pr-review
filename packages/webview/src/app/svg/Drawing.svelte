@@ -53,6 +53,7 @@
     showTests: true,
     showImports: drawn.includeImports,
     showUnchanged: drawn.includeUnchanged,
+    showUntouched: true,
     showInfra: true,
     hideViewed: false,
     part: null,

@@ -101,6 +101,7 @@ const READING: Reading = {
   showTests: true,
   showImports: true,
   showUnchanged: true,
+  showUntouched: true,
   showInfra: true,
   hideViewed: false,
   part: null,

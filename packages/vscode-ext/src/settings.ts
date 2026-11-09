@@ -43,6 +43,11 @@ export class SettingsStore {
       : undefined;
   }
 
+  /** One setting changed from outside the page, the rest kept. */
+  async merge(patch: Record<string, unknown>): Promise<void> {
+    await this.write({ ...(this.read() ?? {}), ...patch });
+  }
+
   /** Remembers the page's answer, whatever it happens to contain. */
   async write(value: unknown): Promise<void> {
     if (value === null || typeof value !== "object") return;

@@ -33,6 +33,7 @@
     label = false,
     title,
     hint,
+    disabled = false,
     onchange,
   }: {
     /**
@@ -55,6 +56,7 @@
     title?: string;
     /** For the canvas's own hover hints, which read this attribute. */
     hint?: string;
+    disabled?: boolean;
     onchange?: (viewed: boolean) => void;
   } = $props();
 
@@ -91,10 +93,11 @@
   of the canvas, a panel that shuts when the page is clicked past it — and
   setting the box is not a request for any of that.
 -->
-<label class="viewed" class:is-viewed={checked} data-hint={hint} title={tooltip}>
+<label class="viewed" class:is-viewed={checked} class:is-locked={disabled} data-hint={hint} title={tooltip}>
   <input
     type="checkbox"
     {checked}
+    {disabled}
     onclick={(event) => event.stopPropagation()}
     onchange={toggle}
   />
@@ -102,6 +105,15 @@
 </label>
 
 <style>
+  .viewed.is-locked {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .viewed.is-locked input {
+    cursor: not-allowed;
+  }
+
   .viewed {
     /* Named once, so the rules below read as what they draw rather than as a
        chain of fallbacks. The editor's own tokens where it has an opinion: a

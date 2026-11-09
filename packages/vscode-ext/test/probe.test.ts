@@ -1563,6 +1563,64 @@ describe("a live reading of the working tree", () => {
     expect(view.page()).toContain("one.ts");
   }, 60_000);
 
+  it("refreshes the side list without replacing the page it is drawn in", async () => {
+    /*
+     * The reported fault, driven end to end: on a live reading the folders the
+     * reader had collapsed in the side list came back open.
+     *
+     * What was behind it is that every redraw of the list assigned a new
+     * document to the view, and a live reading is rebuilt on every watched
+     * save — so the whole page was thrown away and built again several times a
+     * minute, taking with it everything the reader had arranged in the strip
+     * and that the model does not describe: the references unfolded under a
+     * file, how far down they had scrolled, what was in the filter box.
+     *
+     * Driven here rather than reasoned about, because the fault is in the path
+     * and not in any one function: a real repository, a real save, the real
+     * watcher, and the built extension. The page says `ready` the way the real
+     * one does on load, which is what decides whether the host may send to it
+     * at all.
+     */
+    execFileSync("git", ["checkout", "--", "."], { cwd: repo, stdio: "ignore" });
+    restore();
+
+    const editor = stub(local(), { folder: repo, baseRef: "base" });
+    const panel = await reading(editor);
+
+    const view = recorder();
+    expect(editor.views.length).toBeGreaterThan(0);
+    editor.views[0]!.resolveWebviewView({
+      webview: view.panel.webview,
+      onDidDispose: () => ({ dispose() {} }),
+    });
+    for (let waited = 0; waited < 5_000 && !view.page().includes("two.ts"); waited += 25) {
+      await wait(25);
+    }
+    expect(view.page()).toContain("two.ts");
+
+    // The script in that document having parsed. Until this the host has to
+    // keep rebuilding: a message posted at a page that is not listening is
+    // dropped, silently and for good.
+    view.say({ type: "ready" });
+    const documents = view.written.length;
+    const sent = () => view.posted.filter((message) => message["type"] === "model");
+    const before = sent().length;
+
+    await save(editor, panel, ON_DISK.replace("x5", "x6"));
+    for (let waited = 0; waited < 10_000 && sent().length === before; waited += 25) {
+      await wait(25);
+    }
+
+    // The refreshed reading reached the list,
+    expect(sent().length).toBeGreaterThan(before);
+    // it is the reading of the files as they now are,
+    expect(JSON.stringify(sent().at(-1))).toContain("two.ts");
+    // and the page the reader was using is the page they are still using.
+    expect(view.written.length).toBe(documents);
+
+    restore();
+  }, 60_000);
+
   it("says how far through the build it is, as a number", async () => {
     /*
      * A note on its own says what is happening and nothing about how long it

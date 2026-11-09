@@ -38,21 +38,21 @@ describe("grouping the change by directory", () => {
     // A Java-shaped tree is mostly single-child directories. Six nested rows
     // to reach one file spends the sidebar's width on indentation.
     const tree = buildTree([
-      file("backend/src/main/kotlin/com/labura/notifications/dao/NotificationDao.kt"),
+      file("backend/src/main/kotlin/com/example/notifications/dao/NotificationDao.kt"),
     ]);
     expect(outline(tree)).toEqual([
-      "backend/src/main/kotlin/com/labura/notifications/dao",
+      "backend/src/main/kotlin/com/example/notifications/dao",
       "  · NotificationDao.kt",
     ]);
   });
 
   it("stops joining where the tree actually branches", () => {
     const tree = buildTree([
-      file("backend/src/main/kotlin/com/labura/notifications/Model.kt"),
-      file("backend/src/main/kotlin/com/labura/messaging/Kafka.kt"),
+      file("backend/src/main/kotlin/com/example/notifications/Model.kt"),
+      file("backend/src/main/kotlin/com/example/messaging/Kafka.kt"),
     ]);
     expect(outline(tree)).toEqual([
-      "backend/src/main/kotlin/com/labura",
+      "backend/src/main/kotlin/com/example",
       "  messaging",
       "    · Kafka.kt",
       "  notifications",

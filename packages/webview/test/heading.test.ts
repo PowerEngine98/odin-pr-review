@@ -86,20 +86,20 @@ const STANDING: Standing = {
 };
 
 /**
- * `labura` holding `labura/common` holding `labura/common/mediaGroup`, which is
+ * `example` holding `example/common` holding `example/common/mediaGroup`, which is
  * the nest the fault was photographed on. Each level has to hold more than one
- * thing or it is not drawn at all, so `labura` has a second folder beside
+ * thing or it is not drawn at all, so `example` has a second folder beside
  * `common` and `common` has a second folder beside `mediaGroup`.
  */
 function nested() {
   const data = model([
-    card("m1", "labura/common/mediaGroup/one.ts", 0, 0),
-    card("m2", "labura/common/mediaGroup/two.ts", 0, 200),
-    card("m3", "labura/common/mediaGroup/three.ts", 1, 0),
-    card("u1", "labura/common/util/one.ts", 0, 600),
-    card("u2", "labura/common/util/two.ts", 1, 600),
-    card("a1", "labura/app/one.ts", 2, 0),
-    card("a2", "labura/app/two.ts", 2, 400),
+    card("m1", "example/common/mediaGroup/one.ts", 0, 0),
+    card("m2", "example/common/mediaGroup/two.ts", 0, 200),
+    card("m3", "example/common/mediaGroup/three.ts", 1, 0),
+    card("u1", "example/common/util/one.ts", 0, 600),
+    card("u2", "example/common/util/two.ts", 1, 600),
+    card("a1", "example/app/one.ts", 2, 0),
+    card("a2", "example/app/two.ts", 2, 400),
   ]);
   const drawn = place(data, arrangement(data), STANDING);
   const boxes = drawn.folders ?? [];
@@ -112,7 +112,7 @@ function nested() {
     drawn,
     // Outermost first, which is the order they are read in and the order their
     // names have to appear in down the screen.
-    chain: [at("labura"), at("labura/common"), at("labura/common/mediaGroup")],
+    chain: [at("example"), at("example/common"), at("example/common/mediaGroup")],
   };
 }
 

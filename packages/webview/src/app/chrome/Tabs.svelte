@@ -8,10 +8,14 @@
   take up room to say so.
 -->
 <script lang="ts">
+  import { clock, roman, topicSeconds } from "@odin/core/tour/tour.js";
+
   import { arriving } from "../hud/arriving.js";
   import { landed } from "../hud/boot.svelte.js";
   import { partPaths } from "../parts.js";
   import { keep, model, notify, ui, view } from "../state.svelte.js";
+  import { goToTopic } from "../tour/player.svelte.js";
+  import { tour } from "../tour/state.svelte.js";
   import { TICK } from "./icons.js";
 
   let { onFit }: { onFit?: () => void } = $props();
@@ -138,13 +142,62 @@
   $effect(() => {
     void ui.part;
     void model.current.parts;
+    void touring;
+    void tour.topic;
     markEnds();
+  });
+
+  /**
+   * In a tour the strip is the tour's: one tab per topic, the way a course
+   * lists its lessons. The parts come back when the tour is left, unchanged —
+   * the tour never touched which one was open.
+   */
+  const touring = $derived(tour.active && (tour.data?.topics.length ?? 0) > 0);
+  const watched = $derived(new Set(tour.watched));
+
+  /** The topic playing is kept in view as the tour moves along the strip. */
+  $effect(() => {
+    if (!touring || !strip) return;
+    void tour.topic;
+    strip.querySelector(".part-tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   });
 </script>
 
 <svelte:window onresize={markEnds} />
 
-{#if chains.length >= 2 || spare > 0}
+{#if touring}
+  <div class="parts-rail">
+    <div
+      class="parts"
+      class:more-left={moreLeft}
+      class:more-right={moreRight}
+      bind:this={strip}
+      onscroll={markEnds}
+      role="tablist"
+      aria-label="Topics in this tour"
+    >
+      {#each tour.data?.topics ?? [] as topic, at (topic.id)}
+        {@const done = watched.has(topic.id)}
+        <button
+          class="part-tab"
+          class:on={tour.topic === at}
+          class:finished={done}
+          role="tab"
+          aria-selected={tour.topic === at}
+          title={topic.summary}
+          onclick={() => goToTopic(at)}
+        >
+          <span class="numeral">{roman(at + 1)}</span>
+          {topic.title}
+          <span class="count">
+            <span class="total">{clock(topicSeconds(topic))}</span>
+          </span>
+          {#if done}<span class="tick">{@html TICK}</span>{/if}
+        </button>
+      {/each}
+    </div>
+  </div>
+{:else if chains.length >= 2 || spare > 0}
   <!-- The strip that scrolls sits inside a rail that does not. The rail carries
        the background: the fade at a travelling edge is drawn by masking the
        strip, and a mask takes the element's own background with it — which left
@@ -320,7 +373,7 @@
   }
   .part-tab:hover .count { color: var(--text); }
   /* Everything in it has been read. */
-  .count .tick {
+  .part-tab .tick {
     display: inline-flex;
     align-items: center;
     color: var(--status-renamed);
@@ -335,5 +388,9 @@
     background: color-mix(in srgb, #000 34%, transparent);
   }
   .part-tab.on .count .done { color: var(--text); }
-  .part-tab.on .count .tick { color: var(--added); }
+  .part-tab.on .tick { color: var(--added); }
+  .numeral {
+    font-variant-numeric: tabular-nums;
+    color: var(--status-renamed);
+  }
 </style>

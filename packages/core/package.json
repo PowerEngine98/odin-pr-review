@@ -29,6 +29,10 @@
     "./layout/curves.js": {
       "types": "./dist/layout/curves.d.ts",
       "default": "./dist/layout/curves.js"
+    },
+    "./tour/tour.js": {
+      "types": "./dist/tour/tour.d.ts",
+      "default": "./dist/tour/tour.js"
     }
   },
   "scripts": {

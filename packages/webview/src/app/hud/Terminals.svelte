@@ -11,6 +11,7 @@
 <script lang="ts">
   import type { AgentView } from "../model.js";
   import { model, settings } from "../state.svelte.js";
+  import { tour } from "../tour/state.svelte.js";
   import Terminal from "./Terminal.svelte";
   import { shareOut } from "./column.js";
 
@@ -108,7 +109,11 @@
       if (box.right <= left || box.left >= right) continue;
       top = Math.max(top, box.bottom);
     }
-    room = Math.max(LEAST, window.innerHeight - top - GAP * 2);
+    /* A tour's player takes the bottom of the window, and the column stands on it. */
+    const player = tour.active
+      ? Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tour-room")) || 0
+      : 0;
+    room = Math.max(LEAST, window.innerHeight - top - GAP * 2 - player);
 
     /*
      * Watched for size as well as for existence.
@@ -123,6 +128,13 @@
     sizes?.disconnect();
     for (const panel of standing) sizes?.observe(panel);
   }
+
+  /* Measured again when a tour starts or ends: the player arrives and leaves without touching the body. */
+  $effect(() => {
+    void tour.active;
+    const again = setTimeout(measure, 80);
+    return () => clearTimeout(again);
+  });
 
   /** Kept across measurements: what is watched changes with what is on screen. */
   let sizes: ResizeObserver | undefined;
@@ -167,6 +179,7 @@
 {#if live && open.length > 0}
   <div
     class="terminal-dock"
+    class:touring={tour.active}
     bind:this={dock}
     style={room ? `max-height:${room}px` : undefined}
   >
@@ -182,13 +195,31 @@
 {/if}
 
 <style>
+  /* Over the tour's player, at its width, so the two read as one bar. */
+  .terminal-dock.touring {
+    left: 12px;
+    right: 12px;
+    max-width: 880px;
+    margin: 0 auto;
+    bottom: calc(var(--tour-room, 0px) - 1px);
+    align-items: stretch;
+  }
+  .terminal-dock.touring > :global(.terminal) {
+    width: auto !important;
+  }
+  .terminal-dock.touring > :global(.terminal:last-child) {
+    border-bottom-width: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
   .terminal-dock {
     position: fixed;
     /* One edge, said explicitly. A fixed element given both a left and a right
        is stretched between them rather than positioned twice. */
     right: 12px;
     left: auto;
-    bottom: 12px;
+    /* Standing on a tour's player while one plays, rather than over it. */
+    bottom: calc(12px + var(--tour-room, 0px));
     /*
      * Under the rest of the furniture, deliberately.
      *

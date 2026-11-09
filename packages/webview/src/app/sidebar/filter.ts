@@ -29,11 +29,17 @@ export function fileSurvives(file: FileView, needle: string): boolean {
  * An empty one is not a result: a heading over nothing is a heading that has
  * to be read and discounted.
  */
-export function folderSurvives(folder: FolderView, needle: string): boolean {
-  if (needle === "") return true;
+export function folderSurvives(
+  folder: FolderView,
+  needle: string,
+  untouched = true,
+): boolean {
+  if (needle === "" && untouched) return true;
   return (
-    folder.files.some((file) => fileSurvives(file, needle)) ||
-    folder.folders.some((child) => folderSurvives(child, needle))
+    folder.files.some(
+      (file) => (untouched || file.status !== "phantom") && fileSurvives(file, needle),
+    ) ||
+    folder.folders.some((child) => folderSurvives(child, needle, untouched))
   );
 }
 

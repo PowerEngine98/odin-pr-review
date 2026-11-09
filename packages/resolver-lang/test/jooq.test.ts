@@ -20,7 +20,7 @@ function schema(): SymbolIndex {
       "CREATE TABLE labor (id uuid);",
       "CREATE TYPE labor_notification_type AS ENUM ('labor_match');",
       "CREATE FUNCTION sync_notification_tg() RETURNS trigger AS $$ BEGIN END $$ LANGUAGE plpgsql;",
-      "CREATE SCHEMA labura;",
+      "CREATE SCHEMA example;",
     ].join("\n"),
   );
   return index;
@@ -54,7 +54,7 @@ function file(lines: string[], language = "kotlin"): FileNode {
 }
 
 const withImport = (text: string) =>
-  `import com.labura.jooq.generated.Tables\n${text}`;
+  `import com.example.jooq.generated.Tables\n${text}`;
 
 const found = (lines: string[], text?: string) =>
   jooqReferences([file(lines)], schema(), () => withImport(text ?? lines.join("\n")))

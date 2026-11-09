@@ -1,0 +1,37 @@
+.odin-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 29;
+  background: var(--bgColor-default, #0d1117);
+  border-top: 1px solid var(--borderColor-default, #30363d);
+}
+
+.odin-overlay::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 100vh;
+  background: inherit;
+}
+
+html.odin-open,
+html.odin-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.odin-overlay iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.odin-tab-icon {
+  vertical-align: text-bottom;
+  fill: currentColor;
+  color: var(--fgColor-muted, #8d96a0);
+}

@@ -8,7 +8,7 @@
 <script lang="ts">
   import Hit from "./Hit.svelte";
   import type { RefView } from "./model.js";
-  import { notify, ui } from "./state.svelte.js";
+  import { needle, notify } from "./state.svelte.js";
 
   let { ref, depth }: { ref: RefView; depth: number } = $props();
 
@@ -28,8 +28,8 @@
   }}
 >
   <span class="arrow">→</span>
-  <span class="symbol"><Hit text={ref.symbol} needle={ui.needle} /></span>
-  <span class="where"><Hit text={ref.where} needle={ui.needle} /></span>
+  <span class="symbol"><Hit text={ref.symbol} needle={needle()} /></span>
+  <span class="where"><Hit text={ref.where} needle={needle()} /></span>
 </div>
 
 <style>

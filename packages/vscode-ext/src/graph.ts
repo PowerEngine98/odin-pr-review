@@ -149,6 +149,21 @@ export interface BuiltGraph {
  * gets from `odin graph` — which matters, because the layout is supposed to be
  * something you remember.
  */
+/**
+ * Whether the last build is of the branch this checkout holds now.
+ *
+ * A live reading is of the checkout, so a branch switched underneath it is the
+ * same tab reading a different change — and the pull request the last build
+ * found belongs to the branch it was built from. Carried across the switch, it
+ * put one change's number, title and commits over another's files, and the
+ * number went on being asked for on every reload.
+ */
+async function sameBranch(request: BuildRequest, previous?: BuiltGraph): Promise<boolean> {
+  if (!previous) return false;
+  if (!request.worktree) return true;
+  return previous.graph.meta.headRef === ((await currentBranch({ cwd: request.cwd })) ?? "HEAD");
+}
+
 export async function buildGraphForRepo(
   request: BuildRequest,
   previous?: BuiltGraph,
@@ -164,6 +179,7 @@ export async function buildGraphForRepo(
 
   report("Reading the diff…");
   step?.begins("diff");
+  const kept = await sameBranch(request, previous);
   let graph = await graphFromRepo({
     cwd: request.cwd,
     ...(request.baseRef ? { baseRef: request.baseRef } : {}),
@@ -174,10 +190,12 @@ export async function buildGraphForRepo(
     // The forge is asked once. A rebuild provoked by a keystroke cannot have
     // changed the pull request's title, and `gh` is most of a second of network
     // in the middle of what is supposed to be an instant redraw.
-    ...(previous ? {} : { pullRequest: true }),
-    ...(request.number !== undefined ? { pullRequestNumber: request.number } : {}),
+    ...(kept ? {} : { pullRequest: true }),
+    ...(request.number !== undefined && (!previous || kept)
+      ? { pullRequestNumber: request.number }
+      : {}),
   });
-  if (previous?.graph.meta.pullRequest) {
+  if (kept && previous?.graph.meta.pullRequest) {
     graph = {
       ...graph,
       meta: { ...graph.meta, pullRequest: previous.graph.meta.pullRequest },
@@ -443,7 +461,7 @@ export async function stageGraphForRepo(
     ...(request.worktree ? { worktree: true } : {}),
     ...(request.since ? { sinceRef: request.since } : {}),
   });
-  if (previous.graph.meta.pullRequest) {
+  if (previous.graph.meta.pullRequest && (await sameBranch(request, previous))) {
     fresh = {
       ...fresh,
       meta: { ...fresh.meta, pullRequest: previous.graph.meta.pullRequest },

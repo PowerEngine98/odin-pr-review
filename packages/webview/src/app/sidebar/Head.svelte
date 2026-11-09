@@ -11,8 +11,9 @@
   and the fraction are simply absent until there is one.
 -->
 <script lang="ts">
+  import Viewed from "../shared/Viewed.svelte";
   import type { ChangeView } from "./model.js";
-  import { foldAll, ui } from "./state.svelte.js";
+  import { foldAll, showUntouched, ui } from "./state.svelte.js";
   import { progressOf } from "./tree.js";
 
   let { change }: { change: ChangeView } = $props();
@@ -57,7 +58,7 @@
     type="search"
     autocomplete="off"
     placeholder="Filter files and references"
-    oninput={(event) => (ui.needle = event.currentTarget.value.trim().toLowerCase())}
+    bind:value={ui.filter}
   />
   <!--
     The two ways to take the whole tree at once.
@@ -81,6 +82,12 @@
       title="Shut every folder, leaving the file you are standing on showing"
       onclick={() => foldAll(false)}
     >Collapse all</button>
+    <Viewed
+      label="Untouched files"
+      title="Files the change never touched, here and in the drawing"
+      checked={ui.showUntouched}
+      onchange={showUntouched}
+    />
   </div>
 </div>
 
@@ -144,9 +151,11 @@
 
   .all {
     display: flex;
+    align-items: center;
     gap: 10px;
     margin-top: 5px;
   }
+  .all :global(.viewed) { font-size: 0.85em; }
 
   /* Drawn as text rather than as buttons. They are a pair of standing commands
      over the list, and two filled buttons under the search box would be the

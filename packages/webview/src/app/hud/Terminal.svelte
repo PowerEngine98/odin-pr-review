@@ -24,6 +24,14 @@
   import { pictured } from "../pictured.svelte.js";
   import { model, notify, settings, ui } from "../state.svelte.js";
   import Ledger from "./Ledger.svelte";
+  import Narrated from "./Narrated.svelte";
+  import Lessons from "../tour/Lessons.svelte";
+  import { tourPanel } from "../tour/panel.svelte.js";
+  import { tour } from "../tour/state.svelte.js";
+  import { reflectPrompt } from "../tour/reflect.js";
+  import { placeOf, withFrame } from "../tour/attached.js";
+  import { grouped, shownAs } from "./models.js";
+  import { narration } from "./narrator.svelte.js";
   import { showPicture } from "./picture.svelte.js";
 
   let {
@@ -155,6 +163,12 @@
    * look at it.
    */
   let pane = $state<HTMLElement | null>(null);
+
+  /* This agent is the one making the sound: a block of its log read aloud, or the tour it plays. */
+  const sounding = $derived(
+    Boolean(narration.current && pane?.contains(narration.current)) ||
+      (tour.speaking && (settings.terminals ?? [])[0] === id),
+  );
   let following = $state(true);
 
   function scrolled(): void {
@@ -209,7 +223,27 @@
    * choice that survived a reload would put them back on a ledger when what
    * they opened the window for was to see whether anything is happening.
    */
-  let tab = $state<"log" | "ledger">("log");
+  let tab = $state<"log" | "ledger" | "tour">("log");
+
+  /*
+   * Turned to the Tour tab when somewhere else asked for it for this agent —
+   * the bar's "Give me a tour" — and the ask is taken off the board so it is
+   * answered once.
+   */
+  $effect(() => {
+    if (tourPanel.wanted !== id) return;
+    tab = "tour";
+    tourPanel.wanted = null;
+  });
+
+  /* A frame attached from the player: the log opened on it, the box ready to answer it. */
+  $effect(() => {
+    if (tourPanel.discussing !== id) return;
+    tourPanel.discussing = null;
+    touring = false;
+    tab = "log";
+    queueMicrotask(() => askBox?.focus());
+  });
 
   /**
    * Everything that has changed in this checkout, which is what the tab counts.
@@ -233,6 +267,86 @@
 
   function allow(next: string): void {
     settings.agency = { ...(settings.agency ?? {}), [id]: next as never };
+  }
+
+  /**
+   * What this agent is stopped on, asked here as well as in its thread: the
+   * console is where the reader is watching it, and an approval only the
+   * thread can answer is an agent that looks frozen.
+   */
+  const pending = $derived(
+    (model.current.comments ?? []).filter(
+      (comment) => comment.local && comment.agent === id && comment.approval?.state === "waiting",
+    ),
+  );
+
+  function decide(approvalId: string, yes: boolean, tool: string | undefined): void {
+    if (yes && tool === "ExitPlanMode" && rungs.has("edits") && (level === "read" || level === "ask")) {
+      allow("edits");
+    }
+    notify("answerApproval", { id: approvalId, allow: yes });
+  }
+
+  /** The agent critiques its own change through the tour, read-only, and stops at a plan. */
+  function reflect(): void {
+    if (!tour.data) return;
+    if (rungs.has("read")) allow("read");
+    tab = "log";
+    const said = reflectPrompt(tour.data);
+    notify("askAgents", { body: said, to: id, self: { name, label: "Self reflect based on the tour" } });
+  }
+
+  /**
+   * Which model this agent runs on.
+   *
+   * Beside the rungs, because it is the same kind of decision and the same
+   * person makes it: what this agent may do, and what it is. The tools differ
+   * about what they will accept, so what is offered comes from the host —
+   * what the tool itself printed when asked, or the aliases it publishes — and
+   * a tool that cannot be told at all is offered nothing rather than a control
+   * that sets something it never hears.
+   */
+  const offered = $derived(ui.models[id] ?? []);
+  const runsOn = $derived(settings.model?.[id] ?? "");
+  const inUse = $derived(ui.modelsInUse[id]);
+
+  /**
+   * What the dropdown holds, which is not only what the tool published.
+   *
+   * The name the reader is on comes first among the names even when the tool
+   * never offered it: two of these tools publish no names at all and take
+   * whatever they are given, so a choice typed in last week would otherwise
+   * vanish from the list that is meant to be showing it.
+   */
+  const choices = $derived(
+    runsOn && !offered.includes(runsOn) ? [runsOn, ...offered] : offered,
+  );
+
+  /** Typing a name the tool never published, which is how most of them work. */
+  let naming = $state(false);
+  let typed = $state("");
+
+  /** The marker for that entry. Not a model name, and could not be one. */
+  const OTHER = "\u0000other";
+
+  function runOn(name: string): void {
+    settings.model = { ...(settings.model ?? {}), [id]: name };
+  }
+
+  function picked(name: string): void {
+    if (name === OTHER) {
+      typed = runsOn;
+      naming = true;
+      return;
+    }
+    naming = false;
+    runOn(name);
+  }
+
+  /** The typed name, taken as a name: trimmed, and nothing else done to it. */
+  function takeTyped(): void {
+    runOn(typed.trim());
+    naming = false;
   }
 
   /** The conversation this agent is carrying here, when it is carrying one. */
@@ -431,10 +545,13 @@
   }
 
   function send(): void {
-    const said = prompt.trim();
+    let said = prompt.trim();
     // A picture on its own is a message: "look at this" is the whole of what a
     // reader usually means by pasting one.
     if (!said && pasted.length === 0) return;
+    const frame = tour.attached;
+    if (frame) said = withFrame(said, frame);
+    tour.attached = null;
     const images = pasted.map((one) => ({ name: one.name, data: one.url }));
     pasted = [];
     prompt = "";
@@ -448,6 +565,14 @@
     notify("askAgents", {
       body: said,
       to: id,
+      ...(frame?.file && frame.start
+        ? {
+            path: frame.file,
+            line: frame.end ?? frame.start,
+            startLine: frame.start,
+            side: frame.side === "base" ? "LEFT" : "RIGHT",
+          }
+        : {}),
       ...(images.length > 0 ? { images } : {}),
     });
   }
@@ -572,6 +697,9 @@
       .filter((block) => block.text.trim().length > 0);
   });
 
+  /** Where the reader last asked something, so only what answers it is news. */
+  const lastAsked = $derived(blocks.findLastIndex((block) => block.kind === "asked"));
+
   /**
    * Back to the conversation this came from.
    *
@@ -585,13 +713,15 @@
    * mark finally is rather than where it was as the drawing set off.
    */
   /** Who wrote the remark this block is quoting, and their face. */
-  function asker(thread: number | undefined): { name: string; avatar: string } {
+  function asker(thread: number | undefined): { name: string; avatar: string; self: boolean } {
     const root = (model.current.comments ?? []).find(
       (comment) => Number(comment.id) === thread,
     );
+    if (root?.selfAsked) return { name: root.author || name, avatar: "", self: true };
     return {
       name: root?.author || model.current.viewer || "",
       avatar: root?.avatar || model.current.viewerFace || "",
+      self: false,
     };
   }
 
@@ -699,11 +829,32 @@
    * whether the reader wants it folded, so it opens by itself the moment the
    * cover lifts.
    */
+  /*
+   * Folded for the length of a tour, without touching the setting.
+   *
+   * The tour is the thing being watched, and a log open beside it is a second
+   * text competing with the subtitles. Unfolding by hand during the tour is
+   * honoured until the tour ends; the next one folds it again.
+   */
+  let touring = $state(false);
+  $effect(() => {
+    touring = tour.active;
+  });
+
+  /* Playing again folds it again: the console opened during a pause gives the screen back. */
+  $effect(() => {
+    if (tour.active && tour.playing) touring = true;
+  });
+
   const folded = $derived(
-    ui.settling || cramped || (settings.terminalsFolded ?? []).includes(id),
+    ui.settling || cramped || touring || (settings.terminalsFolded ?? []).includes(id),
   );
 
   function fold(): void {
+    if (touring) {
+      touring = false;
+      return;
+    }
     /*
      * A console folded because there is no room for it opens by taking the
      * room, rather than by arguing with the arithmetic.
@@ -808,6 +959,15 @@
       {/if}
     </svg>
     <span class="terminal-name">{name}</span>
+    {#if sounding}
+      <span class="sounding" title="{name} is narrating" aria-label="{name} is narrating">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <path d="M2 6.2v3.6h2.2L11 13V3L4.2 6.2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          <path d="M4.4 9.8l1 3.2h1.8l-.9-2.9" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+          <path d="M13 6.2a2.4 2.4 0 0 1 0 3.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+        </svg>
+      </span>
+    {/if}
     {#if named && !renaming}
       <span class="terminal-label" title="What you call this conversation">{named}</span>
     {/if}
@@ -895,6 +1055,40 @@
     </span>
 
     <!--
+      What it runs on.
+
+      A dropdown rather than a row of buttons like the rungs beside it: the
+      rungs are four and they are the same four everywhere, where the models
+      are however many that tool can run — thirty-odd for one of them — and a
+      strip of thirty buttons is not a control. Absent entirely for a tool with
+      no way of being told, which is an honest blank rather than a dead one.
+
+      "Default" is first and is a real answer: it passes no flag at all, so the
+      agent runs on whatever that tool is set to everywhere else.
+    -->
+    {#if offered.length > 0 || ui.models[id]}
+      <select
+        class="model"
+        aria-label="Which model {name} runs on"
+        title={inUse ? `${name} is answering on ${inUse}` : runsOn ? `${name} runs on ${runsOn}` : `${name} runs on its own default`}
+        value={runsOn}
+        onchange={(event) => picked(event.currentTarget.value)}
+      >
+        <option value="">{runsOn === "" ? shownAs("", inUse) : "Default"}</option>
+        {#each grouped(choices) as group (group.family)}
+          <optgroup label={group.family}>
+            {#each group.models as one (one)}
+              <option value={one}>{runsOn === one ? shownAs(one, inUse) : one}</option>
+            {/each}
+          </optgroup>
+        {/each}
+        <!-- Two of these tools publish no names and take whatever they are
+             given, so the list is never the whole of what can be asked for. -->
+        <option value={OTHER}>Other…</option>
+      </select>
+    {/if}
+
+    <!--
       The two records this agent leaves, as two tabs.
 
       Beside the rungs rather than above the log, because they are the same kind
@@ -918,6 +1112,18 @@
         title="Every change to this checkout since the reading opened, with what it replaced"
         onclick={() => (tab = "ledger")}
       >Changes{#if wrote.length > 0}<span class="record-count">{wrote.length}</span>{/if}</button>
+      <button
+        class="record tour"
+        class:set={tab === "tour"}
+        aria-pressed={tab === "tour"}
+        title="A guided tour of the change, made by an agent and played over the drawing"
+        onclick={() => (tab = "tour")}
+      ><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+          <path d="M2.5 13.5l7-7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          <path d="M10 1.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z" fill="currentColor" />
+          <path d="M13.5 6l.4.9.9.4-.9.4-.4.9-.4-.9-.9-.4.9-.4z" fill="currentColor" />
+          <path d="M5.5 2l.4.9.9.4-.9.4-.4.9-.4-.9-.9-.4.9-.4z" fill="currentColor" />
+        </svg>Tour{#if tour.status === "making"}<span class="record-count">…</span>{/if}</button>
     </span>
 
     {#if conversation}
@@ -948,6 +1154,25 @@
       </button>
     {/if}
   </div>
+
+  {#if naming}
+    <!-- A model name the tool never published. It goes on a command line as a
+         single argument and nowhere else; the tool itself is what decides
+         whether it means anything. -->
+    <div class="terminal-rename">
+      <input
+        class="rename-box"
+        value={typed}
+        placeholder="The model name this tool expects"
+        oninput={(event) => (typed = event.currentTarget.value)}
+        onkeydown={(event) => {
+          if (event.key === "Enter") takeTyped();
+          if (event.key === "Escape") naming = false;
+        }}
+      />
+      <button class="terminal-act" title="Use it" aria-label="Use this model" onclick={takeTyped}>done</button>
+    </div>
+  {/if}
 
   {#if renaming}
     <!-- A name rather than an instruction: it never leaves this side and no
@@ -999,6 +1224,8 @@
          it asks the host for the ledger when it appears, and a component kept
          alive behind a tab nobody is looking at would ask on every rebuild. -->
     <Ledger agent={id} />
+  {:else if tab === "tour"}
+    <Lessons onReflect={reflect} />
   {:else}
   <div class="terminal-body" bind:this={pane} onscroll={scrolled}>
     {#if shown}
@@ -1167,7 +1394,16 @@
               remark is right: it was signed when it was written, and the page's
               copy is whatever the forge had last said by the time it was built.
             -->
-            {#if wrote.avatar}
+            {#if wrote.self}
+              <svg class="quoted-face self" viewBox="0 0 24 24" aria-label={wrote.name}>
+                <rect width="24" height="24" rx="12" fill={mark.color} />
+                {#if mark.stroke}
+                  <path d={mark.path} fill="none" stroke={mark.ink} stroke-width="2" stroke-linecap="round" />
+                {:else}
+                  <path d={mark.path} fill={mark.ink} />
+                {/if}
+              </svg>
+            {:else if wrote.avatar}
               <img class="quoted-face" src={wrote.avatar} alt={wrote.name} />
             {:else if wrote.name}
               <span class="quoted-face initials">{initialsOf(wrote.name)}</span>
@@ -1225,7 +1461,9 @@
           {/if}
           </div>
         {:else}
-          <Editor readonly value={block.text} />
+          <Narrated live={working && at > lastAsked} text={block.text}>
+            <Editor readonly value={block.text} />
+          </Narrated>
         {/if}
       {/each}
       <!--
@@ -1238,7 +1476,14 @@
       -->
       {#if working}
         <p class="still">
-          <span class="caret"></span>
+          <svg class="still-face" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
+            <rect width="24" height="24" rx="12" fill={mark.color} />
+            {#if mark.stroke}
+              <path d={mark.path} fill="none" stroke={mark.ink} stroke-width="2" stroke-linecap="round" />
+            {:else}
+              <path d={mark.path} fill={mark.ink} />
+            {/if}
+          </svg>
           <span class="still-what">working</span>
         </p>
       {/if}
@@ -1297,6 +1542,43 @@
       that. Above the box, where an attachment goes, and gone the moment it is
       sent.
     -->
+    {#each pending as waiting (waiting.id)}
+      {@const plan = waiting.approval?.tool === "ExitPlanMode"}
+      <div class="approval" role="alert">
+        <span class="approval-what">
+          {name} {plan ? "has a plan ready. Carry it out?" : `asks: may I ${waiting.approval?.what}?`}
+          {#if plan}<span class="approval-note">Approving also moves it to Edit, so it can write the files.</span>{/if}
+        </span>
+        <button class="approval-yes" type="button" onclick={() => decide(waiting.approval!.id, true, waiting.approval?.tool)}>
+          {plan ? "Approve plan" : "Allow"}
+        </button>
+        <button class="approval-no" type="button" onclick={() => decide(waiting.approval!.id, false, waiting.approval?.tool)}>
+          {plan ? "Keep planning" : "Deny"}
+        </button>
+      </div>
+    {/each}
+    {#if tour.attached}
+      <div class="attached" title={tour.attached.say}>
+        <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+          <path d="M10.5 4.5 5.6 9.4a1.6 1.6 0 0 0 2.3 2.3l5-5a3 3 0 0 0-4.3-4.3L3.4 7.6a4.4 4.4 0 0 0 6.2 6.2l3.4-3.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+        <span class="attached-what">
+          <span class="attached-head">Attached to the context · frame {tour.attached.frame} of “{tour.attached.topicTitle}”{#if placeOf(tour.attached)} · {placeOf(tour.attached)}{/if}</span>
+          <span class="attached-say">{tour.attached.say}</span>
+        </span>
+        <button
+          class="pasted-drop attached-drop"
+          type="button"
+          title="Do not attach this frame"
+          aria-label="Remove the attached frame"
+          onclick={() => (tour.attached = null)}
+        >
+          <svg viewBox="0 0 16 16" width="9" height="9" aria-hidden="true">
+            <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
+    {/if}
     {#if pasted.length > 0}
       <ul class="pasted">
         {#each pasted as image (image.id)}
@@ -1622,6 +1904,55 @@
     overflow: hidden;
   }
 
+  /* What it runs on.
+
+     Narrow on purpose, and allowed to shrink: the names are long — one tool's
+     are a provider and a model joined by a slash — and a bar that widened to
+     fit `anthropic/claude-haiku-4-5` would push the tabs beside it off the end
+     of a terminal somebody has dragged narrow. The whole name is in the title
+     and in the list; what is on show is enough to tell one from another. */
+  .sounding {
+    display: inline-flex;
+    color: var(--vscode-focusBorder, #0a84ff);
+    animation: sounding 1.1s ease-in-out infinite;
+  }
+  @keyframes sounding {
+    0%, 100% { opacity: 0.45; transform: scale(0.92); }
+    50% { opacity: 1; transform: scale(1.12); }
+  }
+
+  .model {
+    appearance: none;
+    -webkit-appearance: none;
+    max-width: 168px;
+    min-width: 0;
+    padding: 1px 16px 1px 5px;
+    border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    border-radius: 4px;
+    background-color: transparent;
+    /* Its own chevron, in room kept for it, so a long name ends before it rather than under it. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='%23999' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    background-size: 9px 9px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+
+  .model:hover { color: var(--text); }
+
+  /* The list itself is drawn by the editor rather than by this page, and it
+     inherits nothing: left alone, a dark theme gets white-on-white options. */
+  .model option {
+    background: var(--panel);
+    color: var(--text);
+  }
+
   /* The gap that used to hang off the rungs. It belongs to whatever is last on
      the left, and that is now the tabs. */
   .records {
@@ -1651,6 +1982,13 @@
   .record.set {
     background: color-mix(in srgb, var(--text) 14%, transparent);
     color: var(--text);
+  }
+
+  .record.tour { color: var(--box-set); }
+
+  .record.tour.set {
+    background: color-mix(in srgb, var(--box-set) 22%, transparent);
+    color: var(--box-set);
   }
 
   .record-count {
@@ -1791,6 +2129,75 @@
   /* What has been pasted and not yet sent. Small enough to be a row of
      attachments and large enough to tell one screenshot from another, which is
      the entire question a reader has about it. */
+  .approval {
+    flex: 1 0 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    border-left: 2px solid var(--warning, #e2b341);
+    background: color-mix(in srgb, var(--warning, #e2b341) 14%, transparent);
+  }
+  .approval-what {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-wrap: anywhere;
+  }
+  .approval-note { color: var(--muted); }
+  .approval-yes,
+  .approval-no {
+    flex: 0 0 auto;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .approval-yes {
+    border: 0;
+    background: var(--vscode-button-background, #0a84ff);
+    color: var(--vscode-button-foreground, #fff);
+  }
+  .approval-no {
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    background: transparent;
+    color: var(--text);
+  }
+
+  .attached {
+    flex: 1 0 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border-left: 2px solid var(--status-renamed);
+    background: color-mix(in srgb, var(--status-renamed) 12%, transparent);
+    color: var(--status-renamed);
+  }
+  .attached > svg { flex: 0 0 auto; margin-top: 2px; }
+  .attached-what {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .attached-head { font-weight: 600; }
+  .attached-say {
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .attached-drop {
+    position: static;
+    flex: 0 0 auto;
+  }
+
   .pasted {
     flex: 1 0 100%;
     display: flex;
@@ -2187,23 +2594,20 @@
     background: color-mix(in srgb, var(--removed) 16%, transparent);
   }
 
-  /* A block where the next character would go, which is what a terminal does
-     while it waits and what nothing else in this page looks like. */
-  .caret {
-    display: inline-block;
-    width: 6px;
-    height: 12px;
-    background: currentColor;
-    animation: caret-blink 1.1s steps(1, end) infinite;
-  }
-
-  @keyframes caret-blink {
-    0%, 55% { opacity: 1; }
-    56%, 100% { opacity: 0.15; }
-  }
-
   .still-what {
     animation: still-breathing 1.7s ease-in-out infinite;
+  }
+
+  /* The agent itself, breathing while it works. */
+  .still-face {
+    flex: 0 0 auto;
+    vertical-align: -2px;
+    animation: still-face 1.3s ease-in-out infinite;
+  }
+
+  @keyframes still-face {
+    0%, 100% { opacity: 0.55; transform: scale(0.88); }
+    50% { opacity: 1; transform: scale(1.08); }
   }
 
   @keyframes still-breathing {

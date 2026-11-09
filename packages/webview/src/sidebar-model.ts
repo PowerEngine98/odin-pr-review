@@ -25,6 +25,8 @@ export interface SidebarModel {
   change?: ChangeView;
   /** What to choose from when there is not. */
   picker: PickerView;
+  /** Whether files the change never touched are listed, shared with the drawing. */
+  showUntouched?: boolean;
 }
 
 /** The change under review, grouped the way the project is laid out. */
@@ -38,11 +40,10 @@ export interface ChangeView {
   /**
    * The file the reader is standing on in the drawing, when the panel has said.
    *
-   * Carried in the payload as well as sent as a message, because the document is
-   * rebuilt whole for anything structural — opening a part of the change, say —
-   * and the reader has not moved on the canvas while that happens, so no message
-   * follows to say where they are. Without this the mark would simply vanish at
-   * the rebuild and stay vanished until they next panned.
+   * Carried by every reading as well as sent on its own, because the reader has
+   * not moved on the canvas while a reading is rebuilt — so no message would
+   * follow to say where they are, and a reading that did not mention it would
+   * take the mark off the row until they next panned.
    */
   here?: string;
 }
@@ -63,6 +64,8 @@ export interface ReadingView {
   branch: string;
   /** The files on disk, which means edits show up as they are made. */
   local: boolean;
+  /** Read in a web browser, where there is no checkout to move to the branch. */
+  browser?: boolean;
 }
 
 export interface TotalsView {
@@ -141,6 +144,8 @@ export interface PickerView {
   viewer: string;
   /** Whether the forge answered at all, as opposed to answering with nothing. */
   reached: boolean;
+  /** Drawn in a web browser, which reads GitHub directly and has no branch of its own to review. */
+  browser?: boolean;
 }
 
 export interface PullView {

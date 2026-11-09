@@ -56,7 +56,29 @@
   }
 </script>
 
+<svelte:window
+  ondragenter={(event) => {
+    if (attachments && carriesFiles(event)) dragDepth++;
+  }}
+  ondragleave={(event) => {
+    if (attachments && carriesFiles(event)) dragDepth = Math.max(0, dragDepth - 1);
+  }}
+  ondrop={() => {
+    dragDepth = 0;
+    over = false;
+  }}
+  ondragend={() => {
+    dragDepth = 0;
+    over = false;
+  }}
+  onfocus={() => {
+    if (attachments) void peekClipboard();
+  }}
+/>
+
+
 <script lang="ts">
+  import type { Attached } from "./attached.js";
   import { tick } from "svelte";
   import { model, notify, host } from "../state.svelte.js";
   import { showPicture } from "../hud/picture.svelte.js";
@@ -82,6 +104,7 @@
     /** A remark already posted: the same rendering, with nothing to type in. */
     readonly = false,
     autofocus = false,
+    attachments = $bindable(undefined),
   }: {
     value?: string;
     placeholder?: string;
@@ -89,7 +112,81 @@
     context?: Suggestion | null;
     readonly?: boolean;
     autofocus?: boolean;
+    attachments?: Attached[] | undefined;
   } = $props();
+
+  const MEDIA_LIMIT = 25 * 1024 * 1024;
+  let picker = $state<HTMLInputElement | null>(null);
+  let refused = $state("");
+
+  function media(file: File): boolean {
+    return file.type.startsWith("image/") || file.type.startsWith("video/");
+  }
+
+  function attach(files: Iterable<File>) {
+    if (!attachments) return;
+    refused = "";
+    for (const file of files) {
+      if (!media(file)) {
+        refused = `${file.name} is not an image or a video.`;
+        continue;
+      }
+      if (file.size > MEDIA_LIMIT) {
+        refused = `${file.name} is over 25 MB.`;
+        continue;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result !== "string" || !attachments) return;
+        attachments = [
+          ...attachments,
+          { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, name: file.name, type: file.type, data: reader.result },
+        ];
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function pasted(event: ClipboardEvent) {
+    if (!attachments) return;
+    const files = [...(event.clipboardData?.files ?? [])].filter(media);
+    if (files.length === 0) return;
+    event.preventDefault();
+    attach(files);
+  }
+
+  function dropped(event: DragEvent) {
+    if (!attachments) return;
+    const files = [...(event.dataTransfer?.files ?? [])];
+    if (files.length === 0) return;
+    event.preventDefault();
+    attach(files);
+  }
+
+  let dragDepth = $state(0);
+  let over = $state(false);
+  let clipped = $state(false);
+
+  function carriesFiles(event: DragEvent): boolean {
+    return Boolean(event.dataTransfer?.types.includes("Files"));
+  }
+
+  async function peekClipboard() {
+    if (!attachments || !navigator.clipboard?.read) return;
+    try {
+      const items = await navigator.clipboard.read();
+      clipped = items.some((item) => item.types.some((type) => type.startsWith("image/") || type.startsWith("video/")));
+    } catch {
+      clipped = false;
+    }
+  }
+
+  const inviting = $derived(Boolean(attachments) && (dragDepth > 0 || clipped));
+
+  function unattach(id: string) {
+    if (!attachments) return;
+    attachments = attachments.filter((one) => one.id !== id);
+  }
 
   let tab = $state<"write" | "preview">("write");
   let field = $state<HTMLTextAreaElement | null>(null);
@@ -489,7 +586,32 @@
 {#if readonly}
   <div class="rendered">{@render rendered()}</div>
 {:else}
-  <div class="editor">
+  <div
+    class="editor"
+    class:inviting
+    class:over
+    role="group"
+    ondragover={(event) => {
+      if (!attachments || !carriesFiles(event)) return;
+      event.preventDefault();
+      over = true;
+    }}
+    ondragleave={(event) => {
+      if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node)) over = false;
+    }}
+    ondrop={(event) => {
+      over = false;
+      dragDepth = 0;
+      dropped(event);
+    }}
+    onfocusin={() => void peekClipboard()}
+    onpaste={() => (clipped = false)}
+  >
+    {#if inviting}
+      <div class="drop-hint" aria-hidden="true">
+        {over ? "Drop to attach" : dragDepth > 0 ? "Drop images or videos here" : "Paste to attach the image or video you copied"}
+      </div>
+    {/if}
     <div class="editor-tabs">
       <button class="tab" class:is-on={tab === "write"} onclick={(event) => { event.preventDefault(); tab = "write"; }}>Write</button>
       <button class="tab" class:is-on={tab === "preview"} onclick={(event) => { event.preventDefault(); tab = "preview"; }}>Preview</button>
@@ -505,6 +627,14 @@
               <path d="M7.5 7.1v2.3M6.35 8.25h2.3M6.35 11.5h2.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
             </svg>
           </button>
+        {/if}
+        {#if attachments}
+          <button class="md" data-md="attach" title="Attach images or videos (or paste, or drop them on the box)" aria-label="Attach images or videos" onclick={(event) => { event.preventDefault(); picker?.click(); }}>
+            <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+              <path d="M10.5 4.5 5.4 9.6a1.6 1.6 0 0 0 2.3 2.3l5.4-5.4a3 3 0 0 0-4.3-4.3L3.4 7.6a4.4 4.4 0 0 0 6.2 6.2l4.1-4.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <input bind:this={picker} type="file" accept="image/*,video/*" multiple hidden onchange={(event) => { const input = event.currentTarget; attach(input.files ?? []); input.value = ""; }} />
         {/if}
         {#each TOOLS as item}
           <button class="md" data-md={item.kind} title={item.label} aria-label={item.label} onclick={(event) => { event.preventDefault(); apply(item.kind); }}>
@@ -537,6 +667,8 @@
         hidden={tab !== "write"}
         oninput={look}
         onclick={look}
+        onpaste={pasted}
+
         onkeyup={(event) => {
           // Arrows and Home move the caret without changing the text, which is
           // half of what decides whether a name is being typed.
@@ -596,6 +728,25 @@
         </ul>
       {/if}
     </div>
+    {#if attachments && (attachments.length > 0 || refused)}
+      <div class="attached">
+        {#each attachments as one (one.id)}
+          <span class="attached-one" title={one.name}>
+            {#if one.type.startsWith("image/")}
+              <img src={one.data} alt={one.name} />
+            {:else}
+              <span class="attached-video">▶ {one.name}</span>
+            {/if}
+            <button type="button" class="attached-drop" title="Do not attach {one.name}" aria-label="Remove {one.name}" onclick={(event) => { event.preventDefault(); unattach(one.id); }}>
+              <svg viewBox="0 0 10 10" width="8" height="8" aria-hidden="true"><path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+            </button>
+          </span>
+        {/each}
+        {#if refused}
+          <span class="attached-refused">{refused}</span>
+        {/if}
+      </div>
+    {/if}
     <div class="editor-preview" hidden={tab === "write"}>
       {#if value.trim()}
         {@render rendered()}
@@ -629,6 +780,7 @@
      bar and another over the page. That was the seam under the chosen tab:
      not a stray border but a translucent fill picking up what was behind it. */
   .editor {
+    position: relative;
     border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
     border-radius: 7px;
     overflow: hidden;
@@ -1080,5 +1232,82 @@
 
   .suggestion .add {
     background: color-mix(in srgb, var(--added) 16%, transparent);
+  }
+
+  .attached {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px 10px;
+  }
+
+  .attached-one {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    max-width: 160px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .attached-one img {
+    height: 100%;
+    width: auto;
+    display: block;
+  }
+
+  .attached-video {
+    padding: 0 22px 0 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .attached-drop {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    cursor: pointer;
+  }
+
+  .attached-refused {
+    align-self: center;
+    color: var(--vscode-errorForeground, #f85149);
+    font-size: 11px;
+  }
+
+  .editor.inviting {
+    outline: 2px dashed var(--vscode-focusBorder, #388bfd);
+    outline-offset: 3px;
+  }
+
+  .editor.over {
+    background: color-mix(in srgb, var(--vscode-focusBorder, #388bfd) 12%, var(--bg));
+  }
+
+  .drop-hint {
+    position: absolute;
+    right: 8px;
+    bottom: 6px;
+    z-index: 1;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--vscode-focusBorder, #388bfd);
+    color: #fff;
+    font-size: 11px;
+    pointer-events: none;
   }
 </style>

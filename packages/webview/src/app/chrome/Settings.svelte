@@ -9,10 +9,19 @@
   fields are the setting, and the components that draw from them redraw.
 -->
 <script lang="ts">
+  import Pairing from "../hud/Pairing.svelte";
+  import { openSupport } from "../support/support.svelte.js";
   import { ACTIONS, KEYS_KEY, defaults, readKeys, waitFor } from "../shared/bindings.js";
   import { model, settings } from "../state.svelte.js";
   import Viewed from "../shared/Viewed.svelte";
   import { GEAR } from "./icons.js";
+
+  const locked = $derived(model.current.locked ?? {});
+
+  function unlock(): void {
+    window.parent.postMessage({ odinUnlock: true }, "*");
+    open = false;
+  }
 
   let {
     hasSchema = false,
@@ -113,15 +122,35 @@
   });
 
   /** How a key is written where a reader has to recognise it. */
-  function keyName(key: string): string {
-    if (key === " ") return "space";
-    if (key === "Enter") return "enter";
-    if (key === "Escape") return "esc";
-    if (key.startsWith("Arrow")) return `${key.slice(5).toLowerCase()} arrow`;
-    return key;
+  const NAMED: Record<string, string[]> = {
+    " ": ["Space"],
+    Enter: ["↵ Enter"],
+    Escape: ["Esc"],
+    Tab: ["⇥ Tab"],
+    Backspace: ["⌫ Backspace"],
+    Delete: ["Delete"],
+    ArrowRight: ["→ Right"],
+    ArrowLeft: ["← Left"],
+    ArrowUp: ["↑ Up"],
+    ArrowDown: ["↓ Down"],
+    Home: ["Home"],
+    End: ["End"],
+    PageUp: ["Page Up"],
+    PageDown: ["Page Down"],
+  };
+
+  function keyCaps(key: string): string[] {
+    if (NAMED[key]) return NAMED[key];
+    if (/^[a-z]$/.test(key)) return [key.toUpperCase()];
+    if (/^[A-Z]$/.test(key)) return ["⇧ Shift", key];
+    return [key];
   }
 
   function bind(event: KeyboardEvent) {
+    if (open && !rebinding && event.key === "Escape") {
+      open = false;
+      return;
+    }
     if (!rebinding) return;
     // Somebody typing is typing, even in the middle of rebinding: a press in a
     // field is text, and taking it for an answer binds an action to whatever
@@ -183,6 +212,10 @@
     // nothing to announce, and fractional scroll heights mean the bottom is
     // rarely reached to the exact pixel.
     atEnd = room <= 1 || pane.scrollTop >= room - 1;
+    const top = pane.getBoundingClientRect().top;
+    for (const title of pane.querySelectorAll<HTMLElement>(".settings-title")) {
+      title.classList.toggle("stuck", pane.scrollTop > 0 && title.getBoundingClientRect().top <= top + 0.5);
+    }
   }
 
   /*
@@ -210,15 +243,52 @@
   >{@html GEAR}</button>
 
   {#if open}
-    <span class="settings-panel">
+    <span
+      class="settings-backdrop"
+      role="presentation"
+      onclick={() => {
+        open = false;
+        rebinding = null;
+      }}
+    ></span>
+    <span class="settings-panel" role="dialog" aria-modal="true" aria-label="Settings">
       <!-- The panel's contents are their own scrolling column rather than the
            panel itself scrolling, so the fade below can be placed against the
            panel: anything absolute inside a scrolling box scrolls away with the
            text it was covering, which puts the gradient in the middle of the
            list the moment the reader moves. -->
       <span class="settings-scroll" bind:this={pane} onscroll={measure}>
-        <span class="settings-title">Settings</span>
+        <span class="settings-title">Support</span>
+        <button
+          class="settings-support"
+          title="Opens a composer that posts an issue on GitHub through your gh session"
+          onclick={() => {
+            open = false;
+            openSupport();
+          }}
+        >
+          <svg class="settings-support-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <path d="M2.75 3.25h10.5a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H8.5L5.25 14v-2.25h-2.5a1 1 0 0 1-1-1v-6.5a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" />
+            <path d="M8 5.4v2.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+            <circle cx="8" cy="9.6" r="0.8" fill="currentColor" />
+          </svg>
+          <span class="settings-support-text">
+            <span class="settings-support-name">Send feedback</span>
+            <span class="settings-support-note">Report a bug, share an idea or ask for a feature</span>
+          </span>
+          <svg class="settings-support-go" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+            <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+        {#if model.current.version}
+          <span class="settings-version">Odin version: {model.current.version}</span>
+        {/if}
         <span class="settings-rule"></span>
+        <span class="settings-title">Settings</span>
+        {#if model.current.unlock}
+          <button class="settings-unlock" onclick={unlock}>Enable all features</button>
+          <span class="settings-rule"></span>
+        {/if}
 
         <span class="settings-group">Diff display</span>
         <!-- Two readings of one fact, so they are radios rather than a switch —
@@ -250,30 +320,39 @@
              drawing. -->
         <Viewed
           label="Imports"
-          title="Import statements and the arrows they produce"
+          disabled={!!locked.imports}
+          title={locked.imports ?? "Import statements and the arrows they produce"}
           bind:checked={settings.showImports}
         />
-        <Viewed label="Unchanged references" bind:checked={settings.showUnchanged} />
+        <Viewed
+          label="Unchanged references"
+          disabled={!!locked.unchanged}
+          title={locked.unchanged}
+          bind:checked={settings.showUnchanged}
+        />
         <Viewed
           label="Tests"
           title="Test files reference a great deal of what they exercise, which buries the change under them"
           bind:checked={settings.showTests}
         />
         <Viewed
+          label="Untouched files"
+          title="Files the change never touched, here and in the sidebar's list"
+          bind:checked={settings.showUntouched}
+        />
+        <Viewed
           label="Hide viewed relations"
           title="Hides untouched files once everything referencing them has been read. Files the change touched always stay."
           bind:checked={settings.hideViewed}
         />
-        <!-- A switch for something the change does not have is a switch that
-             teaches the reader nothing, so the database only appears in the menu
-             when there is a schema on the canvas. -->
-        {#if hasSchema}
-          <Viewed
-            label="Database"
-            title="The database schema as a card of its own, and the migrations and generated code that reach it"
-            bind:checked={settings.showInfra}
-          />
-        {/if}
+        <Viewed
+          label="Database"
+          disabled={!hasSchema}
+          title={hasSchema
+            ? "The database schema as a card of its own, and the migrations and generated code that reach it"
+            : "Appears when the change touches a database: SQL migrations or schema files"}
+          bind:checked={settings.showInfra}
+        />
 
         <!-- Not beside the filters above, which take things away. This adds a
              shape: the same cards, gathered into the folders they live in. -->
@@ -289,16 +368,54 @@
         <Viewed label="Comments" bind:checked={settings.hud.comments} />
         <Viewed label="Map" bind:checked={settings.hud.map} />
         <Viewed label="Checks" bind:checked={settings.hud.checks} />
-        <!-- Only worth offering over a reading that has one. Over the forge's
-             copy the switch would turn on a panel that does not appear, which
-             reads as the switch being broken. -->
-        {#if model.current.meta.worktree}
-          <Viewed
-            label="AI pairing"
-            title="Agents on this machine that can take work from your comments"
-            bind:checked={settings.hud.agents}
-          />
+        <span class="settings-rule"></span>
+        <span class="settings-group">AI pairing</span>
+        <Viewed
+          label="Pair with AI agents"
+          disabled={!!locked.agents || !model.current.meta.worktree}
+          title={locked.agents ??
+            (model.current.meta.worktree
+              ? "Agents on this machine take work from your comments, in the order below"
+              : "Only on a live reading of the branch. Press Go live in Odin's side bar to check it out, then turn this on.")}
+          bind:checked={settings.hud.agents}
+        />
+        {#if !locked.agents}
+          {@const usable = model.current.meta.worktree === true && settings.hud.agents !== false}
+          <div
+            class="agents-section"
+            class:off={!usable}
+            inert={!usable}
+            title={usable ? undefined : model.current.meta.worktree ? "Turn on Pair with AI agents to choose agents" : "Go live to choose agents"}
+          >
+            <Pairing embedded />
+          </div>
         {/if}
+
+        <span class="settings-rule"></span>
+        <span class="settings-group">Narrator</span>
+        <Viewed
+          label="Narrate file extensions"
+          title="Read Main.kt as &quot;Main dot kt&quot;. Off, it is read as &quot;Main&quot;."
+          bind:checked={settings.narrateExtensions}
+        />
+        <Viewed
+          label="Auto narrate new content"
+          disabled={!!locked.autoNarrate}
+          title={locked.autoNarrate ?? "Read each new block of an agent's answer aloud as it arrives"}
+          bind:checked={settings.autoNarrate}
+        />
+        <Viewed
+          label="Use OS narrator"
+          disabled={!!locked.systemVoice}
+          title={locked.systemVoice ?? "Read aloud with the voice chosen in the system's settings (macOS). Falls back to the browser's voice when it cannot be reached."}
+          bind:checked={settings.systemVoice}
+        />
+        <Viewed
+          label="Use Kokoro voice"
+          disabled={!!locked.kokoroVoice}
+          title={locked.kokoroVoice ?? "A neural voice that runs on this machine. Odin sets it up in the background; run \"Odin: Set Up the Kokoro Narrator\" to try again."}
+          bind:checked={settings.kokoroVoice}
+        />
 
         <span class="settings-rule"></span>
         <!--
@@ -313,18 +430,38 @@
           button competing with a binding teaches the binding to nobody.
         -->
         <span class="settings-group">Keys</span>
-        {#each ACTIONS as action (action.id)}
-          <div class="key-row">
-            <span class="key-says">{action.says}</span>
-            <button
-              class="key-cap"
-              class:waiting={rebinding === action.id}
-              onclick={() => (rebinding = rebinding === action.id ? null : action.id)}
-            >
-              {rebinding === action.id ? "press a key" : keyName(keys[action.id] ?? "")}
-            </button>
-          </div>
-        {/each}
+        <table class="key-table">
+          <thead>
+            <tr>
+              <th scope="col">Action</th>
+              <th scope="col">Shortcut</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each ACTIONS as action (action.id)}
+              <tr>
+                <td class="key-says">{action.says}</td>
+                <td class="key-cell">
+                  <button
+                    class="key-button"
+                    class:waiting={rebinding === action.id}
+                    title="Click, then press the key to use instead"
+                    onclick={() => (rebinding = rebinding === action.id ? null : action.id)}
+                  >
+                    {#if rebinding === action.id}
+                      <span class="key-wait">Press a key…</span>
+                    {:else}
+                      {#each keyCaps(keys[action.id] ?? "") as cap, at (at)}
+                        {#if at > 0}<span class="key-plus">+</span>{/if}
+                        <kbd class="key-cap">{cap}</kbd>
+                      {/each}
+                    {/if}
+                  </button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
         <button class="key-reset" onclick={resetKeys}>Reset to defaults</button>
 
         <!--
@@ -361,6 +498,22 @@
 </span>
 
 <style>
+  .settings-unlock {
+    margin: 6px 0 2px;
+    padding: 4px 10px;
+    border: 1px solid var(--vscode-button-background, #238636);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--vscode-foreground, #e6edf3);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .settings-unlock:hover {
+    background: var(--vscode-button-background, #238636);
+    color: var(--vscode-button-foreground, #ffffff);
+  }
+
   .settings-menu { position: relative; display: inline-flex; }
   .icon-button {
     display: inline-flex;
@@ -376,14 +529,23 @@
   }
   .icon-button:hover { color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent); }
 
+  .settings-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-menu);
+    background: color-mix(in srgb, #000 55%, transparent);
+  }
+
   .settings-panel {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(520px, calc(100vw - 32px));
     /* A menu, and the scale says where menus sit. Read from the scale rather
        than written out, because the number is only ever meaningful next to the
        panels and the threads it has to come out over. */
-    z-index: var(--z-menu);
+    z-index: calc(var(--z-menu) + 1);
     display: flex;
     flex-direction: column;
     min-width: 230px;
@@ -392,7 +554,7 @@
        ran off the bottom of the screen and took the last rows with it — there
        is no scrolling past the end of a box that has no end. The rest of the
        height is the bar above and a margin at the foot. */
-    max-height: min(70vh, 520px);
+    max-height: min(85vh, 760px);
     /* Named, because the fade at the foot has to be this exact colour: a
        gradient that ends a shade off the panel it lies on draws a band across
        the bottom of the panel instead of disappearing into it. */
@@ -416,7 +578,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 12px;
+    padding: 20px 24px;
     overflow-y: auto;
     /* The canvas behind this zooms on a wheel. Reaching the end of the list and
        carrying on would otherwise hand the rest of the gesture to the drawing,
@@ -451,7 +613,23 @@
      the last row from here on is just a row that is harder to read. */
   .settings-edge.spent { opacity: 0; }
 
-  .settings-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .settings-title {
+    position: sticky;
+    top: -20px;
+    z-index: 2;
+    align-self: stretch;
+    margin: -20px -24px 4px;
+    padding: 10px 24px;
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+    background: var(--panel-fill);
+    transition: box-shadow 0.12s ease-out;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    text-align: center;
+  }
+  .settings-rule + .settings-title { margin-top: -10px; }
+  .settings-title.stuck { box-shadow: 0 3px 6px -2px rgba(0, 0, 0, 0.5); }
   .settings-group {
     font-size: 12px;
     font-weight: 600;
@@ -526,9 +704,11 @@
   /* One rule between groups, so the menu reads as sections rather than as a
      column of switches. */
   .settings-rule {
-    height: 1px;
-    margin: 4px 0 2px;
-    background: color-mix(in srgb, var(--text) 12%, transparent);
+    flex: none;
+    align-self: stretch;
+    height: 2px;
+    margin: 10px -24px 8px;
+    background: color-mix(in srgb, var(--text) 14%, transparent);
   }
   /* What the page could not do. Said once, in the place explanations live. */
   .settings-note,
@@ -543,33 +723,65 @@
      own. The list used to be drawn inside a bordered card within the panel —
      the shape it had when it floated over the toolbar in the corner — which
      read as a second panel that had landed on top of the settings. */
-  .key-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .key-says {
-    flex: 1 1 auto;
+  .key-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    border-radius: 8px;
+    overflow: hidden;
     font-size: 12px;
-    color: var(--muted);
   }
-  .key-cap {
-    flex: 0 0 auto;
-    min-width: 76px;
-    font: inherit;
-    font-size: 11px;
+  .key-table th {
+    padding: 6px 12px;
+    background: color-mix(in srgb, var(--text) 6%, transparent);
     color: var(--muted);
-    background: color-mix(in srgb, var(--text) 10%, transparent);
+    font-size: 11px;
+    font-weight: 600;
+    text-align: left;
+  }
+  .key-table th:last-child { text-align: right; }
+  .key-table td {
+    padding: 6px 12px;
+    border-top: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    vertical-align: middle;
+  }
+  .key-table tbody tr:hover td { background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .key-says { color: var(--text); }
+  .key-cell { text-align: right; white-space: nowrap; }
+  .key-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px;
     border: 0;
-    border-radius: 5px;
-    padding: 3px 8px;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
     cursor: pointer;
   }
-  .key-cap:hover { color: var(--text); }
-  /* Listening. The next press is the answer, so it says so. */
-  .key-cap.waiting {
-    color: var(--bg);
+  .key-button:hover .key-cap { border-color: var(--muted); }
+  .key-cap {
+    display: inline-flex;
+    align-items: center;
+    min-width: 22px;
+    justify-content: center;
+    padding: 2px 7px;
+    border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    color: var(--text);
+    font: 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .key-plus { color: var(--muted); font-size: 10px; }
+  .key-wait {
+    padding: 2px 8px;
+    border-radius: 5px;
     background: var(--status-renamed);
+    color: var(--bg);
+    font-size: 11px;
   }
   .key-reset {
     margin-top: 8px;
@@ -587,5 +799,63 @@
 
   @media (prefers-reduced-motion: reduce) {
     .settings-edge { transition: none; }
+  }
+
+  .settings-support {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 6px 0 4px;
+    padding: 8px 10px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .settings-support:hover {
+    border-color: var(--vscode-focusBorder, #388bfd);
+    background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+  }
+
+  .settings-support-icon {
+    flex: none;
+    color: var(--vscode-textLink-foreground, #58a6ff);
+  }
+
+  .settings-support-text {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .settings-support-name {
+    font-weight: 600;
+  }
+
+  .settings-support-note {
+    color: var(--vscode-descriptionForeground, #8b949e);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .settings-support-go {
+    flex: none;
+    margin-left: auto;
+    color: var(--vscode-descriptionForeground, #8b949e);
+  }
+
+  .settings-version {
+    color: var(--vscode-descriptionForeground, #8b949e);
+    font-size: 11px;
+  }
+
+  .agents-section.off {
+    opacity: 0.45;
+    filter: grayscale(0.6);
   }
 </style>

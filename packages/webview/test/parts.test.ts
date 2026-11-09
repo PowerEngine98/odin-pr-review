@@ -263,7 +263,7 @@ function imported(): ChangeGraph {
     schemaVersion: "0.1.0",
     meta: { baseRef: "development", headRef: "topic", generator: "test" },
     nodes: [
-      touched("n:screen", "src/Feed.kt", "import com.labura.media.Props"),
+      touched("n:screen", "src/Feed.kt", "import com.example.media.Props"),
       touched("n:props", "src/Props.kt", "data class Props"),
     ],
     edges: [reference("n:screen", "n:props", "import")],

@@ -233,6 +233,9 @@ export interface CommentView {
   local?: boolean;
   /** The agent that wrote it, when an agent did. */
   agent?: string;
+  /** The agent that asked this of itself, and the line the log shows for it. */
+  selfAsked?: string;
+  label?: string;
   /** How the work this message asked for is going. */
   task?: "queued" | "working" | "done" | "failed" | "asking" | "stopped";
   /**
@@ -242,7 +245,7 @@ export interface CommentView {
    * decided and what happened next are one record. A modal settles the same
    * question and leaves nothing behind.
    */
-  approval?: { id: string; what: string; state: "waiting" | "allowed" | "denied" };
+  approval?: { id: string; what: string; state: "waiting" | "allowed" | "denied"; tool?: string };
   /**
    * Whether the conversation this begins has been settled.
    *
@@ -324,6 +327,12 @@ export interface ViewModel {
    */
   agents?: AgentView[];
   canReview: boolean;
+  version?: string;
+  reading?: Record<string, unknown>;
+  /** Settings this page cannot offer, each with what it would take to have it. */
+  locked?: Record<string, string>;
+  /** Whoever drew the page can turn more on, and listens for the reader asking. */
+  unlock?: boolean;
   /** What a half-written review is filed under between page loads. */
   review: string;
   /**
@@ -383,6 +392,8 @@ export interface ReaderSettings {
   showTests: boolean;
   showImports: boolean;
   showUnchanged: boolean;
+  /** Files the change never touched, here and in the sidebar's list. */
+  showUntouched: boolean;
   hideViewed: boolean;
   showInfra: boolean;
   /**
@@ -397,6 +408,16 @@ export interface ReaderSettings {
    * within one.
    */
   clusters: boolean;
+  /** Read `Main.kt` as "Main dot kt" rather than as "Main". */
+  narrateExtensions: boolean;
+  /** Read each new block of an answer aloud as it arrives. */
+  autoNarrate: boolean;
+  /** Read aloud with the operating system's voice rather than the browser's. */
+  systemVoice: boolean;
+  /** Read aloud with Kokoro, the neural voice the host sets up on this machine. */
+  kokoroVoice: boolean;
+  /** The narrator reads a tour aloud. Its subtitles show either way. */
+  tourNarration: boolean;
   hud: {
     reviewers: boolean;
     comments: boolean;
@@ -435,6 +456,16 @@ export interface ReaderSettings {
    * anything. Absent means the default, which the host decides.
    */
   agency?: Record<string, "read" | "ask" | "edits" | "full">;
+  /**
+   * Which model each agent runs on, by agent id.
+   *
+   * Per agent for the same reason the rung is: the one marking up a diff and
+   * the one rewriting a module are not the same job, and a reader paying for
+   * both wants to say so. Absent, or empty, means the tool's own default —
+   * which is a real answer rather than a missing one: it is what they get
+   * everywhere else they use that tool.
+   */
+  model?: Record<string, string>;
   /**
    * How big the terminals are, once somebody has dragged one.
    *

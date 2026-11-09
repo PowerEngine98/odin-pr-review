@@ -11,7 +11,7 @@ export interface Declaration {
   line: number;
   /** 0-based column of the name. */
   column: number;
-  /** Package the file declares, e.g. `com.labura.notifications`. */
+  /** Package the file declares, e.g. `com.example.notifications`. */
   packageName: string;
   /** Type the declaration belongs to, for members. */
   owner?: string;

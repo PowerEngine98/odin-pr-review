@@ -24,6 +24,7 @@ import {
   within,
   type Agency,
   type AgentKind,
+  type FoundAgent,
   type AgentState,
   type Ask,
   type Change,
@@ -59,6 +60,12 @@ export interface LocalComment extends ReviewComment {
   local: true;
   /** The agent that wrote it, when an agent did. */
   agent?: string;
+  /**
+   * An agent prompting itself, from a button the reader pressed: the body is
+   * the full instruction it is sent, `label` the line its log shows instead.
+   */
+  selfAsked?: string;
+  label?: string;
   /** How the work this message asked for is going, for the badge. */
   task?: "queued" | "working" | "done" | "failed" | "asking" | "stopped";
   /**
@@ -74,6 +81,8 @@ export interface LocalComment extends ReviewComment {
     /** What the agent wants to do, as a sentence rather than a tool name. */
     what: string;
     state: "waiting" | "allowed" | "denied";
+    /** The tool it asked for, for the page to word the buttons. */
+    tool?: string;
   };
   /**
    * The code this remark was written against, so it can be found again.
@@ -214,10 +223,10 @@ export const PLACEHOLDER = "you";
 const REMEMBER_FOR = 10 * 60 * 1000;
 
 /** The last answer, shared by every reading in this window. */
-let known: { at: number; agents: AgentKind[] } | undefined;
+let known: { at: number; agents: FoundAgent[] } | undefined;
 
 /** An answer already being waited on, so three tabs ask once between them. */
-let looking: Promise<AgentKind[]> | undefined;
+let looking: Promise<FoundAgent[]> | undefined;
 
 export class PairingSession {
   private comments: LocalComment[] = [];
@@ -245,6 +254,13 @@ export class PairingSession {
    */
   private sessions: Record<string, string> = {};
 
+  /** The exact model each agent last answered on, as its tool reported it. */
+  private inUse: Record<string, string> = {};
+
+  modelsInUse(): Record<string, string> {
+    return { ...this.inUse };
+  }
+
   /** What the reader calls each conversation, where they have named one. */
   private labels: Record<string, string> = {};
   /** Which conversations have been settled, by the id that began them. */
@@ -254,7 +270,7 @@ export class PairingSession {
   private deltas: Delta[] = [];
 
   /** The agents installed here, once anybody has looked. */
-  private installed: AgentKind[] = [];
+  private installed: FoundAgent[] = [];
 
   /** Which are switched on, in the reader's order. Set by the page. */
   private order: string[] = [];
@@ -460,7 +476,7 @@ export class PairingSession {
   onSettle: ((rootId: number, resolved: boolean) => void) | undefined;
 
   /** What this machine can run, as the panel and the queue both need it. */
-  agents(): AgentKind[] {
+  agents(): FoundAgent[] {
     return this.installed;
   }
 
@@ -866,7 +882,7 @@ export class PairingSession {
    * `again` is the refresh button, which is the one moment the reader is
    * telling us the answer has changed.
    */
-  async look(again = false): Promise<AgentKind[]> {
+  async look(again = false): Promise<FoundAgent[]> {
     const now = Date.now();
     if (!again && known && now - known.at < REMEMBER_FOR) {
       this.installed = known.agents;
@@ -885,7 +901,7 @@ export class PairingSession {
         known = { at: Date.now(), agents: found };
         return found;
       })
-      .catch(() => [] as AgentKind[])
+      .catch(() => [] as FoundAgent[])
       .finally(() => {
         if (looking === asking) looking = undefined;
       });
@@ -946,6 +962,8 @@ export class PairingSession {
      * wins, because that is the reader saying it in as many words.
      */
     to?: string;
+    selfAsked?: string;
+    label?: string;
   }): LocalComment {
     const id = this.next--;
     const at = new Date().toISOString();
@@ -968,6 +986,8 @@ export class PairingSession {
       ...(where.inReplyTo !== undefined ? { inReplyTo: where.inReplyTo } : {}),
       local: true,
       task: "queued",
+      ...(where.selfAsked ? { selfAsked: where.selfAsked } : {}),
+      ...(where.label ? { label: where.label } : {}),
     };
 
     /*
@@ -1137,6 +1157,11 @@ export class PairingSession {
         ...(args ? { args } : {}),
         onOutput: say,
         onEdit: (change) => this.record(agentId, change),
+        onModel: (model) => {
+          if (this.inUse[agentId] === model) return;
+          this.inUse = { ...this.inUse, [agentId]: model };
+          this.changed();
+        },
       });
       this.running.set(agentId, handle);
       return handle;
@@ -1168,7 +1193,7 @@ export class PairingSession {
        * routinely several lines long.
        */
       const root = this.rootOf(Number(ask.id));
-      const asked = ask.body
+      const asked = (ask.label || ask.body)
         .split("\n")
         .map((line) => `[odin:ask ${root?.id ?? ask.id}] ${line}`)
         .join("\n");
@@ -1316,16 +1341,40 @@ export class PairingSession {
         ? kind.asks(this.configFor(kind))
         : [];
 
-    const extra = [...free, ...asking, ...aloud];
-    if (!kind.session) return extra.length ? [...kind.once, ...extra] : undefined;
+    /*
+     * Which model, when the reader has picked one and the tool can be told.
+     *
+     * Nothing at all when they have not. The tools each have a default, those
+     * defaults are what a reader gets everywhere else they use the tool, and a
+     * model named here because something had to be named would quietly
+     * override a choice they made in the tool's own settings.
+     */
+    const chosen = this.modelOf(agentId);
+    const named = chosen && kind.models ? kind.models.flag(chosen) : [];
+
+    const extra = [...free, ...asking, ...aloud, ...named];
+    if (!kind.session) return extra.length ? this.invoke(kind, kind.once, extra) : undefined;
 
     const held = this.sessions[agentId];
-    if (held) return [...kind.session.resume(held), ...extra];
+    if (held) return this.invoke(kind, kind.session.resume(held), extra);
 
     const fresh = randomUUID();
     this.sessions[agentId] = fresh;
     this.save();
-    return [...kind.session.start(fresh), ...extra];
+    return this.invoke(kind, kind.session.start(fresh), extra);
+  }
+
+  /**
+   * The invocation, with everything else in the place that tool allows.
+   *
+   * Ordinarily the switches that make it answer once come first and the rest
+   * follows. For a tool whose last switch takes the prompt as its value they
+   * go last instead: `gemini --prompt --model x "…"` is read as a prompt of
+   * `--model`, and what the reader gets back is the usage text. Measured
+   * against the tool, which refuses it outright.
+   */
+  private invoke(kind: AgentKind, head: string[], extra: string[]): string[] {
+    return kind.holdsPrompt ? [...extra, ...head] : [...head, ...extra];
   }
 
   /**
@@ -1356,6 +1405,49 @@ export class PairingSession {
    */
   private agencyOf(agentId: string): Agency {
     return this.agency[agentId] ?? "edits";
+  }
+
+  /**
+   * Which model each agent has been put on, where the reader has chosen one.
+   *
+   * Theirs to set, like the rungs: it is their account paying for the turn,
+   * and the difference between the cheap quick one and the careful expensive
+   * one is a decision about this afternoon's work rather than a constant.
+   */
+  private models: Record<string, string> = {};
+
+  /** What the reader has chosen for each agent, from the page. */
+  setModels(chosen: Record<string, string>): void {
+    this.models = chosen;
+  }
+
+  /** What this agent is to run on, or nothing for the tool's own default. */
+  private modelOf(agentId: string): string {
+    return this.models[agentId] ?? "";
+  }
+
+  /**
+   * What each installed tool can be put on, for the page to offer.
+   *
+   * What the tool itself said first, then the names written down beside it.
+   * A tool that can be asked outright is the better answer of the two and the
+   * list it printed is the whole of what it can run; the written names are for
+   * the tools that publish none, and they are aliases rather than ids for that
+   * reason.
+   *
+   * A tool with no way of being told has no entry, and the page draws no
+   * control for it: a dropdown that sets something the tool never hears is
+   * worse than no dropdown.
+   */
+  modelsOffered(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    for (const kind of this.installed) {
+      if (!kind.models) continue;
+      const said = kind.models_ ?? [];
+      const written = kind.models.offers ?? [];
+      out[kind.id] = [...new Set([...said, ...written])];
+    }
+    return out;
   }
 
   /** Which rungs each installed tool actually offers, for the page to draw. */
@@ -1407,7 +1499,12 @@ export class PairingSession {
   identify(login: string, face: string): boolean {
     let touched = false;
     this.comments = this.comments.map((comment) => {
-      if (comment.agent || comment.author === login) return comment;
+      if (comment.agent) return comment;
+      if (comment.author === login) {
+        if (comment.avatarUrl || !face || comment.selfAsked) return comment;
+        touched = true;
+        return { ...comment, avatarUrl: face };
+      }
       if (comment.author !== PLACEHOLDER) return comment;
       touched = true;
       return {
@@ -1580,6 +1677,9 @@ export class PairingSession {
   /** Where the spawnable stub lives. Set once, at activation. */
   static stub = "";
 
+  /** Answers an agent reading or correcting the tour, when the reading has one to keep. */
+  tours: ((asked: { action?: string; tour?: unknown }) => unknown) | undefined;
+
   private opened(): string {
     if (this.door) return this.doorPath;
 
@@ -1593,7 +1693,7 @@ export class PairingSession {
         held += String(chunk);
         const at = held.indexOf("\n");
         if (at < 0) return;
-        let asked: { tool?: string; input?: unknown; agent?: string };
+        let asked: { tool?: string; input?: unknown; agent?: string; kind?: string; action?: string; tour?: unknown };
         try {
           asked = JSON.parse(held.slice(0, at));
         } catch {
@@ -1601,6 +1701,16 @@ export class PairingSession {
           return;
         }
         held = held.slice(at + 1);
+        if (asked.kind === "tour") {
+          let answer: unknown;
+          try {
+            answer = this.tours?.(asked) ?? { ok: false, errors: ["this reading cannot keep a tour"] };
+          } catch (error) {
+            answer = { ok: false, errors: [String(error)] };
+          }
+          socket.end(`${JSON.stringify(answer)}\n`);
+          return;
+        }
         void this.decide(asked).then((decision) => {
           try {
             socket.end(`${JSON.stringify(decision)}\n`);
@@ -1647,13 +1757,22 @@ export class PairingSession {
       });
     }
 
+    // Odin's own tour tools touch nothing but the tour, which is Odin's.
+    if (tool === "mcp__odin__tour_read" || tool === "mcp__odin__tour_update") {
+      return Promise.resolve({ behavior: "allow", updatedInput: asked.input ?? {} });
+    }
+
     if (permitted(rung, doingOf(tool))) {
       return Promise.resolve({ behavior: "allow", updatedInput: asked.input ?? {} });
     }
 
     const what = describeRequest(tool, asked.input);
     const id = randomUUID();
-    const comment = this.say(agentId, `May I ${what}?`, { id, what, state: "waiting" });
+    const plan = tool === "ExitPlanMode" ? (asked.input as { plan?: unknown } | undefined)?.plan : undefined;
+    const body = typeof plan === "string" && plan.trim()
+      ? `${plan.trim()}\n\nMay I ${what}?`
+      : `May I ${what}?`;
+    const comment = this.say(agentId, body, { id, what, state: "waiting", tool });
 
     return new Promise((settle) => {
       this.waitingOn.set(id, { settle, comment });

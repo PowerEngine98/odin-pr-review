@@ -1,12 +1,16 @@
 /**
  * Which folders in the tree the reader has shut.
  *
- * The tree is rebuilt from scratch whenever anything refreshes — the host
- * renders a new document and assigns it — and a folder's open state lived in
- * the component that drew it, so every rebuild threw it away and the whole tree
- * sprang back open. On a change with two hundred files that is a reader
- * scrolling past the same eleven directories they closed a minute ago, every
- * minute.
+ * A folder's open state lived in the component that drew it, and the document
+ * was replaced whenever anything refreshed — so every rebuild threw it away and
+ * the whole tree sprang back open. On a change with two hundred files that is a
+ * reader scrolling past the same eleven directories they closed a minute ago,
+ * every minute.
+ *
+ * A refresh no longer replaces the document, which takes most of that away. It
+ * is still kept here rather than in a component, because the document does get
+ * rebuilt: when the view first resolves, and when the editor restores a window.
+ * A fold the reader set before lunch should still be set after it.
  *
  * What is recorded is the folders that are shut, not the ones that are open.
  * Folders start open because the point of the grouping is to show the shape of
@@ -20,7 +24,13 @@
  * folder closed on one machine and reopened by a parse that quietly failed.
  */
 
-/** Where it is kept. Session storage, which survives a rebuilt document. */
+/**
+ * Where it is kept.
+ *
+ * Session storage, which outlives a document: measured, rather than assumed —
+ * a webview keeps the same origin across every document the host assigns it,
+ * so what was written is read back by the page that replaces it.
+ */
 export const SHUT_KEY = "odin.sidebar.shut";
 
 /** The shut folders, by path from the root. */

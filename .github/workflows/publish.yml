@@ -1,0 +1,204 @@
+name: Publish the extension
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  # Trusted Publishing: the Marketplace takes GitHub's own proof of which
+  # workflow is running instead of a stored token, so nothing expires.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # The trusted publishing policy names this environment: only a job running
+    # in it can publish as powerengine98.
+    environment: marketplace
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history and its tags: the next version is read from the
+          # commits since the last release.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install
+        run: yarn install --frozen-lockfile
+
+      - name: Build
+        run: yarn build
+
+      - name: Test
+        run: yarn test
+
+      # Publishing is turned off by setting the repository variable PUBLISH to
+      # false, for a stretch of merges that should not reach the store.
+      - name: Can publish
+        id: can
+        run: |
+          if [ "${{ vars.PUBLISH }}" = "false" ]; then
+            echo "::notice::PUBLISH is false; built and tested, nothing published."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # feat → minor, a breaking change → major (minor while 0.x), anything else
+      # → patch, counted from what is live; a manifest bumped by hand past what
+      # is live is published as it stands. See scripts/next-version.mjs.
+      - name: Next version
+        id: version
+        if: steps.can.outputs.publish == 'true'
+        run: |
+          live=$(npx --yes @vscode/vsce show powerengine98.odin-pr-review --json 2>/dev/null \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).versions[0].version)}catch{console.log("")}})')
+          next=$(LIVE="$live" node scripts/next-version.mjs)
+          echo "live ${live:-none}, publishing $next"
+          (cd packages/vscode-ext && npm pkg set version="$next")
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        if: steps.can.outputs.publish == 'true'
+        run: |
+          yarn workspace odin-pr-review run package
+          (cd packages/browser-ext && npm pkg set version="${{ steps.version.outputs.next }}")
+          yarn package:browser
+
+      # Signed in by the trusted publishing policy on the powerengine98 publisher,
+      # which names this repository and this workflow file.
+      - name: Publish to the Visual Studio Marketplace
+        if: steps.can.outputs.publish == 'true'
+        run: npx --yes @vscode/vsce@4.1.0 publish --oidc --packagePath dist/odin-pr-review.vsix
+
+      # Trusted publishing as well: Open VSX exchanges GitHub's OIDC token for a
+      # short-lived one, under the trusted publisher registered on the
+      # powerengine98 namespace. A stored OVSX_PAT, while one exists, is used
+      # instead.
+      - name: Publish to Open VSX
+        if: steps.can.outputs.publish == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -n "$OVSX_PAT" ]; then
+            npx --yes ovsx@1.3.0 publish dist/odin-pr-review.vsix -p "$OVSX_PAT"
+          else
+            npx --yes ovsx@1.3.0 publish dist/odin-pr-review.vsix --trusted-publishing
+          fi
+
+      # Keyless as well: GitHub's OIDC token is exchanged through workload
+      # identity federation for a short-lived token of the service account linked
+      # to the Chrome Web Store publisher. Skipped until the CWS_* variables exist.
+      - name: Sign in to Google for the Chrome Web Store
+        id: google
+        if: steps.can.outputs.publish == 'true' && vars.CWS_WORKLOAD_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.CWS_WORKLOAD_PROVIDER }}
+          service_account: ${{ vars.CWS_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+
+      # Not fatal: a version still in review refuses a new upload, and that must
+      # not stop the release from being recorded.
+      - name: Publish to the Chrome Web Store
+        if: steps.google.outputs.access_token != ''
+        continue-on-error: true
+        env:
+          TOKEN: ${{ steps.google.outputs.access_token }}
+          ITEM: publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
+          REPLACE_PENDING: ${{ vars.CWS_REPLACE_PENDING }}
+        run: |
+          api=https://chromewebstore.googleapis.com
+          review=$(curl -sS -H "Authorization: Bearer $TOKEN" "$api/v2/$ITEM:fetchStatus" \
+            | jq -r '.submittedItemRevisionStatus.state // empty')
+          if [ "$review" = "PENDING_REVIEW" ]; then
+            if [ "$REPLACE_PENDING" != "true" ]; then
+              echo "::warning::An earlier version is still in Chrome Web Store review; this one was not uploaded. Set CWS_REPLACE_PENDING=true to replace it."
+              exit 0
+            fi
+            if ! cancelled=$(curl -sS --fail-with-body -X POST -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" -d '{}' "$api/v2/$ITEM:cancelSubmission"); then
+              echo "::error::Chrome Web Store would not cancel the review in progress: $cancelled"
+              exit 1
+            fi
+            echo "::notice::Cancelled the review in progress; submitting this version in its place."
+          fi
+          if ! upload=$(curl -sS --fail-with-body -X POST -H "Authorization: Bearer $TOKEN" \
+            -T dist/odin-pr-review-browser.zip "$api/upload/v2/$ITEM:upload"); then
+            echo "::error::Chrome Web Store refused the upload: $upload"
+            exit 1
+          fi
+          echo "upload: $upload"
+          state=$(echo "$upload" | jq -r '.uploadState // empty')
+          for _ in $(seq 1 30); do
+            [ "$state" != "IN_PROGRESS" ] && break
+            sleep 5
+            state=$(curl -sS -H "Authorization: Bearer $TOKEN" "$api/v2/$ITEM:fetchStatus" | jq -r '.lastAsyncUploadState // empty')
+          done
+          if [ "$state" != "SUCCEEDED" ]; then
+            echo "::error::Chrome Web Store upload ended as ${state:-unknown}"
+            exit 1
+          fi
+          if ! published=$(curl -sS --fail-with-body -X POST -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" -d '{}' "$api/v2/$ITEM:publish"); then
+            echo "::error::Chrome Web Store refused to publish: $published"
+            exit 1
+          fi
+          echo "publish: $published"
+
+      # The published version written back, so the repository says what is live.
+      # A push made with this workflow's own token starts no further runs.
+      - name: Record the release
+        id: record
+        if: steps.can.outputs.publish == 'true'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          # A version whose tag is already in the repository was released here
+          # before the store existed; it is not written down twice.
+          if git rev-parse -q --verify "refs/tags/v$NEXT" >/dev/null; then
+            echo "::notice::v$NEXT is already tagged; published, not recorded again."
+            exit 0
+          fi
+          since=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          notes=$(git log --format='- %s' ${since:+$since..}HEAD | grep -v 'chore(release)' || true)
+          changelog=packages/vscode-ext/CHANGELOG.md
+          {
+            echo "# Changelog"
+            echo
+            echo "## $NEXT — $(date -u +%Y-%m-%d)"
+            echo
+            echo "$notes"
+            tail -n +2 "$changelog"
+          } > "$changelog.next"
+          mv "$changelog.next" "$changelog"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/vscode-ext/package.json packages/browser-ext/package.json "$changelog"
+          git commit -m "chore(release): v$NEXT [skip ci]"
+          git tag "v$NEXT"
+          git push origin HEAD:main "v$NEXT"
+          echo "recorded=true" >> "$GITHUB_OUTPUT"
+
+      - name: Release
+        if: steps.record.outputs.recorded == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.next }}
+          name: v${{ steps.version.outputs.next }}
+          files: |
+            dist/odin-pr-review.vsix
+            dist/odin-pr-review-browser.zip
+          generate_release_notes: true

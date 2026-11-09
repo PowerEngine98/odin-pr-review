@@ -275,7 +275,9 @@ describe("a change with pictures in it", () => {
     const layout = layoutGraph(graph, {});
     const card = layout.nodes.find((n) => n.path === "chime.wav")!;
     expect(card.height).toBe(DEFAULT_METRICS.titleHeight + DEFAULT_METRICS.padding * 2 + PLAYER_HEIGHT);
-    expect(card.width).toBe(PLAYER_WIDTH);
+    // The player's own width plus the card's inset either side of it: the
+    // control keeps the room it asks for and the edges are not against it.
+    expect(card.width).toBe(PLAYER_WIDTH + DEFAULT_METRICS.padding * 2);
   });
 
   it("never cuts a filename off, however short the thing it holds", () => {

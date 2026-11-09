@@ -25,6 +25,9 @@
   import { lineAt } from "./measured.svelte.js";
   import PortLayer from "./PortLayer.svelte";
   import SchemaMarks from "./SchemaMarks.svelte";
+  import TourMarks from "../tour/Marks.svelte";
+  import TourDiagram from "../tour/Diagram.svelte";
+  import { tour } from "../tour/state.svelte.js";
   import type { Box, Journey } from "./wire.js";
 
   let {
@@ -423,6 +426,7 @@
       to be read next to it, not under it.
     -->
     <Pinned />
+    <TourDiagram />
 
     <!--
       Keyed by file id, so a rebuild that reorders the list moves cards rather
@@ -458,6 +462,11 @@
 
     <SchemaMarks {boxes} />
     <PortLayer {size} {boxes} {lineAt} {onfollow} />
+
+    <!-- What a tour draws, over everything: it is pointing at the code. -->
+    {#if tour.active}
+      <TourMarks {size} {boxes} />
+    {/if}
   </div>
 </div>
 

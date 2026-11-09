@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const BUNDLE = join(HERE, "..", "dist", "extension.js");
@@ -312,7 +312,19 @@ const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
  * pull request metadata on the graph is then empty, so nothing here may depend
  * on it to know which change a tab is of.
  */
-function forge(): { repo: string; bin: string } {
+function forge(
+  /**
+   * What this checkout is holding when the reader starts.
+   *
+   * `"change"` is the branch under test, which is the state the first of these
+   * tests needs: the live reading is a reading of these very files. `"other"`
+   * is a reader on something else entirely with no local copy of the change at
+   * all — the ordinary case, and the one the three-tab report came from, where
+   * reading the files on disk means fetching the branch and checking it out
+   * first.
+   */
+  holding: "change" | "other" = "change",
+): { repo: string; bin: string } {
   const root = mkdtempSync(join(tmpdir(), "odin-promote-"));
   const origin = join(root, "origin.git");
   const work = join(root, "work");
@@ -354,16 +366,28 @@ function forge(): { repo: string; bin: string } {
   git(work, "remote", "add", "origin", origin);
   git(work, "push", "--quiet", "origin", "development", "marco/lab-86", "marco/lab-87");
   git(work, "fetch", "--quiet", "origin");
+  if (holding === "other") {
+    // A reader standing somewhere else, with no local copy of the change: to
+    // read its files on disk the branch has to be fetched and checked out,
+    // which is the route the report came in on.
+    git(work, "checkout", "--quiet", "-b", "scratch", "development");
+    git(work, "branch", "-D", "marco/lab-86");
+  }
   // No local copy of the base, so it resolves to `origin/development` while the
   // reader only ever asked for `development`.
   git(work, "branch", "-D", "development");
   git(work, "branch", "-D", "marco/lab-87");
-  // Work that is not committed, so the live reading is a different picture from
-  // the forge's and a tab drawing one can be told from a tab drawing the other.
-  writeFileSync(
-    join(work, "two.ts"),
-    'import { one } from "./one.js";\n\nexport const two = one() + 99;\n',
-  );
+  if (holding === "change") {
+    // Work that is not committed, so the live reading is a different picture
+    // from the forge's and a tab drawing one can be told from a tab drawing
+    // the other. Only where the change is the branch in hand: uncommitted work
+    // on any other is a dirty tree, and a dirty tree is the one thing that
+    // stops a checkout — which is what the other fixture is for driving.
+    writeFileSync(
+      join(work, "two.ts"),
+      'import { one } from "./one.js";\n\nexport const two = one() + 99;\n',
+    );
+  }
 
   const shaOf = (ref: string) =>
     execFileSync("git", ["rev-parse", ref], { cwd: work, encoding: "utf8" }).trim();
@@ -376,7 +400,7 @@ function forge(): { repo: string; bin: string } {
       title: "notification_feed read-model, migration and projector",
       url: "https://example.invalid/pr/114",
       headRefName: "marco/lab-86",
-      headRefOid: shaOf("marco/lab-86"),
+      headRefOid: shaOf("origin/marco/lab-86"),
       isDraft: false,
       author: { login: "marco" },
       createdAt: "2026-01-01T00:00:00Z",
@@ -403,6 +427,19 @@ function forge(): { repo: string; bin: string } {
   writeFileSync(
     join(bin, "gh"),
     `#!/bin/sh
+# The forge's own checkout, which is a fetch and a branch: the extension runs
+# this rather than git when a reader asks for a change that is not here yet.
+if [ "$1" = "pr" ] && [ "$2" = "checkout" ]; then
+  case "$3" in
+    114) b=marco/lab-86;;
+    115) b=marco/lab-87;;
+    *) exit 1;;
+  esac
+  if git rev-parse --verify --quiet "refs/heads/$b" >/dev/null; then
+    exec git checkout "$b"
+  fi
+  exec git checkout -b "$b" "origin/$b"
+fi
 for a in "$@"; do
   case "$a" in
     list) cat <<'ODIN'
@@ -425,9 +462,14 @@ exit 1
   };
 }
 
-/** A window with the list already fetched, so a row can be pressed. */
-async function opened(repo: string) {
-  const editor = stub(undefined, { folder: repo, baseRef: "" });
+/**
+ * A window with the list already fetched, so a row can be pressed.
+ *
+ * `baseRef` is the workspace's configured base, which most readers have one
+ * of: it is what a reading built without a base of its own falls back to.
+ */
+async function opened(repo: string, baseRef = "") {
+  const editor = stub(undefined, { folder: repo, baseRef });
   // Every offer accepted, as the reader in the report accepted theirs.
   editor.information = (_message: string, ...rest: unknown[]) =>
     Promise.resolve(rest.find((one) => typeof one === "string"));
@@ -603,4 +645,123 @@ describe("reading one change the other way", () => {
 
     expect(tabs(editor)).toHaveLength(2);
   }, 90_000);
+});
+
+/**
+ * One change, one tab, when reading it live means fetching it first.
+ *
+ * The same promise as above, on the route a reader actually takes with
+ * somebody else's work: the change is not on this machine, so asking for the
+ * files on disk means checking the branch out and then reading it. What that
+ * left behind was three tabs — the forge's copy, a committed reading of the
+ * branch the checkout landed on, and the live one — of which the promotion
+ * closed the forge's copy and left the other two side by side. The reader had
+ * the change they were reading twice, once live and once not, which is exactly
+ * what a promotion exists to prevent.
+ *
+ * Two faults in one press, and both are measured here. The middle tab was
+ * drawn by the checkout itself: taking a change onto this machine ends with a
+ * reading, and the step that moves the working tree drew one of its own before
+ * the step that reads the files on disk got to. And the promotion closed one
+ * tab where there were two of the same change, because it had been told a name
+ * rather than a list.
+ *
+ * So this counts the frames the editor was ever asked for as well as the ones
+ * left open: a tab that appears and closes again a few seconds later is not
+ * nothing, and the report said three tabs opened.
+ */
+describe("taking a change onto this machine to read it live", () => {
+  let repo: string;
+  let path: string | undefined;
+
+  beforeAll(() => {
+    path = process.env.PATH;
+  });
+  // One repository each, rather than one for the pair: both of these move the
+  // working tree onto the change, and a checkout the test before it already
+  // made is not the thing either of them is about.
+  beforeEach(() => {
+    const made = forge("other");
+    repo = made.repo;
+    process.env.PATH = `${made.bin}:${path ?? ""}`;
+  });
+  afterAll(() => {
+    if (path !== undefined) process.env.PATH = path;
+  });
+
+  it("opens one tab for it and leaves the live one", async () => {
+    const editor = await opened(repo, "development");
+
+    await editor.commands.get("odin.readOrigin")!(114);
+    await drawn(editor, 1);
+    expect(tabs(editor)).toHaveLength(1);
+
+    // The button under the file list: fetch this branch, check it out, and
+    // follow the files on disk.
+    await editor.commands.get("odin.checkoutLocal")!(114);
+    await drawn(editor, 2);
+
+    const left = tabs(editor);
+    expect(left).toHaveLength(1);
+    expect(left[0]!.panel.title.startsWith("LIVE ")).toBe(true);
+    // And no third frame was ever asked for. The committed reading of the
+    // branch the checkout landed on is a tab nobody pressed anything for.
+    expect(editor.opened).toHaveLength(2);
+  }, 120_000);
+
+  it("closes every copy of the change, not the first one it finds", async () => {
+    /*
+     * The other half, on its own route.
+     *
+     * Checking a change out is also offered by itself — the row in the list,
+     * for a reader who means to go and work on it — and that one does end in a
+     * reading, deliberately. A reader who presses it with the forge's copy
+     * already open has the change drawn twice under two names, both of them
+     * committed readings, and asking for the live one afterwards is still one
+     * press meaning one tab.
+     */
+    const editor = await opened(repo, "development");
+
+    await editor.commands.get("odin.readOrigin")!(114);
+    await drawn(editor, 1);
+    await editor.commands.get("odin.checkout")!(114);
+    await drawn(editor, 2);
+    expect(tabs(editor)).toHaveLength(2);
+
+    await editor.commands.get("odin.readLocal")!(114);
+    await drawn(editor, 3);
+
+    const left = tabs(editor);
+    expect(left).toHaveLength(1);
+    expect(left[0]!.panel.title.startsWith("LIVE ")).toBe(true);
+  }, 120_000);
+
+  it("closes a reading of the branch that never learned which change it was", async () => {
+    /*
+     * The same promise where the forge said nothing.
+     *
+     * A reading opened on the branch itself — "review what I am working on",
+     * which is the oldest thing this extension does — carries no number: it
+     * was asked for by refs, and the forge is only consulted about what those
+     * refs turn out to be. Asking afterwards for the live reading of the
+     * change that branch belongs to is still the same change read the other
+     * way, and a reader who finishes with a stale committed copy beside their
+     * live one has the fault they reported, arriving by a quieter route.
+     */
+    const editor = await opened(repo, "development");
+
+    await editor.commands.get("odin.checkout")!(114);
+    await drawn(editor, 1);
+    // Opened again by refs alone, which is what the command on the branch
+    // does: no number goes in and the tab is filed under none.
+    await editor.commands.get("odin.review")!();
+    await wait(6000);
+
+    await editor.commands.get("odin.readLocal")!(114);
+    await drawn(editor, 2);
+
+    const left = tabs(editor);
+    expect(left).toHaveLength(1);
+    expect(left[0]!.panel.title.startsWith("LIVE ")).toBe(true);
+  }, 120_000);
 });

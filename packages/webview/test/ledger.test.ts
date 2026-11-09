@@ -36,7 +36,7 @@ describe("the ledger inside an agent's console", () => {
   it("opens on the log", () => {
     // Which is what somebody watching a turn wants. The ledger is read
     // afterwards, and opening on it answers a question nobody asked yet.
-    expect(source(TERMINAL)).toContain('let tab = $state<"log" | "ledger">("log")');
+    expect(source(TERMINAL)).toContain('let tab = $state<"log" | "ledger" | "tour">("log")');
   });
 
   it("counts every change on the tab, not this agent's share of them", () => {

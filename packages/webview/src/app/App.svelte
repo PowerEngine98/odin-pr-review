@@ -19,6 +19,10 @@
   model, one arrangement, one piece of arithmetic behind every arrow.
 -->
 <script lang="ts">
+  import AgentsReminder from "./hud/AgentsReminder.svelte";
+  import SupportModal from "./support/SupportModal.svelte";
+  import Toasts from "./support/Toasts.svelte";
+  import { support } from "./support/support.svelte.js";
   import { tick, untrack } from "svelte";
 
   import * as camera from "./canvas/camera.svelte.js";
@@ -29,7 +33,6 @@
   import Chrome from "./chrome/Chrome.svelte";
   import Checks from "./hud/Checks.svelte";
   import Deciding from "./hud/Deciding.svelte";
-  import Pairing from "./hud/Pairing.svelte";
   import Terminals from "./hud/Terminals.svelte";
   import Minimap from "./hud/Minimap.svelte";
   import { cardUnderCentre } from "./hud/here.js";
@@ -55,6 +58,9 @@
   } from "./state.svelte.js";
   import type { Drawn } from "./svg/card.js";
   import Drawing from "./svg/Drawing.svelte";
+  import TourControls from "./tour/Controls.svelte";
+  import TourTitle from "./tour/Title.svelte";
+  import { tour } from "./tour/state.svelte.js";
 
   let {
     model,
@@ -460,14 +466,22 @@
   -->
   <div class="left-dock" style="top:{chromeBottom + 14}px">
     <Checks />
-    <Pairing />
   </div>
 
-  <Minimap window={onScreen} {visible} here={centred} />
+  <!-- Away while a tour plays, without touching the setting: the canvas is the
+       player's then, and the corner is where the player's bar runs. -->
+  {#if !tour.active}
+    <Minimap window={onScreen} {visible} here={centred} />
+  {/if}
 
   <!-- The far corner from the file list: a log is read while looking at the
        code it is about, so it takes the side the change is not on. -->
   <Terminals />
+
+  <!-- A tour's player, along the bottom of the canvas. The consoles stand on it
+       rather than over it, by the height it reports. -->
+  <TourControls />
+  <TourTitle top={chromeBottom} />
 
   <!-- The other corner: where the reader is, saying whether what is under them
        is still current. -->
@@ -484,6 +498,11 @@
        here rather than in the console it usually comes from: it covers the
        window, and a component inside a panel cannot cover the panel. -->
   <Picture />
+  <AgentsReminder />
+  {#if support.open}
+    <SupportModal />
+  {/if}
+  <Toasts />
 
   <!-- Bound, not merely rendered.
        Both of these are `$bindable`, and neither was tied to anything: the
@@ -514,7 +533,7 @@
        is stretched between them rather than positioned twice. */
     left: 12px;
     right: auto;
-    bottom: 96px;
+    bottom: max(96px, calc(var(--tour-room, 0px) + 12px));
     z-index: var(--z-hud, 25);
     display: flex;
     flex-direction: column;

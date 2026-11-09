@@ -1,15 +1,23 @@
 {
   "name": "odin-pr-review",
   "displayName": "Odin PR Review",
-  "description": "Review a pull request as a graph: files are vertices, call-site references are edges.",
+  "description": "Review a pull request as a graph of the files it touches, with guided tours narrated by AI agents and agents you can pair with on the change.",
   "icon": "media/icon.png",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.6.2",
+  "preview": true,
   "license": "MIT",
-  "publisher": "odin",
+  "publisher": "powerengine98",
+  "homepage": "https://github.com/PowerEngine98/odin-pr-review#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/PowerEngine98/odin-pr-review"
+  },
+  "bugs": {
+    "url": "https://github.com/PowerEngine98/odin-pr-review/issues"
+  },
+  "galleryBanner": {
+    "color": "#1e3a8a",
+    "theme": "dark"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -23,12 +31,18 @@
     "code review",
     "diff",
     "graph",
-    "call hierarchy"
+    "call hierarchy",
+    "github",
+    "ai",
+    "agents",
+    "guided tour"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
     "onWebviewPanel:odin.graph",
-    "onView:odin.changes"
+    "onView:odin.changes",
+    "onUri",
+    "onStartupFinished"
   ],
   "contributes": {
     "commands": [
@@ -160,6 +174,21 @@
       {
         "command": "odin.openAtLine",
         "title": "Odin: Open File at This Line"
+      },
+      {
+        "command": "odin.setUpKokoro",
+        "title": "Set Up the Kokoro Narrator",
+        "category": "Odin"
+      },
+      {
+        "command": "odin.connectBrowser",
+        "title": "Connect the Browser Extension",
+        "category": "Odin"
+      },
+      {
+        "command": "odin.disconnectBrowser",
+        "title": "Disconnect the Browser Extension",
+        "category": "Odin"
       }
     ],
     "configuration": {
@@ -184,6 +213,23 @@
           "type": "boolean",
           "default": true,
           "description": "Keep a graph of the working tree in step with the working tree. Only applies to a local reading, where the change includes work that has not been committed. The whole project is watched, not only the files under review: renaming a function in an untouched file changes the references leaving the files that are."
+        },
+        "odin.kokoro.autoSetup": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Set up the Kokoro neural voice in the background when Odin starts. Off by default: setup downloads `uv`, a Python runtime and about 300 MB of voice model into Odin's storage. Run **Odin: Set Up the Kokoro Narrator** to set it up once on demand."
+        },
+        "odin.kokoro.voice": {
+          "type": "string",
+          "default": "af_heart",
+          "description": "The Kokoro voice to read aloud with, such as af_heart, af_bella, am_michael or bf_emma."
+        },
+        "odin.kokoro.speed": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0.5,
+          "maximum": 2,
+          "description": "How fast the Kokoro narrator reads, where 1 is its natural pace."
         }
       }
     },
@@ -265,7 +311,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "package": "mkdir -p ../../dist && vsce package --no-dependencies --out ../../dist/odin-pr-review-0.1.0.vsix",
+    "package": "mkdir -p ../../dist && vsce package --no-dependencies --out ../../dist/odin-pr-review.vsix",
     "test:integration": "node integration/run.mjs"
   },
   "dependencies": {

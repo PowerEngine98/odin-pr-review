@@ -202,6 +202,18 @@ export async function readPatch(req: DiffRequest): Promise<{
         : branch
           ? await readPullRequest(branch, req)
           : await readPullRequest((await currentBranch(req)) ?? headRef, req);
+    /*
+     * A number remembered for the working tree, which has since moved on.
+     *
+     * A live reading is of whatever the checkout holds, and the number it was
+     * opened with is the branch it held then. Switch branch and reload, and the
+     * number still named the old change: its title and base over the new
+     * branch's files. The checkout's own branch is the better witness.
+     */
+    if (dirty && req.pullRequestNumber !== undefined && pull?.headRefName) {
+      const here = await currentBranch(req);
+      if (here && here !== pull.headRefName) pull = await readPullRequest(here, req);
+    }
   }
   const wanted =
     req.baseRef ??

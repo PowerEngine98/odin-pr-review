@@ -25,8 +25,13 @@ import {
 } from "@odin/core";
 import { loadHighlighter } from "@odin/highlight";
 import { execFile } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import * as vscode from "vscode";
+
+import { BrowserBridge } from "./bridge.js";
+import { Driver } from "./driver.js";
 
 import { BASE_SCHEME, BaseContentProvider } from "./baseContent.js";
 import { buildGraphForRepo, forgetBase, stageGraphForRepo } from "./graph.js";
@@ -41,9 +46,12 @@ import { activeTheme } from "./theme.js";
 import { SeenStore } from "./seen.js";
 import { BaseStore } from "./base.js";
 import { keyOf, SessionStore, type Session } from "./session.js";
+import { Kokoro } from "./kokoro.js";
+import { log } from "./log.js";
 import { SettingsStore } from "./settings.js";
 import { ViewedStore } from "./viewed.js";
 import { FoldedStore } from "./folded.js";
+import { TourStore } from "./tour.js";
 import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 
@@ -103,6 +111,15 @@ interface Question {
   headRef?: string;
   worktree?: boolean;
   number?: number;
+  /**
+   * What the head turned out to be, which is not always what was asked for.
+   *
+   * A reading opened on the branch in hand asks for no head at all and gets
+   * the branch the checkout is standing on; one asked for by sha gets the sha.
+   * Kept beside the question because it is how a tab that learned nothing
+   * about which change it draws can still be recognised as drawing it.
+   */
+  was?: string;
   /** Only what came after this commit, the one the reader last reviewed. */
   since?: string;
 }
@@ -128,7 +145,16 @@ let last: Question | undefined;
 const askedFor = new Map<string, Question>();
 
 /**
- * The tab showing this pull request, read the way that is asked for.
+ * Every tab showing this pull request, read the way that is asked for.
+ *
+ * All of them rather than the first one found. One reading of a change is what
+ * there should be, and the count is nonetheless not always one: a route that
+ * draws a change on the way to doing something else leaves a second tab of it
+ * under a second name, and a promotion that replaced one of them left the
+ * reader with exactly what they had asked not to have — the change they were
+ * reading twice, once live and once not. What the promotion means is "this
+ * change, read the other way, is finished with", and that is true of every tab
+ * answering to it.
  *
  * By the change rather than by the refs, because the refs are exactly what
  * cannot be relied on here. One pull request answers to a handful of names —
@@ -147,14 +173,32 @@ const askedFor = new Map<string, Question>();
  * of asking: the committed reading and the reading of the files on disk are
  * both legitimate and both wanted, and swapping between them is a replacement
  * rather than a second tab.
+ *
+ * `branch` is the same question asked of a reading that never learned which
+ * change it was of. A reading knows its number when somebody passed one in or
+ * when the forge answered, and a reading of the branch in hand — "review what
+ * I am working on", asked for by refs — had neither. Its head is still the
+ * change's branch, and a tab drawing that branch's commits is the same change
+ * read the other way whatever it managed to find out about itself. Asked of
+ * the head it was given and of the head that came back, because a reading of
+ * the branch in hand names neither and resolves to both; the tracking ref
+ * counts as well, since that is what the forge's copy is read under.
  */
-function readingOf(number: number, live: boolean): string | undefined {
+function readingsOf(number: number, live: boolean, branch?: string): string[] {
+  const names = branch ? [branch, `origin/${branch}`] : [];
+  const found: string[] = [];
   for (const [key, question] of askedFor) {
-    if (question.number !== number) continue;
+    const its =
+      question.number === number ||
+      (question.number === undefined &&
+        [question.headRef, question.was].some(
+          (name) => name !== undefined && names.includes(name),
+        ));
+    if (!its) continue;
     if ((question.worktree === true) !== live) continue;
-    return key;
+    found.push(key);
   }
-  return undefined;
+  return found;
 }
 
 /**
@@ -170,6 +214,15 @@ function questionInFront(): Question | undefined {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  GraphPanel.version = String(context.extension?.packageJSON?.version ?? "");
+  if (context.globalStorageUri) GraphPanel.errorLog = `${context.globalStorageUri.fsPath}/page-errors.log`;
+  const bridge = new BrowserBridge(context, presentForBrowser);
+  browserBridge = bridge;
+  void bridge.start();
+  const driver = new Driver(context.globalStorageUri?.fsPath ?? "", (step) =>
+    bridge.openReading(step.owner, step.repo, step.number, step.base ?? "", step.head),
+  );
+  if (context.globalStorageUri) driver.start();
   // The graph's tab wears the extension's own mark, which is a file on disk:
   // the tab belongs to the editor rather than to the page inside it.
   GraphPanel.assets = context.extensionUri;
@@ -185,6 +238,24 @@ export function activate(context: vscode.ExtensionContext): void {
   // Global rather than per-workspace: which files somebody has read is about
   // this change, but whether they want to see import arrows is about them.
   GraphPanel.settings = new SettingsStore(context.globalState);
+  if (context.globalStorageUri) {
+    carryOver(context.globalStorageUri.fsPath);
+    GraphPanel.kokoro = new Kokoro(
+      join(context.globalStorageUri.fsPath, "kokoro"),
+      join(context.extensionUri.fsPath, "media", "kokoro", "server.py"),
+      () => {
+        const config = vscode.workspace.getConfiguration("odin.kokoro");
+        return { voice: config.get("voice", "af_heart"), speed: config.get("speed", 1) };
+      },
+    );
+    context.subscriptions.push({ dispose: () => GraphPanel.kokoro?.dispose() });
+    void GraphPanel.kokoro
+      .repair()
+      .catch(() => false)
+      .then((repairing) => setUpKokoro(context, false, repairing));
+    GraphPanel.tours = new TourStore(context.globalStorageUri.fsPath);
+    context.subscriptions.push({ dispose: () => GraphPanel.tours?.flush() });
+  }
   // Per workspace, unlike the settings above: a conversation with an agent is
   // about this repository's code and belongs nowhere else.
   GraphPanel.store = context.workspaceState;
@@ -208,7 +279,7 @@ export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.onLocal = (insteadOf) => {
     const here = questionInFront();
     if (here) {
-      void review(here.baseRef, here.headRef, true, undefined, undefined, insteadOf);
+      void review(here.baseRef, here.headRef, true, undefined, undefined, insteadOf ? [insteadOf] : []);
     }
   };
 
@@ -245,7 +316,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // who shut the drawing kept its file list — rows offering to open files of a
   // change they had just decided they were finished with.
   GraphPanel.onNone = () => sidebar.forgetChange();
-  sidebar = new ChangeSidebar(viewed, seen);
+  sidebar = new ChangeSidebar(viewed, seen, GraphPanel.settings);
+  GraphPanel.sidebarShown = () => sidebar.shown();
+  sidebar.onUntouched = (on) => GraphPanel.showUntouched(on);
+  GraphPanel.onUntouched = (on) => sidebar.setUntouched(on);
 
   // Populated in the background so activation is not held up by the network.
   void refreshPullRequests();
@@ -347,6 +421,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("odin.showTests", () =>
       GraphPanel.showTests(),
     ),
+    vscode.commands.registerCommand("odin.setUpKokoro", () => setUpKokoro(context, true)),
     vscode.commands.registerCommand(
       "odin.followEdge",
       (target: { toPath: string; toLine: number; toSide: "base" | "head" }) =>
@@ -363,6 +438,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerUriHandler({
       handleUri: (uri) => void handleUri(uri),
     }),
+    bridge,
+    driver,
+    vscode.commands.registerCommand("odin.connectBrowser", () => bridge.pairByCode()),
+    vscode.commands.registerCommand("odin.disconnectBrowser", () => bridge.disconnect()),
     /*
      * Coming back to the window, which is when what is on screen is oldest.
      *
@@ -446,7 +525,7 @@ export function activate(context: vscode.ExtensionContext): void {
          * Falling back to the last reading covers the frame written by a build
          * that predates this, which has no state of its own to offer.
          */
-        const previous = readingIn(state) ?? session.last();
+        const previous = readingIn(state) ?? lastReadingHere();
         if (!previous) {
           // Nothing worth reopening, and an empty frame says less than no
           // frame at all.
@@ -512,6 +591,18 @@ export function activate(context: vscode.ExtensionContext): void {
  * checked rather than cast, and a frame that fails the check falls back to the
  * single remembered session — which is what every frame did before.
  */
+function lastReadingHere(): Session | undefined {
+  const last = session.last();
+  if (!last) return undefined;
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 0) return last;
+  const here = folders.some((folder) => {
+    const path = folder.uri.fsPath;
+    return last.repo === path || last.repo.startsWith(`${path}/`) || path.startsWith(`${last.repo}/`);
+  });
+  return here ? last : undefined;
+}
+
 function readingIn(state: unknown): Session | undefined {
   if (!state || typeof state !== "object") return undefined;
   /*
@@ -624,12 +715,22 @@ function reopen(reading: Session, key: string): void {
 }
 
 /**
- * Opens a review from a link, e.g. `vscode://odin.odin-pr-review/review?base=main`.
+ * Opens a review from a link, e.g. `vscode://powerengine98.odin-pr-review/review?base=main`.
  *
  * Useful for triggering a review from outside the editor — a script, a chat
  * message, a code-review checklist — without hunting through the palette.
  */
+let browserBridge: BrowserBridge | undefined;
+
 async function handleUri(uri: vscode.Uri): Promise<void> {
+  if (uri.path.startsWith("/connect")) {
+    await browserBridge?.pairFromUri(uri);
+    return;
+  }
+  if (uri.path.startsWith("/repository")) {
+    await browserBridge?.resolveFromUri(uri);
+    return;
+  }
   if (!uri.path.startsWith("/review")) return;
   const base = new URLSearchParams(uri.query).get("base") ?? undefined;
   await review(base);
@@ -763,7 +864,7 @@ async function readLocal(number: number): Promise<void> {
    * because one change answers to several names and none of them is reliable
    * here; a different pull request has a different number and keeps its tab.
    */
-  const going = readingOf(number, false);
+  const going = readingsOf(number, false, pull.branch);
 
   const local = localState.get(pull.branch);
   const here = local?.worktree === repo;
@@ -858,7 +959,7 @@ async function readOrigin(number: number, since?: string): Promise<void> {
   // has the working tree on screen and picks "Origin" is asking to see this
   // change as the forge has it, not to have both at once. Their live reading
   // goes once the forge's copy is drawn.
-  const going = readingOf(number, true);
+  const going = readingsOf(number, true, pull.branch);
 
   await GraphPanel.showLoading(`Fetching #${number}`);
   await git(["fetch", "--quiet", "origin", pull.branch], { cwd: repo })
@@ -1012,7 +1113,7 @@ async function chooseView(): Promise<void> {
   }
   // The files on disk, so a committed reading gives way to the live one.
   const going = worktree ? undefined : GraphPanel.currentReading();
-  await review(here.baseRef, undefined, true, here.repo, number, going, "HEAD");
+  await review(here.baseRef, undefined, true, here.repo, number, going ? [going] : [], "HEAD");
 }
 
 /**
@@ -1047,7 +1148,21 @@ async function markFresh(graph: ChangeGraph, repo: string, where?: string): Prom
   sidebar.setFresh(fresh);
 }
 
-async function checkout(number: number): Promise<void> {
+async function checkout(
+  number: number,
+  /**
+   * Whether the branch this lands on is to be drawn here.
+   *
+   * It is, for a reader who pressed "check out this change" and meant the
+   * whole of it: moving the working tree and then showing nothing would leave
+   * them on a branch with the last reading still on screen. It is not when the
+   * caller is about to read the change itself — taking a change onto this
+   * machine in order to read the files on disk drew the committed reading
+   * first, under a name of its own, and that tab then sat beside the live one
+   * for the rest of the afternoon. One press, one tab.
+   */
+  draw = true,
+): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
 
@@ -1111,10 +1226,15 @@ async function checkout(number: number): Promise<void> {
   // the button look broken.
   const here = await currentBranch({ cwd: repo }).catch(() => undefined);
   if (pull && here && here === pull.branch) {
+    if (!draw) return;
     vscode.window.showInformationMessage(
       `Odin: already on ${pull.branch} — showing #${number}.`,
     );
-    await review();
+    // Named by the change that was asked for. The reading is of the branch
+    // this checkout holds either way; what the number adds is that the tab
+    // knows which change it is drawing, so a later reading of the same change
+    // the other way replaces it rather than opening beside it.
+    await review(undefined, undefined, false, undefined, number);
     return;
   }
 
@@ -1165,7 +1285,8 @@ async function checkout(number: number): Promise<void> {
           }
         }
         await refreshPullRequests();
-        await review();
+        // With the number, for the reason the branch above gives.
+        if (draw) await review(undefined, undefined, false, undefined, number);
       },
     );
   } finally {
@@ -1195,7 +1316,9 @@ async function checkoutLocal(number: number): Promise<void> {
   if (!repo) return;
 
   const before = await currentBranch({ cwd: repo }).catch(() => undefined);
-  await checkout(number);
+  // Moved, not drawn: the reading this route wants is the live one below, and
+  // the committed reading of the branch it lands on is a tab nobody asked for.
+  await checkout(number, false);
 
   // Only if it actually moved. `checkout` reports its own failures, and reading
   // the working tree of a branch the reader was refused is reading the wrong
@@ -1232,7 +1355,49 @@ async function checkoutLocal(number: number): Promise<void> {
    */
   const against = known.get(number)?.baseRef;
 
-  await review(against, undefined, true, undefined, number, readingOf(number, false));
+  await review(
+    against,
+    undefined,
+    true,
+    undefined,
+    number,
+    readingsOf(number, false, known.get(number)?.branch),
+  );
+}
+
+async function presentForBrowser(
+  repo: string,
+  number: number,
+  base: string,
+  branch?: string,
+): Promise<GraphPanel | undefined> {
+  const open = GraphPanel.find(repo, number);
+  if (open) return open;
+  const baseRef = base || undefined;
+
+  if (branch) {
+    const here = await currentBranch({ cwd: repo }).catch(() => undefined);
+    if (here === branch) {
+      await review(baseRef, undefined, true, repo, number);
+      const live = GraphPanel.find(repo, number);
+      if (live) return live;
+    }
+    await git(["fetch", "--quiet", "origin", branch], { cwd: repo }).catch(() => "");
+    if (await revision(repo, `refs/remotes/origin/${branch}`)) {
+      await review(baseRef, `origin/${branch}`, false, repo, number);
+      const tracked = GraphPanel.find(repo, number, `origin/${branch}`);
+      if (tracked) return tracked;
+    }
+  }
+
+  await git(["fetch", "--quiet", "origin", `refs/pull/${number}/head`], { cwd: repo }).catch(() => "");
+  const head = await revision(repo, "FETCH_HEAD");
+  if (!head) throw new Error(`Could not fetch the commits of #${number}.`);
+  if (base) await git(["fetch", "--quiet", "origin", base], { cwd: repo }).catch(() => "");
+  const baseRev = base ? await revision(repo, `origin/${base}`) ?? base : undefined;
+  const forked = baseRev ? await mergeBase(repo, baseRev, head) : undefined;
+  await review(forked ?? baseRev, head, false, repo, number);
+  return GraphPanel.find(repo, number, head);
 }
 
 async function readFinished(pull: PullRequestSummary): Promise<void> {
@@ -1423,6 +1588,62 @@ function gh(args: string[], cwd: string): Promise<string> {
   });
 }
 
+/**
+ * Kokoro made ready, and switched on for the reader once it is.
+ *
+ * Unasked, it runs once per setup version, in the background, with its progress
+ * in the status bar: a failure is said once and then left alone until the reader
+ * asks again from the command, which shows its progress up front.
+ */
+async function setUpKokoro(
+  context: vscode.ExtensionContext,
+  asked: boolean,
+  repairing = false,
+): Promise<void> {
+  const kokoro = GraphPanel.kokoro;
+  if (!kokoro) return;
+  if (!Kokoro.supported()) {
+    if (asked) {
+      void vscode.window.showWarningMessage(
+        `The Kokoro narrator is not available on ${process.platform} ${process.arch}.`,
+      );
+    }
+    return;
+  }
+  if (await kokoro.ready()) {
+    if (asked) void vscode.window.showInformationMessage("The Kokoro narrator is already set up.");
+    return;
+  }
+  const TRIED = "odin.kokoro.tried";
+  if (!asked && !repairing) {
+    const enabled = vscode.workspace.getConfiguration("odin.kokoro").get("autoSetup", false);
+    if (!enabled || context.globalState.get(TRIED) === Kokoro.version) return;
+  }
+  await context.globalState.update(TRIED, Kokoro.version);
+
+  try {
+    await vscode.window.withProgress(
+      {
+        location: asked ? vscode.ProgressLocation.Notification : vscode.ProgressLocation.Window,
+        title: "Setting up the Kokoro narrator",
+      },
+      (progress) => kokoro.setUp((what) => progress.report({ message: what })),
+    );
+  } catch (error) {
+    const retry = await vscode.window.showWarningMessage(
+      `Odin could not set up the Kokoro narrator: ${String(error).slice(0, 300)}`,
+      "Try again",
+    );
+    if (retry) void setUpKokoro(context, true);
+    return;
+  }
+  await GraphPanel.settings?.merge({ kokoroVoice: true });
+  GraphPanel.kokoroReady();
+  void vscode.window.showInformationMessage(
+    "The Kokoro narrator is ready, and Odin reads aloud with it now.",
+  );
+}
+
 export function deactivate(): void {
   // Temporary checkouts are removed as they are used. The watchers are the one
   // thing here that outlives a command, so they are what there is to put away.
@@ -1473,13 +1694,20 @@ async function review(
    */
   is?: number,
   /**
-   * The reading this one replaces, when it is the same change read the other
+   * The readings this one replaces, when it is the same change read the other
    * way.
    *
-   * A promotion rather than a second tab. Which tab is being replaced is
-   * something only the caller knows — it is the one the reader pressed, or the
-   * one the offer was made from — so it travels with the request, and the field
-   * the panel closes by is written here and nowhere else.
+   * A promotion rather than a second tab. Which tabs are being replaced is
+   * something only the caller knows — they are the one the reader pressed, or
+   * the one the offer was made from, or every tab of that change read the way
+   * this one is not — so they travel with the request, and the field the panel
+   * closes by is written here and nowhere else.
+   *
+   * A list rather than one name, because one change is sometimes open twice:
+   * a route that draws a change on its way to doing something else leaves a
+   * tab nobody asked for, and a promotion that closed only the first of them
+   * left the reader with the live reading beside a stale copy — the thing a
+   * promotion exists to prevent.
    *
    * That is the whole of why this is a parameter. It used to be a static the
    * two callers who happened to think of it assigned before calling, and the
@@ -1487,7 +1715,7 @@ async function review(
    * deliberate way to ask for the live reading of a change already on screen,
    * and it opened one beside the forge's copy instead of in place of it.
    */
-  insteadOf?: string,
+  insteadOf?: readonly string[],
   /**
    * The commit the reader last reviewed, when only what came after it is
    * wanted. Not part of the tab's name: the same change read from a later
@@ -1553,16 +1781,17 @@ async function review(
       });
 
       /*
-       * Said before the wait, and only when it is a different tab.
+       * Said before the wait, and never about this reading itself.
        *
-       * The panel closes the promoted tab once its replacement is drawn, which
-       * is several seconds after this — so it has to be told now, while the
-       * request that knows about it is still in hand. Asking for the reading
-       * that is already there is not a promotion of anything, and saying it was
-       * would close the tab the reader is looking at to put the same picture
-       * back into a new one.
+       * The panel closes the promoted tabs once their replacement is drawn,
+       * which is several seconds after this — so it has to be told now, while
+       * the request that knows about them is still in hand. Asking for the
+       * reading that is already there is not a promotion of anything, and
+       * saying it was would close the tab the reader is looking at to put the
+       * same picture back into a new one.
        */
-      if (insteadOf && insteadOf !== where) GraphPanel.promoting = insteadOf;
+      const promoted = (insteadOf ?? []).filter((one) => one !== where);
+      if (promoted.length > 0) GraphPanel.promoting = promoted;
 
       await GraphPanel.showLoading("Reading the change", where);
       try {
@@ -1680,7 +1909,7 @@ async function review(
          * next — closing a tab they had not asked to replace, minutes later,
          * for a build that had already failed.
          */
-        if (GraphPanel.promoting === insteadOf) GraphPanel.promoting = undefined;
+        if (GraphPanel.promoting === promoted) GraphPanel.promoting = undefined;
         await GraphPanel.stopLoading(
           error instanceof Error ? error.message : String(error),
         );
@@ -1860,6 +2089,9 @@ async function present(
     ...(headRef ? { headRef } : {}),
     ...(graph.meta.worktree ? { worktree: true } : {}),
     ...(is !== undefined ? { number: is } : pull ? { number: pull.number } : {}),
+    // What the refs turned out to be, so a reading that asked for none of them
+    // can still be told apart from a reading of something else.
+    ...(graph.meta.headRef ? { was: graph.meta.headRef } : {}),
     ...(sinceToAsk(graph.meta) ? { since: sinceToAsk(graph.meta)! } : {}),
   };
   /*
@@ -2024,7 +2256,7 @@ function watchForLocalWork(
         // The same change read the other way, not a second tab of it. Said as
         // part of the request rather than into a field beside it, so that every
         // route into a promotion behaves the same way.
-        await review(base, headRef, true, undefined, undefined, key);
+        await review(base, headRef, true, undefined, undefined, [key]);
         return undefined;
       },
       onChange: () => {},
@@ -2042,6 +2274,7 @@ function armLive(
 ): void {
   // This reading's own watcher, and only this one. Standing the graph up again
   // replaces it; standing a different one up leaves it alone.
+  if (live.has(key)) log(`live: stopped following ${repo} to start again`);
   live.get(key)?.dispose();
   live.delete(key);
 
@@ -2101,9 +2334,11 @@ function armLive(
       // whichever answer was last delivered, and dropped outright if the
       // expensive half fails: the provisional graph is missing arrows on
       // purpose, and treating it as the truth would make them missing for good.
+      const began = Date.now();
       const staged = await stageGraphForRepo(request, known);
       fresh = staged.first;
       known = staged.first;
+      log(`live: ${describeBuild(staged.first.graph)} in ${Date.now() - began}ms${staged.rest ? ", resolving references" : ""}`);
       if (!staged.rest) return { graph: staged.first.graph };
 
       return {
@@ -2112,9 +2347,11 @@ function armLive(
           try {
             fresh = await staged.rest!();
             known = fresh;
+            log(`live: references resolved, ${describeBuild(fresh.graph)} in ${Date.now() - began}ms`);
             return fresh.graph;
           } catch (error) {
             known = undefined;
+            log(`live: resolving references failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
             throw error;
           }
         },
@@ -2123,7 +2360,8 @@ function armLive(
     // Said in the frame this watcher belongs to. The reader may be reading
     // something else by now, and a rebuild of what they left is not news about
     // what they are looking at.
-    onRebuilding: (files, history) =>
+    onRebuilding: (files, history) => {
+      log(`live: rebuilding ${repo}, ${history ? "the branch moved" : `${files} file${files === 1 ? "" : "s"} changed`}`);
       GraphPanel.setRefreshingIn(
         shown,
         repo,
@@ -2133,7 +2371,8 @@ function armLive(
         history
           ? "Rebuilding — the branch moved"
           : `Rebuilding — ${files} file${files === 1 ? "" : "s"} changed`,
-      ),
+      );
+    },
     // Cleared whatever came of it, including a rebuild that found nothing
     // worth redrawing. A spinner left running says the tool is still working
     // when it has finished and decided there was nothing to do.
@@ -2158,6 +2397,7 @@ function armLive(
     onError: (error) => {
       // Said once, quietly. A watcher that pops an error dialog on every
       // broken intermediate state — which is most keystrokes — is unusable.
+      log(`live: could not rebuild ${repo}: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       vscode.window.setStatusBarMessage(
         `Odin: could not rebuild — ${error instanceof Error ? error.message : String(error)}`,
         6000,
@@ -2169,6 +2409,16 @@ function armLive(
   // exactly once — on the first edit, which is the one being watched for.
   watcher.seed(shown);
   live.set(key, watcher);
+  log(`live: following ${repo} against ${base ?? "the detected base"}, ${describeBuild(shown)}`);
+}
+
+/** A build in one line: which branch, from where, and how much of it. */
+function describeBuild(graph: ChangeGraph): string {
+  const files = graph.nodes.filter((node) => node.status !== "phantom" && node.kind !== "database");
+  const added = files.reduce((sum, node) => sum + node.stats.additions, 0);
+  const removed = files.reduce((sum, node) => sum + node.stats.deletions, 0);
+  const pull = graph.meta.pullRequest ? ` #${graph.meta.pullRequest.number}` : "";
+  return `${graph.meta.headRef}${pull} from ${graph.meta.mergeBase?.slice(0, 9) ?? "?"}: ${files.length} files +${added} -${removed}`;
 }
 
 /**
@@ -2433,4 +2683,34 @@ async function repositoryRoot(quiet = false): Promise<string | undefined> {
 async function listBranches(repo: string): Promise<string[]> {
   const refs = await listRefs({ cwd: repo });
   return refs.length > 0 ? refs : ["main", "master"];
+}
+
+/**
+ * What an earlier install kept, brought across once.
+ *
+ * The extension was installed under another publisher before it was published,
+ * and the editor keys its storage folder by the extension's id: the saved tours
+ * and a voice that took minutes to set up sit in a sibling folder the new id
+ * never looks in. Tours are copied; the voice, hundreds of megabytes, is moved.
+ */
+const EARLIER = "odin.odin-pr-review";
+
+function carryOver(storage: string): void {
+  const earlier = join(dirname(storage), EARLIER);
+  if (earlier === storage || !existsSync(earlier)) return;
+  try {
+    mkdirSync(storage, { recursive: true });
+    const tours = join(earlier, "tours");
+    if (existsSync(tours) && !existsSync(join(storage, "tours"))) {
+      cpSync(tours, join(storage, "tours"), { recursive: true });
+    }
+    const voice = join(earlier, "kokoro");
+    if (existsSync(voice) && !existsSync(join(storage, "kokoro"))) {
+      renameSync(voice, join(storage, "kokoro"));
+      rmSync(join(storage, "kokoro", "venv"), { recursive: true, force: true });
+      rmSync(join(storage, "kokoro", "ready.json"), { force: true });
+    }
+  } catch (error) {
+    log(`carrying over the earlier install's storage failed: ${String(error)}`);
+  }
 }

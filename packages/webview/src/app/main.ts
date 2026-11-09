@@ -3,7 +3,7 @@ import { hydrate } from "svelte";
 import App from "./App.svelte";
 import { bootStart } from "./hud/boot.svelte.js";
 import { onUnsaved } from "./panels/drafts.js";
-import { host, listen, notify, restorePart } from "./state.svelte.js";
+import { host, keep, listen, notify, restorePart } from "./state.svelte.js";
 
 /**
  * Wakes the page up.
@@ -27,6 +27,17 @@ import { host, listen, notify, restorePart } from "./state.svelte.js";
  * lands immediately, which is the honest picture of a small change: there was
  * nothing to watch.
  */
+function reportPageError(error: unknown, where: string): void {
+  const said = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ""}` : String(error);
+  if (host) notify("pageError", { where, error: said.slice(0, 4000) });
+  else console.error(`Odin (${where}):`, error);
+}
+
+window.addEventListener("error", (event) => reportPageError(event.error ?? event.message, "error"));
+window.addEventListener("unhandledrejection", (event) => reportPageError(event.reason, "promise"));
+
+if (window.__ODIN__?.reading) keep({ reading: window.__ODIN__.reading });
+
 bootStart("reading the change");
 
 listen();
@@ -55,4 +66,10 @@ onUnsaved((trouble) => {
 restorePart();
 
 const target = document.getElementById("app");
-if (target) hydrate(App, { target });
+if (target) {
+  try {
+    hydrate(App, { target });
+  } catch (error) {
+    reportPageError(error, "start");
+  }
+}

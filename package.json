@@ -12,15 +12,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc --build && yarn workspace @odin/webview run build:app && tsc --build && yarn workspace odin-pr-review run build && chmod +x packages/cli/dist/main.js",
+    "build": "tsc --build packages/core && yarn workspace @odin/webview run build:app && tsc --build && yarn workspace odin-pr-review run build && yarn workspace @odin/browser-ext run build && chmod +x packages/cli/dist/main.js",
     "clean": "tsc --build --clean",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --build && yarn workspace @odin/webview run build:app && tsc --build --force",
+    "typecheck": "tsc --build packages/core && yarn workspace @odin/webview run build:app && tsc --build --force && yarn workspace @odin/browser-ext run typecheck",
     "demo": "node --experimental-strip-types scripts/demo.ts",
-    "build:libs": "tsc --build && yarn workspace @odin/webview run build:app && tsc --build && chmod +x packages/cli/dist/main.js",
+    "build:libs": "tsc --build packages/core && yarn workspace @odin/webview run build:app && tsc --build && chmod +x packages/cli/dist/main.js",
     "package": "yarn build && yarn workspace odin-pr-review run package",
-    "test:integration": "yarn workspace odin-pr-review run test:integration"
+    "test:integration": "yarn workspace odin-pr-review run test:integration",
+    "package:browser": "yarn workspace @odin/browser-ext run package"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

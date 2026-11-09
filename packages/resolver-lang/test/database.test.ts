@@ -156,7 +156,7 @@ describe("a change that reaches the schema without one migration naming another"
     // The import is what makes a capitalised word a schema object rather than
     // an ordinary class name, so the file on disk has to carry it.
     "src/Projection.kt": [
-      "import com.labura.jooq.generated.Tables",
+      "import com.example.jooq.generated.Tables",
       "fun rows(labor: LaborRecord) = labor",
     ].join("\n"),
   };

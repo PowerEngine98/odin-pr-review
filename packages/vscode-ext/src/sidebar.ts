@@ -1,36 +1,22 @@
 import {
-  cardTitle,
   DARK_THEME,
-  differs,
   LIGHT_THEME,
   type ChangeGraph,
-  type Edge,
-  type FileNode,
   type LocalBranch,
   type PullRequestSummary,
+  type Theme,
 } from "@odin/core";
 import {
   renderSidebar,
-  type ChangeView,
-  type FileView,
-  type FolderView,
-  type PickerView,
-  type PullView,
+  sidebarTokens,
   type Query,
-  type RefView,
   type SidebarModel,
 } from "@odin/webview";
 import * as vscode from "vscode";
 
-import {
-  ago,
-  buildTree,
-  partOf,
-  progressOf,
-  rowSearchText,
-  type Folder,
-} from "./tree-model.js";
+import { changeView, partOf, pickerView } from "@odin/webview";
 import type { SeenStore } from "./seen.js";
+import type { SettingsStore } from "./settings.js";
 import type { Fresh } from "./views.js";
 import type { ViewedStore } from "./viewed.js";
 
@@ -80,16 +66,29 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /**
    * The file the reader is standing on in the drawing, as the panel reports it.
    *
-   * Kept here as well as sent across, because the document is rebuilt whole for
-   * anything structural and the reader has not moved on the canvas while that
-   * happens — so nothing would follow to say where they are, and the mark would
-   * go missing until they next panned.
+   * Kept here as well as sent across, because the reader has not moved on the
+   * canvas while a reading is rebuilt — so nothing would follow to say where
+   * they are, and a reading drawn without it would take the mark off the row
+   * until they next panned.
    */
   private here = "";
   /** Files of the whole change that also moved in the narrower view. */
   private fresh: Fresh | undefined;
   /** Whether the list of pull requests is showing over the change list. */
   private chooser = false;
+  /**
+   * Whether the document in the view is up and listening.
+   *
+   * Which decides how a redraw is delivered, and that is the whole of why it is
+   * here. A view that has not said `ready` yet cannot be sent anything — a
+   * message posted at a webview that is still parsing is dropped, with no error
+   * and no second chance — so until it does, a new reading is handed over as a
+   * fresh document. Afterwards it is sent, and the page applies it to itself.
+   *
+   * Set to false by every rebuild, because a rebuild is a new document that has
+   * not said anything yet.
+   */
+  private woken = false;
   /**
    * What this machine has for each branch the list mentions.
    *
@@ -98,11 +97,22 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
    * than a fold that might be lying about what is underneath it.
    */
   private local = new Map<string, LocalBranch>();
+  /** What this view subscribed to, let go of when the view goes. */
+  private readonly disposables: vscode.Disposable[] = [];
+
+  /** Told when the list shows or hides untouched files, for the drawings to follow. */
+  onUntouched: ((on: boolean) => void) | undefined;
 
   constructor(
     private readonly viewed: ViewedStore,
     private readonly seen?: SeenStore,
+    private readonly settings?: SettingsStore,
   ) {}
+
+  /** Whether the bar is on screen now. */
+  shown(): boolean {
+    return this.view?.visible === true;
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -142,6 +152,9 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
         return;
       }
       if (message.type === "ready") {
+        // The document is up, so from here on a redraw is a message rather than
+        // another document.
+        this.woken = true;
         void this.view?.webview.postMessage({ type: "loading", value: this.loading });
         return;
       }
@@ -154,6 +167,12 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       // not a request to take anything out of the picture.
       if (message.type === "showTests") {
         void vscode.commands.executeCommand("odin.showTests");
+        return;
+      }
+      if (message.type === "showUntouched") {
+        const on = message.value !== false;
+        void this.settings?.merge({ showUntouched: on });
+        this.onUntouched?.(on);
         return;
       }
       if (message.type === "viewed" && message.paths) {
@@ -200,7 +219,25 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       }
     });
 
-    this.render();
+    /*
+     * The palette, which is the one part of the document a redraw cannot carry.
+     *
+     * It is a stylesheet in the head rather than anything a component draws, so
+     * a page kept alive across every reading would hold the theme it was built
+     * in for as long as it lived. Sent as its own message for the same reason
+     * the readings are: a reader's folds and filter are not something to spend
+     * on a change of colour.
+     */
+    vscode.window.onDidChangeActiveColorTheme(() => {
+      void this.view?.webview.postMessage({ type: "tokens", css: this.tokens() });
+    }, undefined, this.disposables);
+    view.onDidDispose?.(() => {
+      for (const one of this.disposables) one.dispose();
+      this.disposables.length = 0;
+      this.woken = false;
+    });
+
+    this.rebuild();
   }
 
   /**
@@ -310,14 +347,19 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /**
    * Whether a fetch is in flight.
    *
-   * Sent as a message rather than redrawn: the list under it is still the last
-   * good one, and replacing the document would lose the reader's scroll and
-   * whatever they had typed in the filter. Kept on the instance too, so a view
-   * resolved mid-fetch comes up with the bar already running.
+   * Its own message rather than a redraw: the list under it is still the last
+   * good one, and there is nothing to work out again for a bar that is either
+   * running or not. Kept on the instance too, so a view resolved mid-fetch
+   * comes up with the bar already running.
    */
   setLoading(on: boolean): void {
     this.loading = on;
     void this.view?.webview.postMessage({ type: "loading", value: on });
+  }
+
+  /** Untouched files shown or hidden from a drawing, without redrawing the list. */
+  setUntouched(on: boolean): void {
+    void this.view?.webview.postMessage({ type: "showUntouched", value: on });
   }
 
   /** Reflects a change made elsewhere, without redrawing the list. */
@@ -328,10 +370,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /**
    * Where the reader has got to in the drawing, so the list can mark the row.
    *
-   * Sent rather than redrawn, and that is the whole reason this is a message at
-   * all: it changes every time a card passes under the middle of the canvas, and
-   * rebuilding the document for each would throw away the reader's scroll and
-   * whatever they had typed in the filter, several times a gesture.
+   * Its own message rather than a redraw, because of how often it changes: every
+   * time a card passes under the middle of the canvas. Sending the whole reading
+   * for each would be the list rebuilt several times a gesture, to move one
+   * mark.
    */
   setHere(path: string): void {
     if (path === this.here) return;
@@ -356,6 +398,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     const graph = this.showing();
     return {
       loading: this.loading,
+      showUntouched: this.settings?.read()?.showUntouched !== false,
       ...(graph
         ? {
             change: changeView(
@@ -378,192 +421,55 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     };
   }
 
+  /**
+   * The list redrawn, in place wherever there is a page to redraw in place.
+   *
+   * A reading is rebuilt on every watched save, and each rebuild used to assign
+   * a new document to the view: the components came back as text, the bundle
+   * woke up again, and everything the reader had arranged in the strip went
+   * with the old document — the references they had unfolded under a file, how
+   * far down the list they had scrolled, what they had typed in the filter. On
+   * a live reading that is a strip that resets itself every few seconds, which
+   * is most of a change the reader cannot keep their place in.
+   *
+   * So the model is sent instead and the page applies it to itself. The
+   * components are already drawn from one object and watching it, which is what
+   * makes this a message rather than a rewrite: the rows that changed redraw,
+   * the rest are left exactly as they are, and nothing that is not in the model
+   * is touched at all.
+   *
+   * A fresh document is still the answer when there is no live one to send to —
+   * the view has just resolved, or the editor has rebuilt it — because a
+   * message posted at a document that is not listening is dropped silently.
+   */
   private render(): void {
     if (!this.view) return;
+    if (!this.woken) {
+      this.rebuild();
+      return;
+    }
+    void this.view.webview.postMessage({ type: "model", model: this.model() });
+  }
+
+  /** A whole new document, which is what the view is first given. */
+  private rebuild(): void {
+    if (!this.view) return;
+    // Whatever it had said about itself belongs to the document being replaced.
+    this.woken = false;
+    this.view.webview.html = renderSidebar(this.model(), this.theme());
+  }
+
+  private theme(): Theme {
     const dark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-    this.view.webview.html = renderSidebar(
-      this.model(),
-      dark ? DARK_THEME : LIGHT_THEME,
-    );
+    return dark ? DARK_THEME : LIGHT_THEME;
+  }
+
+  /** The palette as a stylesheet, for a page that is staying where it is. */
+  private tokens(): string {
+    return sidebarTokens(this.theme());
   }
 }
 
-/**
- * The change, as something the view can draw without asking any more questions.
- *
- * Everything that needs the repository, the graph or this machine is settled
- * here; what crosses into the webview is plain data. What is deliberately *not*
- * settled is the reader's progress — the view counts the marks it is showing,
- * so the bar cannot disagree with the boxes under it.
- */
-export function changeView(
-  graph: ChangeGraph,
-  isViewed: (path: string) => boolean,
-  /**
-   * The file the reader is standing on in the drawing, when the panel has said.
-   *
-   * Only ever a file that is in this graph. A part of the change on screen and a
-   * reader standing outside it is a real situation — they opened the part after
-   * arriving — and a mark naming a file the list is not showing would have the
-   * tree opening folders to reveal a row that is not there.
-   */
-  here = "",
-  /** Files that also moved in the narrower view, for the orange dot. */
-  fresh?: Fresh,
-): ChangeView {
-  const totals = progressOf(graph, isViewed);
-  const known = here !== "" && graph.nodes.some((node) => node.path === here);
-
-  return {
-    tree: folderView(buildTree(graph.nodes), graph, isViewed, freshNote(fresh)),
-    ...(known ? { here } : {}),
-    totals: {
-      additions: totals.additions,
-      deletions: totals.deletions,
-      authors: totals.authors,
-      authorsFull: totals.authorsFull,
-    },
-    reading: {
-      ...(graph.meta.pullRequest ? { number: graph.meta.pullRequest.number } : {}),
-      branch: graph.meta.headRef,
-      // The head of a working-tree reading is the files themselves; anything
-      // else is a commit, and a commit does not change while it is being read.
-      local: graph.meta.worktree === true,
-    },
-  };
-}
-
-/** Why a path wears the dot, or nothing when it does not. */
-function freshNote(fresh: Fresh | undefined): (path: string) => string | undefined {
-  if (!fresh) return () => undefined;
-  const paths = new Set(fresh.paths);
-  const says =
-    fresh.means === "uncommitted"
-      ? "Has changes that are not committed yet"
-      : "Changed since your last review";
-  return (path) => (paths.has(path) ? says : undefined);
-}
-
-function folderView(
-  folder: Folder,
-  graph: ChangeGraph,
-  isViewed: (path: string) => boolean,
-  fresh: (path: string) => string | undefined = () => undefined,
-): FolderView {
-  return {
-    label: folder.label,
-    folders: folder.folders.map((child) => folderView(child, graph, isViewed, fresh)),
-    files: folder.files.map((node) => fileView(node, graph, isViewed, fresh(node.path))),
-  };
-}
-
-function fileView(
-  node: FileNode,
-  graph: ChangeGraph,
-  isViewed: (path: string) => boolean,
-  fresh?: string,
-): FileView {
-  const title = cardTitle(node);
-
-  return {
-    path: node.path,
-    ...(fresh ? { fresh } : {}),
-    name: title.name,
-    status: node.status,
-    viewed: isViewed(node.path),
-    additions: title.additions,
-    deletions: title.deletions,
-    search: rowSearchText(title),
-    // Said out loud rather than left as a file that quietly points nowhere: a
-    // file with no arrows otherwise looks like a file that references nothing.
-    ...(node.resolution === "unsupported"
-      ? { note: `no ${node.language} resolver`, language: node.language }
-      : {}),
-    refs: graph.edges
-      .filter((e) => e.from.nodeId === node.id)
-      .map((edge) => refView(edge, graph)),
-  };
-}
-
-function refView(edge: Edge, graph: ChangeGraph): RefView {
-  const target = graph.nodes.find((n) => n.id === edge.to.nodeId);
-  const where = target
-    ? `${basename(target.path)}:${edge.to.line}`
-    : `line ${edge.to.line}`;
-
-  return {
-    id: edge.id,
-    symbol: edge.to.symbolName ?? "reference",
-    where,
-    change: edge.change,
-    label: edge.label ?? "",
-    search: `${edge.to.symbolName ?? ""} ${where} ${edge.label ?? ""}`.toLowerCase(),
-  };
-}
-
-/**
- * The pull requests to choose from, before a graph has been built.
- *
- * Choosing what to review is the step before reviewing it, and doing that in
- * the browser and then finding the branch by hand is the part of the loop that
- * has nothing to do with reading code. What the forge is waiting on this reader
- * for goes first and under its own heading: everything else is context, and
- * this is the queue.
- */
-export function pickerView(
-  pulls: PullRequestSummary[],
-  branch: string,
-  moved: (pr: PullRequestSummary) => boolean,
-  viewer = "",
-  asked: Query = { state: "open", author: "" },
-  reached = true,
-  local: (pr: PullRequestSummary) => LocalBranch | undefined = () => undefined,
-): PickerView {
-  const mine = viewer
-    ? pulls.filter((pr) => (pr.requestedFrom ?? []).includes(viewer))
-    : [];
-  const rest = pulls.filter((pr) => !mine.includes(pr));
-  const row = (pr: PullRequestSummary) => pullView(pr, branch, moved(pr), local(pr));
-
-  return {
-    mine: mine.map(row),
-    everythingElse: rest.map(row),
-    asked,
-    viewer,
-    reached,
-  };
-}
-
-function pullView(
-  pr: PullRequestSummary,
-  branch: string,
-  moved: boolean,
-  local: LocalBranch | undefined,
-): PullView {
-  /*
-   * Whether this machine's copy is a second reading of the change.
-   *
-   * A change that has already landed has no branch to be ahead of anything, and
-   * is read where it lies rather than checked out — whatever a stale local copy
-   * of its branch says is not a choice worth offering. Settled here rather than
-   * in the row, so the row has one fact to draw from rather than two rules to
-   * apply.
-   */
-  const open = pr.state === undefined || pr.state === "open";
-  const drifted = open && differs(local);
-
-  return {
-    pr,
-    ...(drifted && local ? { local } : {}),
-    current: pr.branch === branch,
-    moved,
-    when: ago(pr.updatedAt ?? pr.createdAt),
-    opened: ago(pr.createdAt),
-  };
-}
-
-function basename(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1);
-}
+export { changeView, pickerView };

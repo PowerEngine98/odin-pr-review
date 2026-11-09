@@ -10,6 +10,7 @@
   to be.
 -->
 <script lang="ts">
+  import { forHost, type Attached } from "./attached.js";
   import { canAskAgents, model, notify, view } from "../state.svelte.js";
   import { sideOf } from "../marks/marks.js";
   import type { Anchor } from "./Thread.svelte";
@@ -60,6 +61,7 @@
   const key = $derived(where ? composerKey(where) : "");
 
   let text = $state("");
+  let attachments = $state<Attached[]>([]);
   let height = $state(0);
 
   // Read back when the box opens on a new pick, and filed on every keystroke:
@@ -308,6 +310,7 @@
 
     forget(shelfOf(model.current), key);
     text = "";
+    attachments = [];
     onadded();
   }
 
@@ -331,6 +334,7 @@
             : undefined,
         side: where.side,
         body,
+        ...(forHost(attachments) ? { attachments: forHost(attachments) } : {}),
         // What it was written against, so it can be found again after an agent
         // moves it. Only where there is a line to move: a remark about the file
         // as a whole has nothing to anchor to and needs nothing.
@@ -340,6 +344,7 @@
 
     forget(shelfOf(model.current), key);
     text = "";
+    attachments = [];
     onadded();
   }
 </script>
@@ -419,7 +424,7 @@
          The reader could then neither send the remark nor abandon it. -->
     <div class="composer-body">
       {#key key}
-        <Editor bind:value={text} placeholder="Leave a comment" rows={5} {context} autofocus />
+        <Editor bind:value={text} bind:attachments placeholder="Leave a comment" rows={5} {context} autofocus />
       {/key}
     </div>
 

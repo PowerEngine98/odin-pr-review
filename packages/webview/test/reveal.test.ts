@@ -6,6 +6,7 @@ import type { FileView, FolderView } from "../src/app/sidebar/model.js";
 import {
   folded,
   movedTo,
+  remeasured,
   showing,
   trailToFile,
   type Folds,
@@ -250,6 +251,79 @@ describe("a reader folding a folder while a reveal is in force", () => {
     const after = folded(before, "messaging");
     expect(before.shut).toEqual({ messaging: true });
     expect(after.shut).not.toBe(before.shut);
+  });
+});
+
+/**
+ * A reveal measured again against a tree that has just been rebuilt.
+ *
+ * A live reading is rebuilt on every save and the new tree is handed to the page
+ * as it stands — the page is not replaced any more, which is the whole point of
+ * sending it — so the folders between the root and the reader's file can have
+ * moved without the reader doing anything at all.
+ */
+describe("the tree underneath a reveal changing shape", () => {
+  /*
+   * The same change with one more file in it, which splits a joined chain.
+   *
+   * `notifications/dao` is one row only because nothing else lives along it.
+   * A file saved at `notifications/Hub.kt` makes that false, and the row becomes
+   * `notifications` with `dao` inside it — so every folder the reveal was
+   * holding open is named after a row that no longer exists.
+   */
+  const SPLIT: FolderView = folder("", [], [
+    folder("notifications", ["notifications/Hub.kt"], [
+      folder("dao", ["notifications/dao/NotificationDao.kt"], [
+        folder("labor", ["notifications/dao/labor/LaborNotificationDao.kt"]),
+      ]),
+    ]),
+    folder("messaging", ["messaging/Kafka.kt"]),
+  ]);
+
+  const shutSplit = {
+    notifications: true,
+    "notifications/dao": true,
+    "notifications/dao/labor": true,
+    messaging: true,
+  } as const;
+
+  it("opens the folders that are in the way now, not the ones that were", () => {
+    /*
+     * Without this the reader's own file is hidden behind a folder the reveal
+     * never heard of, while the reveal holds open a path that is not a row. The
+     * mark is drawn on a row nobody can see, which is the fault the reveal
+     * exists to prevent, arriving by the back door on every save.
+     */
+    let folds = movedTo(at(shutSplit), TREE, "notifications/dao/NotificationDao.kt");
+    folds = remeasured(folds, SPLIT);
+    expect(Object.keys(folds.opened).sort()).toEqual([
+      "notifications",
+      "notifications/dao",
+    ]);
+  });
+
+  it("leaves what the reader folded exactly as they left it", () => {
+    // The line every function in this module keeps. A rebuild is not a reason
+    // to open anything the reader shut, and the record is what gets persisted.
+    const before = at(shutSplit, "notifications/dao/NotificationDao.kt");
+    const after = remeasured(before, SPLIT);
+    expect(after.shut).toEqual(shutSplit);
+    expect(after.path).toBe(before.path);
+  });
+
+  it("holds nothing open when the reader is not standing anywhere", () => {
+    // A list drawn before any page was opened on the change, or a reader whose
+    // file is not in the part being shown.
+    expect(remeasured(at(shutSplit), SPLIT).opened).toEqual({});
+  });
+
+  it("keeps the reveal it had when there is no tree to measure against", () => {
+    // Between readings the list has a model with no change in it. Dropping the
+    // reveal there would shut the way to the reader's file for the one frame
+    // before the next reading arrives and opens it again, which reads as a
+    // flicker in the strip.
+    const folds = movedTo(at(shutSplit), TREE, "messaging/Kafka.kt");
+    expect(remeasured(folds, undefined)).toBe(folds);
   });
 });
 

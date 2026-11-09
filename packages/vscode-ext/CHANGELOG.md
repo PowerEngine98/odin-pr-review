@@ -1,0 +1,450 @@
+# Changelog
+
+## 0.6.2 — 2026-11-09
+
+- fix: a window reload reopens only the readings that were open (#5) (#7)
+
+## 0.6.1 — 2026-11-09
+
+- ci: Chrome Web Store publishing, ready once 0.4.0 is approved (#6)
+
+## 0.6.0 — 2026-11-09
+
+- docs: count Open VSX downloads and name the Graph tabs
+- feat(browser): Graph and Change graph tabs, a resizable side bar, and Go live from GitHub
+- feat(webview): AI pairing in settings, a reminder to pair, and a clearer settings panel
+- fix: browser sync picks the right folder, keeps AI pairing on big changes, and clears the start-up cover
+
+## 0.5.0 — 2026-11-09
+
+- feat(browser): a GitHub access page in Odin's style that creates the token for you
+- feat(browser): read GitHub through VS Code when synced, so private repositories need no token
+- fix: a pull request with repeated checks opens instead of staying blank
+
+## 0.4.2 — 2026-11-09
+
+- ci: publish the browser extension to the Chrome Web Store
+
+## 0.4.1 — 2026-11-08
+
+- docs: privacy policy for the browser extension and the VS Code extension
+
+## 0.4.0 — 2026-11-08
+
+- fix(webview): attachments sit inside the composer's padding, and their remove button is centred
+- feat(webview): the composer is a drop zone, outlined while media is dragged or copied
+- feat(webview): settings open as a centred modal with a backdrop, and show Odin's version
+- feat(webview): Support entry with an icon and a description
+- feat: Support from the graph, and pictures and videos in remarks
+- fix: the start-up cover ends with the drawing, and the VS Code dot sits in its button
+- feat(browser): a connection dot on the VS Code source button
+- feat(browser): say "Synced with: VS Code", and reconnect when VS Code restarts
+- feat(webview): "Go live in" a branch, and say what going live allows
+- feat(webview): name the checkout button for what it enables
+
+## 0.3.1 — 2026-11-08
+
+- fix(browser): the synced reading no longer stays under "refreshing"
+
+## 0.3.0 — 2026-11-08
+
+- docs: a one-minute demo of Odin on its own pull request
+- feat: a local script can steer Odin for demos
+- test(vscode): bridge tests bind their own port and drop keep-alive sockets
+- feat(browser): an Odin tab on GitHub, synced with VS Code (#4)
+
+## 0.2.1 — 2026-11-07
+
+- ci: count the last release tag as published, and publish to Open VSX
+- docs: Marketplace version, installs and publish status badges
+
+## 0.2.0 — 2026-11-07
+
+- ci: a version tagged before the store existed is published, not recorded twice
+- ci: publish through trusted publishing instead of a token
+- ci: build from a fresh clone, and bump the version from the commits
+- feat: ready for the Marketplace, published on every merge to main
+- feat: a guided tour of the change, narrated, with agents that keep it true
+- feat: the side list keeps its folders in sight and can leave untouched files out
+- fix: a player sits inside its card rather than against the edges
+- feat: an agent runs on the model the reader picks
+- fix: reading a change live leaves one tab, and it is the live one
+- chore: test fixtures do not name a real project
+- fix: a refreshed reading reaches the side list without replacing it
+- fix: a card holding a picture or a player is never narrower than its name
+- feat: an audio file's card plays it
+- fix: a merged change read live is measured from where it landed
+- feat: an agent's question is asked, and answered, inside Odin
+- fix: stopping a turn keeps the conversation it was having
+- fix: a live reading redraws a picture whose bytes changed
+- feat: an image file's card is the image
+- fix: a refreshed or reopened reading fetches before it redraws
+- fix: the reviewed boxes line up down the list, folders and files alike
+- fix: the box for a remark stays in the window its card is still in
+- Merge pull request #2 from PowerEngine98/feat/since-last-review
+- feat: a folder can be marked read, and the list can be taken whole
+- docs: a line that moved has an orange sign and number too
+- fix: a line that moved says so in its sign and number, not only its edge
+- docs: the orange edge is on the new side, in either view
+- fix: every line that moved wears the orange edge, on the new side
+- fix: the orange dot keeps its size on screen as the canvas zooms out
+- docs: the three readings of a change, and what the orange marks mean
+- fix: the orange dot sits centred on the card's rounded corner
+- feat: the lines that moved in the narrower view wear an orange edge
+- fix: the orange dot on a card is drawn over its corner, where it can be seen
+- fix: the button that chooses what to show sits beside the settings
+- fix: the orange dot sits in the card's corner and at the end of the row
+- fix: a line can be asked about on a live branch that has no pull request
+- feat: a change is read whole, since the last review, or as what is not committed
+- feat: a change can be read from the reviewer's last review onwards
+- feat: a part of a change is named after the folder its files share
+- fix: the offer to begin a remark stands beside the sign, and every gutter arms it
+- fix: pressing a finished change opens that change, not the branch in the tree
+- fix: a live card shows the file it is a reading of, and the whole of it
+- fix: the tabs are worked out from the arrows the reader can see
+- fix: the list of names opens under the @ that summoned it
+- fix: a card is as wide as its longest line, with no limit chosen in advance
+- fix: a card that grows while an agent edits it grows on the canvas too
+- fix: a live reading follows the branch when its history moves
+- fix: unsent remarks are kept per repository, come back after a reload, and say when they cannot be kept
+- fix: copying code off a card no longer brings the diff signs with it
+- fix: a remark about a whole file no longer takes the review down with it
+- feat: the file tree marks the file the reader is standing on
+- fix: a pinned drawing is the size it is, says what it says, and opens when pressed
+- fix: checking a change out and reading it leaves one tab as well
+- fix: reading a change the other way leaves one tab, not three
+- fix: a command in the log is shown whole, not three letters of the walk to it
+- test: pin the edge two boxes keep when they stand side by side
+- feat: a bar absorbs what the reader cannot presently see
+- fix: a folder keeps its own columns, so its box is the size of what it holds
+- feat: the files nothing points at are dealt across lanes instead of piled in one
+- feat: a folded folder's name moves up into the bar above only while it cannot be seen
+- fix: an untouched file is a square like the rest when the reader pulls back
+- fix: a folder border keeps its distance from a card it does not hold
+- fix: a folded folder keeps its header, out of the stack and in its place
+- fix: a folded folder is named on its own frame as well as in the bar above
+- fix: a box with no bar draws its frame where its contents begin
+- feat: a bar absorbs a folded folder only where that folder is the whole box
+- fix: folding the bar under the pointer takes its tip with it
+- fix: a box leaves as much room below the box inside it as above
+- fix: a folder bar says its own name and nothing else
+- fix: a folder drops to the floor above it, the schema sits with its readers, and a box has a foot
+- fix: a folded folder keeps a way back, and its name stops outliving it
+- feat: a folder's header can be folded into its parent's, and stays folded
+- feat: a folder and the folder inside it are a step apart down the page too
+- fix: a folder box stops fogging the code, and gets room a reader can see
+- fix: stacked folder names close up instead of showing daylight between them
+- fix: a folder box is a place the cards are in, not a wash over them
+- fix: the list beside the drawing goes when the drawing does
+- fix: a folder's name is held on a line worked out in one place, in one set of units
+- feat: two folders standing over different columns share a row
+- fix: the database card is filed with the part that actually reads it
+- chore: drop a scratch file that was swept into a commit
+- fix: folder names step by a header's height, in the units a header is measured in
+- fix: a folder box is drawn with a solid border
+- fix: a folder box keeps its own corners, its name is opaque, and the corridors are corridors
+- fix: a folder's name is a bar across its box, and nested boxes have a corridor
+- feat: folder boxes nest, and their headers stack instead of colliding
+- fix: the database node comes back for the changes that actually reach it
+- feat: draw the cards grouped into the folder they live in
+- fix: a tool call names the file, and nothing else
+- feat: a way back to the newest change, while the reader is behind
+- fix: nothing shows above a held head, and it squares off while it is held
+- feat: paths a reader can use, a head that stays, and a ledger that draws what is on screen
+- feat: a log says what kind of act each line was, and which file
+- feat: the ledger reads in the order things happened
+- fix: the ledger's entries have a height, and a passage worth searching for
+- fix: a remark still being written follows its code too
+- fix: an orphaned conversation is not handed to whichever branch is open
+- fix: a conversation belongs to a change, not to a directory
+- feat: the ledger is built from what the watcher saw, not from what a tool admitted
+- fix: the first question of a session no longer reloads the change
+- fix: an entry in the ledger finds the file it is about
+- feat: a remark holds on to its code while an agent moves it
+- feat: a ledger of what each agent wrote, beside the log of what it did
+- feat: control-V pastes, and a pasted picture stops eating the words
+- fix: the composer's buttons wrap instead of leaving the box
+- fix: say which worktree is dirty, and what is in it
+- feat: drive a real editor, so a question about tabs has an answer
+- fix: a reading is named by what was asked for, so it opens one tab
+- fix: opening a remote pull request opens one tab, not two
+- fix: the agent badge stands back with the face it belongs to
+- feat: an untouched file leaves when nothing points at it any more
+- fix: a mark on a file already read is a trace, not a dimmed portrait
+- fix: an agent that could not finish does not settle the thread
+- fix: the file tree remembers which folders were shut
+- feat: conversations on a file already read stand back
+- feat: a conversation says whether it is finished with
+- feat: a file that has been read stops saying its name
+- feat: a button on the card that comments on the file
+- fix: the composer is over the agent logs, not under them
+- fix: a file the change never touched cannot join two parts
+- fix: choosing an agent's name writes it into the remark
+- revert: draw arrows as curves again
+- feat: the name menu opens under the line being written
+- fix: the consoles come back, and the hops go
+- fix: both gutters carry a number
+- fix: the composer opens again
+- fix: no road crosses a card any more
+- fix: the pick ends wherever the hand lets go
+- fix: a press that means to comment always opens a box
+- fix: a road's first and last legs are its own
+- fix: a cache that knows the cards have moved
+- fix: the dot marks where its own road starts
+- fix: roads sharing a lane are drawn side by side
+- fix: a run's slip roads follow its trunk onto the lane
+- fix: a lane is drawn only where something travels it
+- perf: route the arrows once, not once per layer
+- fix: every road draws the whole of itself again
+- fix: a road only hands its middle to a lane of its own colour
+- fix: a lane wears the colour of what travels it
+- fix: a lane draws the road they share, and each arrow draws its own ramps
+- perf: place the cards where their arrows want them
+- feat: a named agent looks named
+- feat: a second agent's console is a bar, not a sliver
+- fix: the picture stays on the screen, and its cross goes with it
+- fix: an arrow lands on its row at any distance
+- fix: a crowd that one road cannot join is still a crowd
+- fix: the cover means what it says
+- feat: a reload puts the reader back on the tab they had open
+- fix: what makes two lines one road is that nothing stands between them
+- feat: a picture in the log is a picture
+- feat: roads that go the same way share a lane
+- feat: the drawing assembles itself while it is being built
+- feat: a picture opens at its own size
+- fix: roads that were never planned, and a hover that redrew the drawing
+- docs: a skill for updating Odin, and a way to update the skills
+- feat: roads that go around the cards, and bridges where they cross
+- feat: hold the reader off a drawing that is still being worked out
+- fix: three surfaces from the editor, and the vocabulary stays the drawing's
+- feat: draw arrows as roads, and three corrections that came with it
+- perf: publish the cards' measurements together, and say how far through a build is
+- feat: the editor's own surfaces on the cards, opencode, and a wheel that zooms
+- docs: a guide to working on Odin, and the two commands that install it
+- feat: draw a pasted picture where the remark names it
+- fix: wrap a quoted question instead of running it off the edge
+- feat: update the checkout you are standing in, and prefer local work to main
+- feat: odin update, which pulls main and installs itself
+- fix: colour a fenced block by the name people write on it
+- fix: colour each side of a change as the file that side is
+- fix: draw a quoted suggestion as a change, and stop a stray fence eating the answer
+- feat: paste a picture into an agent's console
+- feat: show who took a task, and what is stacked behind it
+- feat: show a file's path under its name, without waiting on the browser
+- feat: show what a rebuild changed, on the cards it changed
+- perf: work out the words a card boxes once for the page
+- fix: keep the file list on the part the reader opened
+- fix: keep a types module with the part that is written against it
+- fix: find each project's own tsconfig, not the repository's
+- fix: answer the editor while references are being resolved
+- feat: read a branch live from a worktree of its own
+- feat: pair with the agents on this machine while reading a change
+- fix: show files git has never been told about
+- fix: measure a change against the base it is a change to
+- fix: show the waiting mark when a window comes back
+- feat: keep the graph in step with the working tree, incrementally
+- fix: keep the zoom when a divider is dragged (#1)
+- feat: mark a file that ends without a newline
+- fix: do not lose a review to a connection that broke mid-request
+- feat: offer to reconcile a branch that has wandered from the forge
+- fix: the installer works on a machine that has never built Odin
+- feat: one command to build Odin and put it in the editor
+- docs: drop the blockquote so the logo stands alone
+- docs: set the quote in italics, with the quotation marks it deserves
+- fix: isolation dims again, and the road can be pointed at
+- fix: following a gathered arrow lights the whole way to its destination
+- fix: box the generated name at the end that writes it
+- feat: a switch for the parts of the drawing that are not files
+- feat: several references to one place travel as one road
+- fix: one box per name, and none for an arrow that is not there
+- docs: say where the quote comes from
+- feat: jOOQ, so generated code lands on the table it came from
+- feat: the schema wears a database, and keeps its links
+- fix: never cut a line the change touched, and reveal the ones still cut
+- feat: the schema is a vertex, and migrations point at the table
+- fix: match an author by any part of their name
+- feat: SQL, and the parts that are only Postgres
+- fix: a forge that did not answer is not a forge with nothing to say
+- fix: a run of changed lines is one colour at every zoom
+- feat: the author box asks half a second after you stop typing
+- feat: each part of a change gets a stripe of the canvas to itself
+- fix: the filter chips answer, and wear the forge's colours
+- feat: lay the whole change out in the order its parts are listed
+- feat: read merged and closed pull requests, and ask the forge a narrower question
+- feat: the map says which file you are on
+- perf: half the document, and colour runs instead of colour tokens
+- fix: the tab strip fades at the ends it can still travel to
+- feat: a card too small to read still reads as a split
+- fix: the comment button sits on the number, not out in the code
+- fix: put the map's colours under the code's own
+- feat: step back to the pull requests and forward to the change list
+- fix: the file list navigates the graph, and opening a file keeps its own tab
+- perf: render the cards that are worth rendering
+- docs: current pictures, a roadmap that matches the tool, and what an IRE is
+- feat: keep unsent drafts across reloads
+- feat: lead the list with what is waiting on you
+- fix: hold the map behind the mark until it stops moving
+- feat: say when a pull request has moved since you read it
+- feat: Python and Clojure
+- feat: the mark, breathing, while there is no graph yet
+- fix: rule under the settings title, and a quieter map
+- fix: put the comments cross beside its pill, not above the thread list
+- fix: draw the way back over the cards instead of under them
+- feat: one menu for everything, and each part remembers where you were
+- feat: the map follows the reader in, and loses its chrome
+- feat: a way back to the file explorer
+- feat: turn each corner of the page off, from the menu or from the corner
+- feat: a square map, a frame that never vanishes, and a checkout that knows where it is
+- feat: a map of the change in the corner
+- fix: cap the dock, and keep the marks under it
+- fix: say where a branch already is instead of relaying git's refusal
+- fix: a pick keeps extending once the pointer leaves the rail
+- fix: line the diff counts up down the right
+- feat: a dot at the far end for the way back
+- feat: fold the side bar away from its own title
+- fix: the line through a lit block was the diff's own seam
+- fix: a new remark shows up without a reload
+- fix: park the file where the conversation fits, and paint the lit rows as one
+- feat: light the lines a thread is about, and park clear of both
+- fix: the progress track is the strip it runs along
+- fix: the settings menu opens over the reviewers, not under them
+- fix: a thread only ever opens to the left
+- fix: the last rule between the header bars
+- fix: make room for the thread, and stop the toolbar losing buttons
+- feat: the writer's face on the box, fit on H, and no more hint block
+- feat: a keys panel, and F to open the file
+- feat: lay a part out for itself
+- fix: a thread opens beside the file, not over it
+- feat: the graph's tab wears the extension's mark
+- fix: a thread in the list takes you to the line, at a size you can read it
+- fix: one edge colour for every floating panel
+- fix: separate the bars by tone, not by rules
+- feat: read a change from the keyboard
+- feat: the file list follows the part being read
+- fix: one surface from the bar down to the cards
+- feat: one menu for the whole row, and a face on every thread
+- fix: turn the panel's rule the right way round
+- fix: fill the tab in front instead of underlining it
+- fix: a check reads in one pass
+- fix: make a check's verdict visible, and say how long it took
+- fix: the comments section lists threads, and only where there are any
+- feat: what the forge made of the branch, kept current
+- feat: who is on this review, and what they said
+- fix: drop the rule, widen fit, and say what the switch hides
+- fix: follow the nearest call, not the first one in the list
+- fix: dash the phantom box in the file list too
+- feat: a card's title carries its status mark
+- fix: tidy the dock, and share the file list's status marks
+- feat: give the drawing back the row the switches were using
+- fix: centre the ink in a tab's pill, not the line box
+- feat: the header buttons say what they do
+- fix: centre a tab's count in its pill
+- fix: arrive at the top of the next file, and stop hiding files by default
+- fix: one bracket down a commented passage, and room around its mark
+- fix: no progress until there is progress
+- feat: use the supplied artwork as the extension's icon
+- fix: the panel opened without the other mode's measurements
+- feat: the rail offers the button before it is needed
+- feat: carry the reader to the next file in the chain
+- feat: comments start at the rail, and a pick reads as one block
+- fix: a part that has not been started says its size, and one that is done says so
+- fix: frame the part being opened, not the drawing it came from
+- feat: say how much of each part has been read
+- fix: make a tab's count legible
+- feat: read a large change one blast radius at a time
+- feat: put the plus beside the number it belongs to
+- fix: keep the pick yellow, and find a folded call site by name
+- fix: never write a name on a band that does not hold the line
+- feat: say when the forge is being asked
+- fix: keep the reply in reach, and space the viewed control
+- fix: point a removed reference at the line, not the stretch it is in
+- feat: mark changed rows down both edges of the card
+- feat: hold a card's name in view, and stop the filter matching directories
+- fix: centre the status marks, and put the folded name where the label ends
+- fix: give the change signs room to breathe
+- fix: a cog that reads as a cog, and colour back on unified rows
+- feat: read the change side by side, or in one column
+- fix: stop the line where the head starts, and name what a fold hides
+- fix: start each wire on the dot's rim, not behind it
+- fix: never hold a changed line behind the bar
+- docs: both ends of an arrow, and the single-sided gutter
+- fix: keep the faces on a refresh, and box both ends of an arrow
+- fix: an empty gutter where the line does not exist, and no wrapping
+- fix: print a stand-in line number once, not once per line
+- style: a character of room before the boxed name
+- fix: let the dot receive the click it was drawn for
+- style: the dot clear of the card it leaves
+- docs: the arrows' two ends, as they now are
+- feat: the way back moves onto the name the arrow lands on
+- feat: box the name an arrow lands on, and refuse comments the forge would
+- feat: two ends of an arrow you can press to travel
+- fix: colour a comment's code even when the change has none of that language
+- fix: line numbers in a suggestion, on one line
+- feat: a suggestion previews as a diff, and a closed box keeps its words
+- feat: a rendered component is a call
+- feat: colour the code in a comment, and widen the markdown
+- feat: suggest a change from any box, with the forge's own glyph
+- refactor: one box for writing markdown, wherever markdown is written
+- fix: keep the faces, say the time, green the Open pill
+- style: a face on the reaction button, not a speck
+- fix: a card grows to reach the line an arrow points at
+- feat: answer a thread, react to it, and act on a single remark
+- feat: mark what the filter matched
+- fix: marks you can see and click, and a filter for the tree
+- fix: show the line an arrow points at, rather than the band hiding it
+- feat: remarks beside the file, not inside it
+- feat: nothing the change touched is hidden
+- style: the action green, dark enough to carry white
+- feat: a green that carries text, a draft that can be readied, and arrows that land where they said they would
+- feat: the reviewer's own theme, and a way back that stays put
+- feat: a way out of the pending review panel
+- feat: the comment box, where the comment belongs
+- feat: colour the code, with VS Code's own grammars
+- feat: the forge's own header, above the graph
+- feat: drive the whole tool from the command line, and teach an agent to
+- feat: draw a line pick the way a diff viewer draws one
+- feat: comment on a passage, and keep the picture sharp when zoomed
+- feat: review from the graph — read comments, write them, submit a verdict
+- fix: centre the tick, and keep the action out of the list's way
+- feat: choose a pull request from the sidebar
+- feat: show the pull request's title, and divide the toolbar into sections
+- style: fill a set checkbox with the theme's accent
+- feat: untouched files follow the references that reach them
+- feat: show progress through the change, and who wrote it
+- fix: work out card positions from scratch instead of nudging them
+- style: move the reviewed boxes right, and draw them from the theme
+- fix: stop cards colliding, and use the editor's own chevrons
+- feat: mark files as reviewed, and use GitHub Desktop's status icons
+- fix: hide tests in the editor too, anchor into folds, group by directory
+- style: give branch names the width the stacked toolbar freed
+- style: name the files in a reference, not their paths
+- fix: show a reference's whole path instead of clipping it
+- style: colour modified files the way git does
+- fix: stack the toolbar into columns so it fits a docked panel
+- fix: anchor arrows to the row they name, and colour the sidebar
+- fix: mirror line numbers, fold every gap both ways, keep the chip a chip
+- feat: show unreadable files as a warning rather than a note
+- feat: fold imports by default, and fix the gutter
+- feat: expandable gaps, truncated cards, and hide tests by default
+- feat: Kotlin resolution, and report what nothing could read
+- fix: stop long lines escaping their card, and always draw both gutters
+- feat: detect the base branch, and add an activity bar view
+- test: verify the extension inside a real VS Code extension host
+
+## 0.1.0 — first Marketplace release (preview)
+
+- The change graph: files as cards with their diff, references as arrows between
+  the exact lines, for TypeScript, JavaScript, React, Kotlin, Python, Clojure
+  and SQL.
+- Live readings of uncommitted work that follow branch switches, merges and
+  rebases.
+- GitHub pull requests: checks, threads, reviews, reactions, viewed files,
+  draft and ready, and submitting a review.
+- Guided tours written by an agent: topics of frames that focus code, highlight
+  lines, draw arrows and diagrams, played with a timeline, subtitles and
+  per-topic progress; agents keep tours in step as the code changes.
+- Pairing with Claude, Codex, Gemini, Cursor, opencode, Aider and Antigravity
+  from a console beside the graph, with
+  per-agent permissions, model choice, approvals and a ledger of every change.
+- Narration of answers and tours by the browser, the system voice, or an
+  optional local Kokoro voice.

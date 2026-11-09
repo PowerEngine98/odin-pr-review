@@ -31,6 +31,17 @@ import {
   type ReviewComment,
   type ReviewEvent,
   standingOf,
+  attachmentBranch,
+  ghAt,
+  ghStatus,
+  openIssue,
+  repoOfUrl,
+  storeAttachments,
+  SUPPORT_LABELS,
+  SUPPORT_REPO,
+  withAttachments,
+  type Attachment,
+  type SupportKind,
 } from "@odin/core";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
@@ -40,6 +51,11 @@ import * as vscode from "vscode";
 
 import { viewSuffix, type Fresh } from "./views.js";
 import { SettingsStore } from "./settings.js";
+import { SystemVoice } from "./voice.js";
+import type { Kokoro } from "./kokoro.js";
+import { isStale, makeTour, pickAgent, START, tourContext, type Making, type TourProgress, type TourStore } from "./tour.js";
+import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
+import { log } from "./log.js";
 
 import { baseUri } from "./baseContent.js";
 import { imageFolder, keepPasted, readImage, withImages } from "./images.js";
@@ -88,7 +104,17 @@ interface FoldedMessage {
 
 interface SubmitMessage {
   type: "submitReview";
-  payload: { event: ReviewEvent; body: string; comments: DraftComment[] };
+  payload: {
+    event: ReviewEvent;
+    body: string;
+    comments: (DraftComment & { attachments?: Attachment[] })[];
+    attachments?: Attachment[];
+  };
+}
+
+interface SupportMessage {
+  type: "supportIssue";
+  payload: { kind: SupportKind; title: string; body: string; attachments?: Attachment[] };
 }
 
 interface DraftMessage {
@@ -105,7 +131,7 @@ interface HighlightMessage {
 /** Acting on one remark in a thread. */
 interface RemarkMessage {
   type: "react" | "reply" | "editComment" | "deleteComment";
-  payload: { id: number; content?: string; body?: string };
+  payload: { id: number; content?: string; body?: string; attachments?: Attachment[] };
 }
 
 /**
@@ -117,6 +143,53 @@ interface RemarkMessage {
 interface SettingsMessage {
   type: "settings";
   payload: Record<string, unknown>;
+}
+
+/** A sentence of an answer for the system's voice to read aloud. */
+interface SayMessage {
+  type: "say";
+  payload: { id: number; text: string };
+}
+
+/** A sentence for Kokoro to turn into audio. */
+interface SpeakMessage {
+  type: "speak";
+  payload: { id: number; text: string };
+}
+
+/** Whatever is being read aloud, stopped. */
+interface HushMessage {
+  type: "hush";
+}
+
+/** Asking for a tour of the change, or for a new one in place of the one kept. */
+interface TourMakeMessage {
+  type: "tourMake";
+  payload?: { fresh?: boolean };
+}
+
+/** The kept tour corrected: to the change as it is now, and to what the reader asks. */
+interface TourReviseMessage {
+  type: "tourRevise";
+  payload?: { note?: string };
+}
+
+/** The tour being made, abandoned. */
+interface TourCancelMessage {
+  type: "tourCancel";
+  payload?: Record<string, never>;
+}
+
+/** Where the reader has got to in the tour, to be kept. */
+interface TourProgressMessage {
+  type: "tourProgress";
+  payload: { topic: number; frame: number; watched: string[]; frames?: Record<string, number> };
+}
+
+/** The reader entering or leaving the tour. */
+interface TourModeMessage {
+  type: "tourMode";
+  payload: { on: boolean };
 }
 
 /** Asking the forge how the branch stands, now rather than on a timer. */
@@ -175,6 +248,8 @@ interface AskMessage {
     to?: string;
     /** Pictures pasted into the box, as data URIs the page could draw. */
     images?: { name?: string; data: string }[];
+    /** Sent by the agent to itself: signed with its name, shown in its log as `label`. */
+    self?: { name: string; label: string };
   };
 }
 
@@ -318,6 +393,14 @@ type Message =
   | ChecksMessage
   | RerunMessage
   | SettingsMessage
+  | SayMessage
+  | SpeakMessage
+  | HushMessage
+  | TourMakeMessage
+  | TourCancelMessage
+  | TourProgressMessage
+  | TourModeMessage
+  | TourReviseMessage
   | PartMessage
   | HereMessage
   | NavigateMessage
@@ -362,7 +445,92 @@ function readingKey(graph: ChangeGraph, repo: string): string {
   });
 }
 
+export interface Mirror {
+  html(html: string): void;
+  message(message: unknown): void;
+}
+
+const REPLAYED = 2000;
+
+function mirrored(
+  panel: vscode.WebviewPanel,
+  hooks: { html(html: string): void; message(message: unknown): void },
+): vscode.WebviewPanel {
+  const webview = panel.webview as vscode.Webview & { odinMirrored?: boolean };
+  if (!webview || webview.odinMirrored) return panel;
+  const post = webview.postMessage.bind(webview);
+  let owner: object | null = webview;
+  let html: PropertyDescriptor | undefined;
+  while (owner && !html) {
+    html = Object.getOwnPropertyDescriptor(owner, "html");
+    owner = Object.getPrototypeOf(owner) as object | null;
+  }
+  try {
+    Object.defineProperty(webview, "postMessage", {
+      configurable: true,
+      value: (message: unknown) => {
+        hooks.message(message);
+        return post(message);
+      },
+    });
+    if (html?.set) {
+      const { get, set } = html;
+      Object.defineProperty(webview, "html", {
+        configurable: true,
+        get: () => get?.call(webview),
+        set: (value: string) => {
+          set.call(webview, value);
+          hooks.html(value);
+        },
+      });
+    } else if (html && "value" in html) {
+      let current = String(html.value ?? "");
+      Object.defineProperty(webview, "html", {
+        configurable: true,
+        get: () => current,
+        set: (value: string) => {
+          current = value;
+          hooks.html(value);
+        },
+      });
+    }
+    Object.defineProperty(webview, "odinMirrored", { value: true });
+  } catch {
+    return panel;
+  }
+  return panel;
+}
+
 export class GraphPanel {
+  private readonly mirrors = new Set<Mirror>();
+  private shownHtml = "";
+  private sent: unknown[] = [];
+  private kept = new Map<string, unknown>();
+
+  static find(repo: string, number: number, head?: string): GraphPanel | undefined {
+    return GraphPanel.readings().find(
+      (one) =>
+        one.repo === repo &&
+        (one.graph.meta.pullRequest?.number === number || (head !== undefined && one.graph.meta.headRef === head)),
+    );
+  }
+
+  get changeGraph(): ChangeGraph {
+    return this.graph;
+  }
+
+  attach(mirror: Mirror): () => void {
+    if (this.shownHtml) mirror.html(this.shownHtml);
+    for (const message of this.kept.values()) mirror.message(message);
+    for (const message of this.sent) mirror.message(message);
+    this.mirrors.add(mirror);
+    return () => this.mirrors.delete(mirror);
+  }
+
+  receive(message: unknown): void {
+    void this.handle(message as Message);
+  }
+
   /**
    * Every reading on screen, by what it is a reading of.
    *
@@ -460,36 +628,46 @@ export class GraphPanel {
   }
 
   /**
-   * The tab a promotion replaced, closed now its replacement is drawn.
+   * The tabs a promotion replaced, closed now their replacement is drawn.
    *
-   * After rather than before: closing the old one first would leave the reader
-   * looking at nothing for the seconds a build takes, and at nothing at all if
-   * it failed.
+   * After rather than before: closing the old ones first would leave the
+   * reader looking at nothing for the seconds a build takes, and at nothing at
+   * all if it failed.
+   *
+   * Plural because one change is sometimes open more than once. A promotion
+   * that closed a single tab left the reader with their live reading beside a
+   * stale copy of the same change — which is what a promotion exists to
+   * prevent, and what they said they did not want.
    */
   private static closePromoted(arrived: string): void {
     const going = GraphPanel.promoting;
     GraphPanel.promoting = undefined;
-    if (!going || going === arrived) return;
-    const old = GraphPanel.open.get(going);
-    if (!old) return;
+    if (!going) return;
+    const here = GraphPanel.open.get(arrived)?.panel;
 
-    /*
-     * Never the frame the replacement is standing in.
-     *
-     * A reading whose graph never arrived — a build that is still running, or
-     * one that failed — has a frame the loader is willing to hand on, so the
-     * replacement can quite legitimately move into the very frame this is
-     * being asked to close. Closing it then would take the picture that has
-     * just been drawn off the screen to tidy away the picture it replaced, and
-     * what the reader would be left with is no tab at all. The registry entry
-     * goes, because there is only one reading in that frame now; the frame
-     * stays, because it is the one they are looking at.
-     */
-    if (old.panel === GraphPanel.open.get(arrived)?.panel) {
-      GraphPanel.open.delete(going);
-      return;
+    for (const key of going) {
+      if (key === arrived) continue;
+      const old = GraphPanel.open.get(key);
+      if (!old) continue;
+
+      /*
+       * Never the frame the replacement is standing in.
+       *
+       * A reading whose graph never arrived — a build that is still running,
+       * or one that failed — has a frame the loader is willing to hand on, so
+       * the replacement can quite legitimately move into the very frame this
+       * is being asked to close. Closing it then would take the picture that
+       * has just been drawn off the screen to tidy away the picture it
+       * replaced, and what the reader would be left with is no tab at all. The
+       * registry entry goes, because there is only one reading in that frame
+       * now; the frame stays, because it is the one they are looking at.
+       */
+      if (old.panel === here) {
+        GraphPanel.open.delete(key);
+        continue;
+      }
+      old.dispose();
     }
-    old.dispose();
   }
 
   /** Every reading on screen, oldest first. */
@@ -1069,8 +1247,12 @@ export class GraphPanel {
    * Only for a promotion. Opening both deliberately is a thing people do — that
    * is why both exist — so nothing here closes a tab the reader did not just
    * ask to be replaced.
+   *
+   * A list, because the change being replaced is sometimes drawn in more than
+   * one tab, and leaving one of them standing beside the live reading is the
+   * fault this is for.
    */
-  static promoting: string | undefined;
+  static promoting: string[] | undefined;
 
   /**
    * Asked for the live reading of what is on screen.
@@ -1243,6 +1425,7 @@ export class GraphPanel {
     const held = GraphPanel.settings?.read();
     this.pairing().setOrder(readOrder(held));
     this.pairing().setAgency(readAgency(held));
+    this.pairing().setModels(readModels(held));
     void this.panel.webview.postMessage({ type: "agents", payload: agents });
     /*
      * And everything that hangs off knowing which agents exist.
@@ -1296,6 +1479,7 @@ export class GraphPanel {
         // file on disk the file the reader was looking at.
         this.graph.meta.worktree === true,
       );
+      this.paired.tours = (asked) => this.answerTour(asked);
       /*
        * A conversation the store has settled, settled on the forge as well.
        *
@@ -1349,6 +1533,196 @@ export class GraphPanel {
   }
 
   private paired: PairingSession | undefined;
+  private readonly voice = new SystemVoice();
+
+  /** The tour being made for this reading, while it is. */
+  private touring: Making | undefined;
+  /** What the page was last told about making one, for a page that reloads. */
+  private tourNote = "";
+
+  /** What this reading's tour is filed under: the same change as its conversation. */
+  private tourKey(): string {
+    return conversationKey({
+      repo: this.repo,
+      ...(this.graph.meta.baseRef ? { baseRef: this.graph.meta.baseRef } : {}),
+      ...(this.graph.meta.headRef ? { headRef: this.graph.meta.headRef } : {}),
+      ...(this.graph.meta.worktree === true ? { worktree: true } : {}),
+    });
+  }
+
+  /**
+   * The kept tour, handed to a page that has just loaded.
+   *
+   * With the reader's place in it, and flagged stale when the change has moved
+   * on since it was written. A page loading while one is being made is told
+   * that instead, so a reload does not lose the spinner.
+   */
+  private deliverTour(): void {
+    if (this.touring) {
+      this.tourStatus("making", this.tourNote);
+      return;
+    }
+    const saved = GraphPanel.tours?.read(this.tourKey());
+    if (!saved) return;
+    void this.panel.webview.postMessage({
+      type: "tour",
+      tour: saved.tour,
+      progress: saved.progress,
+      ...(isStale(saved, this.graph) ? { stale: true } : {}),
+    });
+  }
+
+  private tourStatus(status: "none" | "making" | "failed", note?: string): void {
+    void this.panel.webview.postMessage({
+      type: "tourStatus",
+      status,
+      ...(note ? { note } : {}),
+    });
+  }
+
+  /**
+   * A tour of this change, made by an agent and kept.
+   *
+   * The kept one is handed back unless the reader asked for a fresh one. A
+   * fresh one that fails leaves the kept one where it was.
+   */
+  private async makeTour(fresh: boolean, revise?: { note?: string }): Promise<void> {
+    if (this.touring) return;
+    const key = this.tourKey();
+    const kept = GraphPanel.tours?.read(key);
+    if (!fresh && kept) {
+      this.deliverTour();
+      return;
+    }
+    const context = tourContext(this.graph);
+    if (context.files.length === 0) {
+      this.tourStatus("failed", "There are no changed files to tour.");
+      return;
+    }
+    this.tourNote = "Looking for an agent";
+    this.tourStatus("making", this.tourNote);
+    const agent = pickAgent(await this.pairing().look().catch(() => []));
+    if (!agent) {
+      this.tourNote = "";
+      this.tourStatus("failed", "No coding agent is installed to write a tour.");
+      return;
+    }
+
+    const graph = this.graph;
+    const started = Date.now();
+    log(`tour: making one for ${key} with ${agent.name}`);
+    const making = makeTour({
+      agent,
+      context,
+      cwd: this.repo,
+      ...(revise && kept ? { prompt: revisePrompt(context, kept.tour, revise.note) } : {}),
+      step: (note) => {
+        this.tourNote = note;
+        this.tourStatus("making", note);
+      },
+    });
+    this.touring = making;
+    const made = await making.done.finally(() => {
+      this.touring = undefined;
+      this.tourNote = "";
+    });
+    const seconds = Math.round((Date.now() - started) / 1000);
+
+    if (!made.ok) {
+      log(`tour: ${made.stopped ? "stopped" : "failed"} after ${seconds}s: ${made.why}`);
+      if (made.stopped) this.tourStatus("none");
+      else this.tourStatus("failed", made.why);
+      return;
+    }
+    log(`tour: ${revise && kept ? "revised" : "made"} "${made.tour.title}", ${made.tour.topics.length} topics, in ${seconds}s`);
+    this.keepTour(made.tour, graph, revise && kept ? kept.progress : START);
+  }
+
+  /**
+   * A tour written down and shown, whoever wrote it.
+   *
+   * A correction keeps the reader's place where the tour still has it: the
+   * same topic, by id, and the frame clamped to what that topic now holds.
+   */
+  private keepTour(tour: Tour, graph: ChangeGraph, progress: TourProgress): void {
+    const was = GraphPanel.tours?.read(this.tourKey())?.tour.topics[progress.topic]?.id;
+    const topic = Math.max(0, was ? tour.topics.findIndex((one) => one.id === was) : progress.topic);
+    const kept: TourProgress = {
+      topic: Math.min(topic, tour.topics.length - 1),
+      frame: Math.min(progress.frame, (tour.topics[topic]?.frames.length ?? 1) - 1),
+      watched: progress.watched.filter((id) => tour.topics.some((one) => one.id === id)),
+      frames: Object.fromEntries(
+        tour.topics
+          .filter((one) => typeof progress.frames[one.id] === "number")
+          .map((one) => [one.id, Math.max(0, Math.min(progress.frames[one.id]!, one.frames.length - 1))]),
+      ),
+    };
+    GraphPanel.tours?.write(this.tourKey(), {
+      tour,
+      ...(graph.meta.headSha ? { headSha: graph.meta.headSha } : {}),
+      ...(graph.meta.mergeBase ? { mergeBase: graph.meta.mergeBase } : {}),
+      progress: kept,
+      at: new Date().toISOString(),
+    });
+    void this.panel.webview.postMessage({
+      type: "tour",
+      tour,
+      progress: kept,
+      ...(graph.meta.headSha !== this.graph.meta.headSha ||
+      graph.meta.mergeBase !== this.graph.meta.mergeBase
+        ? { stale: true }
+        : {}),
+    });
+  }
+
+  /**
+   * The tour, as an agent pairing on this change reads and corrects it.
+   *
+   * Asked through Odin's own tools, so the agent that just moved the code can
+   * move the tour with it. A correction is held to the same rules as a tour
+   * from scratch, and what was wrong goes back to the agent to fix.
+   */
+  private answerTour(asked: { action?: string; tour?: unknown }): unknown {
+    const saved = GraphPanel.tours?.read(this.tourKey());
+    const files = tourContext(this.graph).files.map((file) => file.path);
+    if (asked.action === "read") {
+      return saved
+        ? { tour: saved.tour, files, stale: isStale(saved, this.graph) }
+        : { tour: null, files, note: "There is no tour of this change yet. Write one with tour_update." };
+    }
+    if (asked.action !== "update") return { ok: false, errors: ["unknown tour action"] };
+    const text = typeof asked.tour === "string" ? asked.tour : JSON.stringify(asked.tour ?? null);
+    const parsed = parseTour(text, files);
+    if (!parsed.ok) return { ok: false, errors: parsed.errors };
+    this.keepTour(parsed.tour, this.graph, saved?.progress ?? START);
+    log(`tour: corrected by an agent, ${parsed.tour.topics.length} topics`);
+    return { ok: true, warnings: parsed.warnings };
+  }
+
+  /** The reading whose tour put Odin's side bar away, and so may bring it back. */
+  private static tourHid: GraphPanel | undefined;
+
+  /**
+   * The side bar, put away for the tour and back after it.
+   *
+   * Only brought back when it was the tour that put it away: a reader who had
+   * closed it themselves before starting does not have it opened on them.
+   */
+  private async tourMode(on: boolean): Promise<void> {
+    try {
+      if (on) {
+        if (GraphPanel.tourHid || !GraphPanel.sidebarShown?.()) return;
+        GraphPanel.tourHid = this;
+        await vscode.commands.executeCommand("workbench.action.closeSidebar");
+        return;
+      }
+      if (GraphPanel.tourHid !== this) return;
+      GraphPanel.tourHid = undefined;
+      await vscode.commands.executeCommand("workbench.view.extension.odin");
+    } catch {
+      // A side bar that will not move is not worth stopping a tour over.
+    }
+  }
 
   /**
    * Where this reading keeps pictures pasted into a conversation.
@@ -1441,6 +1815,12 @@ export class GraphPanel {
       // that silently does nothing.
       labels: this.paired?.labelled() ?? {},
       rungs: this.paired?.rungs() ?? {},
+      // And which models each tool can be put on. Sent rather than written
+      // into the page, because the good answer comes from asking the tool and
+      // the answer differs by machine: what one checkout can run is a matter
+      // of what that account has.
+      models: this.paired?.modelsOffered() ?? {},
+      modelsInUse: this.paired?.modelsInUse() ?? {},
       // And which of them narrate a turn, since that is what the ledger is
       // read from. An empty ledger under a tool that cannot say is not the
       // same fact as an empty ledger under one that has written nothing.
@@ -1529,15 +1909,31 @@ export class GraphPanel {
      */
     settling?: { percent?: number },
   ): void {
-    void GraphPanel.active?.panel.webview.postMessage({
+    const message = {
       type: "refreshing",
       value: on,
       ...(note ? { note } : {}),
       ...(settling
         ? { settling: true, ...(settling.percent === undefined ? {} : { percent: settling.percent }) }
         : { settling: false }),
-    });
+    };
+    const active = GraphPanel.active;
+    if (on) {
+      if (active) GraphPanel.covered.add(active);
+      void active?.panel.webview.postMessage(message);
+      return;
+    }
+    const covered = new Set(GraphPanel.covered);
+    if (active) covered.add(active);
+    GraphPanel.covered.clear();
+    for (const panel of covered) {
+      void Promise.resolve()
+        .then(() => panel.panel.webview.postMessage(message))
+        .catch(() => undefined);
+    }
   }
+
+  private static covered = new Set<GraphPanel>();
 
   /**
    * The tab's own mark while its change is being worked out.
@@ -1767,6 +2163,13 @@ export class GraphPanel {
     void GraphPanel.active?.panel.webview.postMessage({ type: "showTests" });
   }
 
+  /** Untouched files shown or hidden from the list, in every open drawing. */
+  static showUntouched(on: boolean): void {
+    for (const open of GraphPanel.open.values()) {
+      void open.panel.webview.postMessage({ type: "showUntouched", value: on });
+    }
+  }
+
   /**
    * Follows a reference from the file list, on the canvas.
    *
@@ -1807,6 +2210,9 @@ export class GraphPanel {
    */
   static onHere: ((path: string) => void) | undefined;
 
+  /** Told when a drawing shows or hides untouched files, for the list to follow. */
+  static onUntouched: ((on: boolean) => void) | undefined;
+
   /**
    * Where the reader's own choices are kept between pages.
    *
@@ -1815,6 +2221,24 @@ export class GraphPanel {
    * the same opinion about import arrows.
    */
   static settings: SettingsStore | undefined;
+
+  /** The neural voice on this machine, once the extension has made one. */
+  static kokoro: Kokoro | undefined;
+  static version: string | undefined;
+  static errorLog: string | undefined;
+
+  /** Where tours are kept, when the editor gave this extension somewhere. */
+  static tours: TourStore | undefined;
+
+  /** Whether Odin's own side bar is on screen, which the tour asks before hiding it. */
+  static sidebarShown: (() => boolean) | undefined;
+
+  /** Kokoro has just been set up, so every open page switches to it. */
+  static kokoroReady(): void {
+    for (const open of GraphPanel.open.values()) {
+      void open.panel.webview.postMessage({ type: "kokoroReady" });
+    }
+  }
 
   /**
    * Whether the reader asked for import arrows.
@@ -1969,6 +2393,9 @@ export class GraphPanel {
         (await inlineAvatar(`https://github.com/${login}.png?size=64`).catch(
           () => undefined,
         )) ?? "";
+      // A picture that failed to arrive is asked for again next time, rather
+      // than every remark for the rest of the session going out faceless.
+      if (!face) this.identity = undefined;
       return { login, face };
     })();
     return this.identity;
@@ -1977,7 +2404,8 @@ export class GraphPanel {
   /** Learns who is reading, and signs anything already written as nobody. */
   private async learnViewer(): Promise<{ login: string; face: string }> {
     const me = await this.whoAmI();
-    if (!me.login || me.login === this.viewer) return me;
+    if (!me.login) return me;
+    if (me.login === this.viewer && (this.viewerFace || !me.face)) return me;
 
     this.viewer = me.login;
     this.viewerFace = me.face;
@@ -2170,8 +2598,56 @@ export class GraphPanel {
    * then shows what is actually there, including anything someone else wrote
    * in the meantime.
    */
+  private async withMedia(body: string, files: Attachment[] | undefined): Promise<string> {
+    if (!files || files.length === 0) return body;
+    const gh = ghAt(this.repo);
+    const who = await ghStatus(gh);
+    if (!who.ok || !who.login) throw new Error("Attaching files needs the GitHub CLI signed in: run gh auth login.");
+    const pull = this.graph.meta.pullRequest;
+    const repo = pull?.url ? repoOfUrl(pull.url) : undefined;
+    if (!repo) throw new Error("Odin could not tell which GitHub repository this change belongs to.");
+    void this.panel.webview.postMessage({ type: "note", message: `Uploading ${files.length} attachment${files.length === 1 ? "" : "s"}…` });
+    const branch = attachmentBranch(pull?.headRefName ?? this.graph.meta.headRef, who.login);
+    return withAttachments(body, await storeAttachments(gh, repo, branch, files));
+  }
+
+  private mediaFailed(error: unknown): undefined {
+    void vscode.window.showErrorMessage(`Odin: could not attach the files — ${(error as Error).message ?? error}`);
+    return undefined;
+  }
+
+  private async reportIssue(payload: SupportMessage["payload"]): Promise<void> {
+    const gh = ghAt(this.repo);
+    try {
+      const who = await ghStatus(gh);
+      if (!who.ok || !who.login) {
+        void this.panel.webview.postMessage({ type: "supportFailed", problem: who.problem ?? "signed-out" });
+        return;
+      }
+      const label = SUPPORT_LABELS[payload.kind] ?? SUPPORT_LABELS.suggestion;
+      const files = payload.attachments ?? [];
+      const stored = files.length
+        ? await storeAttachments(gh, SUPPORT_REPO, attachmentBranch(undefined, who.login), files)
+        : [];
+      const body = withAttachments(
+        `${payload.body.trim()}\n\n---\n_Sent from Odin ${GraphPanel.version ?? ""} in VS Code._`,
+        stored,
+      );
+      const url = await openIssue(gh, SUPPORT_REPO, { title: payload.title.trim(), body, label });
+      void this.panel.webview.postMessage({ type: "supportPosted", url });
+    } catch (error) {
+      void this.panel.webview.postMessage({ type: "supportFailed", error: String((error as Error).message ?? error) });
+    }
+  }
+
   private async remark(message: RemarkMessage): Promise<void> {
-    const { id, content, body } = message.payload;
+    const { id, content, attachments } = message.payload;
+    let body = message.payload.body;
+    if (body !== undefined && attachments?.length) {
+      const attached = await this.withMedia(body, attachments).catch((error) => this.mediaFailed(error));
+      if (attached === undefined) return;
+      body = attached;
+    }
 
     /*
      * A remark the forge never issued an id for.
@@ -2262,17 +2738,19 @@ export class GraphPanel {
       return;
     }
 
-    // The bar is drawn from the graph, so the graph is what has to change.
+    // Kept in the graph for the next build, and told to the page as news: the
+    // bar is what changed, and replacing the document for it reloads the view.
+    const changed = { ...pull, draft };
     this.graph = {
       ...this.graph,
-      meta: { ...this.graph.meta, pullRequest: { ...pull, draft } },
+      meta: { ...this.graph.meta, pullRequest: changed },
     };
+    void this.panel.webview.postMessage({ type: "pullRequest", payload: changed });
     vscode.window.showInformationMessage(
       draft
         ? `Odin: #${pull.number} is a draft again.`
         : `Odin: #${pull.number} is ready for review.`,
     );
-    this.render(this.layout);
   }
 
   /**
@@ -2377,7 +2855,28 @@ export class GraphPanel {
     alternate?: { layout: GraphLayout; withTests?: GraphLayout },
     folded?: FoldedStore,
   ) {
-    this.panel = panel;
+    this.panel = mirrored(panel, {
+      html: (html) => {
+        this.shownHtml = html;
+        this.sent = [];
+        this.kept.clear();
+        for (const mirror of this.mirrors) mirror.html(html);
+      },
+      message: (message) => {
+        const kind = (message as { type?: unknown } | null)?.type;
+        if (kind === "drive") return;
+        if (kind !== "spoken" && kind !== "saying" && kind !== "said") this.sent.push(message);
+        if (this.sent.length > REPLAYED) {
+          for (const gone of this.sent.splice(0, this.sent.length - REPLAYED)) {
+            const type = (gone as { type?: unknown } | null)?.type;
+            if (typeof type !== "string") continue;
+            this.kept.delete(type);
+            this.kept.set(type, gone);
+          }
+        }
+        for (const mirror of this.mirrors) mirror.message(message);
+      },
+    });
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;
@@ -2535,6 +3034,8 @@ export class GraphPanel {
       ...(this.highlight ? { highlight: this.highlight } : {}),
       comments: this.everything(),
       canReview: Boolean(this.graph.meta.pullRequest),
+      ...(GraphPanel.version ? { version: GraphPanel.version } : {}),
+      reading: this.describe(),
       ...(this.viewer ? { viewer: this.viewer } : {}),
       ...(this.viewerFace ? { viewerFace: this.viewerFace } : {}),
       // Written into the document rather than sent after it, so the page never
@@ -2717,6 +3218,7 @@ export class GraphPanel {
 
     // Marks made in an earlier session are restored once the page is up.
     const marked = this.viewed?.all() ?? [];
+    setTimeout(() => this.deliverTour(), 0);
     if (marked.length > 0) {
       setTimeout(() => {
         void this.panel.webview.postMessage({
@@ -2777,7 +3279,34 @@ export class GraphPanel {
    * reference should show you the destination without evicting you from the
    * picture you are reading.
    */
+  private static driving = 0;
+  private static readonly driven = new Map<number, (done: boolean) => void>();
+
+  static drive(step: Record<string, unknown>, timeout = 15_000): Promise<boolean> {
+    const panel = GraphPanel.active;
+    if (!panel) return Promise.resolve(false);
+    const id = ++GraphPanel.driving;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        GraphPanel.driven.delete(id);
+        resolve(false);
+      }, timeout);
+      GraphPanel.driven.set(id, (done) => {
+        clearTimeout(timer);
+        resolve(done);
+      });
+      void panel.panel.webview.postMessage({ type: "drive", id, step });
+    });
+  }
+
   private async handle(message: Message): Promise<void> {
+    const reply = message as unknown as { type?: string; payload?: { id?: number; done?: boolean } };
+    if (reply.type === "driven") {
+      const id = Number(reply.payload?.id);
+      GraphPanel.driven.get(id)?.(reply.payload?.done === true);
+      GraphPanel.driven.delete(id);
+      return;
+    }
     try {
       if (message.type === "part") {
         GraphPanel.onPart?.(message.payload.paths ?? undefined);
@@ -2990,15 +3519,19 @@ export class GraphPanel {
          * this conversation next week should be able to see that a screenshot
          * was part of the question.
          */
-        const { images, ...asked } = message.payload;
+        const { images, self, ...asked } = message.payload;
         const paths = images?.length
           ? keepPasted(images, (this.images ??= imageFolder()))
           : [];
         paired.ask({
           ...asked,
           body: withImages(asked.body, paths),
-          author: this.viewer || PLACEHOLDER,
-          ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
+          ...(self && asked.to
+            ? { author: self.name, selfAsked: asked.to, label: self.label }
+            : {
+                author: this.viewer || PLACEHOLDER,
+                ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
+              }),
         });
         void this.learnViewer().catch(() => undefined);
         return;
@@ -3011,13 +3544,69 @@ export class GraphPanel {
         await this.rerun(message.payload);
         return;
       }
+      if (message.type === "say") {
+        const { id, text } = message.payload;
+        this.voice.say(
+          text,
+          () => void this.panel.webview.postMessage({ type: "saying", id }),
+          (ok) => void this.panel.webview.postMessage({ type: "said", id, ok }),
+        );
+        return;
+      }
+      if (message.type === "speak") {
+        const { id, text } = message.payload;
+        const kokoro = GraphPanel.kokoro;
+        if (!kokoro || !(await kokoro.ready())) {
+          void this.panel.webview.postMessage({ type: "spoken", id, ok: false, unavailable: true });
+          return;
+        }
+        const spoken = await kokoro.speak(text);
+        void this.panel.webview.postMessage({ type: "spoken", id, ...spoken });
+        return;
+      }
+      if (message.type === "hush") {
+        this.voice.hush();
+        return;
+      }
+      if (message.type === "tourMake") {
+        await this.makeTour(message.payload?.fresh === true);
+        return;
+      }
+      if (message.type === "tourRevise") {
+        const note = typeof message.payload?.note === "string" ? message.payload.note.trim() : "";
+        await this.makeTour(true, { ...(note ? { note } : {}) });
+        return;
+      }
+      if (message.type === "tourCancel") {
+        this.touring?.stop();
+        return;
+      }
+      if (message.type === "tourProgress") {
+        const { topic, frame, watched, frames } = message.payload;
+        GraphPanel.tours?.progress(this.tourKey(), {
+          topic: Number(topic) || 0,
+          frame: Number(frame) || 0,
+          watched: Array.isArray(watched) ? watched.map(String) : [],
+          frames: Object.fromEntries(
+            Object.entries(frames && typeof frames === "object" ? frames : {})
+              .filter(([, at]) => typeof at === "number" && at >= 0),
+          ),
+        });
+        return;
+      }
+      if (message.type === "tourMode") {
+        await this.tourMode(message.payload.on === true);
+        return;
+      }
       if (message.type === "settings") {
         await GraphPanel.settings?.write(message.payload);
+        GraphPanel.onUntouched?.(message.payload.showUntouched !== false);
         // The order is the priority rule, so a reorder is not merely a
         // preference to file: a message waiting on a busy agent may now have
         // somebody above it who is free.
         this.paired?.setOrder(readOrder(message.payload));
         this.paired?.setAgency(readAgency(message.payload));
+        this.paired?.setModels(readModels(message.payload));
         return;
       }
       if (message.type === "viewed") {
@@ -3044,7 +3633,38 @@ export class GraphPanel {
         return;
       }
       if (message.type === "submitReview") {
-        await this.submit(message.payload);
+        const { attachments, comments, ...review } = message.payload;
+        const posted = await this.withMedia(review.body, attachments).catch((error) => this.mediaFailed(error));
+        if (posted === undefined) return;
+        const drafts: DraftComment[] = [];
+        for (const { attachments: files, ...draft } of comments) {
+          const body = await this.withMedia(draft.body, files).catch((error) => this.mediaFailed(error));
+          if (body === undefined) return;
+          drafts.push({ ...draft, body });
+        }
+        await this.submit({ ...review, body: posted, comments: drafts });
+        return;
+      }
+      if (reply.type === "supportStatus") {
+        void this.panel.webview.postMessage({ type: "supportStatus", ...(await ghStatus(ghAt(this.repo))) });
+        return;
+      }
+      if (message.type === "supportIssue") {
+        await this.reportIssue(message.payload);
+        return;
+      }
+      if (reply.type === "pageError") {
+        const said = reply as { payload?: { where?: unknown; error?: unknown } };
+        const text = `${new Date().toISOString()} [${String(said.payload?.where ?? "")}] ${String(said.payload?.error ?? "")}`;
+        console.error(`Odin page: ${text}`);
+        if (GraphPanel.errorLog) {
+          void import("node:fs/promises").then((fs) => fs.appendFile(GraphPanel.errorLog!, `${text}\n\n`)).catch(() => undefined);
+        }
+        return;
+      }
+      if (reply.type === "openExternal") {
+        const url = String((reply as { payload?: { url?: unknown } }).payload?.url ?? "");
+        if (/^https:\/\/github\.com\//.test(url)) void vscode.env.openExternal(vscode.Uri.parse(url));
         return;
       }
       if (message.type === "setDraft") {
@@ -3136,6 +3756,8 @@ export class GraphPanel {
   }
 
   dispose(): void {
+    GraphPanel.covered.delete(this);
+    this.voice.hush();
     /*
      * Whether the reader was looking at this one, asked before it is forgotten.
      *
@@ -3146,7 +3768,12 @@ export class GraphPanel {
      * whether any of that has to move.
      */
     const front = GraphPanel.active === this;
-    GraphPanel.open.delete(this.key);
+    // Only the frame filed under this key may take its registration with it.
+    // A second frame for the same reading — one the editor restored beside a
+    // fresh one — closing took the live tab's watcher down, and that tab went on
+    // saying "live" over a picture nothing was updating any more.
+    const owner = GraphPanel.open.get(this.key) === this;
+    if (owner) GraphPanel.open.delete(this.key);
     // Whatever is left, so the next press has somewhere to land. The editor
     // will correct this the moment the reader looks at a tab.
     const next: GraphPanel | undefined = GraphPanel.open.values().next().value;
@@ -3158,6 +3785,9 @@ export class GraphPanel {
     // Turns in flight belong to this reading, and there is nowhere left for
     // them to write. What they have already said is on disk.
     this.paired?.dispose();
+    this.touring?.stop();
+    GraphPanel.tours?.flush(this.tourKey());
+    void this.tourMode(false);
     // Pictures pasted into this reading's conversations. They were copies of
     // something the reader already had, kept only so an agent could open them.
     if (this.images) {
@@ -3168,7 +3798,7 @@ export class GraphPanel {
       }
       this.images = undefined;
     }
-    GraphPanel.onClosed?.(this.key);
+    if (owner) GraphPanel.onClosed?.(this.key);
     // Only when it was the one in front. A tab closed in the background takes
     // nothing with it that the reader can see, and moving the list because of
     // one would pull the bar off the change they are actually reading.
@@ -3324,6 +3954,25 @@ function readAgency(settings: unknown): Record<string, Agency> {
     if (level === "read" || level === "ask" || level === "edits" || level === "full") {
       out[id] = level;
     }
+  }
+  return out;
+}
+
+/**
+ * Which model each agent has been put on, out of stored settings.
+ *
+ * Read defensively, like the rungs beside it. A name is passed to a tool on a
+ * command line, so it is taken as a name and nothing else: anything that is
+ * not a plain non-empty string is no choice at all, and the tool keeps its own
+ * default.
+ */
+function readModels(settings: unknown): Record<string, string> {
+  if (!settings || typeof settings !== "object") return {};
+  const held = (settings as Record<string, unknown>).model;
+  if (!held || typeof held !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [id, name] of Object.entries(held as Record<string, unknown>)) {
+    if (typeof name === "string" && name.trim()) out[id] = name.trim();
   }
   return out;
 }
