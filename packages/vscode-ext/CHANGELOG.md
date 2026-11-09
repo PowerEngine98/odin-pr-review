@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.1 — 2026-11-09
+
+- ci: Chrome Web Store publishing, ready once 0.4.0 is approved (#6)
+
 ## 0.6.0 — 2026-11-09
 
 - docs: count Open VSX downloads and name the Graph tabs
