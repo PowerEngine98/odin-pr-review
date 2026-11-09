@@ -453,12 +453,47 @@ export interface Mirror {
 
 const REPLAYED = 2000;
 
-function mirrored(
-  panel: vscode.WebviewPanel,
-  hooks: { html(html: string): void; message(message: unknown): void },
-): vscode.WebviewPanel {
-  const webview = panel.webview as vscode.Webview & { odinMirrored?: boolean };
-  if (!webview || webview.odinMirrored) return panel;
+interface MirrorLog {
+  html: string;
+  sent: unknown[];
+  kept: Map<string, unknown>;
+  mirrors: Set<Mirror>;
+}
+
+const logs = new WeakMap<object, MirrorLog>();
+
+function remembering(log: MirrorLog) {
+  return {
+    html: (html: string) => {
+      log.html = html;
+      log.sent = [];
+      log.kept.clear();
+      for (const mirror of log.mirrors) mirror.html(html);
+    },
+    message: (message: unknown) => {
+      const kind = (message as { type?: unknown } | null)?.type;
+      if (kind === "drive") return;
+      if (kind !== "spoken" && kind !== "saying" && kind !== "said") log.sent.push(message);
+      if (log.sent.length > REPLAYED) {
+        for (const gone of log.sent.splice(0, log.sent.length - REPLAYED)) {
+          const type = (gone as { type?: unknown } | null)?.type;
+          if (typeof type !== "string") continue;
+          log.kept.delete(type);
+          log.kept.set(type, gone);
+        }
+      }
+      for (const mirror of log.mirrors) mirror.message(message);
+    },
+  };
+}
+
+export function mirrorOf(panel: vscode.WebviewPanel): MirrorLog {
+  const webview = panel.webview as vscode.Webview & object;
+  const known = logs.get(webview);
+  if (known) return known;
+  const log: MirrorLog = { html: "", sent: [], kept: new Map(), mirrors: new Set() };
+  logs.set(webview, log);
+  const hooks = remembering(log);
   const post = webview.postMessage.bind(webview);
   let owner: object | null = webview;
   let html: PropertyDescriptor | undefined;
@@ -495,18 +530,14 @@ function mirrored(
         },
       });
     }
-    Object.defineProperty(webview, "odinMirrored", { value: true });
   } catch {
-    return panel;
+    return log;
   }
-  return panel;
+  return log;
 }
 
 export class GraphPanel {
-  private readonly mirrors = new Set<Mirror>();
-  private shownHtml = "";
-  private sent: unknown[] = [];
-  private kept = new Map<string, unknown>();
+  private mirror!: MirrorLog;
 
   static find(repo: string, number: number, head?: string): GraphPanel | undefined {
     return GraphPanel.readings().find(
@@ -521,11 +552,12 @@ export class GraphPanel {
   }
 
   attach(mirror: Mirror): () => void {
-    if (this.shownHtml) mirror.html(this.shownHtml);
-    for (const message of this.kept.values()) mirror.message(message);
-    for (const message of this.sent) mirror.message(message);
-    this.mirrors.add(mirror);
-    return () => this.mirrors.delete(mirror);
+    const log = this.mirror;
+    if (log.html) mirror.html(log.html);
+    for (const message of log.kept.values()) mirror.message(message);
+    for (const message of log.sent) mirror.message(message);
+    log.mirrors.add(mirror);
+    return () => log.mirrors.delete(mirror);
   }
 
   receive(message: unknown): void {
@@ -2864,28 +2896,8 @@ export class GraphPanel {
     alternate?: { layout: GraphLayout; withTests?: GraphLayout },
     folded?: FoldedStore,
   ) {
-    this.panel = mirrored(panel, {
-      html: (html) => {
-        this.shownHtml = html;
-        this.sent = [];
-        this.kept.clear();
-        for (const mirror of this.mirrors) mirror.html(html);
-      },
-      message: (message) => {
-        const kind = (message as { type?: unknown } | null)?.type;
-        if (kind === "drive") return;
-        if (kind !== "spoken" && kind !== "saying" && kind !== "said") this.sent.push(message);
-        if (this.sent.length > REPLAYED) {
-          for (const gone of this.sent.splice(0, this.sent.length - REPLAYED)) {
-            const type = (gone as { type?: unknown } | null)?.type;
-            if (typeof type !== "string") continue;
-            this.kept.delete(type);
-            this.kept.set(type, gone);
-          }
-        }
-        for (const mirror of this.mirrors) mirror.message(message);
-      },
-    });
+    this.mirror = mirrorOf(panel);
+    this.panel = panel;
     this.graph = graph;
     this.repo = repo;
     this.withTests = withTests;
