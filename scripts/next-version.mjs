@@ -63,7 +63,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   };
   const manifest = JSON.parse(readFileSync("packages/vscode-ext/package.json", "utf8")).version;
   const live = process.env.LIVE ?? "";
-  const since = git("describe", "--tags", "--abbrev=0", "--match", "v*");
+  const since = git("tag", "--list", "v*", "--sort=-version:refname").split("\n")[0];
   const published = publishedOf(live, since.replace(/^v/, ""));
   const log = git("log", "--format=%B%x1e", since ? `${since}..HEAD` : "HEAD");
   const messages = log.split("\x1e").map((one) => one.trim()).filter(Boolean);
