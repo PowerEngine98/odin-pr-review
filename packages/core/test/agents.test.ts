@@ -167,6 +167,12 @@ describe("what an agent looks like in a thread", () => {
 describe("opencode", () => {
   const kind = () => KNOWN_AGENTS.find((agent) => agent.id === "opencode")!;
 
+  it("starts a conversation without naming it, and resumes the one it named", () => {
+    expect(kind().session?.learns).toBe(true);
+    expect(kind().session?.start("")).toEqual(["run"]);
+    expect(kind().session?.resume("ses_abc")).toEqual(["run", "--session", "ses_abc"]);
+  });
+
   it("is looked for", () => {
     expect(kind()).toBeDefined();
     expect(kind().command).toBe("opencode");
@@ -176,6 +182,15 @@ describe("opencode", () => {
     // The bare command starts its terminal interface, which would sit waiting
     // for a keystroke that never comes.
     expect(kind().once).toEqual(["run"]);
+  });
+
+  it("asks for the machine-readable stream", () => {
+    /*
+     * Its ordinary output is drawn for a terminal — colour codes around every
+     * tool name, a rendering that changes between versions — so the event
+     * stream is requested instead, which is what the reader parses.
+     */
+    expect(kind().streams?.args).toEqual(["--format", "json"]);
   });
 
   it("has the two rungs it actually has, and not a third", () => {
@@ -189,12 +204,6 @@ describe("opencode", () => {
       edits: ["--agent", "build"],
     });
     expect(kind().agency?.full).toBeUndefined();
-  });
-
-  it("says nothing about carrying a conversation, because it cannot be told one", () => {
-    // `--session` continues a session that exists; there is no naming one that
-    // does not, so each turn is a fresh one and the page says so.
-    expect(kind().session).toBeUndefined();
   });
 
   it("has a face of its own", () => {
