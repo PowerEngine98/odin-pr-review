@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 — 2026-11-09
+
+- ci: publish the browser extension to the Chrome Web Store
+
 ## 0.4.1 — 2026-11-08
 
 - docs: privacy policy for the browser extension and the VS Code extension
