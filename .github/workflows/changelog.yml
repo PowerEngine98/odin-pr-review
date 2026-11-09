@@ -1,0 +1,27 @@
+name: Changelog
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+
+jobs:
+  written:
+    name: Changelog written
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip changelog') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The description has a changelog
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/release-notes.mjs check
