@@ -1162,6 +1162,11 @@ export class PairingSession {
           this.inUse = { ...this.inUse, [agentId]: model };
           this.changed();
         },
+        onSession: (session) => {
+          if (!kind.session?.learns || this.sessions[agentId] === session) return;
+          this.sessions[agentId] = session;
+          this.save();
+        },
       });
       this.running.set(agentId, handle);
       return handle;
@@ -1357,6 +1362,7 @@ export class PairingSession {
 
     const held = this.sessions[agentId];
     if (held) return this.invoke(kind, kind.session.resume(held), extra);
+    if (kind.session.learns) return this.invoke(kind, kind.session.start(""), extra);
 
     const fresh = randomUUID();
     this.sessions[agentId] = fresh;
