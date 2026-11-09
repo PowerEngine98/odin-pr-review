@@ -95,6 +95,30 @@ export function withEntry(changelog, version, date, notes) {
   return `# Changelog\n\n## ${version} — ${date}\n\n${notes}\n${rest ? `\n${rest}` : ""}`;
 }
 
+function entriesOf(changelog) {
+  const text = String(changelog ?? "").replace(/^# Changelog\s*/, "");
+  const entries = new Map();
+  for (const block of text.split(/^(?=## )/m)) {
+    const version = block.match(/^## (\d+\.\d+\.\d+)/)?.[1];
+    if (version) entries.set(version, block.trim());
+  }
+  return entries;
+}
+
+function newerFirst(a, b) {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pb[i] - pa[i];
+  return 0;
+}
+
+export function mergedHistory(kept, released) {
+  const entries = entriesOf(released);
+  for (const [version, block] of entriesOf(kept)) entries.set(version, block);
+  const ordered = [...entries.keys()].sort(newerFirst).map((version) => entries.get(version));
+  return `# Changelog\n\n${ordered.join("\n\n")}\n`;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { execFileSync } = await import("node:child_process");
   const run = (command, args) => {
