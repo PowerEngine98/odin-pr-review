@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 — 2026-11-09
+
+- feat(browser): a GitHub access page in Odin's style that creates the token for you
+- feat(browser): read GitHub through VS Code when synced, so private repositories need no token
+- fix: a pull request with repeated checks opens instead of staying blank
+
 ## 0.4.2 — 2026-11-09
 
 - ci: publish the browser extension to the Chrome Web Store
