@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 — 2026-11-09
+
+- docs: count Open VSX downloads and name the Graph tabs
+- feat(browser): Graph and Change graph tabs, a resizable side bar, and Go live from GitHub
+- feat(webview): AI pairing in settings, a reminder to pair, and a clearer settings panel
+- fix: browser sync picks the right folder, keeps AI pairing on big changes, and clears the start-up cover
+
 ## 0.5.0 — 2026-11-09
 
 - feat(browser): a GitHub access page in Odin's style that creates the token for you
