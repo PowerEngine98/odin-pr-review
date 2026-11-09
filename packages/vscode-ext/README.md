@@ -3,6 +3,7 @@
 [![Marketplace version](https://vsmarketplacebadges.dev/version-short/powerengine98.odin-pr-review.svg?label=VS%20Code%20Marketplace&colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
 [![Open VSX version](https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
 [![Open VSX downloads](https://img.shields.io/open-vsx/dt/powerengine98/odin-pr-review?label=downloads&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/jghenlmadcfkcmfmnlmegogfjbbeafci?label=Chrome%20Web%20Store&color=1a73e8)](https://chromewebstore.google.com/detail/odin-pr-review/jghenlmadcfkcmfmnlmegogfjbbeafci)
 [![Publish](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml)
 
 Review a pull request as a picture of the change. Every changed file is a card
@@ -104,13 +105,13 @@ walk you through it.
 
 ## The browser extension
 
-Odin for GitHub is built from this repository; each
-[release](https://github.com/PowerEngine98/odin-pr-review/releases) attaches it
-as `odin-pr-review-browser.zip` for Chrome, Edge or Brave (unzip it, open
-`chrome://extensions`, turn on Developer mode and choose **Load unpacked**).
-In its Graph tab, choose **Enable all features → Sync with the VS Code
-extension** and allow the connection here. VS Code then answers it on
-`127.0.0.1` only, and only with the token it was given.
+Add **Odin for GitHub** from the
+[Chrome Web Store](https://chromewebstore.google.com/detail/odin-pr-review/jghenlmadcfkcmfmnlmegogfjbbeafci)
+(Chrome, Edge, Brave, Opera). In a pull request's **Graph** tab, choose
+**Enable all features → Sync with the VS Code extension** and allow the
+connection here. VS Code then answers it on `127.0.0.1` only, and only with the
+token it was given; it reads GitHub for the tab through your `gh` session, so
+private repositories need no token in the browser.
 
 ## Settings
 
