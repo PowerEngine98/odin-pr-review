@@ -505,6 +505,7 @@ export class GraphPanel {
   private readonly mirrors = new Set<Mirror>();
   private shownHtml = "";
   private sent: unknown[] = [];
+  private kept = new Map<string, unknown>();
 
   static find(repo: string, number: number, head?: string): GraphPanel | undefined {
     return GraphPanel.readings().find(
@@ -520,6 +521,7 @@ export class GraphPanel {
 
   attach(mirror: Mirror): () => void {
     if (this.shownHtml) mirror.html(this.shownHtml);
+    for (const message of this.kept.values()) mirror.message(message);
     for (const message of this.sent) mirror.message(message);
     this.mirrors.add(mirror);
     return () => this.mirrors.delete(mirror);
@@ -1907,15 +1909,31 @@ export class GraphPanel {
      */
     settling?: { percent?: number },
   ): void {
-    void GraphPanel.active?.panel.webview.postMessage({
+    const message = {
       type: "refreshing",
       value: on,
       ...(note ? { note } : {}),
       ...(settling
         ? { settling: true, ...(settling.percent === undefined ? {} : { percent: settling.percent }) }
         : { settling: false }),
-    });
+    };
+    const active = GraphPanel.active;
+    if (on) {
+      if (active) GraphPanel.covered.add(active);
+      void active?.panel.webview.postMessage(message);
+      return;
+    }
+    const covered = new Set(GraphPanel.covered);
+    if (active) covered.add(active);
+    GraphPanel.covered.clear();
+    for (const panel of covered) {
+      void Promise.resolve()
+        .then(() => panel.panel.webview.postMessage(message))
+        .catch(() => undefined);
+    }
   }
+
+  private static covered = new Set<GraphPanel>();
 
   /**
    * The tab's own mark while its change is being worked out.
@@ -2841,13 +2859,21 @@ export class GraphPanel {
       html: (html) => {
         this.shownHtml = html;
         this.sent = [];
+        this.kept.clear();
         for (const mirror of this.mirrors) mirror.html(html);
       },
       message: (message) => {
         const kind = (message as { type?: unknown } | null)?.type;
         if (kind === "drive") return;
         if (kind !== "spoken" && kind !== "saying" && kind !== "said") this.sent.push(message);
-        if (this.sent.length > REPLAYED) this.sent.splice(0, this.sent.length - REPLAYED);
+        if (this.sent.length > REPLAYED) {
+          for (const gone of this.sent.splice(0, this.sent.length - REPLAYED)) {
+            const type = (gone as { type?: unknown } | null)?.type;
+            if (typeof type !== "string") continue;
+            this.kept.delete(type);
+            this.kept.set(type, gone);
+          }
+        }
         for (const mirror of this.mirrors) mirror.message(message);
       },
     });
@@ -3729,6 +3755,7 @@ export class GraphPanel {
   }
 
   dispose(): void {
+    GraphPanel.covered.delete(this);
     this.voice.hush();
     /*
      * Whether the reader was looking at this one, asked before it is forgotten.

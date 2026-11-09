@@ -118,7 +118,7 @@ export class BrowserBridge implements vscode.Disposable {
     this.pairing = pairing;
     const port = await this.open();
     if (port) {
-      void vscode.window.showInformationMessage("Odin: the browser extension is connected. Back in GitHub, it now draws arrows from here.");
+      void vscode.window.showInformationMessage("Odin: GitHub is connected, with all features on.");
     } else {
       void vscode.window.showErrorMessage("Odin: no free port between 47920 and 47929 to talk to the browser on.");
     }
@@ -185,18 +185,35 @@ export class BrowserBridge implements vscode.Disposable {
     const name = `${owner}/${repo}`;
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const remotes = await git(["remote", "-v"], { cwd: folder.uri.fsPath }).catch(() => "");
-      if (remoteFor(remotes, owner, repo)) this.repositories.record(name, folder.uri.fsPath);
+      if (remoteFor(remotes, owner, repo)) this.repositories.record(name, await rootOf(folder.uri.fsPath));
     }
-    return this.repositories.candidates(name, async (path) => {
+    const known = await this.repositories.candidates(name, async (path) => {
       const remotes = await git(["remote", "-v"], { cwd: path }).catch(() => "");
       return remoteFor(remotes, owner, repo) !== undefined;
     });
+    const roots = [...new Set(await Promise.all(known.paths.map(rootOf)))];
+    return { paths: roots, ...(known.chosen ? { chosen: await rootOf(known.chosen) } : {}) };
+  }
+
+  private async settled(paths: string[]): Promise<string | undefined> {
+    if (paths.length === 1) return paths[0];
+    const here = paths.filter((path) => this.isOpenHere(path) || this.holdsOpenFolder(path));
+    if (here.length === 1) return here[0];
+    const pool = here.length > 0 ? here : paths;
+    const main = [];
+    for (const path of pool) if (!(await isLinkedWorktree(path))) main.push(path);
+    return main.length === 1 ? main[0] : undefined;
+  }
+
+  private holdsOpenFolder(path: string): boolean {
+    return (vscode.workspace.workspaceFolders ?? []).some((folder) => folder.uri.fsPath.startsWith(`${path}/`));
   }
 
   private async where(owner: string, repo: string): Promise<Where> {
     const { paths, chosen } = await this.candidates(owner, repo);
     if (chosen) return { path: chosen };
-    if (paths.length === 1) return { path: paths[0]! };
+    const path = await this.settled(paths);
+    if (path) return { path };
     return { need: paths.length === 0 ? "clone" : "pick" };
   }
 
@@ -207,7 +224,7 @@ export class BrowserBridge implements vscode.Disposable {
     if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(repo)) return;
     const name = `${owner}/${repo}`;
     const { paths, chosen } = await this.candidates(owner, repo);
-    let path = chosen ?? (paths.length === 1 ? paths[0] : undefined);
+    let path = chosen ?? (await this.settled(paths));
     if (!path && paths.length > 1) path = await this.pick(name, paths);
     if (!path && paths.length === 0) path = await this.clone(owner, repo);
     if (!path) return;
@@ -302,13 +319,27 @@ export class BrowserBridge implements vscode.Disposable {
     const panel = await this.serialized(() => this.present!(cwd, number, base, head));
     if (!panel) throw new Error(`VS Code could not draw #${number}.`);
     sink.send({ type: "graph", graph: panel.changeGraph });
+    sink.send({
+      type: "reading",
+      live: panel.changeGraph.meta.worktree === true,
+      branch: (head ?? panel.changeGraph.meta.headRef ?? "").replace(/^origin\//, ""),
+    });
     const detach = panel.attach({
       html: (html) => sink.send({ type: "html", html }),
       message: (message) => sink.send({ type: "message", message }),
     });
     return {
       id: randomUUID(),
-      deliver: (message) => panel.receive(message),
+      deliver: (message) => {
+        if ((message as { odinGoLive?: unknown } | null)?.odinGoLive === true) {
+          void Promise.resolve(vscode.commands.executeCommand("odin.checkoutLocal", number)).then(
+            () => sink.send({ type: "wentLive" }),
+            (error: Error) => sink.send({ type: "note", message: `VS Code could not go live: ${error.message}` }),
+          );
+          return;
+        }
+        panel.receive(message);
+      },
       close: detach,
     };
   }
@@ -370,4 +401,17 @@ function ghRead(args: string[]): Promise<string> {
       },
     );
   });
+}
+
+async function rootOf(path: string): Promise<string> {
+  const top = (await git(["rev-parse", "--show-toplevel"], { cwd: path }).catch(() => "")).trim();
+  return top || path;
+}
+
+async function isLinkedWorktree(path: string): Promise<boolean> {
+  const [dir, common] = await Promise.all([
+    git(["rev-parse", "--absolute-git-dir"], { cwd: path }).catch(() => ""),
+    git(["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: path }).catch(() => ""),
+  ]);
+  return Boolean(dir.trim() && common.trim() && dir.trim() !== common.trim());
 }
