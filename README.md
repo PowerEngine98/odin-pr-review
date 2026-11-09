@@ -2,12 +2,13 @@
   <img src="docs/odin.svg" alt="Odin" width="160">
 </p>
 
-<h1 align="center">Odin PR Review</h1>
-
-<p align="center">
-  <sub><em>“He saw over all worlds and every man's activity and understood everything he saw.”</em><br>
-  Snorri Sturluson, <em>Prose Edda</em></sub>
-</p>
+<h1 align="center">
+  Odin PR Review
+  <br>
+  <sub><sub><sub><em>“He saw over all worlds and every man's activity and understood everything he saw.”</em></sub></sub></sub>
+  <br>
+  <sub><sub><sub>Snorri Sturluson, <em>Prose Edda</em></sub></sub></sub>
+</h1>
 
 <p align="center">
   <strong>Review a pull request as a picture of the change, and let an AI walk you through it.</strong>
@@ -55,35 +56,35 @@ it and your progress through it, in one place, in your editor or right on GitHub
 
 - **🗺️ The change as a graph.** Files are cards, references are arrows: green where the change adds a call, red where it takes one away. Click an arrow to follow it. Coloured by your own theme, with a minimap, folders and filters.
 
-  <img src="docs/features/graph.png" alt="The change graph: cards and arrows" width="560">
+  <p align="center"><img src="docs/features/graph.png" alt="The change graph: cards and arrows" width="560"></p>
 
 - **🎧 Guided tours.** An agent reads the change and writes a tour: topics in the order the code runs, frames that fly to the code, highlight lines, draw arrows and sketch diagrams, with the decisions explained the way a senior engineer would. Play it like a video, with subtitles, chapters and a timeline. Argue with any frame by sending it to the agent.
 
-  <img src="docs/features/tours.png" alt="A guided tour flying to the code" width="560">
+  <p align="center"><img src="docs/features/tours.png" alt="A guided tour flying to the code" width="560"></p>
 
 - **🤝 AI pairing.** Ask <img src="docs/agents/claude.svg" height="18" alt="Claude" align="absmiddle"> <img src="docs/agents/codex.svg" height="18" alt="Codex" align="absmiddle"> <img src="docs/agents/gemini.svg" height="18" alt="Gemini" align="absmiddle"> <img src="docs/agents/cursor.svg" height="18" alt="Cursor" align="absmiddle"> <img src="docs/agents/opencode.svg" height="18" alt="opencode" align="absmiddle"> <img src="docs/agents/aider.svg" height="18" alt="Aider" align="absmiddle"> <img src="docs/agents/antigravity.svg" height="18" alt="Antigravity" align="absmiddle"> about a line, a thread or the whole change. Choose how much each one may do and on which model, approve what it asks for, and see every file it touched. Conversations carry on from one question to the next.
 
-  <img src="docs/features/pairing.png" alt="Claude working in the pairing console" width="420">
+  <p align="center"><img src="docs/features/pairing.png" alt="Claude working in the pairing console" width="420"></p>
 
 - **💬 The whole review, in place.** Threads sit next to the lines they were left on. Reply, react, suggest changes, mark files viewed, see checks, and submit your review, without leaving the graph. Comments take pictures and videos too.
 
-  <img src="docs/features/review.png" alt="A review thread beside its line" width="560">
+  <p align="center"><img src="docs/features/review.png" alt="A review thread beside its line" width="560"></p>
 
 - **🌐 Odin on GitHub.** The browser extension adds a **Graph** tab to every pull request and a **Change graph** tab to the repository. Synced with VS Code, it is the same reading as the editor: arrows, tours, AI pairing, narration and reviews, with no token to set up.
 
-  <img src="docs/features/github.png" alt="Odin's Graph tab on GitHub" width="560">
+  <p align="center"><img src="docs/features/github.png" alt="Odin's Graph tab on GitHub" width="560"></p>
 
 - **🔊 Narration.** Tours and answers read aloud, with each word boxed as it is spoken, by your browser, your system's voice, or a neural voice that runs on your machine (Kokoro).
 
-  <img src="docs/features/narration.png" alt="A tour narrated, the spoken word boxed" width="560">
+  <p align="center"><img src="docs/features/narration.png" alt="A tour narrated, the spoken word boxed" width="560"></p>
 
 - **⚡ Live readings.** Review your own uncommitted work as you write it. The graph follows the working tree, branch switches, merges and rebases.
 
-  <img src="docs/features/live.png" alt="A live reading of the working tree" width="560">
+  <p align="center"><img src="docs/features/live.png" alt="A live reading of the working tree" width="560"></p>
 
 - **🛟 Support from the graph.** Report a bug or ask for a feature from Settings; it becomes an issue here, posted through your own GitHub account, recordings included.
 
-  <img src="docs/features/support.png" alt="The Support composer" width="560">
+  <p align="center"><img src="docs/features/support.png" alt="The Support composer" width="560"></p>
 
 ## Get Odin
 
