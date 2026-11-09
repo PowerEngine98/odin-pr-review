@@ -116,7 +116,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       process.exit(1);
     }
   } else {
-    const since = mode ?? run("git", ["describe", "--tags", "--abbrev=0", "--match", "v*"]);
+    const since = mode ?? run("git", ["tag", "--list", "v*", "--sort=-version:refname"]).split("\n")[0];
     const until = process.argv[3] ?? "HEAD";
     const log = run("git", ["log", "--format=%B%x1e", since ? `${since}..${until}` : until]);
     const commits = log.split("\x1e").map((one) => one.trim()).filter(Boolean);
