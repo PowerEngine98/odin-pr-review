@@ -525,7 +525,7 @@ export function activate(context: vscode.ExtensionContext): void {
          * Falling back to the last reading covers the frame written by a build
          * that predates this, which has no state of its own to offer.
          */
-        const previous = readingIn(state) ?? session.last();
+        const previous = readingIn(state) ?? lastReadingHere();
         if (!previous) {
           // Nothing worth reopening, and an empty frame says less than no
           // frame at all.
@@ -591,6 +591,18 @@ export function activate(context: vscode.ExtensionContext): void {
  * checked rather than cast, and a frame that fails the check falls back to the
  * single remembered session — which is what every frame did before.
  */
+function lastReadingHere(): Session | undefined {
+  const last = session.last();
+  if (!last) return undefined;
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length === 0) return last;
+  const here = folders.some((folder) => {
+    const path = folder.uri.fsPath;
+    return last.repo === path || last.repo.startsWith(`${path}/`) || path.startsWith(`${last.repo}/`);
+  });
+  return here ? last : undefined;
+}
+
 function readingIn(state: unknown): Session | undefined {
   if (!state || typeof state !== "object") return undefined;
   /*
