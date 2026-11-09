@@ -1,8 +1,8 @@
 # 🐦‍⬛ Odin PR Review 🐦‍⬛
 
 [![Marketplace version](https://vsmarketplacebadges.dev/version-short/powerengine98.odin-pr-review.svg?label=VS%20Code%20Marketplace&colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
-[![Installs](https://vsmarketplacebadges.dev/installs-short/powerengine98.odin-pr-review.svg?colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
 [![Open VSX version](https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
+[![Open VSX downloads](https://img.shields.io/open-vsx/dt/powerengine98/odin-pr-review?label=downloads&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
 [![Publish](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml)
 
 <img src="docs/odin.svg" alt="" width="200" align="left">
@@ -468,12 +468,12 @@ because the layout is meant to be something you remember.
 ### Browser extension — on GitHub
 
 `packages/browser-ext` puts Odin into GitHub itself, the way Le Git Graph adds a
-commits graph. It adds an **Odin** tab in two places:
+commits graph. It adds a tab, with a graph icon, in two places:
 
-- **On a pull request**, first in the bar beside Overview, Commits, Checks and
-  Files changed. It draws that pull request as the change graph, with the same
-  renderer the editor uses.
-- **On the repository**, beside Pull requests. It opens the pull request list
+- **Graph**, on a pull request, first in the bar beside Overview, Commits,
+  Checks and Files changed. It draws that pull request as the change graph,
+  with the same renderer the editor uses.
+- **Change graph**, on the repository, beside Pull requests. It opens the pull request list
   from the editor's sidebar: what is waiting on you first, filters for open,
   merged, closed and author. Choosing a pull request opens its graph.
 
@@ -622,7 +622,7 @@ the tool exists to build.
 | `@odin/highlight` | Syntax colouring, from VS Code's own grammars by way of Shiki. |
 | `@odin/cli` | `odin` — render a change graph, and review through it, from the terminal. |
 | `odin-pr-review` | The VS Code extension. Bundled to CommonJS, since the editor loads extensions that way. |
-| `@odin/browser-ext` | The browser extension: an Odin tab on GitHub, built from the same core and renderer. |
+| `@odin/browser-ext` | The browser extension: Graph and Change graph tabs on GitHub, built from the same core and renderer. |
 
 Reference resolution sits behind an interface, so the same graph can be produced
 headlessly by the compiler API or inside the editor by a language server.

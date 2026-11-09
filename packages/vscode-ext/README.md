@@ -1,8 +1,8 @@
 # Odin PR Review
 
 [![Marketplace version](https://vsmarketplacebadges.dev/version-short/powerengine98.odin-pr-review.svg?label=VS%20Code%20Marketplace&colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
-[![Installs](https://vsmarketplacebadges.dev/installs-short/powerengine98.odin-pr-review.svg?colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
 [![Open VSX version](https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
+[![Open VSX downloads](https://img.shields.io/open-vsx/dt/powerengine98/odin-pr-review?label=downloads&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
 [![Publish](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml)
 
 Review a pull request as a picture of the change. Every changed file is a card
@@ -54,8 +54,9 @@ walk you through it.
   a suggestion or a feature request. It becomes an issue on this repository,
   labelled accordingly, posted through your own `gh` session, with any media
   attached; a notice in the corner links to it.
-- **Odin on GitHub.** A companion browser extension adds an **Odin** tab to
-  GitHub's pull requests. Paired with this extension, that tab shows the same
+- **Odin on GitHub.** A companion browser extension adds a **Graph** tab to
+  GitHub's pull requests, and a **Change graph** tab to the repository. Paired
+  with this extension, the Graph tab shows the same
   reading as the editor — arrows, AI pairing, tours, narration and reviews, all
   run here. VS Code finds the repository among the folders it knows, asks which
   when there are several, and offers to clone it when there is none.
@@ -107,7 +108,7 @@ Odin for GitHub is built from this repository; each
 [release](https://github.com/PowerEngine98/odin-pr-review/releases) attaches it
 as `odin-pr-review-browser.zip` for Chrome, Edge or Brave (unzip it, open
 `chrome://extensions`, turn on Developer mode and choose **Load unpacked**).
-In its Odin tab, choose **Enable all features → Sync with the VS Code
+In its Graph tab, choose **Enable all features → Sync with the VS Code
 extension** and allow the connection here. VS Code then answers it on
 `127.0.0.1` only, and only with the token it was given.
 
