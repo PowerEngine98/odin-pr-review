@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.4 — 2026-11-09
+
+- Maintenance release.
+
+## 0.7.3 — 2026-11-09
+
+### Quality of life
+
+- Every release says what changed, grouped into new features, UI/UX, quality of life and bug fixes, on GitHub, the VS Code Marketplace and Open VSX
+
 ## 0.7.2 — 2026-11-09
 
 - Maintenance release.
