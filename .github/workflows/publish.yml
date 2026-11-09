@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: write
+  pull-requests: read
   # Trusted Publishing: the Marketplace takes GitHub's own proof of which
   # workflow is running instead of a stored token, so nothing expires.
   id-token: write
@@ -68,6 +69,29 @@ jobs:
           echo "live ${live:-none}, publishing $next"
           (cd packages/vscode-ext && npm pkg set version="$next")
           echo "next=$next" >> "$GITHUB_OUTPUT"
+
+      # The notes users read: the "Changelog" sections of the pull requests
+      # merged since the last release, with commits that came without one read
+      # from their conventional prefix. Written before packaging so the
+      # extension carries them to the Marketplace and Open VSX.
+      - name: Release notes
+        id: notes
+        if: steps.can.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          node scripts/release-notes.mjs > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            import { withEntry } from "./scripts/release-notes.mjs";
+            const path = "packages/vscode-ext/CHANGELOG.md";
+            const notes = readFileSync(process.env.RUNNER_TEMP + "/notes.md", "utf8").trim();
+            const date = new Date().toISOString().slice(0, 10);
+            writeFileSync(path, withEntry(readFileSync(path, "utf8"), process.env.NEXT, date, notes));
+          '
+          echo "path=$RUNNER_TEMP/notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Package
         if: steps.can.outputs.publish == 'true'
@@ -172,18 +196,7 @@ jobs:
             echo "::notice::v$NEXT is already tagged; published, not recorded again."
             exit 0
           fi
-          since=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
-          notes=$(git log --format='- %s' ${since:+$since..}HEAD | grep -v 'chore(release)' || true)
           changelog=packages/vscode-ext/CHANGELOG.md
-          {
-            echo "# Changelog"
-            echo
-            echo "## $NEXT — $(date -u +%Y-%m-%d)"
-            echo
-            echo "$notes"
-            tail -n +2 "$changelog"
-          } > "$changelog.next"
-          mv "$changelog.next" "$changelog"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add packages/vscode-ext/package.json packages/browser-ext/package.json "$changelog"
@@ -198,7 +211,7 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.next }}
           name: v${{ steps.version.outputs.next }}
+          body_path: ${{ steps.notes.outputs.path }}
           files: |
             dist/odin-pr-review.vsix
             dist/odin-pr-review-browser.zip
-          generate_release_notes: true

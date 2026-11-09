@@ -112,12 +112,25 @@ What changed, per cause, and why it is the right place to change it.
 ## Tests
 The test that pins each issue.
 
+## Changelog
+
+### Bug fixes
+
+- One bullet per issue, written for someone using Odin, not for a reviewer.
+
+### UI/UX · Quality of life · New features
+
+- Only the groups that apply; delete the rest.
+
 ## Not included
 Issues looked at and left out, with the reason (unclear, other area,
 needs the reporter).
 ```
 
 - One `Fixes #n` per issue, so merging closes them all.
+- The `## Changelog` section is required: a check fails the PR without it,
+  and the release reads it for the notes on GitHub, the Marketplace and Open
+  VSX. Follow `.github/pull_request_template.md`.
 - Do not merge. Merging releases to the Marketplace, Open VSX and the Chrome
   Web Store. Hand the PR links to the user.
 
