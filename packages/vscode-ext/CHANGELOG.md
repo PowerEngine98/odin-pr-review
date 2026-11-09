@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.5 — 2026-11-09
+
+### Bug fixes
+
+- Migrations, and other files that only point at something far along the graph, sit in the column beside it instead of the first column
+
+## 0.7.4 — 2026-11-09
+
+- Maintenance release.
+
+## 0.7.3 — 2026-11-09
+
+### Quality of life
+
+- Every release says what changed, grouped into new features, UI/UX, quality of life and bug fixes, on GitHub, the VS Code Marketplace and Open VSX
+
 ## 0.7.2 — 2026-11-09
 
 - Maintenance release.
