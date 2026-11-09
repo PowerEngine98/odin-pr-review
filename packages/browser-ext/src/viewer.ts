@@ -10,7 +10,7 @@ import {
   type Asked,
   type Place,
 } from "./github.js";
-import { BridgeError, findBridge, launch, newToken, pairingLink } from "./bridge.js";
+import { BridgeError, bridgeGitHub, findBridge, launch, newToken, pairingLink } from "./bridge.js";
 import { pageOf } from "./page.js";
 import { changeModel, pickerOf, sidebarPage } from "./picker.js";
 import { openSession, type Remote } from "./session.js";
@@ -71,12 +71,21 @@ function offerToken(why: string) {
   say(why, "Odin reads public repositories without signing in. Private ones, and more than 60 requests an hour, need a GitHub token.");
   const button = document.createElement("button");
   button.textContent = "Add a GitHub token";
-  button.addEventListener("click", () => chrome.runtime.openOptionsPage());
+  button.addEventListener("click", () => {
+    const query = owner ? `?${new URLSearchParams({ owner })}` : "";
+    window.open(chrome.runtime.getURL(`options.html${query}`), "_blank", "noopener");
+  });
   status.append(button);
 }
 
 function explain(error: unknown) {
   graphFrame.hidden = true;
+  if (error instanceof GitHubError && reader.via) {
+    return say(
+      "VS Code could not read this from GitHub.",
+      `${error.message} — Odin reads through the GitHub CLI there; run gh auth status in a terminal to check the account it uses.`,
+    );
+  }
   if (error instanceof GitHubError) {
     if (error.reason === "missing") return offerToken("GitHub did not show Odin this repository.");
     if (error.reason === "denied") return offerToken("GitHub refused the token Odin has.");
@@ -89,6 +98,10 @@ function explain(error: unknown) {
 }
 
 async function api(): Promise<Api> {
+  if (settings.source === "vscode" && settings.token) {
+    const port = await findBridge(settings.token, settings.port);
+    if (port) return { via: bridgeGitHub(port, settings.token) };
+  }
   const stored = await chrome.storage.local.get("token");
   return typeof stored.token === "string" && stored.token ? { token: stored.token } : {};
 }
@@ -469,6 +482,7 @@ async function connectVsCode() {
     if (port) {
       settings = { ...settings, source: "vscode", port };
       await saveSettings({ source: "vscode", port });
+      reader = await api();
       pairing.hidden = true;
       features.hidden = true;
       enable.setAttribute("aria-expanded", "false");
@@ -489,6 +503,7 @@ async function choose(source: SourceKind) {
   }
   settings = { ...settings, source };
   await saveSettings({ source });
+  reader = await api();
   pairing.hidden = true;
   features.hidden = true;
   enable.setAttribute("aria-expanded", "false");

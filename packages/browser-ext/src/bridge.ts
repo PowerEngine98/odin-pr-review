@@ -99,3 +99,10 @@ export function newToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+export function bridgeGitHub(port: number, token: string): (path: string, accept: string) => Promise<Response> {
+  return (path, accept) => {
+    const query = new URLSearchParams({ path, accept: accept.includes("diff") ? "diff" : "json" });
+    return call(port, `/odin/github?${query}`, token);
+  };
+}

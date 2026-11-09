@@ -5,7 +5,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { pairingFrom, remoteFor } from "../src/bridge.js";
+import { githubThroughGh, pairingFrom, remoteFor } from "../src/bridge.js";
 import { githubRepositories, Repositories } from "../src/repositories.js";
 
 const TOKEN = "a".repeat(48);
@@ -22,6 +22,10 @@ const backend: BridgeBackend = {
     return { id: "s1", deliver: (message) => delivered.push(message), close: () => closed++ };
   },
   version: "1.2.3",
+  async github(path, accept) {
+    if (path.includes("/secret/")) return { status: 404, body: JSON.stringify({ message: "Not Found" }) };
+    return { status: 200, body: accept === "diff" ? `diff of ${path}` : JSON.stringify({ path }) };
+  },
   async where(_owner, repo) {
     if (repo === "twice") return { need: "pick" };
     return { path: `/code/${repo}` };
@@ -168,5 +172,48 @@ describe("finding the pull request's repository among the open folders", () => {
     expect(pairingFrom(`token=${TOKEN}&from=${encodeURIComponent(ORIGIN)}`)).toEqual({ token: TOKEN, origin: ORIGIN });
     expect(pairingFrom(`token=${TOKEN}&from=${encodeURIComponent("https://example.com")}`)).toBeUndefined();
     expect(pairingFrom(`token=short&from=${encodeURIComponent(ORIGIN)}`)).toBeUndefined();
+  });
+});
+
+describe("GitHub reads answered by VS Code", () => {
+  const ask = (port: number, path: string, accept = "json") =>
+    fetch(`http://127.0.0.1:${port}/odin/github?${new URLSearchParams({ path, accept })}`, {
+      headers: { authorization: `Bearer ${TOKEN}`, origin: ORIGIN },
+    });
+
+  it("reads a pull request, its diff and the list, as GitHub would answer them", async () => {
+    const port = await served();
+    expect(await (await ask(port, "/repos/acme/shop/pulls/7")).json()).toEqual({ path: "/repos/acme/shop/pulls/7" });
+    expect(await (await ask(port, "/repos/acme/shop/pulls/7", "diff")).text()).toBe("diff of /repos/acme/shop/pulls/7");
+    expect((await ask(port, "/repos/acme/shop/pulls?state=open&per_page=100")).status).toBe(200);
+    expect((await ask(port, "/user")).status).toBe(200);
+  });
+
+  it("passes GitHub's own refusal through", async () => {
+    const port = await served();
+    const missing = await ask(port, "/repos/acme/secret/pulls/1");
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ message: "Not Found" });
+  });
+
+  it("reads nothing but pull requests and who is signed in", async () => {
+    const port = await served();
+    for (const path of ["/repos/acme/shop/contents/.env", "/user/repos", "/repos/acme/shop/pulls/7/merge", "/repos/../x/pulls", "/repos/acme/../pulls", "/repos/./shop/pulls", "https://evil.example/x"]) {
+      expect((await ask(port, path)).status).toBe(400);
+    }
+  });
+
+  it("turns a failed gh call into the status GitHub gave", async () => {
+    const answer = await githubThroughGh("/repos/acme/shop/pulls/9", "json", async () => {
+      throw new Error("gh: Not Found (HTTP 404)");
+    });
+    expect(answer.status).toBe(404);
+    expect(JSON.parse(answer.body).message).toBe("Not Found (HTTP 404)");
+    const args: string[][] = [];
+    await githubThroughGh("/repos/acme/shop/pulls/9", "diff", async (given) => {
+      args.push(given);
+      return "diff";
+    });
+    expect(args[0]).toEqual(["api", "repos/acme/shop/pulls/9", "-H", "Accept: application/vnd.github.diff"]);
   });
 });

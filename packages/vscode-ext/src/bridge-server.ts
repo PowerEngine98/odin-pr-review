@@ -25,7 +25,10 @@ export interface BridgeBackend {
   where(owner: string, repo: string): Promise<Where>;
   graph(owner: string, repo: string, number: number, base: string): Promise<Served>;
   session?(owner: string, repo: string, number: number, base: string, sink: Sink, head?: string): Promise<Session>;
+  github?(path: string, accept: "json" | "diff"): Promise<{ status: number; body: string }>;
 }
+
+export const GITHUB_READS = /^\/(user|repos\/(?!\.\.?\/)[\w.-]+\/(?!\.\.?\/)[\w.-]+\/pulls(\/\d+)?)(\?[\w=&%.-]*)?$/;
 
 export interface Sink {
   send(event: Record<string, unknown>): void;
@@ -175,6 +178,24 @@ export async function handle(
     } catch (error) {
       sink.send({ type: "error", missing: error instanceof NotHere, error: (error as Error).message });
       response.end();
+    }
+    return;
+  }
+  if (url.pathname === "/odin/github") {
+    const path = url.searchParams.get("path") ?? "";
+    const accept = url.searchParams.get("accept") === "diff" ? "diff" : "json";
+    if (!backend.github) return send(response, 404, { error: "Not offered" }, origin);
+    if (!GITHUB_READS.test(path)) return send(response, 400, { error: "Bad request" }, origin);
+    try {
+      const answer = await backend.github(path, accept);
+      response.writeHead(answer.status, {
+        "content-type": accept === "diff" ? "text/plain; charset=utf-8" : "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        ...(origin ? { "access-control-allow-origin": origin, vary: "origin" } : {}),
+      });
+      response.end(answer.body);
+    } catch (error) {
+      send(response, 502, { message: (error as Error).message }, origin);
     }
     return;
   }

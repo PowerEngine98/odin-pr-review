@@ -1,8 +1,9 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { Server } from "node:http";
 import { basename, join } from "node:path";
 
-import { git } from "@odin/core";
+import { forgeEnv, git } from "@odin/core";
 import * as vscode from "vscode";
 
 import { randomUUID } from "node:crypto";
@@ -134,6 +135,7 @@ export class BrowserBridge implements vscode.Disposable {
       where: (owner, repo) => this.where(owner, repo),
       session: (owner, repo, number, base, sink, head) => this.session(owner, repo, number, base, sink, head),
       graph: (owner, repo, number, base) => this.serialized(() => this.graph(owner, repo, number, base)),
+      github: (path, accept) => githubThroughGh(path, accept),
     });
     if (!opened) return undefined;
     this.server = opened.server;
@@ -338,4 +340,34 @@ export class BrowserBridge implements vscode.Disposable {
     });
     return { graph: built.graph, snippets: [...built.snippets] };
   }
+}
+
+export function githubThroughGh(
+  path: string,
+  accept: "json" | "diff",
+  run: (args: string[]) => Promise<string> = ghRead,
+): Promise<{ status: number; body: string }> {
+  const media = accept === "diff" ? "application/vnd.github.diff" : "application/vnd.github+json";
+  return run(["api", path.slice(1), "-H", `Accept: ${media}`]).then(
+    (body) => ({ status: 200, body }),
+    (error: Error) => {
+      const said = error.message;
+      const status = Number(/HTTP (\d{3})/.exec(said)?.[1] ?? 502);
+      return { status, body: JSON.stringify({ message: said.replace(/^gh: /, "").trim() }) };
+    },
+  );
+}
+
+function ghRead(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "gh",
+      args,
+      { env: forgeEnv(), timeout: 60_000, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) reject(new Error((stderr || stdout || error.message).trim()));
+        else resolve(stdout);
+      },
+    );
+  });
 }

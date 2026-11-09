@@ -51,6 +51,7 @@ export class GitHubError extends Error {
 export interface Api {
   token?: string;
   fetch?: typeof fetch;
+  via?: (path: string, accept: string) => Promise<Response>;
 }
 
 async function call(api: Api, path: string, accept: string): Promise<Response> {
@@ -59,7 +60,9 @@ async function call(api: Api, path: string, accept: string): Promise<Response> {
     "x-github-api-version": "2022-11-28",
   };
   if (api.token) headers.authorization = `Bearer ${api.token}`;
-  const response = await (api.fetch ?? fetch)(`https://api.github.com${path}`, { headers });
+  const response = api.via
+    ? await api.via(path, accept)
+    : await (api.fetch ?? fetch)(`https://api.github.com${path}`, { headers });
   if (response.ok) return response;
   const body = await response.text().catch(() => "");
   const said = (() => {
@@ -114,7 +117,7 @@ export async function listPulls(
 }
 
 export async function whoAmI(api: Api): Promise<string> {
-  if (!api.token) return "";
+  if (!api.token && !api.via) return "";
   const user = await (await call(api, "/user", "application/vnd.github+json")).json() as { login?: string };
   return user.login ?? "";
 }
