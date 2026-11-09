@@ -55,6 +55,7 @@ import { SystemVoice } from "./voice.js";
 import type { Kokoro } from "./kokoro.js";
 import { isStale, makeTour, pickAgent, START, tourContext, type Making, type TourProgress, type TourStore } from "./tour.js";
 import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
+import { ghSetupState, runGhInstall, runGhSignIn, skipGhSetup } from "./ghSetup.js";
 import { log } from "./log.js";
 
 import { baseUri } from "./baseContent.js";
@@ -552,6 +553,14 @@ export class GraphPanel {
    * focus is the editor's fact and it changes without asking us.
    */
   private static active: GraphPanel | undefined;
+
+  static showGhSetup(): boolean {
+    const shown = GraphPanel.active ?? [...GraphPanel.open.values()][0];
+    if (!shown) return false;
+    shown.panel.reveal();
+    void shown.panel.webview.postMessage({ type: "ghWizard" });
+    return true;
+  }
 
   /** What this panel is a reading of, and what makes it that one. */
   private key = "";
@@ -3662,9 +3671,25 @@ export class GraphPanel {
         }
         return;
       }
+      if (reply.type === "ghSetup") {
+        void this.panel.webview.postMessage({ type: "ghSetup", ...(await ghSetupState(this.repo)) });
+        return;
+      }
+      if (reply.type === "ghInstall") {
+        await runGhInstall(this.repo);
+        return;
+      }
+      if (reply.type === "ghSignIn") {
+        runGhSignIn();
+        return;
+      }
+      if (reply.type === "ghSkip") {
+        skipGhSetup();
+        return;
+      }
       if (reply.type === "openExternal") {
         const url = String((reply as { payload?: { url?: unknown } }).payload?.url ?? "");
-        if (/^https:\/\/github\.com\//.test(url)) void vscode.env.openExternal(vscode.Uri.parse(url));
+        if (/^https:\/\/(github\.com|cli\.github\.com)\//.test(url)) void vscode.env.openExternal(vscode.Uri.parse(url));
         return;
       }
       if (message.type === "setDraft") {

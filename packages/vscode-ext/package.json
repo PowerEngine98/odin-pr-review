@@ -181,6 +181,11 @@
         "category": "Odin"
       },
       {
+        "command": "odin.setupGitHubCli",
+        "title": "Set Up the GitHub CLI",
+        "category": "Odin"
+      },
+      {
         "command": "odin.connectBrowser",
         "title": "Connect the Browser Extension",
         "category": "Odin"

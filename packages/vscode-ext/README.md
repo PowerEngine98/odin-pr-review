@@ -1,9 +1,9 @@
 # Odin PR Review
 
-[![Marketplace version](https://vsmarketplacebadges.dev/version-short/powerengine98.odin-pr-review.svg?label=VS%20Code%20Marketplace&colorB=1e3a8a)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
-[![Open VSX version](https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
+[![Marketplace version](https://img.shields.io/github/package-json/v/PowerEngine98/odin-pr-review?filename=packages%2Fvscode-ext%2Fpackage.json&label=VS%20Code%20Marketplace&color=1e3a8a&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTIzLjE1IDIuNTg3TDE4LjIxLjIxYTEuNDk0IDEuNDk0IDAgMCAwLTEuNzA1LjI5bC05LjQ2IDguNjMtNC4xMi0zLjEyOGEuOTk5Ljk5OSAwIDAgMC0xLjI3Ni4wNTdMLjMyNyA3LjI2MUExIDEgMCAwIDAgLjMyNiA4Ljc0TDMuODk5IDEyIC4zMjYgMTUuMjZhMSAxIDAgMCAwIC4wMDEgMS40NzlMMS42NSAxNy45NGEuOTk5Ljk5OSAwIDAgMCAxLjI3Ni4wNTdsNC4xMi0zLjEyOCA5LjQ2IDguNjNhMS40OTIgMS40OTIgMCAwIDAgMS43MDQuMjlsNC45NDItMi4zNzdBMS41IDEuNSAwIDAgMCAyNCAyMC4wNlYzLjkzOWExLjUgMS41IDAgMCAwLS44NS0xLjM1MnptLTUuMTQ2IDE0Ljg2MUwxMC44MjYgMTJsNy4xNzgtNS40NDh2MTAuODk2eiIvPjwvc3ZnPg%3D%3D)](https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review)
+[![Open VSX version](https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5&logo=eclipseide&logoColor=white)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
 [![Open VSX downloads](https://img.shields.io/open-vsx/dt/powerengine98/odin-pr-review?label=downloads&color=a60ee5)](https://open-vsx.org/extension/powerengine98/odin-pr-review)
-[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/jghenlmadcfkcmfmnlmegogfjbbeafci?label=Chrome%20Web%20Store&color=1a73e8)](https://chromewebstore.google.com/detail/odin-pr-review/jghenlmadcfkcmfmnlmegogfjbbeafci)
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/jghenlmadcfkcmfmnlmegogfjbbeafci?label=Chrome%20Web%20Store&color=1a73e8&logo=googlechrome&logoColor=white)](https://chromewebstore.google.com/detail/odin-pr-review/jghenlmadcfkcmfmnlmegogfjbbeafci)
 [![Publish](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml/badge.svg?branch=main)](https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml)
 
 Review a pull request as a picture of the change. Every changed file is a card
@@ -66,8 +66,11 @@ walk you through it.
 
 - **git**, and a repository checked out locally.
 - **[GitHub CLI](https://cli.github.com)** (`gh`), signed in with
-  `gh auth login`, for pull requests, threads, checks and reviews. Without it
-  Odin still draws local branches and uncommitted work.
+  `gh auth login`, for pull requests, threads, checks and reviews. Missing or
+  signed out, Odin opens a step-by-step setup that installs it with your package
+  manager and signs you in through GitHub's own page; the key stays with gh, in
+  your keychain, never with Odin. Without it Odin still draws local branches
+  and uncommitted work.
 - **Optional, for agents:** any of the command line tools for
   [Claude Code](https://claude.com/claude-code), Codex, Gemini, Cursor, opencode,
   Aider or Antigravity, installed and signed in. Odin runs the
@@ -100,6 +103,7 @@ walk you through it.
 | **Odin: Choose What to Show** | All changes, since your last review, or uncommitted only |
 | **Odin: Export Change Graph as JSON** | Opens the document the graph is drawn from |
 | **Odin: Set Up the Kokoro Narrator** | Installs the optional local neural voice |
+| **Odin: Set Up the GitHub CLI** | Walks you through installing gh and signing in |
 | **Odin: Connect the Browser Extension** | Lets Odin's GitHub tab draw arrows from the repositories open here |
 | **Odin: Disconnect the Browser Extension** | Forgets the browser extension and stops answering it |
 

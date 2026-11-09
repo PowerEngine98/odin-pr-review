@@ -5,14 +5,22 @@
 <h1 align="center">Odin PR Review</h1>
 
 <p align="center">
+  <sub><em>“He saw over all worlds and every man's activity and understood everything he saw.”</em><br>
+  Snorri Sturluson, <em>Prose Edda</em></sub>
+</p>
+
+<p align="center">
   <strong>Review a pull request as a picture of the change, and let an AI walk you through it.</strong>
 </p>
 
 <p align="center">
-  <a href="https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review"><img src="https://vsmarketplacebadges.dev/version-short/powerengine98.odin-pr-review.svg?label=VS%20Code%20Marketplace&colorB=1e3a8a" alt="VS Code Marketplace"></a>
-  <a href="https://open-vsx.org/extension/powerengine98/odin-pr-review"><img src="https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5" alt="Open VSX"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=powerengine98.odin-pr-review"><img src="https://img.shields.io/github/package-json/v/PowerEngine98/odin-pr-review?filename=packages%2Fvscode-ext%2Fpackage.json&label=VS%20Code%20Marketplace&color=1e3a8a&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZmlsbD0iI2ZmZmZmZiIgZD0iTTIzLjE1IDIuNTg3TDE4LjIxLjIxYTEuNDk0IDEuNDk0IDAgMCAwLTEuNzA1LjI5bC05LjQ2IDguNjMtNC4xMi0zLjEyOGEuOTk5Ljk5OSAwIDAgMC0xLjI3Ni4wNTdMLjMyNyA3LjI2MUExIDEgMCAwIDAgLjMyNiA4Ljc0TDMuODk5IDEyIC4zMjYgMTUuMjZhMSAxIDAgMCAwIC4wMDEgMS40NzlMMS42NSAxNy45NGEuOTk5Ljk5OSAwIDAgMCAxLjI3Ni4wNTdsNC4xMi0zLjEyOCA5LjQ2IDguNjNhMS40OTIgMS40OTIgMCAwIDAgMS43MDQuMjlsNC45NDItMi4zNzdBMS41IDEuNSAwIDAgMCAyNCAyMC4wNlYzLjkzOWExLjUgMS41IDAgMCAwLS44NS0xLjM1MnptLTUuMTQ2IDE0Ljg2MUwxMC44MjYgMTJsNy4xNzgtNS40NDh2MTAuODk2eiIvPjwvc3ZnPg%3D%3D" alt="VS Code Marketplace"></a>
+  <a href="https://open-vsx.org/extension/powerengine98/odin-pr-review"><img src="https://img.shields.io/open-vsx/v/powerengine98/odin-pr-review?label=Open%20VSX&color=a60ee5&logo=eclipseide&logoColor=white" alt="Open VSX"></a>
+  <a href="https://chromewebstore.google.com/detail/odin-pr-review/jghenlmadcfkcmfmnlmegogfjbbeafci"><img src="https://img.shields.io/chrome-web-store/v/jghenlmadcfkcmfmnlmegogfjbbeafci?label=Chrome%20Web%20Store&color=1a73e8&logo=googlechrome&logoColor=white" alt="Chrome Web Store"></a>
+</p>
+
+<p align="center">
   <a href="https://open-vsx.org/extension/powerengine98/odin-pr-review"><img src="https://img.shields.io/open-vsx/dt/powerengine98/odin-pr-review?label=downloads&color=a60ee5" alt="Open VSX downloads"></a>
-  <a href="https://chromewebstore.google.com/detail/odin-pr-review/jghenlmadcfkcmfmnlmegogfjbbeafci"><img src="https://img.shields.io/chrome-web-store/v/jghenlmadcfkcmfmnlmegogfjbbeafci?label=Chrome%20Web%20Store&color=1a73e8" alt="Chrome Web Store"></a>
   <a href="https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml"><img src="https://github.com/PowerEngine98/odin-pr-review/actions/workflows/publish.yml/badge.svg?branch=main" alt="Publish"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea043" alt="MIT"></a>
 </p>
@@ -45,40 +53,37 @@ it and your progress through it, in one place, in your editor or right on GitHub
 
 ## Features
 
-**🗺️ The change as a graph.** Files are cards, references are arrows: green
-where the change adds a call, red where it takes one away. Click an arrow to
-follow it. Coloured by your own theme, with a minimap, folders and filters.
+- **🗺️ The change as a graph.** Files are cards, references are arrows: green where the change adds a call, red where it takes one away. Click an arrow to follow it. Coloured by your own theme, with a minimap, folders and filters.
 
-**🎧 Guided tours.** An agent reads the change and writes a tour: topics in the
-order the code runs, frames that fly to the code, highlight lines, draw arrows
-and sketch diagrams, with the decisions explained the way a senior engineer
-would. Play it like a video, with subtitles, chapters and a timeline. Argue with
-any frame by sending it to the agent.
+  <img src="docs/features/graph.png" alt="The change graph: cards and arrows" width="560">
 
-**🤝 AI pairing.** Ask Claude, Codex, Gemini, Cursor, opencode, Aider or
-Antigravity about a line, a thread or the whole change. Choose how much each one
-may do and on which model, approve what it asks for, and see every file it
-touched. Conversations carry on from one question to the next.
+- **🎧 Guided tours.** An agent reads the change and writes a tour: topics in the order the code runs, frames that fly to the code, highlight lines, draw arrows and sketch diagrams, with the decisions explained the way a senior engineer would. Play it like a video, with subtitles, chapters and a timeline. Argue with any frame by sending it to the agent.
 
-**💬 The whole review, in place.** Threads sit next to the lines they were
-left on. Reply, react, suggest changes, mark files viewed, see checks, and submit
-your review, without leaving the graph. Comments take pictures and videos too.
+  <img src="docs/features/tours.png" alt="A guided tour flying to the code" width="560">
 
-**🌐 Odin on GitHub.** The browser extension adds a **Graph** tab to every pull
-request and a **Change graph** tab to the repository. Synced with VS Code, it is
-the same reading as the editor: arrows, tours, AI pairing, narration and reviews,
-with no token to set up.
+- **🤝 AI pairing.** Ask <img src="docs/agents/claude.svg" height="18" alt="Claude" align="absmiddle"> <img src="docs/agents/codex.svg" height="18" alt="Codex" align="absmiddle"> <img src="docs/agents/gemini.svg" height="18" alt="Gemini" align="absmiddle"> <img src="docs/agents/cursor.svg" height="18" alt="Cursor" align="absmiddle"> <img src="docs/agents/opencode.svg" height="18" alt="opencode" align="absmiddle"> <img src="docs/agents/aider.svg" height="18" alt="Aider" align="absmiddle"> <img src="docs/agents/antigravity.svg" height="18" alt="Antigravity" align="absmiddle"> about a line, a thread or the whole change. Choose how much each one may do and on which model, approve what it asks for, and see every file it touched. Conversations carry on from one question to the next.
 
-**🔊 Narration.** Tours and answers read aloud, with each word boxed as it is
-spoken, by your browser, your system's voice, or a neural voice that runs on
-your machine (Kokoro).
+  <img src="docs/features/pairing.png" alt="Claude working in the pairing console" width="420">
 
-**⚡ Live readings.** Review your own uncommitted work as you write it. The graph
-follows the working tree, branch switches, merges and rebases.
+- **💬 The whole review, in place.** Threads sit next to the lines they were left on. Reply, react, suggest changes, mark files viewed, see checks, and submit your review, without leaving the graph. Comments take pictures and videos too.
 
-**🛟 Support from the graph.** Report a bug or ask for a feature from Settings;
-it becomes an issue here, posted through your own GitHub account, recordings
-included.
+  <img src="docs/features/review.png" alt="A review thread beside its line" width="560">
+
+- **🌐 Odin on GitHub.** The browser extension adds a **Graph** tab to every pull request and a **Change graph** tab to the repository. Synced with VS Code, it is the same reading as the editor: arrows, tours, AI pairing, narration and reviews, with no token to set up.
+
+  <img src="docs/features/github.png" alt="Odin's Graph tab on GitHub" width="560">
+
+- **🔊 Narration.** Tours and answers read aloud, with each word boxed as it is spoken, by your browser, your system's voice, or a neural voice that runs on your machine (Kokoro).
+
+  <img src="docs/features/narration.png" alt="A tour narrated, the spoken word boxed" width="560">
+
+- **⚡ Live readings.** Review your own uncommitted work as you write it. The graph follows the working tree, branch switches, merges and rebases.
+
+  <img src="docs/features/live.png" alt="A live reading of the working tree" width="560">
+
+- **🛟 Support from the graph.** Report a bug or ask for a feature from Settings; it becomes an issue here, posted through your own GitHub account, recordings included.
+
+  <img src="docs/features/support.png" alt="The Support composer" width="560">
 
 ## Get Odin
 
@@ -96,7 +101,9 @@ Every merge to `main` publishes to all three stores at once.
 
 **In the editor**
 
-1. Install Odin and sign in to the [GitHub CLI](https://cli.github.com): `gh auth login`.
+1. Install Odin. If the [GitHub CLI](https://cli.github.com) is missing or signed out, Odin opens a
+   setup wizard: why it is needed, a one-click install, and GitHub's own sign-in. Odin never sees
+   your password or token; gh keeps it in your keychain.
 2. Open a repository and click the Odin mark in the activity bar.
 3. Pick a pull request, or read your own branch live.
 4. Switch on an agent and press **Give me a tour**.
@@ -161,10 +168,5 @@ Issues and pull requests are welcome. The fastest way to report something is
 **Settings → Send feedback** inside Odin, which files the issue with your
 version and any recording attached. See [development](docs/development.md) to
 build it locally.
-
-<p align="center">
-  <sub><em>“He saw over all worlds and every man's activity and understood everything he saw.”</em><br>
-  Snorri Sturluson, <em>Prose Edda</em></sub>
-</p>
 
 <p align="center"><sub><a href="LICENSE">MIT</a> © PowerEngine98</sub></p>

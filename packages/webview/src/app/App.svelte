@@ -20,6 +20,7 @@
 -->
 <script lang="ts">
   import AgentsReminder from "./hud/AgentsReminder.svelte";
+  import GhSetup from "./support/GhSetup.svelte";
   import SupportModal from "./support/SupportModal.svelte";
   import Toasts from "./support/Toasts.svelte";
   import { support } from "./support/support.svelte.js";
@@ -499,6 +500,7 @@
        window, and a component inside a panel cannot cover the panel. -->
   <Picture />
   <AgentsReminder />
+  <GhSetup />
   {#if support.open}
     <SupportModal />
   {/if}

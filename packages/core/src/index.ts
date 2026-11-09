@@ -48,3 +48,4 @@ export * from "./agents/queue.js";
 export * from "./agents/settling.js";
 export * from "./serialize.js";
 export * from "./git/attachments.js";
+export * from "./git/ghSetup.js";

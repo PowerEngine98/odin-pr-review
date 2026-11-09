@@ -30,6 +30,8 @@ import { dirname, join } from "node:path";
 
 import * as vscode from "vscode";
 
+import { unskipGhSetup } from "./ghSetup.js";
+
 import { BrowserBridge } from "./bridge.js";
 import { Driver } from "./driver.js";
 
@@ -441,6 +443,10 @@ export function activate(context: vscode.ExtensionContext): void {
     bridge,
     driver,
     vscode.commands.registerCommand("odin.connectBrowser", () => bridge.pairByCode()),
+    vscode.commands.registerCommand("odin.setupGitHubCli", () => {
+      unskipGhSetup();
+      if (!GraphPanel.showGhSetup()) void vscode.commands.executeCommand("odin.review");
+    }),
     vscode.commands.registerCommand("odin.disconnectBrowser", () => bridge.disconnect()),
     /*
      * Coming back to the window, which is when what is on screen is oldest.
