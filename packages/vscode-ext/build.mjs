@@ -48,3 +48,6 @@ await copyFile(
   require.resolve("mermaid/dist/mermaid.min.js"),
   "dist/media/mermaid.min.js",
 );
+await copyFile(require.resolve("@xterm/xterm/lib/xterm.js"), "dist/media/xterm.js");
+await copyFile(require.resolve("@xterm/xterm/css/xterm.css"), "dist/media/xterm.css");
+await copyFile(require.resolve("@xterm/addon-fit/lib/addon-fit.js"), "dist/media/addon-fit.js");

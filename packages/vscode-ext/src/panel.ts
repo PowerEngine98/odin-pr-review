@@ -56,6 +56,8 @@ import type { Kokoro } from "./kokoro.js";
 import { isStale, makeTour, pickAgent, START, tourContext, type Making, type TourProgress, type TourStore } from "./tour.js";
 import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
 import { ghSetupState, runGhInstall, runGhSignIn, skipGhSetup } from "./ghSetup.js";
+import { CliSessions } from "./cli.js";
+import { openPty } from "./pty.js";
 import { log } from "./log.js";
 
 import { baseUri } from "./baseContent.js";
@@ -473,7 +475,9 @@ function remembering(log: MirrorLog) {
     message: (message: unknown) => {
       const kind = (message as { type?: unknown } | null)?.type;
       if (kind === "drive") return;
-      if (kind !== "spoken" && kind !== "saying" && kind !== "said") log.sent.push(message);
+      if (kind !== "spoken" && kind !== "saying" && kind !== "said" && kind !== "cliData" && kind !== "cliReplay") {
+        log.sent.push(message);
+      }
       if (log.sent.length > REPLAYED) {
         for (const gone of log.sent.splice(0, log.sent.length - REPLAYED)) {
           const type = (gone as { type?: unknown } | null)?.type;
@@ -3055,6 +3059,7 @@ export class GraphPanel {
        * and a half megabytes of renderer.
        */
       ...(this.diagramRenderer() ? { mermaid: this.diagramRenderer()! } : {}),
+      ...(this.terminalRenderer() ? { xterm: this.terminalRenderer()! } : {}),
       // Whether this reading was built with import arrows in it, which decides
       // whether the tabs above the drawing may count them.
       includeImports: GraphPanel.imports,
@@ -3691,6 +3696,18 @@ export class GraphPanel {
         }
         return;
       }
+      if (reply.type === "cliOpen" || reply.type === "cliInput" || reply.type === "cliResize" || reply.type === "cliClose") {
+        const said = (reply as { payload?: { agent?: unknown; data?: unknown; cols?: unknown; rows?: unknown; asker?: unknown } }).payload ?? {};
+        const agent = String(said.agent ?? "");
+        if (!agent) return;
+        const cols = Math.max(20, Math.min(500, Number(said.cols) || 80));
+        const rows = Math.max(5, Math.min(200, Number(said.rows) || 24));
+        if (reply.type === "cliOpen") this.cli().open(agent, cols, rows, String(said.asker ?? ""));
+        else if (reply.type === "cliInput") this.cli().input(agent, String(said.data ?? ""));
+        else if (reply.type === "cliResize") this.cli().resize(agent, cols, rows);
+        else this.cli().close(agent);
+        return;
+      }
       if (reply.type === "ghSetup") {
         void this.panel.webview.postMessage({ type: "ghSetup", ...(await ghSetupState(this.repo)) });
         return;
@@ -3800,7 +3817,33 @@ export class GraphPanel {
     );
   }
 
+  private terminals: CliSessions | undefined;
+
+  private cli(): CliSessions {
+    this.terminals ??= new CliSessions({
+      repo: () => this.repo,
+      kind: (agent) => this.pairing().agents().find((one) => one.id === agent),
+      conversation: (agent) => this.pairing().session(agent),
+      env: () => forgeEnv(),
+      open: (file, args, options) => openPty(file, args, options, vscode.env.appRoot),
+      post: (message) => void this.panel.webview.postMessage(message),
+    });
+    return this.terminals;
+  }
+
+  private terminalRenderer(): { script: string; fit: string; css: string } | undefined {
+    if (!GraphPanel.assets) return undefined;
+    try {
+      const uri = (name: string) =>
+        this.panel.webview.asWebviewUri(vscode.Uri.joinPath(GraphPanel.assets!, "dist", "media", name)).toString();
+      return { script: uri("xterm.js"), fit: uri("addon-fit.js"), css: uri("xterm.css") };
+    } catch {
+      return undefined;
+    }
+  }
+
   dispose(): void {
+    this.terminals?.dispose();
     GraphPanel.covered.delete(this);
     this.voice.hush();
     /*

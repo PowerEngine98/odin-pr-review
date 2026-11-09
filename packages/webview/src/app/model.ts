@@ -329,6 +329,7 @@ export interface ViewModel {
   canReview: boolean;
   version?: string;
   reading?: Record<string, unknown>;
+  xterm?: { script: string; fit: string; css: string };
   /** Settings this page cannot offer, each with what it would take to have it. */
   locked?: Record<string, string>;
   /** Whoever drew the page can turn more on, and listens for the reader asking. */

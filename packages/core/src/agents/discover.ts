@@ -45,6 +45,8 @@ export interface AgentKind {
    * arguments go last, immediately before what they take.
    */
   holdsPrompt?: boolean;
+  /** How its interactive session picks up the conversation Odin has been having with it. */
+  interactive?: { resume(id: string): string[] };
   /**
    * How to tell it which model to use, for a tool that can be told.
    *
@@ -153,6 +155,7 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     id: "claude",
     name: "Claude",
     command: "claude",
+    interactive: { resume: (id) => ["--resume", id] },
     once: ["--print"],
     version: ["--version"],
     /*
@@ -222,6 +225,7 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     id: "codex",
     name: "Codex",
     command: "codex",
+    interactive: { resume: (id) => ["resume", id] },
     once: ["exec"],
     version: ["--version"],
     /*
@@ -278,6 +282,7 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     id: "opencode",
     name: "opencode",
     command: "opencode",
+    interactive: { resume: (id) => ["--session", id] },
     /*
      * `run` takes the message as positional arguments, which is why this is
      * the subcommand rather than a flag: everything after it is the prompt.
