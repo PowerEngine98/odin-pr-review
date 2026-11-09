@@ -1,5 +1,3 @@
-import { ODIN_MARK } from "../../webview/src/mark.js";
-
 import { placeOf, type Place } from "./github.js";
 
 type Mode = "repo" | "pull";
@@ -37,8 +35,12 @@ function hrefOf(place: Place, mode: Mode): string {
   return `/${place.owner}/${place.repo}/pulls${HASH}`;
 }
 
+const GRAPH_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill="currentColor" d="M3.5 1a2.5 2.5 0 0 1 .75 4.886v4.228a2.501 2.501 0 1 1-1.5 0V5.886A2.501 2.501 0 0 1 3.5 1Zm0 1.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm0 9a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM12.5 5.5a2.5 2.5 0 1 1-2.386 3.25H7.6a.75.75 0 0 1 0-1.5h2.514A2.5 2.5 0 0 1 12.5 5.5Zm0 1.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2ZM4.97 4.47a.75.75 0 0 1 1.06 0l2.5 2.5a.75.75 0 0 1-1.06 1.06l-2.5-2.5a.75.75 0 0 1 0-1.06Zm2.5 4.5a.75.75 0 0 1 1.06 1.06l-2.5 2.5a.75.75 0 1 1-1.06-1.06Z"/></svg>`;
+
+const LABELS: Record<Mode, string> = { repo: "Change graph", pull: "Graph" };
+
 function icon(): SVGSVGElement {
-  const parsed = new DOMParser().parseFromString(ODIN_MARK, "image/svg+xml").documentElement;
+  const parsed = new DOMParser().parseFromString(GRAPH_ICON, "image/svg+xml").documentElement;
   const mark = document.importNode(parsed, true) as unknown as SVGSVGElement;
   mark.setAttribute("width", "16");
   mark.setAttribute("height", "16");
@@ -53,7 +55,7 @@ function holderOf(link: HTMLAnchorElement): HTMLElement {
   return parent instanceof HTMLLIElement ? parent : link;
 }
 
-function tabLike(model: HTMLAnchorElement, href: string): HTMLAnchorElement {
+function tabLike(model: HTMLAnchorElement, href: string, label: string): HTMLAnchorElement {
   const link = document.createElement("a");
   link.className = [...model.classList]
     .filter((name) => !/^(active|selected)/.test(name))
@@ -72,11 +74,11 @@ function tabLike(model: HTMLAnchorElement, href: string): HTMLAnchorElement {
   const textSlot = model.querySelector('[data-component="text"]');
   if (textSlot) {
     const text = textSlot.cloneNode(false) as HTMLElement;
-    text.textContent = "Odin";
-    text.setAttribute("data-content", "Odin");
+    text.textContent = label;
+    text.setAttribute("data-content", label);
     link.append(text);
   } else {
-    link.append("Odin");
+    link.append(label);
   }
   return link;
 }
@@ -88,7 +90,7 @@ function addTab(mode: Mode, place: Place) {
   const model = links.at(-1);
   if (!model) return;
 
-  const link = tabLike(model, hrefOf(place, mode));
+  const link = tabLike(model, hrefOf(place, mode), LABELS[mode]);
   link.addEventListener("click", (event) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (!alive()) return;

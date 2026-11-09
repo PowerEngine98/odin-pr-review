@@ -31,6 +31,9 @@ const graphFrame = document.getElementById("page") as HTMLIFrameElement;
 const sideFrame = document.getElementById("side") as HTMLIFrameElement;
 const back = document.getElementById("back") as HTMLButtonElement;
 const sideTitle = document.getElementById("side-title")!;
+const goLive = document.getElementById("go-live")!;
+const goLiveButton = document.getElementById("go-live-button") as HTMLButtonElement;
+const goLiveBranch = document.getElementById("go-live-branch")!;
 const enable = document.getElementById("enable") as HTMLButtonElement;
 const enableLabel = document.getElementById("enable-label")!;
 const link = document.getElementById("link")!;
@@ -80,6 +83,10 @@ function offerToken(why: string) {
 
 function explain(error: unknown) {
   graphFrame.hidden = true;
+  if (error instanceof BridgeError) {
+    if (error.reason === "unreachable") setLink("down");
+    return say(error.message, "Is VS Code open, with Odin installed? Click the red dot beside Synced with: VS Code to try again.");
+  }
   if (error instanceof GitHubError && reader.via) {
     return say(
       "VS Code could not read this from GitHub.",
@@ -99,8 +106,14 @@ function explain(error: unknown) {
 
 async function api(): Promise<Api> {
   if (settings.source === "vscode" && settings.token) {
-    const port = await findBridge(settings.token, settings.port);
-    if (port) return { via: bridgeGitHub(port, settings.token) };
+    const token = settings.token;
+    return {
+      via: async (path, accept) => {
+        const port = await findBridge(token, settings.port);
+        if (!port) throw new BridgeError("VS Code is not answering.", "unreachable");
+        return bridgeGitHub(port, token)(path, accept);
+      },
+    };
   }
   const stored = await chrome.storage.local.get("token");
   return typeof stored.token === "string" && stored.token ? { token: stored.token } : {};
@@ -285,7 +298,15 @@ function incoming(message: unknown): unknown {
 function closeRemote() {
   remote?.close();
   remote = undefined;
+  goLive.hidden = true;
 }
+
+goLiveButton.addEventListener("click", () => {
+  if (!remote) return;
+  goLiveButton.disabled = true;
+  goLiveButton.textContent = "Going live in VS Code…";
+  remote.post({ odinGoLive: true });
+});
 
 function withVariables(html: string): string {
   const vars = rootVariables(dark);
@@ -322,6 +343,15 @@ async function openInVsCode(number: number, quiet = false): Promise<boolean> {
         back.hidden = false;
         sideTitle.hidden = true;
         void drawSidebar(changeModel(graph, viewed, picker));
+      },
+      reading: ({ live, branch }) => {
+        goLive.hidden = live || !branch;
+        goLiveBranch.textContent = branch;
+        goLiveButton.replaceChildren("Go live in: ", goLiveBranch);
+        goLiveButton.disabled = false;
+      },
+      wentLive: () => {
+        void openPull(number);
       },
       html: (html) => {
         drawn = true;
@@ -424,6 +454,7 @@ async function openPull(number: number, once?: SourceKind) {
     dark,
     snippets: drawing.snippets,
     locked: lockedFor(drawing.arrows),
+    version: chrome.runtime.getManifest().version,
     unlock: true,
   });
   await show(graphFrame, html, false);
@@ -530,7 +561,14 @@ link.addEventListener("click", (event) => {
     return;
   }
   if (!settings.token) return;
-  void findBridge(settings.token, settings.port).then((port) => setLink(port ? "ok" : "down"));
+  void findBridge(settings.token, settings.port).then(async (port) => {
+    setLink(port ? "ok" : "down");
+    if (!port) return;
+    viewer = await whoAmI(reader).catch(() => "");
+    await readPicker();
+    if (Number.isInteger(first) && first > 0) await openPull(first);
+    else showPicker();
+  });
 });
 
 enable.addEventListener("click", () => toggleFeatures());
@@ -587,3 +625,55 @@ async function start() {
 }
 
 start().catch(explain);
+
+const SIDE_WIDTH = "odinSideWidth";
+const SIDE_DEFAULT = 320;
+const shellEl = document.querySelector<HTMLElement>(".shell")!;
+const sash = document.getElementById("sash")!;
+
+function setSideWidth(width: number) {
+  const clamped = Math.round(Math.min(Math.max(width, 200), Math.max(260, window.innerWidth * 0.6)));
+  shellEl.style.setProperty("--side-width", `${clamped}px`);
+  return clamped;
+}
+
+function quietly(write: () => void) {
+  try {
+    write();
+  } catch {
+    return;
+  }
+}
+
+quietly(() => {
+  const kept = Number(localStorage.getItem(SIDE_WIDTH));
+  if (kept > 0) setSideWidth(kept);
+});
+
+sash.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  sash.setPointerCapture(event.pointerId);
+  sash.classList.add("dragging");
+  document.body.classList.add("resizing");
+  const left = shellEl.getBoundingClientRect().left;
+  let width = SIDE_DEFAULT;
+  const move = (moved: PointerEvent) => {
+    width = setSideWidth(moved.clientX - left);
+  };
+  const stop = () => {
+    sash.classList.remove("dragging");
+    document.body.classList.remove("resizing");
+    sash.removeEventListener("pointermove", move);
+    sash.removeEventListener("pointerup", stop);
+    sash.removeEventListener("pointercancel", stop);
+    quietly(() => localStorage.setItem(SIDE_WIDTH, String(width)));
+  };
+  sash.addEventListener("pointermove", move);
+  sash.addEventListener("pointerup", stop);
+  sash.addEventListener("pointercancel", stop);
+});
+
+sash.addEventListener("dblclick", () => {
+  setSideWidth(SIDE_DEFAULT);
+  quietly(() => localStorage.removeItem(SIDE_WIDTH));
+});

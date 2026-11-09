@@ -31,15 +31,16 @@ body {
 
 .shell {
   position: relative;
-  display: grid;
-  grid-template-columns: 320px 1fr;
+  display: flex;
   height: 100%;
 }
 
 .side {
   position: relative;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: var(--side-width, 320px);
   min-height: 0;
   background: var(--side);
   border-right: 1px solid var(--line);
@@ -76,6 +77,9 @@ body {
 }
 
 .side-head .enable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
   padding: 2px 8px;
   border: 1px solid #238636;
@@ -97,7 +101,14 @@ body {
 
 .side-head .enable.on {
   border-color: var(--line);
-  color: var(--muted);
+  color: var(--fg);
+}
+
+.side-head .enable.on:hover,
+.side-head .enable.on[aria-expanded="true"] {
+  border-color: #238636;
+  background: #238636;
+  color: #ffffff;
 }
 
 .features {
@@ -105,7 +116,8 @@ body {
   top: 44px;
   left: 8px;
   z-index: 10;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   width: 360px;
   padding: 16px;
@@ -127,7 +139,9 @@ body {
 }
 
 .features .choice {
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 2px;
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -168,7 +182,8 @@ body {
 }
 
 .pairing {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   padding: 8px 10px;
   border-radius: 6px;
@@ -206,6 +221,7 @@ body {
 
 .main {
   position: relative;
+  flex: 1;
   min-width: 0;
   min-height: 0;
 }
@@ -222,9 +238,10 @@ iframe {
   inset: 0;
   z-index: 1;
   background: var(--bg);
-  display: grid;
-  place-content: center;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
   padding: 0 16px;
   text-align: center;
@@ -255,13 +272,15 @@ iframe {
 }
 
 .link {
-  display: inline-block;
+  flex: none;
   width: 8px;
   height: 8px;
-  margin-left: 6px;
   border-radius: 50%;
-  vertical-align: 1px;
   cursor: help;
+}
+
+.link[hidden] {
+  display: none;
 }
 
 .link[data-state="down"] {
@@ -285,4 +304,110 @@ iframe {
   50% {
     opacity: 0.35;
   }
+}
+
+.go-live[hidden] {
+  display: none;
+}
+
+.go-live {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.go-live-button {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: #238636;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.go-live-button:hover {
+  background: #2ea043;
+}
+
+.go-live-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.go-live-why {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.go-live-why strong {
+  color: var(--fg);
+}
+
+.side > iframe {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.sash {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 20;
+  width: 5px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.sash::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 4px;
+  background: transparent;
+  transition: background 0.1s ease-out;
+}
+
+.sash:hover::after {
+  background: var(--sash, #0078d4);
+  transition-delay: 0.3s;
+}
+
+.sash.dragging::after {
+  background: var(--sash, #0078d4);
+  transition-delay: 0s;
+}
+
+body.resizing,
+body.resizing * {
+  cursor: ew-resize !important;
+  user-select: none;
+}
+
+body.resizing iframe {
+  pointer-events: none;
+}
+
+.side-head .enable:hover .link,
+.side-head .enable[aria-expanded="true"] .link {
+  box-shadow: 0 0 0 1.5px #ffffff;
+}
+
+.features .lead strong,
+.features .choice span strong {
+  color: var(--fg);
+  font-weight: 600;
 }

@@ -14,22 +14,27 @@
       <span id="side-title" class="side-title">Pull requests</span>
       <button id="enable" class="enable" aria-haspopup="dialog"><span id="enable-label">Enable all features</span><span id="link" class="link" role="status" hidden></span></button>
     </div>
+    <div id="go-live" class="go-live" hidden>
+      <button id="go-live-button" class="go-live-button">Go live in: <span id="go-live-branch"></span></button>
+      <span class="go-live-why">Checks out to the branch and allows <strong>AI Pairing</strong> and local edits</span>
+    </div>
     <iframe id="side" allow="autoplay; clipboard-write" title="Odin pull requests and files"></iframe>
+    <div id="sash" class="sash" role="separator" aria-orientation="vertical" aria-label="Resize the side bar" title="Drag to resize · double-click to reset"></div>
   </aside>
   <section id="features" class="features" role="dialog" aria-label="Enable all features" hidden>
     <h2>Enable all features</h2>
-    <p class="lead">Arrows between files need the whole repository. Choose where Odin reads it from.</p>
+    <p class="lead"><strong>Arrows</strong> between files need the whole repository, and <strong>AI pairing</strong> needs VS Code. Choose where Odin reads from.</p>
     <button class="choice" data-source="vscode">
       <strong>Sync with the VS Code extension</strong>
-      <span>Uses the repositories you have open in VS Code. The same arrows as the editor. Needs Odin for VS Code.</span>
+      <span>Uses the repositories you have open in VS Code: the same <strong>arrows</strong> as the editor, plus <strong>AI pairing</strong>, <strong>tours</strong>, <strong>narration</strong> and <strong>reviews</strong>. Needs Odin for VS Code.</span>
     </button>
     <button class="choice" data-source="browser">
       <strong>Compute data in browser</strong>
-      <span>Downloads the repository from GitHub and finds the arrows here. Works anywhere; slower on large repositories.</span>
+      <span>Downloads the repository from GitHub and finds the <strong>arrows</strong> here. Works anywhere, without AI pairing; slower on large repositories.</span>
     </button>
     <button class="choice quiet" data-source="github">
       <strong>Basic</strong>
-      <span>Cards and diffs only, read straight from GitHub.</span>
+      <span><strong>Cards and diffs</strong> only, read straight from GitHub.</span>
     </button>
     <div id="pairing" class="pairing" hidden></div>
     <button id="features-close" class="close" aria-label="Close">×</button>

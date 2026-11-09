@@ -42,9 +42,10 @@
   .card + .card { margin-top: 16px; }
   h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
   .lead { margin: 0 0 16px; color: var(--muted); }
-  .step { display: grid; grid-template-columns: 24px 1fr; gap: 12px; align-items: start; }
+  .step { display: flex; gap: 12px; align-items: flex-start; }
+  .step > div { flex: 1; min-width: 0; }
   .step + .step { margin-top: 18px; }
-  .num { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-size: 12px; font-weight: 600; }
+  .num { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-size: 12px; font-weight: 600; }
   .step h3 { margin: 2px 0 6px; font-size: 14px; font-weight: 600; }
   .step p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
   .create { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 6px; background: var(--go); color: #fff; font-weight: 600; text-decoration: none; }
