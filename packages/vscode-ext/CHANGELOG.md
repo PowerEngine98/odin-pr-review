@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 — 2026-11-09
+
+- fix(vscode): a browser keeps following a live reading after its frame changes hands
+
 ## 0.7.0 — 2026-11-09
 
 - feat: a step-by-step GitHub CLI setup, and a README with a picture per feature
