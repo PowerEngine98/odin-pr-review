@@ -215,6 +215,7 @@ function questionInFront(): Question | undefined {
 
 export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.version = String(context.extension?.packageJSON?.version ?? "");
+  if (context.globalStorageUri) GraphPanel.errorLog = `${context.globalStorageUri.fsPath}/page-errors.log`;
   const bridge = new BrowserBridge(context, presentForBrowser);
   browserBridge = bridge;
   void bridge.start();

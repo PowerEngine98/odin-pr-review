@@ -2207,6 +2207,7 @@ export class GraphPanel {
   /** The neural voice on this machine, once the extension has made one. */
   static kokoro: Kokoro | undefined;
   static version: string | undefined;
+  static errorLog: string | undefined;
 
   /** Where tours are kept, when the editor gave this extension somewhere. */
   static tours: TourStore | undefined;
@@ -3623,6 +3624,15 @@ export class GraphPanel {
       }
       if (message.type === "supportIssue") {
         await this.reportIssue(message.payload);
+        return;
+      }
+      if (reply.type === "pageError") {
+        const said = reply as { payload?: { where?: unknown; error?: unknown } };
+        const text = `${new Date().toISOString()} [${String(said.payload?.where ?? "")}] ${String(said.payload?.error ?? "")}`;
+        console.error(`Odin page: ${text}`);
+        if (GraphPanel.errorLog) {
+          void import("node:fs/promises").then((fs) => fs.appendFile(GraphPanel.errorLog!, `${text}\n\n`)).catch(() => undefined);
+        }
         return;
       }
       if (reply.type === "openExternal") {

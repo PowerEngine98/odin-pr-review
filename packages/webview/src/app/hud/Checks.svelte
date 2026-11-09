@@ -253,6 +253,16 @@
    */
   const placed = new Map<string, number>();
 
+  const keys = $derived.by(() => {
+    const seen = new Map<string, number>();
+    return ordered.map((check) => {
+      const key = check.name + (check.workflow ?? "");
+      const times = seen.get(key) ?? 0;
+      seen.set(key, times + 1);
+      return times === 0 ? key : `${key}#${times}`;
+    });
+  });
+
   const ordered = $derived.by(() => {
     const checks = summary?.checks ?? [];
 
@@ -433,7 +443,7 @@
     </div>
 
     {#if !folded}
-    {#each ordered as check (check.name + (check.workflow ?? ""))}
+    {#each ordered as check, at (keys[at])}
       <div class="check-row {check.state}">
         <!-- First in the row, where the reader's eye already is: the verdict
              says what happened and this is the one thing to do about it. Only
