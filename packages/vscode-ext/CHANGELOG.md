@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2 — 2026-11-09
+
+- fix: a window reload reopens only the readings that were open (#5) (#7)
+
 ## 0.6.1 — 2026-11-09
 
 - ci: Chrome Web Store publishing, ready once 0.4.0 is approved (#6)
