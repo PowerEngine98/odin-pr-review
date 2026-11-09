@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { inEditor, openGhWizard } from "./gh.svelte.js";
   import { host, notify } from "../state.svelte.js";
   import Editor from "../panels/Editor.svelte";
   import { forHost, type Attached } from "../panels/attached.js";
@@ -110,9 +111,14 @@
   {#if host && support.gh && !support.gh.ok}
     <p class="support-gate">
       {#if support.gh.problem === "missing"}
-        Posting needs the <strong>GitHub CLI</strong>. Install it from cli.github.com, run <code>gh auth login</code>, then open this again.
+        Posting needs the <strong>GitHub CLI</strong>.
       {:else}
-        Posting needs a GitHub account linked to the GitHub CLI. Run <code>gh auth login</code> in a terminal, then open this again.
+        Posting needs a GitHub account linked to the GitHub CLI.
+      {/if}
+      {#if inEditor}
+        <button class="support-guide" onclick={() => { closeSupport(); openGhWizard(); }}>Set it up step by step</button>
+      {:else}
+        Run <code>gh auth login</code> on the machine running VS Code, then open this again.
       {/if}
     </p>
   {/if}
@@ -252,6 +258,17 @@
     border: 0;
     background: var(--vscode-button-background, #238636);
     color: var(--vscode-button-foreground, #fff);
+  }
+
+  .support-guide {
+    margin-left: 6px;
+    padding: 2px 8px;
+    border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
   }
 
   .support-send:disabled {

@@ -1,10 +1,12 @@
 # Odin for GitHub
 
-A browser extension that adds an **Odin** tab to GitHub:
+[Add it from the Chrome Web Store](https://chromewebstore.google.com/detail/odin-pr-review/jghenlmadcfkcmfmnlmegogfjbbeafci) (Chrome, Edge, Brave, Opera).
 
-- **On a pull request**, the tab is first in the bar beside Overview and Files
-  changed, and draws the pull request as Odin's change graph.
-- **On a repository**, the tab is beside Pull requests and opens the pull
+A browser extension that adds a **Graph** tab to GitHub:
+
+- **Graph**, on a pull request: first in the bar beside Overview and Files
+  changed, it draws the pull request as Odin's change graph.
+- **Change graph**, on a repository: beside Pull requests, it opens the pull
   request list from Odin's VS Code sidebar.
 
 ## How it works
@@ -92,3 +94,40 @@ only when this mode is chosen.
 - When synced, mermaid diagrams in tours are not drawn in the browser yet.
 - Public repositories need no sign-in, up to 60 reads an hour. Private
   repositories need a fine-grained read-only token in the options.
+
+## On GitHub, in depth
+
+`packages/browser-ext` puts Odin into GitHub itself, the way Le Git Graph adds a
+commits graph. It adds a tab, with a graph icon, in two places:
+
+- **Graph**, on a pull request, first in the bar beside Overview, Commits,
+  Checks and Files changed. It draws that pull request as the change graph,
+  with the same renderer the editor uses.
+- **Change graph**, on the repository, beside Pull requests. It opens the pull request list
+  from the editor's sidebar: what is waiting on you first, filters for open,
+  merged, closed and author. Choosing a pull request opens its graph.
+
+The extension reads GitHub's API directly and builds the graph in the browser
+from the pull request's diff, the same way `odin --patch-file` does. Public
+repositories need no sign-in. Private ones, or more than 60 reads an hour, need
+a fine-grained token with read-only *Pull requests* and *Contents* access, saved
+in the extension's options.
+
+That basic view has no arrows: they need the whole repository. **Enable all
+features** offers two ways further:
+
+- **Sync with the VS Code extension** makes the tab a second screen on Odin for
+  VS Code: the editor reads the pull request and the browser shows that same
+  reading, with arrows, AI pairing, guided tours, Kokoro narration, comments and
+  reviews, all run by the editor. VS Code finds the repository among the folders
+  it knows, asks when there is more than one, and offers to clone it when there
+  is none.
+- **Compute data in browser** downloads the repository from GitHub and runs
+  Odin's resolvers in the browser, for arrows without the editor.
+
+The sections above explain how pairing, the local bridge and its security work.
+
+Each release attaches `odin-pr-review-browser.zip`. To try it in Chrome, Edge or
+Brave: build with `yarn build` (or unzip a release), open `chrome://extensions`,
+turn on Developer mode, choose **Load unpacked** and select
+`packages/browser-ext/dist/extension`.

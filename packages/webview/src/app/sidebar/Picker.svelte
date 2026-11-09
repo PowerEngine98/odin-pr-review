@@ -96,6 +96,7 @@
           signed in — and a slow or unreachable forge looks the same from here. You can
           review the current branch regardless.
         </p>
+        <button class="setup-gh" onclick={() => notify("setupGh")}>Set up the GitHub CLI</button>
       {/if}
     {:else}
       <p class="empty">
@@ -237,6 +238,17 @@
 
   .review {
     margin: 0;
+    font: inherit;
+    color: var(--vscode-button-foreground);
+    background: var(--vscode-button-background);
+    border: none;
+    border-radius: 3px;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+
+  .setup-gh {
+    margin: 4px 12px 0;
     font: inherit;
     color: var(--vscode-button-foreground);
     background: var(--vscode-button-background);

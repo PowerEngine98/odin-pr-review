@@ -158,6 +158,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
         void this.view?.webview.postMessage({ type: "loading", value: this.loading });
         return;
       }
+      if (message.type === "setupGh") {
+        void vscode.commands.executeCommand("odin.setupGitHubCli");
+        return;
+      }
       if (message.type === "review") {
         void vscode.commands.executeCommand("odin.review");
         return;
