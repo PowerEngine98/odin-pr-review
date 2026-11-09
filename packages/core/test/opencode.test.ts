@@ -148,4 +148,23 @@ describe("reading opencode's event stream", () => {
   it("keeps a banner printed before the stream starts", () => {
     expect(readOpencode("Using model big-pickle")?.show).toBe("Using model big-pickle");
   });
+
+  it("names the conversation every event belongs to", () => {
+    const line = JSON.stringify({ type: "step_start", sessionID: "ses_abc", part: {} });
+    expect(readOpencode(line)).toEqual({ session: "ses_abc" });
+    const text = JSON.stringify({ type: "text", sessionID: "ses_abc", part: { type: "text", text: "Done." } });
+    expect(readOpencode(text)).toMatchObject({ show: "Done.", answer: "Done.", session: "ses_abc" });
+  });
+
+  it("says why a turn failed instead of saying nothing", () => {
+    const line = JSON.stringify({
+      type: "error",
+      sessionID: "ses_abc",
+      error: { name: "APIError", data: { message: "OpenCode 1.18.0 or newer is required to use the free tier", statusCode: 426 } },
+    });
+    expect(readOpencode(line)).toEqual({
+      show: "opencode: OpenCode 1.18.0 or newer is required to use the free tier",
+      session: "ses_abc",
+    });
+  });
 });

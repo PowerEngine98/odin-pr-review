@@ -30,6 +30,8 @@ export interface Said {
   did?: Change[];
   /** The exact model answering, when the event names it: an alias resolved to an id. */
   model?: string;
+  /** The conversation this turn belongs to, for a tool that names its own. */
+  session?: string;
 }
 
 /**
@@ -268,6 +270,19 @@ export function readOpencode(line: string): Said | undefined {
   }
 
   const part = (event.part ?? {}) as Record<string, unknown>;
+  const said = readOpencodeEvent(event, part);
+  const session = typeof event.sessionID === "string" && event.sessionID ? event.sessionID : undefined;
+  if (!session) return said;
+  return { ...(said ?? {}), session };
+}
+
+function readOpencodeEvent(event: Record<string, unknown>, part: Record<string, unknown>): Said | undefined {
+  if (event.type === "error") {
+    const error = (event.error ?? {}) as Record<string, unknown>;
+    const data = (error.data ?? {}) as Record<string, unknown>;
+    const message = String(data.message ?? error.message ?? error.name ?? "opencode reported an error");
+    return { show: `opencode: ${message}` };
+  }
 
   /*
    * The agent talking. Every text part is the whole of what it said at that

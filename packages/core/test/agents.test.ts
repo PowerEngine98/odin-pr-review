@@ -167,6 +167,12 @@ describe("what an agent looks like in a thread", () => {
 describe("opencode", () => {
   const kind = () => KNOWN_AGENTS.find((agent) => agent.id === "opencode")!;
 
+  it("starts a conversation without naming it, and resumes the one it named", () => {
+    expect(kind().session?.learns).toBe(true);
+    expect(kind().session?.start("")).toEqual(["run"]);
+    expect(kind().session?.resume("ses_abc")).toEqual(["run", "--session", "ses_abc"]);
+  });
+
   it("is looked for", () => {
     expect(kind()).toBeDefined();
     expect(kind().command).toBe("opencode");
@@ -198,12 +204,6 @@ describe("opencode", () => {
       edits: ["--agent", "build"],
     });
     expect(kind().agency?.full).toBeUndefined();
-  });
-
-  it("says nothing about carrying a conversation, because it cannot be told one", () => {
-    // `--session` continues a session that exists; there is no naming one that
-    // does not, so each turn is a fresh one and the page says so.
-    expect(kind().session).toBeUndefined();
   });
 
   it("has a face of its own", () => {

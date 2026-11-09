@@ -88,6 +88,8 @@ export interface AgentKind {
     start(id: string): string[];
     /** Carries that conversation on. */
     resume(id: string): string[];
+    /** The tool names the conversation itself and says so in its events; `start` is given no id. */
+    learns?: boolean;
   };
   /**
    * How much rope an agent is given, in that tool's own words.
@@ -302,6 +304,11 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     streams: {
       args: ["--format", "json"],
       read: readOpencode,
+    },
+    session: {
+      learns: true,
+      start: () => ["run"],
+      resume: (id) => ["run", "--session", id],
     },
     /*
      * Its rungs are agents rather than flags. `plan` is the one that looks and
