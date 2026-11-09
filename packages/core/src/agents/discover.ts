@@ -47,6 +47,8 @@ export interface AgentKind {
   holdsPrompt?: boolean;
   /** How its interactive session picks up the conversation Odin has been having with it. */
   interactive?: { resume(id: string): string[] };
+  /** Arguments for a run that is only there to hear what the tool offers, saving nothing. */
+  probe?: string[];
   /**
    * How to tell it which model to use, for a tool that can be told.
    *
@@ -155,6 +157,7 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     id: "claude",
     name: "Claude",
     command: "claude",
+    probe: ["--no-session-persistence", "--max-turns", "1"],
     interactive: { resume: (id) => ["--resume", id] },
     once: ["--print"],
     version: ["--version"],

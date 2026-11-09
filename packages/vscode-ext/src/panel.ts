@@ -1533,6 +1533,9 @@ export class GraphPanel {
        * carries the same decision outward for the threads that have somewhere
        * outward to go, so a reader on the forge sees what a reader here sees.
        */
+      this.paired.onCommands = (agent, commands) => {
+        void this.panel.webview.postMessage({ type: "agentCommands", agent, commands });
+      };
       this.paired.onSettle = (rootId, resolved) => {
         // Local ids are negative and name no thread the forge has heard of. The
         // store is the whole of the answer for those.
@@ -3693,6 +3696,25 @@ export class GraphPanel {
         console.error(`Odin page: ${text}`);
         if (GraphPanel.errorLog) {
           void import("node:fs/promises").then((fs) => fs.appendFile(GraphPanel.errorLog!, `${text}\n\n`)).catch(() => undefined);
+        }
+        return;
+      }
+      if (reply.type === "cliSend") {
+        const said = (reply as { payload?: { agent?: unknown; text?: unknown } }).payload ?? {};
+        const agent = String(said.agent ?? "");
+        const text = String(said.text ?? "");
+        if (agent && text) this.cli().send(agent, text);
+        return;
+      }
+      if (reply.type === "agentCommands") {
+        const agent = String((reply as { payload?: { agent?: unknown } }).payload?.agent ?? "");
+        if (!agent) return;
+        const known = this.pairing().commandsOf(agent);
+        if (known) void this.panel.webview.postMessage({ type: "agentCommands", agent, commands: known });
+        if (!known) {
+          void this.pairing()
+            .probeCommands(agent)
+            .then((commands) => this.panel.webview.postMessage({ type: "agentCommands", agent, commands }));
         }
         return;
       }

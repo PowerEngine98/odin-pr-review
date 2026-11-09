@@ -125,6 +125,7 @@ export interface LocalComment extends ReviewComment {
  * for anything that mattered.
  */
 const KEY = "odin.pairing";
+const COMMANDS = "odin.commands";
 
 interface Stored {
   comments: LocalComment[];
@@ -1157,6 +1158,7 @@ export class PairingSession {
         ...(args ? { args } : {}),
         onOutput: say,
         onEdit: (change) => this.record(agentId, change),
+        onCommands: (commands) => this.heardCommands(agentId, commands),
         onModel: (model) => {
           if (this.inUse[agentId] === model) return;
           this.inUse = { ...this.inUse, [agentId]: model };
@@ -1480,6 +1482,53 @@ export class PairingSession {
    */
   narrating(): string[] {
     return this.installed.filter((kind) => kind.streams).map((kind) => kind.id);
+  }
+
+  /** Told when an agent's slash commands are first heard or change. */
+  onCommands: ((agentId: string, commands: string[]) => void) | undefined;
+
+  /** The slash commands the agent last said it offers in this repository. */
+  commandsOf(agentId: string): string[] | undefined {
+    return this.memento.get<Record<string, string[]>>(COMMANDS, {})[`${this.repo}::${agentId}`];
+  }
+
+  private heardCommands(agentId: string, commands: string[]): void {
+    const before = this.commandsOf(agentId);
+    if (before && before.join("\n") === commands.join("\n")) return;
+    const all = { ...this.memento.get<Record<string, string[]>>(COMMANDS, {}) };
+    all[`${this.repo}::${agentId}`] = commands;
+    void this.memento.update(COMMANDS, all);
+    this.onCommands?.(agentId, commands);
+  }
+
+  /** Asks the tool what it offers, by starting a run that stops the moment it says. */
+  probeCommands(agentId: string): Promise<string[]> {
+    const known = this.commandsOf(agentId);
+    const kind = this.installed.find((one) => one.id === agentId);
+    if (!kind?.probe || !kind.streams) return Promise.resolve(known ?? []);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (commands: string[]) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        handle.stop();
+        resolve(commands);
+      };
+      const handle = runAgent({
+        kind,
+        prompt: "ok",
+        cwd: this.repo,
+        env: forgeEnv(),
+        args: [...kind.once, ...kind.streams!.args, ...kind.probe!],
+        onCommands: (commands) => {
+          this.heardCommands(agentId, commands);
+          finish(commands);
+        },
+      });
+      const timer = setTimeout(() => finish(this.commandsOf(agentId) ?? []), 20_000);
+      void handle.done.then(() => finish(this.commandsOf(agentId) ?? []));
+    });
   }
 
   /** Which conversation an agent is carrying here, for whoever asks. */

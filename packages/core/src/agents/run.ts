@@ -73,6 +73,7 @@ export interface RunRequest {
   onEdit?: (change: Change) => void;
   /** The exact model the tool says is answering, each time it says so. */
   onModel?: (model: string) => void;
+  onCommands?: (commands: string[]) => void;
   onSession?: (session: string) => void;
 }
 
@@ -158,6 +159,7 @@ export function runAgent(request: RunRequest): RunHandle {
       if (said?.show) take(`${said.show}\n`);
       for (const change of said?.did ?? []) request.onEdit?.(change);
       if (said?.model) request.onModel?.(said.model);
+      if (said?.commands) request.onCommands?.(said.commands);
       if (said?.session) request.onSession?.(said.session);
     }
   });

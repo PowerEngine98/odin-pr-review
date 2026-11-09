@@ -24,6 +24,7 @@
   import { pictured } from "../pictured.svelte.js";
   import { model, notify, settings, ui } from "../state.svelte.js";
   import Cli from "./Cli.svelte";
+  import { askCommands, isCommand, slash, suggestions, typingCommand } from "./slash.svelte.js";
   import Ledger from "./Ledger.svelte";
   import Narrated from "./Narrated.svelte";
   import Lessons from "../tour/Lessons.svelte";
@@ -545,8 +546,32 @@
     pasted = pasted.filter((one) => one.id !== id);
   }
 
+  const commandQuery = $derived(typingCommand(prompt));
+  const commandChoices = $derived(
+    commandQuery === undefined ? [] : suggestions(slash.commands[id] ?? [], commandQuery),
+  );
+  let commandAt = $state(0);
+  let commandsShut = $state(false);
+  const choosingCommand = $derived(commandChoices.length > 0 && !commandsShut);
+
+  $effect(() => {
+    if (commandQuery !== undefined) askCommands(id);
+    commandAt = 0;
+    commandsShut = false;
+  });
+
+  function runCommand(text: string): void {
+    prompt = "";
+    tab = "cli";
+    notify("cliSend", { agent: id, text });
+  }
+
   function send(): void {
     let said = prompt.trim();
+    if (isCommand(said) && pasted.length === 0 && !tour.attached) {
+      runCommand(said);
+      return;
+    }
     // A picture on its own is a message: "look at this" is the whole of what a
     // reader usually means by pasting one.
     if (!said && pasted.length === 0) return;
@@ -1628,14 +1653,57 @@
         {/each}
       </ul>
     {/if}
+    {#if choosingCommand}
+      <ul class="commands" role="listbox" aria-label="{name} commands">
+        {#each commandChoices as command, at (command)}
+          <li>
+            <button
+              type="button"
+              class="command"
+              class:on={at === commandAt}
+              role="option"
+              aria-selected={at === commandAt}
+              onmouseenter={() => (commandAt = at)}
+              onmousedown={(event) => event.preventDefault()}
+              onclick={() => runCommand(`/${command}`)}
+            >/{command}</button>
+          </li>
+        {/each}
+        <li class="commands-note">Runs in the {name} CLI tab · Tab completes · Enter runs</li>
+      </ul>
+    {/if}
     <textarea
       class="ask-box"
       bind:this={askBox}
       bind:value={prompt}
       rows="1"
-      placeholder="Ask {name} about the change…"
+      placeholder="Ask {name} about the change, or type / for its commands…"
       onpaste={paste}
       onkeydown={(event) => {
+        if (choosingCommand) {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            const step = event.key === "ArrowDown" ? 1 : -1;
+            commandAt = (commandAt + step + commandChoices.length) % commandChoices.length;
+            return;
+          }
+          if (event.key === "Tab") {
+            event.preventDefault();
+            prompt = `/${commandChoices[commandAt]} `;
+            return;
+          }
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            runCommand(`/${commandChoices[commandAt]}`);
+            return;
+          }
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            commandsShut = true;
+            return;
+          }
+        }
         // Enter sends, because this is a message rather than a document. A
         // newline is still available for somebody laying out a list.
         if (event.key === "Enter" && !event.shiftKey) {
@@ -1994,6 +2062,50 @@
 
   .record:last-child { padding-right: 9px; }
 
+  .commands {
+    position: absolute;
+    bottom: calc(100% - 4px);
+    left: 8px;
+    right: 8px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    max-height: 240px;
+    margin: 0;
+    padding: 4px;
+    overflow-y: auto;
+    list-style: none;
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg) 92%, var(--text) 8%);
+    box-shadow: 0 6px 18px color-mix(in srgb, #000 40%, transparent);
+  }
+
+  .command {
+    display: flex;
+    width: 100%;
+    padding: 3px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 11px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .command.on {
+    background: color-mix(in srgb, var(--text) 14%, transparent);
+  }
+
+  .commands-note {
+    padding: 4px 8px 2px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+
   .record.set {
     background: color-mix(in srgb, var(--text) 14%, transparent);
     color: var(--text);
@@ -2130,6 +2242,7 @@
   /* Against the foot of the box, out of the log's scroll: a log that scrolled
      its own input away would hide the thing somebody came to type in. */
   .terminal-ask {
+    position: relative;
     flex: 0 0 auto;
     display: flex;
     align-items: flex-end;

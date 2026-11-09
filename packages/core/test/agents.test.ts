@@ -212,3 +212,19 @@ describe("opencode", () => {
     expect(mine.color).toMatch(/^#[0-9a-f]{6}$/i);
   });
 });
+
+describe("the commands a tool offers", () => {
+  it("are read from Claude's opening event, the headless and the terminal-only ones together", async () => {
+    const { readClaude } = await import("../src/agents/stream.js");
+    const said = readClaude(
+      JSON.stringify({
+        type: "system",
+        subtype: "init",
+        model: "claude-opus-5-5",
+        slash_commands: ["mcp", "compact", "code-review"],
+        terminal_slash_commands: ["doctor", "mcp"],
+      }),
+    );
+    expect(said).toEqual({ model: "claude-opus-5-5", commands: ["code-review", "compact", "doctor", "mcp"] });
+  });
+});

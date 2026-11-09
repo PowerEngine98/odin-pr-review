@@ -102,7 +102,7 @@ describe("pairing with an agent", () => {
      * The host records it as a remark on the change itself, which is measured
      * on its own side.
      */
-    expect(terminal).toMatch(/placeholder="Ask \{name\} about the change…"/);
+    expect(terminal).toMatch(/placeholder="Ask \{name\} about the change, or type \/ for its commands…"/);
     // Enter sends, shift+enter is still a newline for somebody laying out a
     // list.
     expect(terminal).toMatch(/event\.key === "Enter" && !event\.shiftKey/);
