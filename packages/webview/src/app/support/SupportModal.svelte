@@ -112,6 +112,8 @@
     <p class="support-gate">
       {#if support.gh.problem === "missing"}
         Posting needs the <strong>GitHub CLI</strong>.
+      {:else if support.gh.problem === "outdated"}
+        Posting needs GitHub CLI 2.99.0 or newer{support.gh.version ? `; this one is ${support.gh.version}` : ""}.
       {:else}
         Posting needs a GitHub account linked to the GitHub CLI.
       {/if}

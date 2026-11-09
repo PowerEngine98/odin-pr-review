@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { forgeEnv } from "./pullRequest.js";
 
@@ -36,18 +39,6 @@ export function ghAt(cwd?: string): Gh {
     });
 }
 
-export function attachmentBranch(reviewed: string | undefined, login: string): string {
-  const clean = (part: string) =>
-    part
-      .replace(/^refs\/heads\//, "")
-      .replace(/^origin\//, "")
-      .replace(/[^\w./-]+/g, "-")
-      .replace(/\.{2,}/g, ".")
-      .replace(/\/{2,}/g, "/")
-      .replace(/^[./-]+|[./-]+$/g, "");
-  return `odin-attachments/${clean(reviewed ?? "") || "issues"}/${clean(login) || "someone"}`;
-}
-
 export function decodeAttachment(file: Attachment): { name: string; bytes: Buffer; type: string } {
   const match = /^data:([\w.+-]+\/[\w.+-]+)(?:;[^,]*)?;base64,(.*)$/s.exec(file.data);
   if (!match) throw new Error(`${file.name} is not a file Odin can attach.`);
@@ -68,80 +59,86 @@ async function json<T>(gh: Gh, args: string[], body?: unknown): Promise<T> {
   return JSON.parse(out) as T;
 }
 
-async function writable(gh: Gh, repo: string): Promise<string> {
-  const pushable = (await gh(["api", `repos/${repo}`, "--jq", ".permissions.push"]).catch(() => "false")).trim();
-  if (pushable === "true") return repo;
-  const fork = await json<{ full_name: string }>(gh, ["api", "-X", "POST", `repos/${repo}/forks`], {
-    default_branch_only: true,
-  });
-  for (let tries = 0; tries < 10; tries++) {
-    const ready = await gh(["api", `repos/${fork.full_name}`, "--jq", ".full_name"]).catch(() => "");
-    if (ready.trim()) return fork.full_name;
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-  }
-  return fork.full_name;
+export const GH_ATTACH_VERSION = "2.99.0";
+
+export function versionOf(said: string): string | undefined {
+  return /gh version (\d+\.\d+\.\d+)/.exec(said)?.[1];
 }
 
-export async function storeAttachments(
-  gh: Gh,
-  repo: string,
-  branch: string,
-  files: Attachment[],
-  now = Date.now(),
-): Promise<Stored[]> {
+export function atLeast(version: string | undefined, wanted: string): boolean {
+  if (!version) return false;
+  const have = version.split(".").map(Number);
+  const need = wanted.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((have[i] ?? 0) !== (need[i] ?? 0)) return (have[i] ?? 0) > (need[i] ?? 0);
+  }
+  return true;
+}
+
+export class AttachDenied extends Error {
+  constructor(readonly repo: string) {
+    super(`Attaching files needs write access to ${repo}; GitHub only takes uploads from its collaborators.`);
+  }
+}
+
+async function writableRepo(gh: Gh, repo: string): Promise<number> {
+  const seen = await json<{ id: number; permissions?: { push?: boolean } }>(gh, ["api", `repos/${repo}`]);
+  if (seen.permissions?.push !== true) throw new AttachDenied(repo);
+  return seen.id;
+}
+
+async function onDisk<T>(files: { name: string; bytes: Buffer }[], use: (paths: string[]) => Promise<T>): Promise<T> {
+  const folder = await mkdtemp(join(tmpdir(), "odin-attach-"));
+  try {
+    const paths: string[] = [];
+    for (const [index, file] of files.entries()) {
+      const path = join(folder, `${index + 1}-${safeName(file.name)}`);
+      await writeFile(path, file.bytes);
+      paths.push(path);
+    }
+    return await use(paths);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+}
+
+export async function uploadAttachments(gh: Gh, repo: string, files: Attachment[]): Promise<Stored[]> {
   if (files.length === 0) return [];
   const decoded = files.map(decodeAttachment);
-  const target = await writable(gh, repo);
-
-  const head = (await gh(["api", `repos/${target}/git/ref/heads/${branch}`, "--jq", ".object.sha"]).catch(() => "")).trim();
-  const baseTree = head
-    ? (await gh(["api", `repos/${target}/git/commits/${head}`, "--jq", ".tree.sha"])).trim()
-    : undefined;
-
-  const entries: { path: string; mode: string; type: string; sha: string }[] = [];
-  const stored: Stored[] = [];
-  for (const [index, file] of decoded.entries()) {
-    const blob = await json<{ sha: string }>(gh, ["api", "-X", "POST", `repos/${target}/git/blobs`], {
-      content: file.bytes.toString("base64"),
-      encoding: "base64",
-    });
-    const path = `${now}-${index + 1}-${safeName(file.name)}`;
-    entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
-    const encoded = branch.split("/").map(encodeURIComponent).join("/");
-    stored.push({
-      name: file.name,
-      url: `https://github.com/${target}/blob/${encoded}/${encodeURIComponent(path)}?raw=true`,
-      image: file.type.startsWith("image/"),
-    });
-  }
-
-  const tree = await json<{ sha: string }>(gh, ["api", "-X", "POST", `repos/${target}/git/trees`], {
-    ...(baseTree ? { base_tree: baseTree } : {}),
-    tree: entries,
+  const id = await writableRepo(gh, repo);
+  return onDisk(decoded, async (paths) => {
+    const stored: Stored[] = [];
+    for (const [index, file] of decoded.entries()) {
+      const query = new URLSearchParams({
+        name: safeName(file.name),
+        content_type: file.type,
+        repository_id: String(id),
+      });
+      const answer = await gh([
+        "api",
+        "-X",
+        "POST",
+        `https://uploads.github.com/user-attachments/assets?${query}`,
+        "-H",
+        "Content-Type: application/octet-stream",
+        "--input",
+        paths[index]!,
+      ]);
+      const url = (JSON.parse(answer) as { url?: string }).url;
+      if (!url) throw new Error(`GitHub did not return a link for ${file.name}.`);
+      stored.push({ name: file.name, url, image: file.type.startsWith("image/") });
+    }
+    return stored;
   });
-  const commit = await json<{ sha: string }>(gh, ["api", "-X", "POST", `repos/${target}/git/commits`], {
-    message: `Attachments from Odin (${decoded.length})`,
-    tree: tree.sha,
-    parents: head ? [head] : [],
-  });
-  if (head) {
-    await gh(["api", "-X", "PATCH", `repos/${target}/git/refs/heads/${branch}`, "--input", "-"], JSON.stringify({ sha: commit.sha }));
-  } else {
-    await gh(
-      ["api", "-X", "POST", `repos/${target}/git/refs`, "--input", "-"],
-      JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha }),
-    );
-  }
-  return stored;
 }
 
 export function attachmentMarkdown(stored: Stored[]): string {
   return stored
     .map((one) => {
       const label = one.name.replace(/[[\]]/g, "");
-      return one.image ? `![${label}](${one.url})` : `[▶ ${label}](${one.url})`;
+      return one.image ? `![${label}](${one.url})` : one.url;
     })
-    .join("\n");
+    .join("\n\n");
 }
 
 export function withAttachments(body: string, stored: Stored[]): string {
@@ -162,16 +159,24 @@ export type SupportKind = keyof typeof SUPPORT_LABELS;
 export interface GhStatus {
   ok: boolean;
   login?: string;
-  problem?: "missing" | "signed-out";
+  version?: string;
+  problem?: "missing" | "signed-out" | "outdated";
 }
 
 export async function ghStatus(gh: Gh): Promise<GhStatus> {
+  let version: string | undefined;
+  try {
+    version = versionOf(await gh(["--version"]));
+  } catch {
+    return { ok: false, problem: "missing" };
+  }
   try {
     const login = (await gh(["api", "user", "--jq", ".login"])).trim();
-    return login ? { ok: true, login } : { ok: false, problem: "signed-out" };
-  } catch (error) {
-    const said = String((error as Error).message ?? error);
-    return { ok: false, problem: /ENOENT|not found|command not found/i.test(said) ? "missing" : "signed-out" };
+    if (!login) return { ok: false, ...(version ? { version } : {}), problem: "signed-out" };
+    if (!atLeast(version, GH_ATTACH_VERSION)) return { ok: false, login, ...(version ? { version } : {}), problem: "outdated" };
+    return { ok: true, login, ...(version ? { version } : {}) };
+  } catch {
+    return { ok: false, ...(version ? { version } : {}), problem: "signed-out" };
   }
 }
 
@@ -191,4 +196,43 @@ export async function openIssue(
     labels: [issue.label],
   });
   return made.html_url;
+}
+
+export async function openIssueWithMedia(
+  gh: Gh,
+  repo: string,
+  issue: { title: string; body: string; label: string },
+  files: Attachment[],
+): Promise<{ url: string; left: number }> {
+  if (files.length === 0) return { url: await openIssue(gh, repo, issue), left: 0 };
+  const decoded = files.map(decodeAttachment);
+  try {
+    await writableRepo(gh, repo);
+  } catch (error) {
+    if (!(error instanceof AttachDenied)) throw error;
+    return { url: await openIssue(gh, repo, issue), left: files.length };
+  }
+  return onDisk([...decoded, { name: "body.md", bytes: Buffer.from(issue.body) }], async (paths) => {
+    const body = paths[paths.length - 1]!;
+    const attach = decoded.flatMap((file, index) => [
+      "--attach",
+      file.type.startsWith("image/") ? `${paths[index]}#${file.name.replace(/#/g, "")}` : paths[index]!,
+    ]);
+    const said = await gh([
+      "issue",
+      "create",
+      "--repo",
+      repo,
+      "--title",
+      issue.title,
+      "--body-file",
+      body,
+      "--label",
+      issue.label,
+      ...attach,
+    ]);
+    const url = said.trim().split("\n").reverse().find((line) => /^https:\/\//.test(line.trim()))?.trim();
+    if (!url) throw new Error("GitHub did not say where the issue went.");
+    return { url, left: 0 };
+  });
 }

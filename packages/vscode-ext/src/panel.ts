@@ -31,12 +31,12 @@ import {
   type ReviewComment,
   type ReviewEvent,
   standingOf,
-  attachmentBranch,
+  GH_ATTACH_VERSION,
   ghAt,
   ghStatus,
-  openIssue,
+  openIssueWithMedia,
   repoOfUrl,
-  storeAttachments,
+  uploadAttachments,
   SUPPORT_LABELS,
   SUPPORT_REPO,
   withAttachments,
@@ -2643,13 +2643,15 @@ export class GraphPanel {
     if (!files || files.length === 0) return body;
     const gh = ghAt(this.repo);
     const who = await ghStatus(gh);
+    if (who.problem === "outdated") {
+      throw new Error(`Attaching files needs GitHub CLI ${GH_ATTACH_VERSION} or newer (you have ${who.version ?? "an older one"}). Run Odin: Set Up the GitHub CLI to upgrade.`);
+    }
     if (!who.ok || !who.login) throw new Error("Attaching files needs the GitHub CLI signed in: run gh auth login.");
     const pull = this.graph.meta.pullRequest;
     const repo = pull?.url ? repoOfUrl(pull.url) : undefined;
     if (!repo) throw new Error("Odin could not tell which GitHub repository this change belongs to.");
     void this.panel.webview.postMessage({ type: "note", message: `Uploading ${files.length} attachment${files.length === 1 ? "" : "s"}…` });
-    const branch = attachmentBranch(pull?.headRefName ?? this.graph.meta.headRef, who.login);
-    return withAttachments(body, await storeAttachments(gh, repo, branch, files));
+    return withAttachments(body, await uploadAttachments(gh, repo, files));
   }
 
   private mediaFailed(error: unknown): undefined {
@@ -2666,15 +2668,21 @@ export class GraphPanel {
         return;
       }
       const label = SUPPORT_LABELS[payload.kind] ?? SUPPORT_LABELS.suggestion;
-      const files = payload.attachments ?? [];
-      const stored = files.length
-        ? await storeAttachments(gh, SUPPORT_REPO, attachmentBranch(undefined, who.login), files)
-        : [];
-      const body = withAttachments(
-        `${payload.body.trim()}\n\n---\n_Sent from Odin ${GraphPanel.version ?? ""} in VS Code._`,
-        stored,
+      const body = `${payload.body.trim()}\n\n---\n_Sent from Odin ${GraphPanel.version ?? ""} in VS Code._`;
+      const { url, left } = await openIssueWithMedia(
+        gh,
+        SUPPORT_REPO,
+        { title: payload.title.trim(), body, label },
+        payload.attachments ?? [],
       );
-      const url = await openIssue(gh, SUPPORT_REPO, { title: payload.title.trim(), body, label });
+      if (left > 0) {
+        void this.panel.webview.postMessage({
+          type: "supportPosted",
+          url,
+          note: `GitHub only takes uploads from collaborators, so ${left === 1 ? "the file was" : `${left} files were`} not attached. Add ${left === 1 ? "it" : "them"} on the issue page.`,
+        });
+        return;
+      }
       void this.panel.webview.postMessage({ type: "supportPosted", url });
     } catch (error) {
       void this.panel.webview.postMessage({ type: "supportFailed", error: String((error as Error).message ?? error) });

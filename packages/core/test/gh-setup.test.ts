@@ -4,9 +4,16 @@ import { ghInstaller, ghManagers } from "../src/git/ghSetup.js";
 
 describe("installing the GitHub CLI", () => {
   it("uses the package manager the machine already has", () => {
-    expect(ghInstaller("darwin", (one) => one === "brew")?.command).toBe("brew install gh");
-    expect(ghInstaller("win32", (one) => one === "winget")?.command).toBe("winget install --id GitHub.cli -e");
-    expect(ghInstaller("linux", (one) => one === "dnf")?.command).toBe("sudo dnf install -y gh");
+    expect(ghInstaller("darwin", (one) => one === "brew")?.install).toBe("brew install gh");
+    expect(ghInstaller("win32", (one) => one === "winget")?.install).toBe("winget install --id GitHub.cli -e");
+    expect(ghInstaller("darwin", (one) => one === "brew")?.upgrade).toBe("brew update && brew upgrade gh");
+  });
+
+  it("installs from GitHub's own packages on Linux, never a distribution's older copy", () => {
+    expect(ghInstaller("linux", (one) => one === "apt")?.install).toContain("https://cli.github.com/packages stable main");
+    expect(ghInstaller("linux", (one) => one === "dnf")?.install).toContain("--repo gh-cli");
+    expect(ghManagers("linux")).not.toContain("snap");
+    expect(ghManagers("darwin")).not.toContain("port");
   });
 
   it("prefers the first known manager when several are there", () => {
