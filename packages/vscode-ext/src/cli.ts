@@ -17,7 +17,12 @@ interface Running {
   pty: Pty;
   screen: string;
   resumed?: string;
+  ready: boolean;
+  settle?: ReturnType<typeof setTimeout>;
 }
+
+export const SETTLED_MS = 700;
+export const ENTER_MS = 120;
 
 export function cliArgs(kind: AgentKind, conversation: string | undefined): string[] {
   return conversation && kind.interactive ? kind.interactive.resume(conversation) : [];
@@ -25,6 +30,7 @@ export function cliArgs(kind: AgentKind, conversation: string | undefined): stri
 
 export class CliSessions {
   private readonly running = new Map<string, Running>();
+  private readonly waiting = new Map<string, string[]>();
 
   constructor(private readonly host: CliHost) {}
 
@@ -54,17 +60,44 @@ export class CliSessions {
       this.host.post({ type: "cliExit", agent, code: 1, error: (error as Error).message });
       return;
     }
-    const running: Running = { pty, screen: "", ...(args.length ? { resumed: conversation! } : {}) };
+    const running: Running = { pty, screen: "", ready: false, ...(args.length ? { resumed: conversation! } : {}) };
     this.running.set(agent, running);
     pty.onData((data) => {
       running.screen = (running.screen + data).slice(-SCROLLBACK);
       this.host.post({ type: "cliData", agent, data });
+      if (running.ready) return;
+      if (running.settle) clearTimeout(running.settle);
+      running.settle = setTimeout(() => {
+        running.ready = true;
+        this.flush(agent);
+      }, SETTLED_MS);
     });
     pty.onExit((code) => {
+      if (running.settle) clearTimeout(running.settle);
       if (this.running.get(agent) === running) this.running.delete(agent);
       this.host.post({ type: "cliExit", agent, code });
     });
     this.host.post({ type: "cliReplay", agent, for: asker, data: "", ...(running.resumed ? { resumed: running.resumed } : {}) });
+  }
+
+  send(agent: string, text: string): void {
+    const queue = this.waiting.get(agent) ?? [];
+    queue.push(text);
+    this.waiting.set(agent, queue);
+    if (this.running.get(agent)?.ready) this.flush(agent);
+  }
+
+  private flush(agent: string): void {
+    const running = this.running.get(agent);
+    const queue = this.waiting.get(agent);
+    if (!running || !queue?.length) return;
+    this.waiting.delete(agent);
+    let at = 0;
+    for (const text of queue) {
+      setTimeout(() => running.pty.write(text), at);
+      setTimeout(() => running.pty.write("\r"), at + ENTER_MS);
+      at += ENTER_MS * 3;
+    }
   }
 
   input(agent: string, data: string): void {
