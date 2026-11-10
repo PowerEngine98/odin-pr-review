@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { KNOWN_AGENTS, type AgentKind } from "@odin/core";
 
-import { CliSessions, cliArgs, SCROLLBACK } from "../src/cli.js";
+import { CliSessions, cliArgs, ENTER_MS, SCROLLBACK, SETTLED_MS } from "../src/cli.js";
 import { pythonPty, type Pty } from "../src/pty.js";
 
 function until(what: () => boolean, ms = 8000): Promise<void> {
@@ -155,3 +155,39 @@ describe("how each CLI picks up a conversation", () => {
     expect(cliArgs(kind("claude"), undefined)).toEqual([]);
   });
 });
+
+describe("a slash command sent from the console's box", () => {
+  it("waits for a starting CLI to finish drawing, then types it and presses Enter", () => {
+    vi.useFakeTimers();
+    try {
+      const { cli, terminal } = sessions();
+      cli.send("claude", "/resume");
+      cli.open("claude", 80, 24, "page");
+      terminal.say("welcome");
+      vi.advanceTimersByTime(SETTLED_MS - 100);
+      terminal.say(" to Claude");
+      vi.advanceTimersByTime(SETTLED_MS - 1);
+      expect(terminal.written).toEqual([]);
+      vi.advanceTimersByTime(ENTER_MS + 10);
+      expect(terminal.written).toEqual(["/resume", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("goes straight in when the CLI is already up", () => {
+    vi.useFakeTimers();
+    try {
+      const { cli, terminal } = sessions();
+      cli.open("claude", 80, 24, "page");
+      terminal.say("ready");
+      vi.advanceTimersByTime(SETTLED_MS + 10);
+      cli.send("claude", "/mcp");
+      vi.advanceTimersByTime(ENTER_MS + 10);
+      expect(terminal.written).toEqual(["/mcp", "\r"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

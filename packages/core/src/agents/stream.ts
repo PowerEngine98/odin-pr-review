@@ -30,6 +30,8 @@ export interface Said {
   did?: Change[];
   /** The exact model answering, when the event names it: an alias resolved to an id. */
   model?: string;
+  /** The slash commands the tool offers, when it lists them. */
+  commands?: string[];
   /** The conversation this turn belongs to, for a tool that names its own. */
   session?: string;
 }
@@ -59,7 +61,15 @@ export function readClaude(line: string): Said | undefined {
   }
 
   if (event.type === "system" && event.subtype === "init") {
-    return typeof event.model === "string" && event.model ? { model: event.model } : undefined;
+    const names = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((one): one is string => typeof one === "string" && one.length > 0) : [];
+    const runs = names(event.slash_commands);
+    const terminal = names(event.terminal_slash_commands);
+    const said: Said = {
+      ...(typeof event.model === "string" && event.model ? { model: event.model } : {}),
+      ...(runs.length || terminal.length ? { commands: [...new Set([...runs, ...terminal])].sort() } : {}),
+    };
+    return Object.keys(said).length ? said : undefined;
   }
 
   if (event.type === "assistant") {
