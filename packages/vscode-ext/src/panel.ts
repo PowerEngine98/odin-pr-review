@@ -1514,15 +1514,22 @@ export class GraphPanel {
         ...(this.graph.meta.headRef ? { headRef: this.graph.meta.headRef } : {}),
         ...(this.graph.meta.worktree === true ? { worktree: true } : {}),
       });
-      this.paired = new PairingSession(
-        GraphPanel.store!,
+      this.pairedKey = about;
+      this.paired = PairingSession.adopt(
         about,
-        this.repo,
+        this,
+        () =>
+          new PairingSession(
+            GraphPanel.store!,
+            about,
+            this.repo,
+            () => this.sendComments(),
+            // Whether the working tree is what is being read. Only then can a
+            // remark be anchored to the code it is about, because only then is the
+            // file on disk the file the reader was looking at.
+            this.graph.meta.worktree === true,
+          ),
         () => this.sendComments(),
-        // Whether the working tree is what is being read. Only then can a
-        // remark be anchored to the code it is about, because only then is the
-        // file on disk the file the reader was looking at.
-        this.graph.meta.worktree === true,
       );
       this.paired.tours = (asked) => this.answerTour(asked);
       /*
@@ -1581,6 +1588,7 @@ export class GraphPanel {
   }
 
   private paired: PairingSession | undefined;
+  private pairedKey = "";
   private readonly voice = new SystemVoice();
 
   /** The tour being made for this reading, while it is. */
@@ -3894,7 +3902,7 @@ export class GraphPanel {
     this.beat = undefined;
     // Turns in flight belong to this reading, and there is nowhere left for
     // them to write. What they have already said is on disk.
-    this.paired?.dispose();
+    if (this.paired) PairingSession.release(this.pairedKey, this);
     this.touring?.stop();
     GraphPanel.tours?.flush(this.tourKey());
     void this.tourMode(false);

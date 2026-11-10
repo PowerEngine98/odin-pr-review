@@ -281,7 +281,7 @@ export class PairingSession {
     private readonly key: string,
     private readonly repo: string,
     /** Called whenever anything the page draws has changed. */
-    private readonly changed: () => void,
+    private changed: () => void,
     /**
      * Whether this reading is of the files on disk.
      *
@@ -2229,6 +2229,37 @@ export class PairingSession {
     this.waiting = this.waiting.filter((ask) => Number(ask.id) !== id);
     if (this.waiting.length === before) return;
     this.mark(id, "stopped");
+  }
+
+  private static readonly shared = new Map<string, { session: PairingSession; holders: Set<object> }>();
+
+  /**
+   * The one session for a conversation, however many panels come to show it.
+   *
+   * A panel can be replaced while an agent is mid-turn, when another reading
+   * takes over its frame. A session per panel left the turn running in a
+   * session nothing showed: a permission it asked for became a dialog no page
+   * drew, its answer never came, and the agent waited until the turn timed out.
+   */
+  static adopt(key: string, holder: object, make: () => PairingSession, changed: () => void): PairingSession {
+    let entry = PairingSession.shared.get(key);
+    if (!entry) {
+      entry = { session: make(), holders: new Set() };
+      PairingSession.shared.set(key, entry);
+    }
+    entry.holders.add(holder);
+    entry.session.changed = changed;
+    return entry.session;
+  }
+
+  /** A panel is done with the conversation; the last one to go ends it. */
+  static release(key: string, holder: object): void {
+    const entry = PairingSession.shared.get(key);
+    if (!entry) return;
+    entry.holders.delete(holder);
+    if (entry.holders.size > 0) return;
+    PairingSession.shared.delete(key);
+    entry.session.dispose();
   }
 
   /** Ends every turn in flight. The reading is going away. */
