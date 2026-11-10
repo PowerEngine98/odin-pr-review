@@ -1,5 +1,81 @@
 # Changelog
 
+## 0.10.3 — 2026-11-10
+
+### UI/UX
+
+- The Marketplace page shows the three store versions together
+
+## 0.10.2 — 2026-11-10
+
+### UI/UX
+
+- The VS Code Marketplace badge shows the version actually published, and the downloads badge says it counts Open VSX
+
+## 0.10.1 — 2026-11-10
+
+### Bug fixes
+
+- An agent's request for approval, such as leaving plan mode, always appears in its console, even when the reading's panel was replaced while it was working, instead of hanging until the turn times out
+
+## 0.10.0 — 2026-11-10
+
+### New features
+
+- Typing / in an agent's console suggests the agent's own commands (built-ins, custom commands, skills, plugins) and runs any slash command in its interactive CLI, so /resume, /mcp and the rest work as they do in a terminal
+
+## 0.9.0 — 2026-11-09
+
+### New features
+
+- Each agent's console has a CLI tab: the agent's own interactive command, with /mcp, slash commands and everything else it offers, continuing the conversation Odin already has with it
+
+### UI/UX
+
+- The console's tabs no longer touch the edge of their box
+
+## 0.8.1 — 2026-11-09
+
+### Quality of life
+
+- opencode is read from its event stream: tool calls, thinking and answers show up cleanly, and its edits reach the ledger
+- opencode carries its conversation from one question to the next, and across a window reload
+
+### Bug fixes
+
+- A failed opencode turn says why instead of showing nothing
+- The build compiles the libraries first, and leaves the command line runnable
+
+## 0.8.0 — 2026-11-09
+
+### New features
+
+- Pictures and videos in remarks and feedback upload the way GitHub's own CLI does: they render inline like a browser upload, with no attachment branches or forks left behind
+
+### Quality of life
+
+- The GitHub CLI setup also updates an outdated gh, installing only from sources that ship current releases
+
+### Bug fixes
+
+- Sending feedback without write access to the Odin repository still opens the issue, and says which files to add on the page
+
+## 0.7.5 — 2026-11-09
+
+### Bug fixes
+
+- Migrations, and other files that only point at something far along the graph, sit in the column beside it instead of the first column
+
+## 0.7.4 — 2026-11-09
+
+- Maintenance release.
+
+## 0.7.3 — 2026-11-09
+
+### Quality of life
+
+- Every release says what changed, grouped into new features, UI/UX, quality of life and bug fixes, on GitHub, the VS Code Marketplace and Open VSX
+
 ## 0.7.2 — 2026-11-09
 
 - Maintenance release.
