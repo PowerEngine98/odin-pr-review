@@ -13,6 +13,7 @@ import {
   mergeBase,
   repoRoot,
   resolveBaseRef,
+  followedBase,
   revParse,
   type GitOptions,
 } from "./exec.js";
@@ -216,9 +217,11 @@ export async function readPatch(req: DiffRequest): Promise<{
     }
   }
   const wanted =
-    req.baseRef ??
-    (pull?.baseRefName ? pull.baseRefName : undefined) ??
-    req.fallbackBaseRef;
+    req.baseRef && pull?.baseRefName
+      ? await followedBase(req.baseRef, pull.baseRefName, req)
+      : req.baseRef ??
+        (pull?.baseRefName ? pull.baseRefName : undefined) ??
+        req.fallbackBaseRef;
 
   /*
    * And which copy of it.
