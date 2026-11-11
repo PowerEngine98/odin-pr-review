@@ -82,6 +82,39 @@ export async function refExists(
 }
 
 /** The default branch the origin remote points at, e.g. `origin/main`. */
+async function remotesOf(options: GitOptions): Promise<string[]> {
+  try {
+    return (await git(["remote"], options))
+      .split("\n")
+      .map((one) => one.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+export async function isRemoteRef(ref: string, options: GitOptions): Promise<boolean> {
+  if (ref.startsWith("refs/")) return true;
+  const remotes = await remotesOf(options);
+  return remotes.some((remote) => ref.startsWith(`${remote}/`));
+}
+
+export function branchOf(ref: string): string {
+  return ref.startsWith("origin/") ? ref.slice("origin/".length) : ref;
+}
+
+export async function followedBase(
+  pinned: string,
+  current: string,
+  options: GitOptions,
+): Promise<string> {
+  const name = branchOf(pinned);
+  if (name === current || !looksLikeBranch(name)) return pinned;
+  if (await refExists(`origin/${name}`, options)) return pinned;
+  const there = (await refExists(`origin/${current}`, options)) || (await refExists(current, options));
+  return there ? current : pinned;
+}
+
 export async function remoteDefaultBranch(
   options: GitOptions,
 ): Promise<string | undefined> {
@@ -170,7 +203,7 @@ export async function sided(
   prefer: BaseSide,
 ): Promise<string> {
   // Already says which side it means, or is not a branch at all.
-  if (ref.includes("/") || !looksLikeBranch(ref)) return ref;
+  if (!looksLikeBranch(ref) || (await isRemoteRef(ref, options))) return ref;
 
   const remote = `origin/${ref}`;
   const [hasRemote, hasLocal] = await Promise.all([
@@ -220,7 +253,7 @@ export async function resolveBaseRef(
     // A worktree may only carry the remote-tracking copy of the branch. Only
     // for something that is a branch: `origin/HEAD~4` resolves in most
     // repositories and means something else entirely.
-    if (!preferred.includes("/") && looksLikeBranch(preferred)) {
+    if (looksLikeBranch(preferred) && !(await isRemoteRef(preferred, options))) {
       add(`origin/${preferred}`);
     }
   }
