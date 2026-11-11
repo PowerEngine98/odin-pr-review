@@ -298,6 +298,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // reading was left in, not the one the tab beside it was.
     folded.open(repo, graph.meta.baseRef, graph.meta.headRef, graph.meta.worktree);
     sidebar.setGraph(graph);
+    sidebar.setPart(GraphPanel.activePart());
   };
 
   // A reading nobody is looking at should not go on being rebuilt.
@@ -2070,7 +2071,7 @@ async function present(
       folded,
     );
     if (took) {
-      sidebar.setGraph(graph);
+      if (GraphPanel.inFront(graph, repo, where)) sidebar.setGraph(graph);
       void markFresh(graph, repo, where);
       return;
     }
