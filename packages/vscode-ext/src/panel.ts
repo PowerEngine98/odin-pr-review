@@ -2258,6 +2258,19 @@ export class GraphPanel {
    */
   static onPart: ((paths: string[] | undefined) => void) | undefined;
 
+  private partShown: string[] | undefined;
+
+  static activePart(): string[] | undefined {
+    return GraphPanel.active?.partShown;
+  }
+
+  static inFront(graph: ChangeGraph, repo: string, where?: string): boolean {
+    const panel =
+      (where ? GraphPanel.open.get(where) : undefined) ??
+      GraphPanel.open.get(readingKey(graph, repo));
+    return !panel || panel === GraphPanel.active;
+  }
+
   /**
    * Told which file the reader has come to rest over, as they move about.
    *
@@ -3354,7 +3367,8 @@ export class GraphPanel {
     }
     try {
       if (message.type === "part") {
-        GraphPanel.onPart?.(message.payload.paths ?? undefined);
+        this.partShown = message.payload.paths ?? undefined;
+        if (GraphPanel.active === this) GraphPanel.onPart?.(this.partShown);
         return;
       }
       if (message.type === "here") {
