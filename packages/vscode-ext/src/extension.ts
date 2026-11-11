@@ -56,6 +56,7 @@ import { FoldedStore } from "./folded.js";
 import { TourStore } from "./tour.js";
 import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
+import { HANDOFF, handoffFor } from "./handoff.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
 function isDark(): boolean {
@@ -261,6 +262,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Per workspace, unlike the settings above: a conversation with an agent is
   // about this repository's code and belongs nowhere else.
   GraphPanel.store = context.workspaceState;
+  shared = context.globalState;
   // Where the stub Claude spawns lives. A path rather than anything imported:
   // it runs as a child of a tool we do not control, in that tool's environment.
   // Guarded, like every other call here that reaches for an editor API during
@@ -586,6 +588,7 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     }),
   );
+  void takeHandoff();
 }
 
 /**
@@ -1253,6 +1256,7 @@ async function checkout(
       go,
     );
     if (answer === go) {
+      await shared?.update(HANDOFF, { path: elsewhere, number, live: !draw, at: Date.now() });
       await vscode.commands.executeCommand(
         "vscode.openFolder",
         vscode.Uri.file(elsewhere),
@@ -1317,6 +1321,18 @@ async function checkout(
  * wandered from the forge's. What it does not do is decide what to read
  * afterwards, and after a deliberate checkout the answer is the files on disk.
  */
+let shared: vscode.Memento | undefined;
+
+async function takeHandoff(): Promise<void> {
+  const folders = (vscode.workspace.workspaceFolders ?? []).map((one) => one.uri.fsPath);
+  const handoff = handoffFor(shared?.get(HANDOFF), folders, Date.now());
+  if (!handoff) return;
+  await shared?.update(HANDOFF, undefined);
+  await refreshPullRequests().catch(() => undefined);
+  if (handoff.live) await checkoutLocal(handoff.number);
+  else await checkout(handoff.number);
+}
+
 async function checkoutLocal(number: number): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
