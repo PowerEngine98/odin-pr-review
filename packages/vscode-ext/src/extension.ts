@@ -371,7 +371,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // A different question for the forge: which pull requests, and whose.
     vscode.commands.registerCommand(
       "odin.askForPulls",
-      (query: { state: typeof asked.state; author: string }) => {
+      (query: { state: typeof asked.state; author: string; search?: string }) => {
         asked = query;
         return refreshPullRequests();
       },
@@ -756,7 +756,7 @@ async function handleUri(uri: vscode.Uri): Promise<void> {
  * already landed is read for a different reason — to see how something came to
  * be the way it is — and that is a question worth being able to ask.
  */
-let asked: { state: "open" | "merged" | "closed" | "all"; author: string } = {
+let asked: { state: "open" | "merged" | "closed" | "all"; author: string; search?: string } = {
   state: "open",
   author: "",
 };
@@ -778,6 +778,7 @@ async function refreshPullRequests(): Promise<void> {
         cwd: repo,
         state: asked.state,
         ...(asked.author ? { author: asked.author } : {}),
+        ...(asked.search ? { search: asked.search } : {}),
       }),
       currentBranch({ cwd: repo }),
       // Who is reading, so the list can lead with what is waiting on them.

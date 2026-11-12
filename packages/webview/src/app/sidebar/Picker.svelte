@@ -16,7 +16,7 @@
   import Asked from "./Asked.svelte";
   import type { PickerView, PullView } from "./model.js";
   import Pull from "./Pull.svelte";
-  import { notify, remember, remembered } from "./state.svelte.js";
+  import { ask, notify, remember, remembered } from "./state.svelte.js";
 
   let { picker }: { picker: PickerView } = $props();
 
@@ -42,8 +42,19 @@
   }
 
   /** A row matches on its number, its title, its branch and its author. */
+  let searching: ReturnType<typeof setTimeout> | undefined;
+
+  function find(value: string): void {
+    needle = value;
+    clearTimeout(searching);
+    searching = setTimeout(() => {
+      if ((picker.asked.search ?? "") !== needle) ask({ search: needle });
+    }, 600);
+  }
+
   const matches = (pull: PullView): boolean =>
     needle === "" ||
+    (picker.asked.search ?? "") === needle ||
     `${pull.pr.number} ${pull.pr.title} ${pull.pr.branch} ${pull.pr.author}`
       .toLowerCase()
       .includes(needle);
@@ -61,7 +72,7 @@
       type="search"
       autocomplete="off"
       placeholder="Filter pull requests"
-      oninput={(event) => (needle = event.currentTarget.value.trim().toLowerCase())}
+      oninput={(event) => find(event.currentTarget.value.trim().toLowerCase())}
     />
     <button
       class="funnel"

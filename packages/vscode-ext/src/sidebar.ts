@@ -130,6 +130,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       number?: number;
       state?: string;
       author?: string;
+      search?: string;
       where?: string;
     }) => {
       if (message.type === "open" && message.path) {
@@ -188,6 +189,7 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
         this.asked = {
           state: (message.state ?? this.asked.state) as Query["state"],
           author: message.author ?? this.asked.author,
+          search: message.search ?? this.asked.search ?? "",
         };
         this.render();
         void vscode.commands.executeCommand("odin.askForPulls", this.asked);

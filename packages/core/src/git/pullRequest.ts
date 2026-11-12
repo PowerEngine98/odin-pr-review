@@ -189,6 +189,15 @@ export type PullRequestState = "open" | "merged" | "closed" | "all";
  * reshuffle them under the reader between one refresh and the next.
  */
 export async function listPullRequests(
+  options: Parameters<typeof listOnce>[0],
+): Promise<PullRequestSummary[] | undefined> {
+  if (!options.author) return listOnce(options);
+  const whole = await listOnce({ ...options, forgeAuthor: true });
+  if (whole && whole.length > 0) return whole;
+  return listOnce(options);
+}
+
+async function listOnce(
   options: GitOptions & {
     timeoutMs?: number;
     limit?: number;
@@ -204,19 +213,24 @@ export async function listPullRequests(
      * Matched here rather than by the forge, which takes a whole login and
      * nothing else: typing the first few letters of a name is how a reader
      * looks for somebody, and `--author 5erg` finds nothing at all while
-     * `5ergio` is right there in the list.
+     * `5ergio` is right there in the list. A whole login is asked of the
+     * forge first, which searches every pull request rather than the newest.
      */
     author?: string;
+    forgeAuthor?: boolean;
+    search?: string;
   },
 ): Promise<PullRequestSummary[] | undefined> {
   const json = await run(
     [
       "pr", "list",
       "--state", options.state ?? "open",
+      ...(options.forgeAuthor && options.author ? ["--author", options.author] : []),
+      ...(options.search ? ["--search", options.search] : []),
       // Asking for more when a name is being matched here: the forge's own
       // limit applies before the narrowing, so a small page of everything can
       // easily hold nothing of theirs.
-      "--limit", String(options.limit ?? (options.author ? 200 : 50)),
+      "--limit", String(options.limit ?? (options.author && !options.forgeAuthor ? 200 : 50)),
       "--json",
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
         "reviewDecision,reviewRequests,state,mergedAt,closedAt,baseRefName,mergeCommit",
