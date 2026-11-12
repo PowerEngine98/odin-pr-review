@@ -7,6 +7,7 @@
   --line: #30363d;
   --hover: #161b22;
   --accent: #4493f8;
+  --danger: #f85149;
 }
 
 :root[data-theme="light"] {
@@ -18,6 +19,7 @@
   --line: #d1d9e0;
   --hover: #eef1f4;
   --accent: #0969da;
+  --danger: #d1242f;
 }
 
 html,
@@ -410,4 +412,15 @@ body.resizing iframe {
 .features .choice span strong {
   color: var(--fg);
   font-weight: 600;
+}
+
+.go-live-failed[hidden] {
+  display: none;
+}
+
+.go-live-failed {
+  display: block;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.4;
 }

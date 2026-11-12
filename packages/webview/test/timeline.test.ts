@@ -67,10 +67,18 @@ describe("seeking", () => {
 describe("the spoken word", () => {
   const text = "Pressing save calls this.";
 
+  const words = (runs: ReturnType<typeof spokenRuns>) => runs.filter((run) => run.text.trim());
+
   it("marks the word the offset falls in", () => {
     const runs = spokenRuns(text, 10);
-    expect(runs.map((run) => run.state)).toEqual(["said", "now", "ahead", "ahead"]);
-    expect(runs[1]!.text.trim()).toBe("save");
+    expect(words(runs).map((run) => run.state)).toEqual(["said", "now", "ahead", "ahead"]);
+    expect(words(runs)[1]!.text.trim()).toBe("save");
+  });
+
+  it("boxes the word alone, never the space after it", () => {
+    const now = spokenRuns("In the API, pricing", 0).filter((run) => run.state === "now");
+    expect(now.map((run) => run.text)).toEqual(["In"]);
+    expect(spokenRuns(text, 10).find((run) => run.state === "now")!.text).toBe("save");
   });
 
   it("gives back the text when joined", () => {
@@ -78,7 +86,7 @@ describe("the spoken word", () => {
   });
 
   it("marks the next word when the offset is on a space", () => {
-    expect(spokenRuns(text, 8).map((run) => run.state)).toEqual(["said", "now", "ahead", "ahead"]);
+    expect(words(spokenRuns(text, 8)).map((run) => run.state)).toEqual(["said", "now", "ahead", "ahead"]);
   });
 
   it("has said everything at the end", () => {

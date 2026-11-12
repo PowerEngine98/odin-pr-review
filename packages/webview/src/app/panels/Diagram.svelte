@@ -93,21 +93,17 @@
 
   /** Whether this page has a renderer to fetch at all. */
   export function drawable(): boolean {
-    return typeof (model.current as { mermaid?: string }).mermaid === "string";
+    return preloaded() || typeof (model.current as { mermaid?: string }).mermaid === "string";
+  }
+
+  function preloaded(): boolean {
+    return typeof (window as unknown as { mermaid?: unknown }).mermaid === "object";
   }
 
   function load(): Promise<Mermaid | null> {
     if (loading) return loading;
     loading = new Promise<Mermaid | null>((settle) => {
-      const from = (model.current as { mermaid?: string }).mermaid;
-      if (!from) {
-        settle(null);
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = from;
-      script.onload = () => {
+      const ready = () => {
         const found = (window as unknown as { mermaid?: Mermaid }).mermaid;
         if (!found) {
           settle(null);
@@ -158,6 +154,18 @@
       };
       // A renderer that will not load is a code block, which is what this was
       // before and is still perfectly readable.
+      if (preloaded()) {
+        ready();
+        return;
+      }
+      const from = (model.current as { mermaid?: string }).mermaid;
+      if (!from) {
+        settle(null);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = from;
+      script.onload = ready;
       script.onerror = () => settle(null);
       document.head.appendChild(script);
     });
@@ -467,6 +475,10 @@
   .diagram :global(svg) {
     max-width: 100%;
     height: auto;
+  }
+
+  .diagram-source .lang {
+    display: block;
   }
 
   .diagram-source {

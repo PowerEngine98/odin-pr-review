@@ -52,8 +52,9 @@ export interface Spoken {
  * A subtitle cut at the word being spoken.
  *
  * `spokenTo` is a character offset into the text: the word that contains it,
- * or the next word when it falls on a space, is the one being said. Whitespace
- * travels with the word before it, so joining the runs gives back the text.
+ * or the next word when it falls on a space, is the one being said. Words and
+ * the whitespace between them are separate runs, so only the word is boxed, and
+ * joining the runs gives back the text.
  * At or past the end, everything has been said.
  */
 export function spokenRuns(text: string, spokenTo: number): Spoken[] {
@@ -74,7 +75,10 @@ export function spokenRuns(text: string, spokenTo: number): Spoken[] {
       state = "now";
       found = true;
     } else state = "said";
-    runs.push({ text: match[0], state });
+    const word = match[0].slice(0, end - start);
+    const gap = match[0].slice(end - start);
+    runs.push({ text: word, state });
+    if (gap) runs.push({ text: gap, state: state === "now" ? "said" : state });
   }
   return runs;
 }

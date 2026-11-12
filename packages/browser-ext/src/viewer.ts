@@ -34,6 +34,7 @@ const sideTitle = document.getElementById("side-title")!;
 const goLive = document.getElementById("go-live")!;
 const goLiveButton = document.getElementById("go-live-button") as HTMLButtonElement;
 const goLiveBranch = document.getElementById("go-live-branch")!;
+const goLiveFailed = document.getElementById("go-live-failed")!;
 const enable = document.getElementById("enable") as HTMLButtonElement;
 const enableLabel = document.getElementById("enable-label")!;
 const link = document.getElementById("link")!;
@@ -184,11 +185,16 @@ function ready(frame: HTMLIFrameElement): Promise<void> {
   });
 }
 
+let renderer: string | undefined;
+
 async function show(frame: HTMLIFrameElement, html: string, hosted: boolean) {
   const loaded = ready(frame);
   frame.src = "page.html";
   await loaded;
-  frame.contentWindow!.postMessage({ odinPage: html, saved: await savedPage(), hosted }, "*");
+  frame.contentWindow!.postMessage(
+    { odinPage: html, saved: await savedPage(), hosted, ...(hosted && renderer ? { renderer } : {}) },
+    "*",
+  );
   frame.hidden = false;
 }
 
@@ -304,6 +310,7 @@ function closeRemote() {
 goLiveButton.addEventListener("click", () => {
   if (!remote) return;
   goLiveButton.disabled = true;
+  goLiveFailed.hidden = true;
   goLiveButton.textContent = "Going live in VS Code…";
   remote.post({ odinGoLive: true });
 });
@@ -346,12 +353,22 @@ async function openInVsCode(number: number, quiet = false): Promise<boolean> {
       },
       reading: ({ live, branch }) => {
         goLive.hidden = live || !branch;
+        goLiveFailed.hidden = true;
         goLiveBranch.textContent = branch;
         goLiveButton.replaceChildren("Go live in: ", goLiveBranch);
         goLiveButton.disabled = false;
       },
       wentLive: () => {
         void openPull(number);
+      },
+      renderer: (source) => {
+        renderer = source;
+      },
+      goLiveFailed: (message) => {
+        goLiveButton.replaceChildren("Go live in: ", goLiveBranch);
+        goLiveButton.disabled = false;
+        goLiveFailed.textContent = message;
+        goLiveFailed.hidden = false;
       },
       html: (html) => {
         drawn = true;
