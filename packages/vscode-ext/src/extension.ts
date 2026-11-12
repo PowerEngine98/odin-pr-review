@@ -56,7 +56,7 @@ import { FoldedStore } from "./folded.js";
 import { TourStore } from "./tour.js";
 import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
-import { HANDOFF, handoffFor } from "./handoff.js";
+import { claimHandoff, leaveHandoff } from "./handoff.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
 function isDark(): boolean {
@@ -263,7 +263,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Per workspace, unlike the settings above: a conversation with an agent is
   // about this repository's code and belongs nowhere else.
   GraphPanel.store = context.workspaceState;
-  shared = context.globalState;
+  handoffs = context.globalStorageUri?.fsPath ?? "";
   // Where the stub Claude spawns lives. A path rather than anything imported:
   // it runs as a child of a tool we do not control, in that tool's environment.
   // Guarded, like every other call here that reaches for an editor API during
@@ -371,7 +371,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // A different question for the forge: which pull requests, and whose.
     vscode.commands.registerCommand(
       "odin.askForPulls",
-      (query: { state: typeof asked.state; author: string }) => {
+      (query: { state: typeof asked.state; author: string; search?: string }) => {
         asked = query;
         return refreshPullRequests();
       },
@@ -471,7 +471,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // being broken rather than like a missing API.
     typeof vscode.window.onDidChangeWindowState === "function"
       ? vscode.window.onDidChangeWindowState((window) => {
-          if (window.focused) void refreshStale();
+          if (!window.focused) return;
+          void refreshStale();
+          void takeHandoff();
         })
       : new vscode.Disposable(() => {}),
     vscode.commands.registerCommand("odin.reviewAgainst", () => reviewAgainst()),
@@ -754,7 +756,7 @@ async function handleUri(uri: vscode.Uri): Promise<void> {
  * already landed is read for a different reason — to see how something came to
  * be the way it is — and that is a question worth being able to ask.
  */
-let asked: { state: "open" | "merged" | "closed" | "all"; author: string } = {
+let asked: { state: "open" | "merged" | "closed" | "all"; author: string; search?: string } = {
   state: "open",
   author: "",
 };
@@ -776,6 +778,7 @@ async function refreshPullRequests(): Promise<void> {
         cwd: repo,
         state: asked.state,
         ...(asked.author ? { author: asked.author } : {}),
+        ...(asked.search ? { search: asked.search } : {}),
       }),
       currentBranch({ cwd: repo }),
       // Who is reading, so the list can lead with what is waiting on them.
@@ -1258,7 +1261,7 @@ async function checkout(
       go,
     );
     if (answer === go) {
-      await shared?.update(HANDOFF, { path: elsewhere, number, live: !draw, at: Date.now() });
+      if (handoffs) leaveHandoff(handoffs, { path: elsewhere, number, live: !draw, at: Date.now() });
       await vscode.commands.executeCommand(
         "vscode.openFolder",
         vscode.Uri.file(elsewhere),
@@ -1323,13 +1326,13 @@ async function checkout(
  * wandered from the forge's. What it does not do is decide what to read
  * afterwards, and after a deliberate checkout the answer is the files on disk.
  */
-let shared: vscode.Memento | undefined;
+let handoffs = "";
 
 async function takeHandoff(): Promise<void> {
+  if (!handoffs) return;
   const folders = (vscode.workspace.workspaceFolders ?? []).map((one) => one.uri.fsPath);
-  const handoff = handoffFor(shared?.get(HANDOFF), folders, Date.now());
+  const handoff = claimHandoff(handoffs, folders, Date.now());
   if (!handoff) return;
-  await shared?.update(HANDOFF, undefined);
   await refreshPullRequests().catch(() => undefined);
   if (handoff.live) await checkoutLocal(handoff.number);
   else await checkout(handoff.number);

@@ -26,6 +26,13 @@ export interface BridgeBackend {
   graph(owner: string, repo: string, number: number, base: string): Promise<Served>;
   session?(owner: string, repo: string, number: number, base: string, sink: Sink, head?: string): Promise<Session>;
   github?(path: string, accept: "json" | "diff"): Promise<{ status: number; body: string }>;
+  pulls?(owner: string, repo: string, query: PullQuery): Promise<{ pulls: unknown[]; viewer: string }>;
+}
+
+export interface PullQuery {
+  state: "open" | "merged" | "closed" | "all";
+  author: string;
+  search: string;
 }
 
 export const GITHUB_READS = /^\/(user|repos\/(?!\.\.?\/)[\w.-]+\/(?!\.\.?\/)[\w.-]+\/pulls(\/\d+)?)(\?[\w=&%.-]*)?$/;
@@ -198,6 +205,27 @@ export async function handle(
       send(response, 502, { message: (error as Error).message }, origin);
     }
     return;
+  }
+  if (url.pathname === "/odin/pulls") {
+    const state = url.searchParams.get("state") ?? "open";
+    const author = url.searchParams.get("author") ?? "";
+    const search = url.searchParams.get("search") ?? "";
+    const states = ["open", "merged", "closed", "all"];
+    if (!name.test(owner) || !name.test(repo) || !states.includes(state) || !/^[\w-]*$/.test(author) || search.length > 200) {
+      return send(response, 400, { error: "Bad request" }, origin);
+    }
+    if (!backend.pulls) return send(response, 404, { error: "Not found" }, origin);
+    try {
+      return send(
+        response,
+        200,
+        await backend.pulls(owner, repo, { state: state as PullQuery["state"], author, search }),
+        origin,
+      );
+    } catch (error) {
+      if (error instanceof NotHere) return send(response, 404, { error: error.message }, origin);
+      return send(response, 500, { error: (error as Error).message }, origin);
+    }
   }
   if (url.pathname === "/odin/graph") {
     const number = Number(url.searchParams.get("number") ?? "");

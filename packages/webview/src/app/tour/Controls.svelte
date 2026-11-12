@@ -10,6 +10,8 @@
   sit along the bottom can stand on it instead of over it.
 -->
 <script lang="ts">
+  import { voiceStatus } from "../hud/voiceStatus.svelte.js";
+  import { wakeAudio } from "../hud/voices.js";
   import { clock, topicSeconds } from "@odin/core/tour/tour.js";
 
   import { leaveTour, next, previous, seek, toggle } from "./player.svelte.js";
@@ -160,6 +162,17 @@
           <span class="which">{tour.topic + 1} of {topics.length}</span>
           {topic.title}
         </span>
+        {#if voiceStatus.blocked}
+          <button
+            class="voice-note"
+            title="This page has not been clicked yet, so it may not play Kokoro's audio; the browser voice reads until it can"
+            onclick={wakeAudio}
+          >
+            Kokoro is ready — click to switch from the browser voice
+          </button>
+        {:else if voiceStatus.warming}
+          <span class="voice-note" role="status">Kokoro is warming up…</span>
+        {/if}
       </div>
     </div>
 
@@ -212,6 +225,19 @@
     border-radius: 999px;
     cursor: pointer;
   }
+  .voice-note {
+    margin-left: auto;
+    padding: 1px 8px;
+    font: inherit;
+    font-size: 0.9em;
+    color: var(--status-renamed);
+    background: color-mix(in srgb, var(--status-renamed) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--status-renamed) 45%, transparent);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  button.voice-note { cursor: pointer; }
+  button.voice-note:hover { background: color-mix(in srgb, var(--status-renamed) 22%, transparent); }
   .discuss:hover { background: color-mix(in srgb, var(--status-renamed) 22%, transparent); }
 
   .buttons {

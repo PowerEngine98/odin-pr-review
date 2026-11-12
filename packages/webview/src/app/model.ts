@@ -411,6 +411,8 @@ export interface ReaderSettings {
   clusters: boolean;
   /** Read `Main.kt` as "Main dot kt" rather than as "Main". */
   narrateExtensions: boolean;
+  /** Read the folders of a path, rather than only its file name. */
+  narrateFolders: boolean;
   /** Read each new block of an answer aloud as it arrives. */
   autoNarrate: boolean;
   /** Read aloud with the operating system's voice rather than the browser's. */

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { pullQuery } from "@odin/core";
+
 import { GitHubError, listPulls, placeOf, readPull, stateOf, type PullJson } from "../src/github.js";
 
 function pull(number: number, extra: Partial<PullJson> = {}): PullJson {
@@ -96,3 +98,50 @@ describe("reading GitHub", () => {
     expect(stateOf(pull(1))).toBe("OPEN");
   });
 });
+
+describe("listing pull requests in a repository with many contributors", () => {
+  const place = { owner: "acme", repo: "shop" };
+  const found = (number: number, login: string) => ({
+    number,
+    title: `t${number}`,
+    html_url: `https://github.com/acme/shop/pull/${number}`,
+    state: "open",
+    user: { login },
+    pull_request: { merged_at: null },
+  });
+
+  it("asks GitHub's search for an author's pull requests, however old", async () => {
+    const seen: string[] = [];
+    const fetcher = (async (input: string | URL | Request) => {
+      seen.push(String(input));
+      return new Response(JSON.stringify({ items: [found(4, "marco")] }));
+    }) as typeof fetch;
+    const pulls = await listPulls(place, { fetch: fetcher }, { state: "open", author: "marco" });
+    expect(pulls.map((one) => one.number)).toEqual([4]);
+    expect(decodeURIComponent(seen[0]!)).toContain("/search/issues?q=repo:acme/shop is:pr is:open author:marco sort:updated-desc");
+  });
+
+  it("asks the same question VS Code asks, with the repository in front", async () => {
+    const seen: string[] = [];
+    const fetcher = (async (input: string | URL | Request) => {
+      seen.push(decodeURIComponent(String(input)));
+      return new Response(JSON.stringify({ items: [found(5, "ada")] }));
+    }) as typeof fetch;
+    await listPulls(place, { fetch: fetcher }, { state: "merged", author: "", search: "pricing" });
+    expect(seen[0]).toContain(`q=repo:acme/shop ${pullQuery({ state: "merged", author: "", search: "pricing" })}`);
+  });
+
+  it("falls back to part of a login among the newest when the search finds no such author", async () => {
+    const seen: string[] = [];
+    const fetcher = (async (input: string | URL | Request) => {
+      const url = String(input);
+      seen.push(url);
+      if (url.includes("/search/issues")) return new Response(JSON.stringify({ items: [] }));
+      return new Response(JSON.stringify([pull(1), { ...pull(2), user: { login: "marcos" } }]));
+    }) as typeof fetch;
+    const pulls = await listPulls(place, { fetch: fetcher }, { state: "open", author: "marc" });
+    expect(pulls.map((one) => one.number)).toEqual([2]);
+    expect(seen[1]).toContain("/repos/acme/shop/pulls?");
+  });
+});
+

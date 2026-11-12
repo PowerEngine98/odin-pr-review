@@ -19,6 +19,7 @@
  */
 
 import { host, notify, settings } from "../state.svelte.js";
+import { voiceStatus } from "./voiceStatus.svelte.js";
 
 /** Starts of words in a spoken text, by character. */
 type OnWord = (index: number) => void;
@@ -53,9 +54,30 @@ let waking = false;
 function wakeOnTouch(): void {
   if (waking || typeof window === "undefined") return;
   waking = true;
-  const wake = () => void context?.resume();
+  const wake = () => {
+    if (!kokoro()) return;
+    void audioContext().resume();
+  };
   window.addEventListener("pointerdown", wake, { capture: true });
   window.addEventListener("keydown", wake, { capture: true });
+}
+
+function audioContext(): AudioContext {
+  if (context) return context;
+  const made = new AudioContext();
+  made.onstatechange = () => {
+    if (made.state === "running") voiceStatus.blocked = false;
+  };
+  context = made;
+  return made;
+}
+
+export function wakeAudio(): void {
+  void audioContext()
+    .resume()
+    .then(() => {
+      if (context?.state === "running") voiceStatus.blocked = false;
+    });
 }
 
 function listen(): void {
@@ -119,7 +141,12 @@ export function utter(text: string, onWord: OnWord, done: () => void): void {
     return;
   }
   const mine = turn;
+  const slow = setTimeout(() => {
+    voiceStatus.warming = true;
+  }, 300);
   void render(text).then((buffer) => {
+    clearTimeout(slow);
+    voiceStatus.warming = false;
     rendered.delete(text);
     if (mine !== turn) return;
     if (buffer) play(buffer, text, onWord, done);
@@ -129,6 +156,7 @@ export function utter(text: string, onWord: OnWord, done: () => void): void {
 
 export function silence(): void {
   turn++;
+  voiceStatus.warming = false;
   waiting.clear();
   rendered.clear();
   stopFollowing();
@@ -159,9 +187,8 @@ function render(text: string): Promise<AudioBuffer | null> {
     async (base64) => {
       if (!base64) return null;
       try {
-        context ??= new AudioContext();
         const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-        return await context.decodeAudioData(bytes.buffer);
+        return await audioContext().decodeAudioData(bytes.buffer);
       } catch {
         return null;
       }
@@ -173,8 +200,7 @@ function render(text: string): Promise<AudioBuffer | null> {
 }
 
 function play(buffer: AudioBuffer, text: string, onWord: OnWord, done: () => void): void {
-  context ??= new AudioContext();
-  const audio = context;
+  const audio = audioContext();
   wakeOnTouch();
   void audio.resume();
   const source = audio.createBufferSource();
@@ -214,6 +240,7 @@ function play(buffer: AudioBuffer, text: string, onWord: OnWord, done: () => voi
       /* never started */
     }
     stopFollowing();
+    voiceStatus.blocked = true;
     fallBack(text, onWord, done);
   }, 400);
   guard = setTimeout(finish, (buffer.duration + 1.5) * 1000);
@@ -245,3 +272,5 @@ function stopFollowing(): void {
   for (const timer of timers) clearTimeout(timer);
   timers = [];
 }
+
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") wakeOnTouch();

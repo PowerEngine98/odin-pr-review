@@ -33,10 +33,18 @@ export function summaryOf(pull: PullJson): PullRequestSummary {
 export function pickerOf(
   pulls: PullJson[],
   viewer: string,
-  asked: { state: Asked; author: string },
+  asked: { state: Asked; author: string; search?: string },
   reached = true,
 ): PickerView {
-  const summaries = pulls.map(summaryOf);
+  return pickerOfSummaries(pulls.map(summaryOf), viewer, asked, reached);
+}
+
+export function pickerOfSummaries(
+  summaries: PullRequestSummary[],
+  viewer: string,
+  asked: { state: Asked; author: string; search?: string },
+  reached = true,
+): PickerView {
   const mine = viewer
     ? summaries.filter((pr) => (pr.requestedFrom ?? []).includes(viewer))
     : [];

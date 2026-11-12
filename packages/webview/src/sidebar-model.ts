@@ -184,4 +184,6 @@ export interface Query {
   state: "open" | "merged" | "closed" | "all";
   /** A login, or empty for anyone. */
   author: string;
+  /** Words the forge searches its pull requests for, or empty for none. */
+  search?: string;
 }

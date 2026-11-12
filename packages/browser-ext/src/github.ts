@@ -1,3 +1,4 @@
+import { findPulls } from "@odin/core";
 export interface Place {
   owner: string;
   repo: string;
@@ -100,20 +101,59 @@ export async function readPull(
 
 export type Asked = "open" | "merged" | "closed" | "all";
 
+interface FoundIssue {
+  number: number;
+  title: string;
+  html_url: string;
+  state: string;
+  draft?: boolean;
+  user?: { login: string; avatar_url?: string } | null;
+  created_at?: string;
+  updated_at?: string;
+  pull_request?: { merged_at?: string | null };
+}
+
+function fromSearch(found: FoundIssue): PullJson {
+  return {
+    number: found.number,
+    title: found.title,
+    html_url: found.html_url,
+    state: found.state,
+    ...(found.draft !== undefined ? { draft: found.draft } : {}),
+    merged_at: found.pull_request?.merged_at ?? null,
+    user: found.user ?? null,
+    ...(found.created_at ? { created_at: found.created_at } : {}),
+    ...(found.updated_at ? { updated_at: found.updated_at } : {}),
+    base: { ref: "", sha: "" },
+    head: { ref: "", sha: "" },
+  };
+}
+
 export async function listPulls(
   place: Place,
   api: Api = {},
-  asked: { state: Asked; author: string } = { state: "open", author: "" },
+  asked: { state: Asked; author: string; search?: string } = { state: "open", author: "" },
 ): Promise<PullJson[]> {
-  const state = asked.state === "merged" ? "closed" : asked.state;
-  const path = `/repos/${place.owner}/${place.repo}/pulls?state=${state}&per_page=100&sort=updated&direction=desc`;
-  const pulls = await (await call(api, path, "application/vnd.github+json")).json() as PullJson[];
-  const author = asked.author.toLowerCase();
-  return pulls.filter((pull) => {
-    if (asked.state === "merged" && !pull.merged_at) return false;
-    if (asked.state === "closed" && pull.merged_at) return false;
-    return !author || pull.user?.login.toLowerCase() === author;
+  const repo = `${place.owner}/${place.repo}`;
+  const found = await findPulls<PullJson>(asked, {
+    search: async (query) => {
+      const path = `/search/issues?q=${encodeURIComponent(`repo:${repo} ${query}`)}&per_page=50`;
+      const answer = await (await call(api, path, "application/vnd.github+json")).json() as { items?: FoundIssue[] };
+      return (answer.items ?? []).map(fromSearch);
+    },
+    recent: async (limit) => {
+      const state = asked.state === "merged" ? "closed" : asked.state;
+      const path = `/repos/${repo}/pulls?state=${state}&per_page=${Math.min(limit, 100)}&sort=updated&direction=desc`;
+      const pulls = await (await call(api, path, "application/vnd.github+json")).json() as PullJson[];
+      return pulls.filter((pull) => {
+        if (asked.state === "merged" && !pull.merged_at) return false;
+        if (asked.state === "closed" && pull.merged_at) return false;
+        return true;
+      });
+    },
+    loginOf: (pull) => pull.user?.login ?? "",
   });
+  return found ?? [];
 }
 
 export async function whoAmI(api: Api): Promise<string> {

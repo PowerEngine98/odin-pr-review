@@ -1,4 +1,4 @@
-import type { ChangeGraph, Snippet } from "@odin/core";
+import type { ChangeGraph, PullRequestSummary, Snippet } from "@odin/core";
 
 export const BRIDGE_PORTS = Array.from({ length: 10 }, (_, i) => 47920 + i);
 export const EXTENSION_ID = "powerengine98.odin-pr-review";
@@ -58,6 +58,26 @@ export async function bridgeGraph(
     throw new BridgeError(said.error ?? `VS Code answered ${response.status}.`, "failed");
   }
   return response.json() as Promise<BridgeAnswer>;
+}
+
+export async function bridgePulls(
+  port: number,
+  token: string,
+  owner: string,
+  repo: string,
+  asked: { state: string; author: string; search?: string },
+): Promise<{ pulls: PullRequestSummary[]; viewer: string }> {
+  const query = new URLSearchParams({ owner, repo, state: asked.state, author: asked.author, search: asked.search ?? "" });
+  let response: Response;
+  try {
+    response = await call(port, `/odin/pulls?${query}`, token);
+  } catch {
+    throw new BridgeError("VS Code is not answering.", "unreachable");
+  }
+  const said = await response.json().catch(() => ({})) as { error?: string; pulls?: PullRequestSummary[]; viewer?: string };
+  if (response.status === 404) throw new BridgeError(said.error ?? `${owner}/${repo} is not open in VS Code.`, "no-repository");
+  if (!response.ok) throw new BridgeError(said.error ?? `VS Code answered ${response.status}.`, "failed");
+  return { pulls: said.pulls ?? [], viewer: said.viewer ?? "" };
 }
 
 export interface Where {

@@ -1,7 +1,7 @@
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-export const HANDOFF = "odin.handoff";
+const HANDOFF_FILE = "handoff.json";
 export const HANDOFF_MS = 120_000;
 
 export interface Handoff {
@@ -27,4 +27,33 @@ export function handoffFor(held: unknown, folders: readonly string[], now: numbe
   const wanted = sameFolder(path);
   if (!folders.some((folder) => sameFolder(folder) === wanted)) return undefined;
   return { path, number, live: live === true, at };
+}
+
+export function leaveHandoff(dir: string, handoff: Handoff): void {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, HANDOFF_FILE), JSON.stringify(handoff));
+}
+
+export function claimHandoff(dir: string, folders: readonly string[], now: number): Handoff | undefined {
+  const file = join(dir, HANDOFF_FILE);
+  let held: unknown;
+  try {
+    held = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+  const handoff = handoffFor(held, folders, now);
+  if (!handoff) return undefined;
+  const claimed = `${file}.${process.pid}.${now}`;
+  try {
+    renameSync(file, claimed);
+  } catch {
+    return undefined;
+  }
+  try {
+    unlinkSync(claimed);
+  } catch {
+    return handoff;
+  }
+  return handoff;
 }
