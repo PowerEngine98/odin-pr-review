@@ -1,5 +1,131 @@
 # Changelog
 
+## 0.10.8 — 2026-11-12
+
+### New features
+
+- A narrator setting, Narrate folders in paths: off, only the file of a path is read, so /path/to/my/file.txt is read as "file dot txt"
+
+### UI/UX
+
+- The tour's controls say when Kokoro is warming up, and when it is waiting for a click before it may play, with a button to switch to it
+
+### Bug fixes
+
+- Open That Folder opens the pull request's reading in that folder's window even when the window was already open
+- Kokoro reads from the first sentence instead of minutes later: its audio starts on the first click or key in the page
+- Filtering pull requests by author, Mine included, finds them in repositories with many contributors, and the filter box also searches GitHub beyond the newest pull requests, in VS Code and in the browser alike
+
+## 0.10.7 — 2026-11-12
+
+### New features
+
+- Discuss on a tour frame of a reading that is not live asks to go live first; going live opens the live reading with the tour and the frame waiting in the agent's composer
+
+### UI/UX
+
+- The word being read aloud in a tour is boxed on its own, without the space after it
+
+### Bug fixes
+
+- A diagram in a tour is framed to fill the free part of the screen instead of sitting small beside the code
+- Tour diagrams are drawn in the browser's Graph tab, using the renderer VS Code sends, instead of showing their source
+- Going live from the browser's Graph tab opens the live reading, including when the branch is already checked out in another folder; when VS Code cannot go live, the reason is shown under the button instead of the committed reading coming back
+
+## 0.10.6 — 2026-11-11
+
+### Bug fixes
+
+- The file list beside the graph always shows the files of the reading in front, and the part of it that is open, instead of being narrowed or replaced by another open reading
+
+## 0.10.5 — 2026-11-11
+
+### Bug fixes
+
+- A pull request is measured against the branch it actually merges into: base branches with a slash in their name are compared with the remote's copy, and a pull request whose base was merged and deleted follows its new base, so other people's merged work no longer shows up as part of the change
+
+## 0.10.4 — 2026-11-11
+
+### Bug fixes
+
+- Opening a pull request's checkout from another folder opens that pull request's reading in the new window, instead of an empty window
+
+## 0.10.3 — 2026-11-10
+
+### UI/UX
+
+- The Marketplace page shows the three store versions together
+
+## 0.10.2 — 2026-11-10
+
+### UI/UX
+
+- The VS Code Marketplace badge shows the version actually published, and the downloads badge says it counts Open VSX
+
+## 0.10.1 — 2026-11-10
+
+### Bug fixes
+
+- An agent's request for approval, such as leaving plan mode, always appears in its console, even when the reading's panel was replaced while it was working, instead of hanging until the turn times out
+
+## 0.10.0 — 2026-11-10
+
+### New features
+
+- Typing / in an agent's console suggests the agent's own commands (built-ins, custom commands, skills, plugins) and runs any slash command in its interactive CLI, so /resume, /mcp and the rest work as they do in a terminal
+
+## 0.9.0 — 2026-11-09
+
+### New features
+
+- Each agent's console has a CLI tab: the agent's own interactive command, with /mcp, slash commands and everything else it offers, continuing the conversation Odin already has with it
+
+### UI/UX
+
+- The console's tabs no longer touch the edge of their box
+
+## 0.8.1 — 2026-11-09
+
+### Quality of life
+
+- opencode is read from its event stream: tool calls, thinking and answers show up cleanly, and its edits reach the ledger
+- opencode carries its conversation from one question to the next, and across a window reload
+
+### Bug fixes
+
+- A failed opencode turn says why instead of showing nothing
+- The build compiles the libraries first, and leaves the command line runnable
+
+## 0.8.0 — 2026-11-09
+
+### New features
+
+- Pictures and videos in remarks and feedback upload the way GitHub's own CLI does: they render inline like a browser upload, with no attachment branches or forks left behind
+
+### Quality of life
+
+- The GitHub CLI setup also updates an outdated gh, installing only from sources that ship current releases
+
+### Bug fixes
+
+- Sending feedback without write access to the Odin repository still opens the issue, and says which files to add on the page
+
+## 0.7.5 — 2026-11-09
+
+### Bug fixes
+
+- Migrations, and other files that only point at something far along the graph, sit in the column beside it instead of the first column
+
+## 0.7.4 — 2026-11-09
+
+- Maintenance release.
+
+## 0.7.3 — 2026-11-09
+
+### Quality of life
+
+- Every release says what changed, grouped into new features, UI/UX, quality of life and bug fixes, on GitHub, the VS Code Marketplace and Open VSX
+
 ## 0.7.2 — 2026-11-09
 
 - Maintenance release.
