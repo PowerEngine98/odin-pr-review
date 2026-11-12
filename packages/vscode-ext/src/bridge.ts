@@ -52,6 +52,7 @@ export class BrowserBridge implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     private readonly present?: Presenter,
     private readonly goLive?: GoLive,
+    private readonly followers?: Set<(old: GraphPanel, next: GraphPanel) => void>,
   ) {
     this.repositories = new Repositories(join(context.globalStorageUri?.fsPath ?? "", "repositories.json"));
     this.watching = vscode.workspace.onDidChangeWorkspaceFolders?.((change) => this.recordFolders(change.added));
@@ -332,6 +333,22 @@ export class BrowserBridge implements vscode.Disposable {
     };
     let current = panel;
     let detach = current.attach(mirror);
+    const moveTo = (next: GraphPanel) => {
+      if (next === current) return;
+      detach();
+      current = next;
+      sink.send({ type: "graph", graph: next.changeGraph });
+      sink.send({
+        type: "reading",
+        live: next.changeGraph.meta.worktree === true,
+        branch: (next.changeGraph.meta.headRef ?? "").replace(/^origin\//, ""),
+      });
+      detach = current.attach(mirror);
+    };
+    const follow = (old: GraphPanel, next: GraphPanel) => {
+      if (old === current) moveTo(next);
+    };
+    this.followers?.add(follow);
     return {
       id: randomUUID(),
       deliver: (message) => {
@@ -341,24 +358,17 @@ export class BrowserBridge implements vscode.Disposable {
             return;
           }
           void this.serialized(() => this.goLive!(cwd, number)).then(
-            (live) => {
-              detach();
-              current = live;
-              sink.send({ type: "graph", graph: live.changeGraph });
-              sink.send({
-                type: "reading",
-                live: live.changeGraph.meta.worktree === true,
-                branch: (live.changeGraph.meta.headRef ?? "").replace(/^origin\//, ""),
-              });
-              detach = current.attach(mirror);
-            },
+            (live) => moveTo(live),
             (error: Error) => sink.send({ type: "goLiveFailed", message: `VS Code could not go live: ${error.message}` }),
           );
           return;
         }
         current.receive(message);
       },
-      close: () => detach(),
+      close: () => {
+        this.followers?.delete(follow);
+        detach();
+      },
     };
   }
 

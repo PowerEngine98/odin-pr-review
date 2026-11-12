@@ -219,7 +219,8 @@ function questionInFront(): Question | undefined {
 export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.version = String(context.extension?.packageJSON?.version ?? "");
   if (context.globalStorageUri) GraphPanel.errorLog = `${context.globalStorageUri.fsPath}/page-errors.log`;
-  const bridge = new BrowserBridge(context, presentForBrowser, liveForBrowser);
+  const bridge = new BrowserBridge(context, presentForBrowser, goLiveOn, GraphPanel.followers);
+  GraphPanel.onGoLive = (repo, number) => goLiveOn(repo, number);
   browserBridge = bridge;
   void bridge.start();
   const driver = new Driver(context.globalStorageUri?.fsPath ?? "", (step) =>
@@ -1397,7 +1398,7 @@ function liveReadingOf(repo: string, number: number): GraphPanel | undefined {
   );
 }
 
-async function liveForBrowser(repo: string, number: number): Promise<GraphPanel> {
+async function goLiveOn(repo: string, number: number): Promise<GraphPanel> {
   const pulls = (await listPullRequests({ cwd: repo }).catch(() => [])) ?? [];
   const pull = pulls.find((one) => one.number === number);
   if (!pull) throw new Error(`#${number} is not an open pull request in ${repo}.`);

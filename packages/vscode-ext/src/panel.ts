@@ -53,7 +53,7 @@ import { viewSuffix, type Fresh } from "./views.js";
 import { SettingsStore } from "./settings.js";
 import { SystemVoice } from "./voice.js";
 import type { Kokoro } from "./kokoro.js";
-import { isStale, makeTour, pickAgent, START, tourContext, type Making, type TourProgress, type TourStore } from "./tour.js";
+import { isStale, makeTour, pickAgent, START, tourContext, type Making, type SavedTour, type TourProgress, type TourStore } from "./tour.js";
 import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
 import { ghSetupState, runGhInstall, runGhSignIn, skipGhSetup } from "./ghSetup.js";
 import { CliSessions } from "./cli.js";
@@ -316,6 +316,11 @@ interface RerunMessage {
   payload: { url?: string; name?: string };
 }
 
+interface GoLiveDiscussMessage {
+  type: "goLiveDiscuss";
+  payload: { attached?: unknown };
+}
+
 /** Which part of the change the reader has opened, or all of it. */
 interface PartMessage {
   type: "part";
@@ -405,6 +410,7 @@ type Message =
   | TourModeMessage
   | TourReviseMessage
   | PartMessage
+  | GoLiveDiscussMessage
   | HereMessage
   | NavigateMessage
   | OpenMessage
@@ -707,6 +713,8 @@ export class GraphPanel {
        * registry entry goes, because there is only one reading in that frame
        * now; the frame stays, because it is the one they are looking at.
        */
+      const next = GraphPanel.open.get(arrived);
+      if (next) for (const follow of GraphPanel.followers) follow(old, next);
       if (old.panel === here) {
         GraphPanel.open.delete(key);
         continue;
@@ -1597,6 +1605,50 @@ export class GraphPanel {
   private tourNote = "";
 
   /** What this reading's tour is filed under: the same change as its conversation. */
+  static onGoLive: ((repo: string, number: number) => Promise<unknown>) | undefined;
+
+  static readonly followers = new Set<(old: GraphPanel, next: GraphPanel) => void>();
+
+  private static readonly pendingDiscuss = new Map<string, { attached: unknown; saved?: SavedTour; at: number }>();
+
+  private static discussKey(graph: ChangeGraph): string | undefined {
+    const pull = graph.meta.pullRequest;
+    if (!pull) return undefined;
+    return pull.url || `#${pull.number}`;
+  }
+
+  private goLiveToDiscuss(attached: unknown): void {
+    const number = this.graph.meta.pullRequest?.number;
+    const key = GraphPanel.discussKey(this.graph);
+    const failed = (why: string) =>
+      void this.panel.webview.postMessage({ type: "goLiveFailed", message: why });
+    if (number === undefined || !key) {
+      failed("This reading is not of a pull request, so there is no branch to go live on.");
+      return;
+    }
+    if (!GraphPanel.onGoLive) {
+      failed("This window cannot go live.");
+      return;
+    }
+    const saved = GraphPanel.tours?.read(this.tourKey());
+    GraphPanel.pendingDiscuss.set(key, { attached, ...(saved ? { saved } : {}), at: Date.now() });
+    GraphPanel.onGoLive(this.repo, number).catch((error: Error) => {
+      GraphPanel.pendingDiscuss.delete(key);
+      failed(`VS Code could not go live: ${error.message}`);
+    });
+  }
+
+  private takeDiscuss(): unknown {
+    if (this.graph.meta.worktree !== true) return undefined;
+    const key = GraphPanel.discussKey(this.graph);
+    const held = key ? GraphPanel.pendingDiscuss.get(key) : undefined;
+    if (!key || !held) return undefined;
+    GraphPanel.pendingDiscuss.delete(key);
+    if (Date.now() - held.at > 120_000) return undefined;
+    if (held.saved && !GraphPanel.tours?.read(this.tourKey())) GraphPanel.tours?.write(this.tourKey(), held.saved);
+    return held.attached;
+  }
+
   private tourKey(): string {
     return conversationKey({
       repo: this.repo,
@@ -3276,7 +3328,11 @@ export class GraphPanel {
 
     // Marks made in an earlier session are restored once the page is up.
     const marked = this.viewed?.all() ?? [];
-    setTimeout(() => this.deliverTour(), 0);
+    setTimeout(() => {
+      const discuss = this.takeDiscuss();
+      this.deliverTour();
+      if (discuss) void this.panel.webview.postMessage({ type: "discussPending", attached: discuss });
+    }, 0);
     if (marked.length > 0) {
       setTimeout(() => {
         void this.panel.webview.postMessage({
@@ -3366,6 +3422,10 @@ export class GraphPanel {
       return;
     }
     try {
+      if (message.type === "goLiveDiscuss") {
+        this.goLiveToDiscuss(message.payload?.attached);
+        return;
+      }
       if (message.type === "part") {
         this.partShown = message.payload.paths ?? undefined;
         if (GraphPanel.active === this) GraphPanel.onPart?.(this.partShown);
