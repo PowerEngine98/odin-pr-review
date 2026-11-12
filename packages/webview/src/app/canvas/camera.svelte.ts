@@ -16,6 +16,7 @@ import { pinBox, type Drawn } from "./drawn.js";
 import { aimFor, type Spot } from "./keys.js";
 import { heightOf, lineAt } from "./measured.svelte.js";
 import { pinHere, pinnedHere } from "./pins.js";
+import { fitWhole, type Free } from "./fit.js";
 import { place, type FolderBox, type Layout, type Placed } from "./placement.js";
 import {
   arrangementFor,
@@ -943,6 +944,21 @@ export function showAround(
  * around it. The chrome is taken off the top and a tour's player off the
  * bottom, since what is under them is not seen.
  */
+function freeSpace(rect: DOMRect): Free {
+  let left = 0;
+  const dock = document.querySelector(".left-dock")?.getBoundingClientRect();
+  if (dock && dock.width > 0 && dock.height > 0) left = Math.max(0, dock.right - rect.left);
+  return { left, top: chromeHeight(), right: rect.width, bottom: rect.height - tourRoom() };
+}
+
+export function showWhole(area: Area, margin = 48): void {
+  if (!framedIn) return;
+  const rect = framedIn.getBoundingClientRect();
+  const to = fitWhole(area, freeSpace(rect), margin, { min: MIN_SCALE, max: MAX_SCALE });
+  letGo();
+  land(to.x, to.y, to.scale);
+}
+
 export function fitScale(
   area: { width: number; height: number },
   margin = 48,

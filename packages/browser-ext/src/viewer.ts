@@ -184,11 +184,16 @@ function ready(frame: HTMLIFrameElement): Promise<void> {
   });
 }
 
+let renderer: string | undefined;
+
 async function show(frame: HTMLIFrameElement, html: string, hosted: boolean) {
   const loaded = ready(frame);
   frame.src = "page.html";
   await loaded;
-  frame.contentWindow!.postMessage({ odinPage: html, saved: await savedPage(), hosted }, "*");
+  frame.contentWindow!.postMessage(
+    { odinPage: html, saved: await savedPage(), hosted, ...(hosted && renderer ? { renderer } : {}) },
+    "*",
+  );
   frame.hidden = false;
 }
 
@@ -352,6 +357,9 @@ async function openInVsCode(number: number, quiet = false): Promise<boolean> {
       },
       wentLive: () => {
         void openPull(number);
+      },
+      renderer: (source) => {
+        renderer = source;
       },
       html: (html) => {
         drawn = true;
