@@ -50,6 +50,6 @@ describe("the sandbox and the page", () => {
     const diagram = readFileSync(join(__dirname, "../../webview/src/app/panels/Diagram.svelte"), "utf8");
     expect(diagram).toMatch(/if \(preloaded\(\)\) \{\s*ready\(\);/);
     const bridge = readFileSync(join(__dirname, "../../vscode-ext/src/bridge.ts"), "utf8");
-    expect(bridge).toMatch(/sink\.send\(\{ type: "renderer", source: renderer \}\);\s*const detach = panel\.attach/);
+    expect(bridge).toMatch(/sink\.send\(\{ type: "renderer", source: renderer \}\);[\s\S]{0,300}let detach = current\.attach\(mirror\);/);
   });
 });

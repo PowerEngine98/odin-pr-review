@@ -14,6 +14,7 @@ import type { GraphPanel } from "./panel.js";
 import { githubRepositories, Repositories } from "./repositories.js";
 
 export type Presenter = (repo: string, number: number, base: string, head?: string) => Promise<GraphPanel | undefined>;
+export type GoLive = (repo: string, number: number) => Promise<GraphPanel>;
 
 const TOKEN = "odin.browser.token";
 const ORIGIN = "odin.browser.origin";
@@ -50,6 +51,8 @@ export class BrowserBridge implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly present?: Presenter,
+    private readonly goLive?: GoLive,
+    private readonly followers?: Set<(old: GraphPanel, next: GraphPanel) => void>,
   ) {
     this.repositories = new Repositories(join(context.globalStorageUri?.fsPath ?? "", "repositories.json"));
     this.watching = vscode.workspace.onDidChangeWorkspaceFolders?.((change) => this.recordFolders(change.added));
@@ -338,23 +341,48 @@ export class BrowserBridge implements vscode.Disposable {
     });
     const renderer = this.diagramRenderer();
     if (renderer) sink.send({ type: "renderer", source: renderer });
-    const detach = panel.attach({
-      html: (html) => sink.send({ type: "html", html }),
-      message: (message) => sink.send({ type: "message", message }),
-    });
+    const mirror = {
+      html: (html: string) => sink.send({ type: "html", html }),
+      message: (message: unknown) => sink.send({ type: "message", message }),
+    };
+    let current = panel;
+    let detach = current.attach(mirror);
+    const moveTo = (next: GraphPanel) => {
+      if (next === current) return;
+      detach();
+      current = next;
+      sink.send({ type: "graph", graph: next.changeGraph });
+      sink.send({
+        type: "reading",
+        live: next.changeGraph.meta.worktree === true,
+        branch: (next.changeGraph.meta.headRef ?? "").replace(/^origin\//, ""),
+      });
+      detach = current.attach(mirror);
+    };
+    const follow = (old: GraphPanel, next: GraphPanel) => {
+      if (old === current) moveTo(next);
+    };
+    this.followers?.add(follow);
     return {
       id: randomUUID(),
       deliver: (message) => {
         if ((message as { odinGoLive?: unknown } | null)?.odinGoLive === true) {
-          void Promise.resolve(vscode.commands.executeCommand("odin.checkoutLocal", number)).then(
-            () => sink.send({ type: "wentLive" }),
-            (error: Error) => sink.send({ type: "note", message: `VS Code could not go live: ${error.message}` }),
+          if (!this.goLive) {
+            sink.send({ type: "goLiveFailed", message: "This window cannot go live." });
+            return;
+          }
+          void this.serialized(() => this.goLive!(cwd, number)).then(
+            (live) => moveTo(live),
+            (error: Error) => sink.send({ type: "goLiveFailed", message: `VS Code could not go live: ${error.message}` }),
           );
           return;
         }
-        panel.receive(message);
+        current.receive(message);
       },
-      close: detach,
+      close: () => {
+        this.followers?.delete(follow);
+        detach();
+      },
     };
   }
 
