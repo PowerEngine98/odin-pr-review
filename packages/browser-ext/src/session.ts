@@ -9,6 +9,7 @@ export interface SessionEvents {
   message(message: unknown): void;
   reading?(reading: { live: boolean; branch: string }): void;
   wentLive?(): void;
+  goLiveFailed?(message: string): void;
   ended(error?: BridgeError): void;
 }
 
@@ -56,6 +57,7 @@ export async function openSession(
     else if (event.type === "html") on.html(String(event.html ?? ""));
     else if (event.type === "message") on.message(event.message);
     else if (event.type === "wentLive") on.wentLive?.();
+    else if (event.type === "goLiveFailed") on.goLiveFailed?.(String(event.message ?? "VS Code could not go live."));
     else if (event.type === "reading") on.reading?.({ live: event.live === true, branch: String(event.branch ?? "") });
     else if (event.type === "error") {
       on.ended(new BridgeError(String(event.error ?? "VS Code could not draw this."), event.missing ? "no-repository" : "failed"));

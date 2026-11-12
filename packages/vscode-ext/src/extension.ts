@@ -219,7 +219,7 @@ function questionInFront(): Question | undefined {
 export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.version = String(context.extension?.packageJSON?.version ?? "");
   if (context.globalStorageUri) GraphPanel.errorLog = `${context.globalStorageUri.fsPath}/page-errors.log`;
-  const bridge = new BrowserBridge(context, presentForBrowser);
+  const bridge = new BrowserBridge(context, presentForBrowser, liveForBrowser);
   browserBridge = bridge;
   void bridge.start();
   const driver = new Driver(context.globalStorageUri?.fsPath ?? "", (step) =>
@@ -1388,13 +1388,49 @@ async function checkoutLocal(number: number): Promise<void> {
   );
 }
 
+function liveReadingOf(repo: string, number: number): GraphPanel | undefined {
+  return GraphPanel.readings().find(
+    (one) =>
+      one.repo === repo &&
+      one.changeGraph.meta.worktree === true &&
+      one.changeGraph.meta.pullRequest?.number === number,
+  );
+}
+
+async function liveForBrowser(repo: string, number: number): Promise<GraphPanel> {
+  const pulls = (await listPullRequests({ cwd: repo }).catch(() => [])) ?? [];
+  const pull = pulls.find((one) => one.number === number);
+  if (!pull) throw new Error(`#${number} is not an open pull request in ${repo}.`);
+  const branch = pull.branch;
+  const going = readingsOf(number, false, branch);
+  const here = await currentBranch({ cwd: repo }).catch(() => undefined);
+  let at = repo;
+  if (here !== branch) {
+    const elsewhere = await worktreeFor(branch, { cwd: repo });
+    if (elsewhere && elsewhere !== repo) {
+      at = elsewhere;
+    } else {
+      const dirty = (await git(["status", "--porcelain"], { cwd: repo })).trim();
+      if (dirty) {
+        throw new Error(`${repo} has uncommitted changes. Commit or stash them before going live on #${number}.`);
+      }
+      await gh(["pr", "checkout", String(number)], repo);
+      void refreshPullRequests().catch(() => undefined);
+    }
+  }
+  await review(pull.baseRef, undefined, true, at, number, going);
+  const live = liveReadingOf(at, number);
+  if (!live) throw new Error(`no live reading of #${number} came up in ${at}.`);
+  return live;
+}
+
 async function presentForBrowser(
   repo: string,
   number: number,
   base: string,
   branch?: string,
 ): Promise<GraphPanel | undefined> {
-  const open = GraphPanel.find(repo, number);
+  const open = liveReadingOf(repo, number) ?? GraphPanel.find(repo, number);
   if (open) return open;
   const baseRef = base || undefined;
 

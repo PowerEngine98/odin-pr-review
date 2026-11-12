@@ -14,6 +14,7 @@ import type { GraphPanel } from "./panel.js";
 import { githubRepositories, Repositories } from "./repositories.js";
 
 export type Presenter = (repo: string, number: number, base: string, head?: string) => Promise<GraphPanel | undefined>;
+export type GoLive = (repo: string, number: number) => Promise<GraphPanel>;
 
 const TOKEN = "odin.browser.token";
 const ORIGIN = "odin.browser.origin";
@@ -50,6 +51,7 @@ export class BrowserBridge implements vscode.Disposable {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly present?: Presenter,
+    private readonly goLive?: GoLive,
   ) {
     this.repositories = new Repositories(join(context.globalStorageUri?.fsPath ?? "", "repositories.json"));
     this.watching = vscode.workspace.onDidChangeWorkspaceFolders?.((change) => this.recordFolders(change.added));
@@ -324,23 +326,39 @@ export class BrowserBridge implements vscode.Disposable {
       live: panel.changeGraph.meta.worktree === true,
       branch: (head ?? panel.changeGraph.meta.headRef ?? "").replace(/^origin\//, ""),
     });
-    const detach = panel.attach({
-      html: (html) => sink.send({ type: "html", html }),
-      message: (message) => sink.send({ type: "message", message }),
-    });
+    const mirror = {
+      html: (html: string) => sink.send({ type: "html", html }),
+      message: (message: unknown) => sink.send({ type: "message", message }),
+    };
+    let current = panel;
+    let detach = current.attach(mirror);
     return {
       id: randomUUID(),
       deliver: (message) => {
         if ((message as { odinGoLive?: unknown } | null)?.odinGoLive === true) {
-          void Promise.resolve(vscode.commands.executeCommand("odin.checkoutLocal", number)).then(
-            () => sink.send({ type: "wentLive" }),
-            (error: Error) => sink.send({ type: "note", message: `VS Code could not go live: ${error.message}` }),
+          if (!this.goLive) {
+            sink.send({ type: "goLiveFailed", message: "This window cannot go live." });
+            return;
+          }
+          void this.serialized(() => this.goLive!(cwd, number)).then(
+            (live) => {
+              detach();
+              current = live;
+              sink.send({ type: "graph", graph: live.changeGraph });
+              sink.send({
+                type: "reading",
+                live: live.changeGraph.meta.worktree === true,
+                branch: (live.changeGraph.meta.headRef ?? "").replace(/^origin\//, ""),
+              });
+              detach = current.attach(mirror);
+            },
+            (error: Error) => sink.send({ type: "goLiveFailed", message: `VS Code could not go live: ${error.message}` }),
           );
           return;
         }
-        panel.receive(message);
+        current.receive(message);
       },
-      close: detach,
+      close: () => detach(),
     };
   }
 
