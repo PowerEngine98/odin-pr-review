@@ -30,6 +30,10 @@ const backend: BridgeBackend = {
     if (repo === "twice") return { need: "pick" };
     return { path: `/code/${repo}` };
   },
+  async pulls(owner, repo, query) {
+    if (repo === "elsewhere") throw new NotHere(`${owner}/${repo} is not open in VS Code.`);
+    return { pulls: [{ number: 9, asked: query }], viewer: "marco" };
+  },
   async graph(owner, repo, number, base) {
     if (repo === "elsewhere") throw new NotHere(`${owner}/${repo} is not open in VS Code.`);
     return { graph: { owner, repo, number, base }, snippets: [] };
@@ -217,3 +221,23 @@ describe("GitHub reads answered by VS Code", () => {
     expect(args[0]).toEqual(["api", "repos/acme/shop/pulls/9", "-H", "Accept: application/vnd.github.diff"]);
   });
 });
+
+describe("pull requests listed by VS Code for the browser", () => {
+  it("passes the question on, author and search included, and says when the repository is not open", async () => {
+    const port = await served();
+    const auth = { authorization: `Bearer ${TOKEN}`, origin: ORIGIN };
+    const asked = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=shop&state=open&author=marco&search=pricing%20gallery`, { headers: auth });
+    expect(asked.status).toBe(200);
+    expect(await asked.json()).toEqual({
+      pulls: [{ number: 9, asked: { state: "open", author: "marco", search: "pricing gallery" } }],
+      viewer: "marco",
+    });
+    const missing = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=elsewhere&state=open`, { headers: auth });
+    expect(missing.status).toBe(404);
+    const bad = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=shop&state=weird`, { headers: auth });
+    expect(bad.status).toBe(400);
+    const odd = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=shop&state=open&author=a%20b`, { headers: auth });
+    expect(odd.status).toBe(400);
+  });
+});
+

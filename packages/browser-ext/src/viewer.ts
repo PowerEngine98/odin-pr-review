@@ -10,9 +10,9 @@ import {
   type Asked,
   type Place,
 } from "./github.js";
-import { BridgeError, bridgeGitHub, findBridge, launch, newToken, pairingLink } from "./bridge.js";
+import { BridgeError, bridgeGitHub, bridgePulls, findBridge, launch, newToken, pairingLink } from "./bridge.js";
 import { pageOf } from "./page.js";
-import { changeModel, pickerOf, sidebarPage } from "./picker.js";
+import { changeModel, pickerOf, pickerOfSummaries, sidebarPage } from "./picker.js";
 import { openSession, type Remote } from "./session.js";
 import { draw, readSettings, saveSettings, vsCodePort, type Settings, type SourceKind } from "./sources.js";
 import { rootVariables } from "./vscode-vars.js";
@@ -154,6 +154,7 @@ type HostMessage = {
   number?: number;
   state?: Asked;
   author?: string;
+  search?: string;
   path?: string;
   paths?: string[];
   viewed?: boolean;
@@ -208,7 +209,7 @@ function toGraph(message: unknown) {
 
 let reader: Api = {};
 let viewer = "";
-let asked: { state: Asked; author: string } = { state: "open", author: "" };
+let asked: { state: Asked; author: string; search?: string } = { state: "open", author: "" };
 let picker: PickerView = pickerOf([], "", asked);
 let reading: { number: number; graph: ChangeGraph; viewed: Set<string> } | null = null;
 let sidebarShown = false;
@@ -234,6 +235,13 @@ function showPicker() {
 
 async function readPicker() {
   try {
+    if (settings.source === "vscode" && settings.token) {
+      const port = await findBridge(settings.token, settings.port);
+      if (!port) throw new BridgeError("VS Code is not answering.", "unreachable");
+      const answer = await bridgePulls(port, settings.token, owner, repo, asked);
+      picker = pickerOfSummaries(answer.pulls, answer.viewer || viewer, asked);
+      return;
+    }
     picker = pickerOf(await listPulls(place, reader, asked), viewer, asked);
   } catch (error) {
     picker = pickerOf([], viewer, asked, false);
@@ -603,6 +611,7 @@ async function fromSidebar(message: HostMessage) {
     asked = {
       state: message.state ?? asked.state,
       author: typeof message.author === "string" ? message.author : asked.author,
+      search: typeof message.search === "string" ? message.search : asked.search ?? "",
     };
     toSidebar({ type: "loading", value: true });
     await readPicker();

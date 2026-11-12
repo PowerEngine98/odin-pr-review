@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 
 import type { Reviewer, PullRequest, PullRequestSummary } from "../model/types.js";
 import type { GitOptions } from "./exec.js";
+import { findPulls } from "./pullSearch.js";
 
 /**
  * The pull request a branch belongs to, if the forge knows of one.
@@ -189,12 +190,23 @@ export type PullRequestState = "open" | "merged" | "closed" | "all";
  * reshuffle them under the reader between one refresh and the next.
  */
 export async function listPullRequests(
-  options: Parameters<typeof listOnce>[0],
+  options: GitOptions & {
+    timeoutMs?: number;
+    limit?: number;
+    state?: PullRequestState;
+    author?: string;
+    search?: string;
+  },
 ): Promise<PullRequestSummary[] | undefined> {
-  if (!options.author) return listOnce(options);
-  const whole = await listOnce({ ...options, forgeAuthor: true });
-  if (whole && whole.length > 0) return whole;
-  return listOnce(options);
+  const { author, search, ...rest } = options;
+  return findPulls(
+    { state: options.state ?? "open", author: author ?? "", search: search ?? "" },
+    {
+      search: (query) => listOnce({ ...rest, state: "all", query }),
+      recent: (limit) => listOnce({ ...rest, limit: options.limit ?? limit }),
+      loginOf: (pull) => pull.author,
+    },
+  );
 }
 
 async function listOnce(
@@ -207,30 +219,15 @@ async function listOnce(
      * different reason — to see how something came to be the way it is.
      */
     state?: PullRequestState;
-    /**
-     * Narrow to one author, by any part of their login.
-     *
-     * Matched here rather than by the forge, which takes a whole login and
-     * nothing else: typing the first few letters of a name is how a reader
-     * looks for somebody, and `--author 5erg` finds nothing at all while
-     * `5ergio` is right there in the list. A whole login is asked of the
-     * forge first, which searches every pull request rather than the newest.
-     */
-    author?: string;
-    forgeAuthor?: boolean;
-    search?: string;
+    query?: string;
   },
 ): Promise<PullRequestSummary[] | undefined> {
   const json = await run(
     [
       "pr", "list",
       "--state", options.state ?? "open",
-      ...(options.forgeAuthor && options.author ? ["--author", options.author] : []),
-      ...(options.search ? ["--search", options.search] : []),
-      // Asking for more when a name is being matched here: the forge's own
-      // limit applies before the narrowing, so a small page of everything can
-      // easily hold nothing of theirs.
-      "--limit", String(options.limit ?? (options.author && !options.forgeAuthor ? 200 : 50)),
+      ...(options.query ? ["--search", options.query] : []),
+      "--limit", String(options.limit ?? 50),
       "--json",
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
         "reviewDecision,reviewRequests,state,mergedAt,closedAt,baseRefName,mergeCommit",
@@ -307,11 +304,6 @@ async function listOnce(
         if (pr.mergeCommit?.oid) summary.mergeCommit = pr.mergeCommit.oid;
         return summary;
       })
-      .filter(
-        (pr) =>
-          !options.author ||
-          pr.author.toLowerCase().includes(options.author.toLowerCase()),
-      )
       .sort(byActivity);
   } catch {
     return undefined;

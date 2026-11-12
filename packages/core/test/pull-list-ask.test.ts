@@ -26,9 +26,9 @@ describe("asking the forge for pull requests in a busy repository", () => {
       "#!/bin/sh\n" +
         `echo "$@" >> "${join(repo, "asked.log")}"\n` +
         'case "$*" in\n' +
-        `  *"--author marco "*) echo '[${pr(7, "marco")}]';;\n` +
-        `  *"--author "*) echo '[]';;\n` +
-        `  *"--search pricing "*) echo '[${pr(3, "ada")}]';;\n` +
+        `  *"author:marco "*) echo '[${pr(7, "marco")}]';;\n` +
+        `  *"author:"*) echo '[]';;\n` +
+        `  *"pricing "*) echo '[${pr(3, "ada")}]';;\n` +
         `  *) echo '[${pr(1, "ada")},${pr(2, "marcos")}]';;\n` +
         "esac\n",
     );
@@ -51,20 +51,20 @@ describe("asking the forge for pull requests in a busy repository", () => {
     const found = await listPullRequests({ cwd: repo, author: "marco" });
     expect(found?.map((one) => one.number)).toEqual([7]);
     expect(asked()).toHaveLength(1);
-    expect(asked()[0]).toMatch(/--author marco --limit 50 /);
+    expect(asked()[0]).toMatch(/--state all --search is:pr is:open author:marco sort:updated-desc --limit 50 /);
   });
 
   it("falls back to part of a login matched among the newest", async () => {
     const found = await listPullRequests({ cwd: repo, author: "marc" });
     expect(found?.map((one) => one.number)).toEqual([2]);
-    expect(asked()[0]).toMatch(/--author marc /);
-    expect(asked()[1]).not.toMatch(/--author/);
+    expect(asked()[0]).toMatch(/author:marc /);
+    expect(asked()[1]).not.toMatch(/--search/);
     expect(asked()[1]).toMatch(/--limit 200 /);
   });
 
   it("hands typed words to the forge's own search", async () => {
     const found = await listPullRequests({ cwd: repo, search: "pricing" });
     expect(found?.map((one) => one.number)).toEqual([3]);
-    expect(asked()[0]).toMatch(/--search pricing --limit 50 /);
+    expect(asked()[0]).toMatch(/--search is:pr is:open pricing sort:updated-desc --limit 50 /);
   });
 });

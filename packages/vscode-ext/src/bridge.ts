@@ -3,12 +3,12 @@ import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { basename, join } from "node:path";
 
-import { forgeEnv, git } from "@odin/core";
+import { currentUser, forgeEnv, git, listPullRequests } from "@odin/core";
 import * as vscode from "vscode";
 
 import { randomUUID } from "node:crypto";
 
-import { listen, NotHere, type Pairing, type Served, type Session, type Sink, type Where } from "./bridge-server.js";
+import { listen, NotHere, type Pairing, type PullQuery, type Served, type Session, type Sink, type Where } from "./bridge-server.js";
 import { buildGraphForRepo } from "./graph.js";
 import type { GraphPanel } from "./panel.js";
 import { githubRepositories, Repositories } from "./repositories.js";
@@ -139,6 +139,7 @@ export class BrowserBridge implements vscode.Disposable {
       session: (owner, repo, number, base, sink, head) => this.session(owner, repo, number, base, sink, head),
       graph: (owner, repo, number, base) => this.serialized(() => this.graph(owner, repo, number, base)),
       github: (path, accept) => githubThroughGh(path, accept),
+      pulls: (owner, repo, query) => this.pulls(owner, repo, query),
     });
     if (!opened) return undefined;
     this.server = opened.server;
@@ -384,6 +385,23 @@ export class BrowserBridge implements vscode.Disposable {
         detach();
       },
     };
+  }
+
+  private async pulls(owner: string, repo: string, query: PullQuery): Promise<{ pulls: unknown[]; viewer: string }> {
+    const found = await this.where(owner, repo);
+    if (!found.path) throw new NotHere(`${owner}/${repo} has no folder in VS Code yet.`);
+    const cwd = found.path;
+    const [pulls, viewer] = await Promise.all([
+      listPullRequests({
+        cwd,
+        state: query.state,
+        ...(query.author ? { author: query.author } : {}),
+        ...(query.search ? { search: query.search } : {}),
+      }),
+      currentUser({ cwd }).catch(() => undefined),
+    ]);
+    if (!pulls) throw new Error("GitHub did not answer through gh.");
+    return { pulls, viewer: viewer ?? "" };
   }
 
   private async graph(owner: string, repo: string, number: number, base: string): Promise<Served> {
