@@ -19,6 +19,13 @@ window.addEventListener("message", (event) => {
     };
     Object.assign(window, { acquireVsCodeApi: () => host });
   }
+  if (typeof event.data.renderer === "string" && !(window as unknown as { mermaid?: unknown }).mermaid) {
+    try {
+      (0, eval)(event.data.renderer);
+    } catch (error) {
+      window.parent.postMessage({ odinError: String((error as Error)?.stack ?? error) }, "*");
+    }
+  }
   document.open();
   document.write(event.data.odinPage);
   document.close();

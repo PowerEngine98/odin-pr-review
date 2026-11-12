@@ -484,7 +484,7 @@ function carryOut(frame: Frame, mine: number): Promise<void> | null {
     case "diagram": {
       const area = draw(frame, true);
       if (!area) return null;
-      camera.showAround(area, area, legible());
+      camera.showWhole(area);
       return landed();
     }
     case "highlight":

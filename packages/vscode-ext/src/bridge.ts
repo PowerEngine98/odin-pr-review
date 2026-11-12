@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { basename, join } from "node:path";
 
@@ -303,6 +303,18 @@ export class BrowserBridge implements vscode.Disposable {
     return panel !== undefined;
   }
 
+  private renderer: string | null | undefined;
+
+  private diagramRenderer(): string | null {
+    if (this.renderer !== undefined) return this.renderer;
+    try {
+      this.renderer = readFileSync(join(this.context.extensionUri.fsPath, "dist", "media", "mermaid.min.js"), "utf8");
+    } catch {
+      this.renderer = null;
+    }
+    return this.renderer;
+  }
+
   private async session(
     owner: string,
     repo: string,
@@ -324,6 +336,8 @@ export class BrowserBridge implements vscode.Disposable {
       live: panel.changeGraph.meta.worktree === true,
       branch: (head ?? panel.changeGraph.meta.headRef ?? "").replace(/^origin\//, ""),
     });
+    const renderer = this.diagramRenderer();
+    if (renderer) sink.send({ type: "renderer", source: renderer });
     const detach = panel.attach({
       html: (html) => sink.send({ type: "html", html }),
       message: (message) => sink.send({ type: "message", message }),
