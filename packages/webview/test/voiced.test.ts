@@ -60,3 +60,35 @@ describe("arrows", () => {
     expect(writtenSpan(voice, voice.text.indexOf("into"))).toEqual({ start: 2, end: 4 });
   });
 });
+
+describe("folders in a path, when the reader would rather not hear them", () => {
+  const quiet = (text: string, extensions = true) => voiced(text, extensions, false).text.replace(/\s+/g, " ").trim();
+
+  it("reads only the file of a path", () => {
+    expect(quiet("open /path/to/my/actual/file.txt now")).toBe("open file dot txt now");
+    expect(quiet("see src/app/hud/voices.ts")).toBe("see voices dot ts");
+    expect(quiet("in ./scripts/release.mjs and ~/notes/todo.md")).toBe("in release dot mjs and todo dot md");
+  });
+
+  it("reads just the name when extensions are off too", () => {
+    expect(quiet("/path/to/my/actual/file.txt", false)).toBe("file");
+  });
+
+  it("leaves alone what only looks like a path", () => {
+    expect(quiet("read and/or write")).toBe("read and/or write");
+    expect(quiet("client/server split")).toBe("client/server split");
+    expect(quiet("see https://github.com/o/r for more")).toBe("see https://github dot com/o/r for more");
+  });
+
+  it("reads every folder by default", () => {
+    expect(voiced("/path/to/file.txt").text).toContain("path/to/file dot txt");
+  });
+
+  it("boxes the written file name while it is spoken", () => {
+    const written = "open /path/to/file.txt";
+    const voice = voiced(written, true, false);
+    const at = voice.text.indexOf("file");
+    const span = writtenSpan(voice, at)!;
+    expect(written.slice(span.start, span.end)).toBe("file");
+  });
+});

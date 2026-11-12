@@ -440,9 +440,9 @@ function narrate(say: string, mine: number): Promise<void> {
         resolve();
         return;
       }
-      const spoken = voiced(part.text, settings.narrateExtensions);
+      const spoken = voiced(part.text, settings.narrateExtensions, settings.narrateFolders);
       const after = parts[index + 1];
-      if (after) prepare(voiced(after.text, settings.narrateExtensions).text);
+      if (after) prepare(voiced(after.text, settings.narrateExtensions, settings.narrateFolders).text);
       utter(
         spoken.text,
         (at) => {

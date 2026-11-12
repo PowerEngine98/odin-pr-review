@@ -27,7 +27,23 @@ const BRACKETS = new Set(["(", ")", "[", "]", "{", "}", "<", ">"]);
 const EXTENSION =
   /^\.(?:kts?|java|scala|groovy|gradle|tsx?|jsx?|mjs|cjs|svelte|vue|py|rb|go|rs|swift|c|h|cc|cpp|hpp|cs|php|sql|sh|zsh|json|ya?ml|toml|xml|html|css|scss|md|txt|lock|properties|env)(?![\p{L}\p{N}_])/u;
 
-export function voiced(written: string, extensions = true): Voiced {
+const FOLDERS = /^(?:~|\.{1,2})?\/?(?:[\p{L}\p{N}_.@-]+\/)+(?=[\p{L}\p{N}_.@-])/u;
+const PATH_START = /[\p{L}\p{N}_.@~/:-]/u;
+
+function folders(written: string, i: number): number {
+  if (PATH_START.test(written[i - 1] ?? "")) return 0;
+  const match = FOLDERS.exec(written.slice(i));
+  if (!match) return 0;
+  const prefix = match[0];
+  const rest = /^[\p{L}\p{N}_.@-]+/u.exec(written.slice(i + prefix.length))?.[0] ?? "";
+  if (written[i + prefix.length + rest.length] === "/") return 0;
+  const rooted = /^(?:~|\.{1,2})?\//.test(prefix);
+  const slashes = prefix.split("/").length - 1;
+  const named = /\.[\p{L}\p{N}]+$/u.test(rest) && EXTENSION.test(rest.slice(rest.lastIndexOf(".")));
+  return rooted || slashes >= 2 || named ? prefix.length : 0;
+}
+
+export function voiced(written: string, extensions = true, paths = true): Voiced {
   let text = "";
   const at: number[] = [];
   const emit = (said: string, from: number) => {
@@ -51,6 +67,11 @@ export function voiced(written: string, extensions = true): Voiced {
     if (arrow) {
       words(["transforms", "into"], i, i + arrow - 1);
       i += arrow - 1;
+      continue;
+    }
+    const skipped = paths ? 0 : folders(written, i);
+    if (skipped) {
+      i += skipped - 1;
       continue;
     }
     const extension = !extensions && char === "." && WORD.test(written[i - 1] ?? "")

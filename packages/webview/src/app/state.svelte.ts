@@ -280,6 +280,7 @@ const DEFAULTS: ReaderSettings = {
   showInfra: true,
   clusters: false,
   narrateExtensions: true,
+  narrateFolders: false,
   autoNarrate: false,
   systemVoice: false,
   kokoroVoice: false,

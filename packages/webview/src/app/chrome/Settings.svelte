@@ -399,6 +399,11 @@
           bind:checked={settings.narrateExtensions}
         />
         <Viewed
+          label="Narrate folders in paths"
+          title="Read /path/to/my/file.txt as &quot;path to my file dot txt&quot;. Off, only the file is read: &quot;file dot txt&quot;, or &quot;file&quot; with extensions off."
+          bind:checked={settings.narrateFolders}
+        />
+        <Viewed
           label="Auto narrate new content"
           disabled={!!locked.autoNarrate}
           title={locked.autoNarrate ?? "Read each new block of an agent's answer aloud as it arrives"}

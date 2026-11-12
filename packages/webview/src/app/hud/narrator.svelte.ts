@@ -178,9 +178,9 @@ export function narrate(
       after(root)?.(0);
       return;
     }
-    const voice = voiced(chunk.text, settings.narrateExtensions);
+    const voice = voiced(chunk.text, settings.narrateExtensions, settings.narrateFolders);
     const ahead = sentences(said.text.slice(done))[0];
-    if (ahead) prepare(voiced(ahead.text, settings.narrateExtensions).text);
+    if (ahead) prepare(voiced(ahead.text, settings.narrateExtensions, settings.narrateFolders).text);
     utter(
       voice.text,
       (index) => {
