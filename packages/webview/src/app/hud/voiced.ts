@@ -30,17 +30,35 @@ const EXTENSION =
 const FOLDERS = /^(?:~|\.{1,2})?\/?(?:[\p{L}\p{N}_.@-]+\/)+(?=[\p{L}\p{N}_.@-])/u;
 const PATH_START = /[\p{L}\p{N}_.@~/:-]/u;
 
-function folders(written: string, i: number): number {
-  if (PATH_START.test(written[i - 1] ?? "")) return 0;
+const NAME = /[\p{L}\p{N}_.@-]/u;
+
+function folders(written: string, i: number): { skip: number; trailing?: number } {
+  const none = { skip: 0 };
+  if (PATH_START.test(written[i - 1] ?? "")) return none;
   const match = FOLDERS.exec(written.slice(i));
-  if (!match) return 0;
+  if (!match) return none;
   const prefix = match[0];
   const rest = /^[\p{L}\p{N}_.@-]+/u.exec(written.slice(i + prefix.length))?.[0] ?? "";
-  if (written[i + prefix.length + rest.length] === "/") return 0;
+  const end = i + prefix.length + rest.length;
+  const closed = written[end] === "/";
+  if (closed && (NAME.test(written[end + 1] ?? "") || written[end + 1] === "/")) return none;
   const rooted = /^(?:~|\.{1,2})?\//.test(prefix);
-  const slashes = prefix.split("/").length - 1;
+  const slashes = prefix.split("/").length - 1 + (closed ? 1 : 0);
   const named = /\.[\p{L}\p{N}]+$/u.test(rest) && EXTENSION.test(rest.slice(rest.lastIndexOf(".")));
-  return rooted || slashes >= 2 || named ? prefix.length : 0;
+  if (!(rooted || slashes >= 2 || named)) return none;
+  return closed ? { skip: prefix.length, trailing: end } : { skip: prefix.length };
+}
+
+const DIGITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+const LONG_NUMBER = 6;
+
+function digitRun(written: string, i: number): number {
+  if (!DIGIT.test(written[i] ?? "") || DIGIT.test(written[i - 1] ?? "")) return 0;
+  if (written[i - 1] === "." && DIGIT.test(written[i - 2] ?? "")) return 0;
+  let end = i;
+  while (DIGIT.test(written[end] ?? "")) end++;
+  if (written[end] === "." && DIGIT.test(written[end + 1] ?? "")) return 0;
+  return end - i >= LONG_NUMBER ? end - i : 0;
 }
 
 export function voiced(written: string, extensions = true, paths = true): Voiced {
@@ -61,17 +79,26 @@ export function voiced(written: string, extensions = true, paths = true): Voiced
     text += " ";
     at.push(to);
   };
+  let trailing = -1;
   for (let i = 0; i < written.length; i++) {
     const char = written[i]!;
+    if (i === trailing) continue;
+    const run = digitRun(written, i);
+    if (run) {
+      for (let k = i; k < i + run; k++) words([DIGITS[Number(written[k])] ?? written[k]!], k, k);
+      i += run - 1;
+      continue;
+    }
     const arrow = char === "→" ? 1 : char === "-" && written[i + 1] === ">" ? 2 : 0;
     if (arrow) {
       words(["transforms", "into"], i, i + arrow - 1);
       i += arrow - 1;
       continue;
     }
-    const skipped = paths ? 0 : folders(written, i);
-    if (skipped) {
-      i += skipped - 1;
+    const path = paths ? { skip: 0 } : folders(written, i);
+    if (path.skip) {
+      if (path.trailing !== undefined) trailing = path.trailing;
+      i += path.skip - 1;
       continue;
     }
     const extension = !extensions && char === "." && WORD.test(written[i - 1] ?? "")

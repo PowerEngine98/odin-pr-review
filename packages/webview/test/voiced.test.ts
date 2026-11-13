@@ -92,3 +92,45 @@ describe("folders in a path, when the reader would rather not hear them", () => 
     expect(written.slice(span.start, span.end)).toBe("file");
   });
 });
+
+describe("long numbers", () => {
+  const said = (text: string) => voiced(text).text.replace(/\s+/g, " ").trim();
+
+  it("are read one digit at a time", () => {
+    expect(said("ab-12345678901234567")).toBe(
+      "ab- one two three four five six seven eight nine zero one two three four five six seven",
+    );
+    expect(said("id 9007199254740991 here")).toBe("id nine zero zero seven one nine nine two five four seven four zero nine nine one here");
+  });
+
+  it("leave short numbers and decimals as numbers", () => {
+    expect(said("took 12345 ms")).toBe("took 12345 ms");
+    expect(said("ratio 1234567.25 done")).toBe("ratio 1234567 point 25 done");
+    expect(said("version 3.1415926 here")).toBe("version 3 point 1415926 here");
+  });
+
+  it("box each digit as it is spoken", () => {
+    const written = "ab-12345678";
+    const voice = voiced(written);
+    const at = voice.text.indexOf("three");
+    const span = writtenSpan(voice, at)!;
+    expect(written.slice(span.start, span.end)).toBe("3");
+  });
+});
+
+describe("a folder path that ends with a slash", () => {
+  const quiet = (text: string) => voiced(text, true, false).text.replace(/\s+/g, " ").trim();
+
+  it("is read as its last folder, by the same rule as a file", () => {
+    expect(quiet("in backend/src/test/kotlin/com/labura/accounts/username/ now")).toBe("in username now");
+    expect(quiet("under /var/log/ there")).toBe("under log there");
+  });
+
+  it("is read whole when folders are narrated", () => {
+    expect(voiced("backend/src/username/").text).toBe("backend/src/username/");
+  });
+
+  it("leaves a lone word with a slash alone", () => {
+    expect(quiet("either/ or")).toBe("either/ or");
+  });
+});
