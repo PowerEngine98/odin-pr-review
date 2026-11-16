@@ -145,3 +145,26 @@ describe("listing pull requests in a repository with many contributors", () => {
   });
 });
 
+
+describe("finding VS Code's bridge", () => {
+  it("asks every port at once instead of one after another", async () => {
+    const { findBridge } = await import("../src/bridge.js");
+    const started: number[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const port = Number(new URL(String(input)).port);
+      started.push(port);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return new Response(JSON.stringify({ odin: started.length > 0 && port === started[started.length - 1] }));
+    }) as typeof fetch;
+    try {
+      const began = Date.now();
+      const port = await findBridge("t");
+      expect(port).toBeDefined();
+      expect(Date.now() - began).toBeLessThan(400);
+      expect(started.length).toBeGreaterThan(1);
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});

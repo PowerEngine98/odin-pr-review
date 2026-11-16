@@ -4,8 +4,10 @@ import {
   git,
   currentUser,
   listPullRequests,
+  readPullRequest,
   type PullRequestSummary,
   listRefs,
+  cachedAvatar,
   inlineAvatar,
   inlineAvatars,
   lastReviewedCommit,
@@ -57,6 +59,7 @@ import { TourStore } from "./tour.js";
 import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 import { claimHandoff, leaveHandoff } from "./handoff.js";
+import { Lanes } from "./lanes.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
 function isDark(): boolean {
@@ -323,6 +326,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // change they had just decided they were finished with.
   GraphPanel.onNone = () => sidebar.forgetChange();
   sidebar = new ChangeSidebar(viewed, seen, GraphPanel.settings);
+  sidebar.pick = (number, run) => picked(number, run);
   GraphPanel.sidebarShown = () => sidebar.shown();
   sidebar.onUntouched = (on) => GraphPanel.showUntouched(on);
   GraphPanel.onUntouched = (on) => sidebar.setUntouched(on);
@@ -767,69 +771,116 @@ let asked: { state: "open" | "merged" | "closed" | "all"; author: string; search
  * Best-effort and silent on failure: `gh` may be missing or signed out, and the
  * ability to review the branch you are on does not depend on it.
  */
+let asking = 0;
+
 async function refreshPullRequests(): Promise<void> {
   const repo = await repositoryRoot(true);
   if (!repo) return;
+  const mine = ++asking;
+  const query = {
+    cwd: repo,
+    state: asked.state,
+    ...(asked.author ? { author: asked.author } : {}),
+    ...(asked.search ? { search: asked.search } : {}),
+  };
 
   sidebar.setLoading(true);
   try {
     const [answer, branch, me] = await Promise.all([
-      listPullRequests({
-        cwd: repo,
-        state: asked.state,
-        ...(asked.author ? { author: asked.author } : {}),
-        ...(asked.search ? { search: asked.search } : {}),
-      }),
+      listPullRequests({ ...query, light: true }),
       currentBranch({ cwd: repo }),
-      // Who is reading, so the list can lead with what is waiting on them.
-      // Asked once per refresh and cached by the forge client.
       currentUser({ cwd: repo }).catch(() => undefined),
     ]);
-    // Nothing at all is not the same as nothing matching: a forge that could not
-    // be reached, or gave up, would otherwise be reported as "there are none".
+    if (mine !== asking) return;
     const pulls = answer ?? [];
-
-    // What this machine has for those branches, so a change the reader has
-    // work sitting on says so rather than offering to check out a copy that is
-    // behind their own. Best-effort: the list is still a list without it.
-    const local = await localBranches({
-      cwd: repo,
-      branches: pulls.map((pr) => pr.branch),
-    }).catch(() => new Map<string, LocalBranch>());
+    const faces = new Map(pulls.map((pr) => [pr.number, pr.avatarUrl]));
+    for (const pr of pulls) {
+      const cached = pr.avatarUrl ? cachedAvatar(pr.avatarUrl) : undefined;
+      if (cached) pr.avatarUrl = cached;
+      else delete pr.avatarUrl;
+    }
     known.clear();
     for (const pull of pulls) known.set(pull.number, pull);
-    localState = local;
-
-    // A webview will not fetch a remote image, so each author's picture travels
-    // inside the document. Best-effort and in parallel: a face that will not
-    // load leaves an initial, and nothing waits on the network for long.
-    await Promise.all(
-      pulls.map(async (pr) => {
-        if (!pr.avatarUrl) return;
-        const data = await inlineAvatar(pr.avatarUrl).catch(() => undefined);
-        if (data) pr.avatarUrl = data;
-        else delete pr.avatarUrl;
-      }),
-    );
-    sidebar.setPullRequests(
-      pulls, branch ?? "", repo, me ?? "", answer !== undefined, local,
-    );
+    shown = { pulls, branch: branch ?? "", repo, me: me ?? "", reached: answer !== undefined };
+    redraw();
+    fillIn(mine, repo, query, pulls, faces);
   } finally {
-    // Whatever happened, the bar stops: a progress bar that never ends says
-    // the tool is still trying when it has given up.
-    sidebar.setLoading(false);
+    if (mine === asking) sidebar.setLoading(false);
   }
 }
 
-/**
- * Switches to a pull request's branch.
- *
- * Refuses outright when the working tree is dirty. `gh pr checkout` would
- * either fail halfway or carry the changes onto another branch, and neither is
- * something to do to someone's work without asking — the reviewer is better
- * placed to decide whether to commit or stash.
- */
-/** Checkouts already running, so a second press does not start a second one. */
+const lanes = new Lanes();
+
+let shown: { pulls: PullRequestSummary[]; branch: string; repo: string; me: string; reached: boolean } | undefined;
+
+function redraw(): void {
+  if (!shown) return;
+  sidebar.setPullRequests(shown.pulls, shown.branch, shown.repo, shown.me, shown.reached, localState);
+}
+
+function fillIn(
+  mine: number,
+  repo: string,
+  query: Parameters<typeof listPullRequests>[0],
+  pulls: PullRequestSummary[],
+  faces: Map<number, string | undefined>,
+): void {
+  lanes.clear();
+  lanes.later(async () => {
+    if (mine !== asking) return;
+    const current = () => mine === asking;
+    await Promise.all([
+      localBranches({ cwd: repo, branches: pulls.map((pr) => pr.branch) })
+        .catch(() => new Map<string, LocalBranch>())
+        .then((local) => {
+          if (!current()) return;
+          localState = local;
+          redraw();
+        }),
+      Promise.all(
+        pulls.map(async (pr) => {
+          const url = faces.get(pr.number);
+          if (!url || pr.avatarUrl) return;
+          const data = await inlineAvatar(url).catch(() => undefined);
+          if (data) pr.avatarUrl = data;
+        }),
+      ).then(() => {
+        if (current()) redraw();
+      }),
+      listPullRequests(query)
+        .catch(() => undefined)
+        .then((decided) => {
+          if (!current()) return;
+          const decisions = new Map((decided ?? []).map((pr) => [pr.number, pr.reviewDecision]));
+          for (const pr of pulls) {
+            const decision = decisions.get(pr.number);
+            if (decision && !pr.reviewDecision) pr.reviewDecision = decision;
+          }
+          redraw();
+        }),
+    ]);
+  });
+}
+
+function picked<T>(number: number, run: () => Promise<T>): Promise<T> {
+  return lanes.now(async () => {
+    const repo = shown?.repo;
+    const deciding = repo
+      ? readPullRequest(String(number), { cwd: repo })
+          .then((pull) => {
+            const row = shown?.pulls.find((pr) => pr.number === number);
+            if (row && pull?.reviewDecision) {
+              row.reviewDecision = pull.reviewDecision;
+              redraw();
+            }
+          })
+          .catch(() => undefined)
+      : Promise.resolve();
+    const [, done] = await Promise.all([deciding, run()]);
+    return done;
+  });
+}
+
 const switching = new Set<number>();
 
 /**

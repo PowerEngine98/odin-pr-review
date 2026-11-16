@@ -238,8 +238,15 @@ async function readPicker() {
     if (settings.source === "vscode" && settings.token) {
       const port = await findBridge(settings.token, settings.port);
       if (!port) throw new BridgeError("VS Code is not answering.", "unreachable");
-      const answer = await bridgePulls(port, settings.token, owner, repo, asked);
-      picker = pickerOfSummaries(answer.pulls, answer.viewer || viewer, asked);
+      const question = asked;
+      const full = bridgePulls(port, settings.token, owner, repo, question, true).catch(() => undefined);
+      const answer = await bridgePulls(port, settings.token, owner, repo, question);
+      picker = pickerOfSummaries(answer.pulls, answer.viewer || viewer, question);
+      void full.then((detailed) => {
+        if (!detailed || question !== asked) return;
+        picker = pickerOfSummaries(detailed.pulls, detailed.viewer || viewer, question);
+        if (!reading) toSidebar({ type: "model", model: { loading: false, picker } });
+      });
       return;
     }
     picker = pickerOf(await listPulls(place, reader, asked), viewer, asked);

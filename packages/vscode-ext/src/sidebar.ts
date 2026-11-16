@@ -55,6 +55,8 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   private repo = "";
   /** Who is reading, so the list can lead with what is waiting on them. */
   private viewer = "";
+  pick: (number: number, run: () => Promise<unknown>) => Promise<unknown> = (_number, run) => run();
+
   /** What the list last asked the forge for. */
   private asked: Query = { state: "open", author: "" };
   /** Whether the forge answered at all, as opposed to answering with nothing. */
@@ -203,18 +205,19 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
       // switches branches: reading is not the same act as taking the work over,
       // and a list press should not move a working tree.
       if (message.type === "checkoutLocal" && typeof message.number === "number") {
-        void vscode.commands.executeCommand("odin.checkoutLocal", message.number);
+        const number = message.number;
+        void this.pick(number, () => Promise.resolve(vscode.commands.executeCommand("odin.checkoutLocal", number)));
         return;
       }
       if (message.type === "read" && typeof message.number === "number") {
-        void vscode.commands.executeCommand(
+        const number = message.number;
+        const command =
           message.where === "since"
             ? "odin.readSince"
             : message.where === "origin"
               ? "odin.readOrigin"
-              : "odin.readLocal",
-          message.number,
-        );
+              : "odin.readLocal";
+        void this.pick(number, () => Promise.resolve(vscode.commands.executeCommand(command, number)));
         return;
       }
       // Back to the chooser. The graph is only dropped from this view — the

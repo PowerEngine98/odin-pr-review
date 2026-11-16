@@ -61,11 +61,11 @@ export class Repositories {
 
   async candidates(name: string, still: (path: string) => Promise<boolean>): Promise<Known> {
     const known = this.read()[name.toLowerCase()] ?? { paths: [] };
-    const paths: string[] = [];
-    for (const path of known.paths) {
-      if (existsSync(path) && (await still(path))) paths.push(path);
-      else this.forget(name, path);
-    }
+    const kept = await Promise.all(
+      known.paths.map(async (path) => existsSync(path) && (await still(path))),
+    );
+    const paths = known.paths.filter((_, at) => kept[at]);
+    for (const path of known.paths.filter((_, at) => !kept[at])) this.forget(name, path);
     return { paths, ...(known.chosen && paths.includes(known.chosen) ? { chosen: known.chosen } : {}) };
   }
 }

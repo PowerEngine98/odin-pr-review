@@ -932,6 +932,10 @@ export async function inlineAvatar(
 /** Pictures already fetched, by their url. Small, and the process is short. */
 const avatarCache = new Map<string, string>();
 
+export function cachedAvatar(url: string): string | undefined {
+  return avatarCache.get(url);
+}
+
 /** Ask the forge for the size actually drawn rather than the original. */
 function sized(url: string): string {
   return url.includes("?") ? `${url}&s=80` : `${url}?s=80`;
