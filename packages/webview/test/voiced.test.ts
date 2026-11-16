@@ -130,6 +130,11 @@ describe("a folder path that ends with a slash", () => {
     expect(voiced("backend/src/username/").text).toBe("backend/src/username/");
   });
 
+  it("takes a path whose first folder is a long number for a path", () => {
+    expect(quiet("see 1234567/abc/file.txt")).toBe("see file dot txt");
+    expect(quiet("log /var/1234567/")).toBe("log one two three four five six seven");
+  });
+
   it("leaves a lone word with a slash alone", () => {
     expect(quiet("either/ or")).toBe("either/ or");
   });

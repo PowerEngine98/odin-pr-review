@@ -83,12 +83,6 @@ export function voiced(written: string, extensions = true, paths = true): Voiced
   for (let i = 0; i < written.length; i++) {
     const char = written[i]!;
     if (i === trailing) continue;
-    const run = digitRun(written, i);
-    if (run) {
-      for (let k = i; k < i + run; k++) words([DIGITS[Number(written[k])] ?? written[k]!], k, k);
-      i += run - 1;
-      continue;
-    }
     const arrow = char === "→" ? 1 : char === "-" && written[i + 1] === ">" ? 2 : 0;
     if (arrow) {
       words(["transforms", "into"], i, i + arrow - 1);
@@ -99,6 +93,12 @@ export function voiced(written: string, extensions = true, paths = true): Voiced
     if (path.skip) {
       if (path.trailing !== undefined) trailing = path.trailing;
       i += path.skip - 1;
+      continue;
+    }
+    const run = digitRun(written, i);
+    if (run) {
+      for (let k = i; k < i + run; k++) words([DIGITS[Number(written[k])] ?? written[k]!], k, k);
+      i += run - 1;
       continue;
     }
     const extension = !extensions && char === "." && WORD.test(written[i - 1] ?? "")
