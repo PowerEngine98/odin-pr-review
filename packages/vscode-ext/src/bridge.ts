@@ -178,19 +178,25 @@ export class BrowserBridge implements vscode.Disposable {
   }
 
   private async recordPaths(paths: string[]): Promise<void> {
-    for (const path of paths) {
-      if (!existsSync(join(path, ".git"))) continue;
-      const remotes = await git(["remote", "-v"], { cwd: path }).catch(() => "");
+    const found = await Promise.all(
+      paths
+        .filter((path) => existsSync(join(path, ".git")))
+        .map(async (path) => ({ path, remotes: await git(["remote", "-v"], { cwd: path }).catch(() => "") })),
+    );
+    for (const { path, remotes } of found) {
       for (const name of githubRepositories(remotes)) this.repositories.record(name, path);
     }
   }
 
   private async candidates(owner: string, repo: string) {
     const name = `${owner}/${repo}`;
-    for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      const remotes = await git(["remote", "-v"], { cwd: folder.uri.fsPath }).catch(() => "");
-      if (remoteFor(remotes, owner, repo)) this.repositories.record(name, await rootOf(folder.uri.fsPath));
-    }
+    const open = await Promise.all(
+      (vscode.workspace.workspaceFolders ?? []).map(async (folder) => {
+        const remotes = await git(["remote", "-v"], { cwd: folder.uri.fsPath }).catch(() => "");
+        return remoteFor(remotes, owner, repo) ? rootOf(folder.uri.fsPath) : undefined;
+      }),
+    );
+    for (const root of open) if (root) this.repositories.record(name, root);
     const known = await this.repositories.candidates(name, async (path) => {
       const remotes = await git(["remote", "-v"], { cwd: path }).catch(() => "");
       return remoteFor(remotes, owner, repo) !== undefined;
@@ -204,8 +210,8 @@ export class BrowserBridge implements vscode.Disposable {
     const here = paths.filter((path) => this.isOpenHere(path) || this.holdsOpenFolder(path));
     if (here.length === 1) return here[0];
     const pool = here.length > 0 ? here : paths;
-    const main = [];
-    for (const path of pool) if (!(await isLinkedWorktree(path))) main.push(path);
+    const linked = await Promise.all(pool.map((path) => isLinkedWorktree(path)));
+    const main = pool.filter((_, at) => !linked[at]);
     return main.length === 1 ? main[0] : undefined;
   }
 
@@ -397,6 +403,7 @@ export class BrowserBridge implements vscode.Disposable {
         state: query.state,
         ...(query.author ? { author: query.author } : {}),
         ...(query.search ? { search: query.search } : {}),
+        light: query.light === true,
       }),
       currentUser({ cwd }).catch(() => undefined),
     ]);

@@ -196,6 +196,7 @@ export async function listPullRequests(
     state?: PullRequestState;
     author?: string;
     search?: string;
+    light?: boolean;
   },
 ): Promise<PullRequestSummary[] | undefined> {
   const { author, search, ...rest } = options;
@@ -220,6 +221,7 @@ async function listOnce(
      */
     state?: PullRequestState;
     query?: string;
+    light?: boolean;
   },
 ): Promise<PullRequestSummary[] | undefined> {
   const json = await run(
@@ -230,7 +232,8 @@ async function listOnce(
       "--limit", String(options.limit ?? 50),
       "--json",
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
-        "reviewDecision,reviewRequests,state,mergedAt,closedAt,baseRefName,mergeCommit",
+        (options.light ? "" : "reviewDecision,") +
+        "reviewRequests,state,mergedAt,closedAt,baseRefName,mergeCommit",
     ],
     {
       ...options,

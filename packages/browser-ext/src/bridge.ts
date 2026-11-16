@@ -22,15 +22,18 @@ function call(port: number, path: string, token: string, signal?: AbortSignal): 
 }
 
 export async function findBridge(token: string, known?: number): Promise<number | undefined> {
-  const ports = known ? [known, ...BRIDGE_PORTS.filter((p) => p !== known)] : BRIDGE_PORTS;
-  for (const port of ports) {
+  const answers = async (port: number): Promise<boolean> => {
     try {
       const response = await call(port, "/odin/hello", token, AbortSignal.timeout(800));
-      if (response.ok && (await response.json())?.odin === true) return port;
+      return response.ok && (await response.json())?.odin === true;
     } catch {
-      continue;
+      return false;
     }
-  }
+  };
+  if (known && (await answers(known))) return known;
+  const others = BRIDGE_PORTS.filter((port) => port !== known);
+  const probes = others.map(answers);
+  for (const [at, probe] of probes.entries()) if (await probe) return others[at];
   return undefined;
 }
 
@@ -66,8 +69,16 @@ export async function bridgePulls(
   owner: string,
   repo: string,
   asked: { state: string; author: string; search?: string },
+  light = false,
 ): Promise<{ pulls: PullRequestSummary[]; viewer: string }> {
-  const query = new URLSearchParams({ owner, repo, state: asked.state, author: asked.author, search: asked.search ?? "" });
+  const query = new URLSearchParams({
+    owner,
+    repo,
+    state: asked.state,
+    author: asked.author,
+    search: asked.search ?? "",
+    ...(light ? { light: "1" } : {}),
+  });
   let response: Response;
   try {
     response = await call(port, `/odin/pulls?${query}`, token);

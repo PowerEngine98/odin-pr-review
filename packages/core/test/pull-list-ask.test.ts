@@ -68,3 +68,25 @@ describe("asking the forge for pull requests in a busy repository", () => {
     expect(asked()[0]).toMatch(/--search is:pr is:open pricing sort:updated-desc --limit 50 /);
   });
 });
+
+describe("the fast first answer", () => {
+  it("leaves out the review decision, which the forge is slowest to work out", async () => {
+    const { mkdtempSync, writeFileSync, chmodSync, readFileSync } = await import("node:fs");
+    const bin = mkdtempSync(join(tmpdir(), "odin-gh-light-"));
+    const log = join(bin, "asked.log");
+    writeFileSync(join(bin, "gh"), `#!/bin/sh\necho "$@" >> "${log}"\necho '[]'\n`);
+    chmodSync(join(bin, "gh"), 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+    try {
+      await listPullRequests({ cwd: bin, light: true });
+      await listPullRequests({ cwd: bin });
+      const [light, full] = readFileSync(log, "utf8").trim().split("\n");
+      expect(light).not.toContain("reviewDecision");
+      expect(full).toContain("reviewDecision");
+      expect(light).toContain("reviewRequests");
+    } finally {
+      process.env.PATH = path;
+    }
+  });
+});
