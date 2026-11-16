@@ -801,6 +801,7 @@ async function refreshPullRequests(): Promise<void> {
     }
     known.clear();
     for (const pull of pulls) known.set(pull.number, pull);
+    if (shown?.repo !== repo) localState = new Map();
     shown = { pulls, branch: branch ?? "", repo, me: me ?? "", reached: answer !== undefined };
     redraw();
     fillIn(mine, repo, query, pulls, faces);
@@ -862,23 +863,30 @@ function fillIn(
   });
 }
 
+const PRIORITY_MS = 20_000;
+
 function picked<T>(number: number, run: () => Promise<T>): Promise<T> {
-  return lanes.now(async () => {
-    const repo = shown?.repo;
-    const deciding = repo
-      ? readPullRequest(String(number), { cwd: repo })
-          .then((pull) => {
-            const row = shown?.pulls.find((pr) => pr.number === number);
-            if (row && pull?.reviewDecision) {
-              row.reviewDecision = pull.reviewDecision;
-              redraw();
-            }
-          })
-          .catch(() => undefined)
-      : Promise.resolve();
-    const [, done] = await Promise.all([deciding, run()]);
-    return done;
-  });
+  const list = shown;
+  const repo = list?.repo;
+  const deciding = repo
+    ? readPullRequest(String(number), { cwd: repo })
+        .then((pull) => {
+          const row = list?.pulls.find((pr) => pr.number === number);
+          if (row && pull?.reviewDecision && shown === list) {
+            row.reviewDecision = pull.reviewDecision;
+            redraw();
+          }
+        })
+        .catch(() => undefined)
+    : Promise.resolve();
+  const done = run();
+  void lanes.now(() =>
+    Promise.race([
+      Promise.all([deciding, done.catch(() => undefined)]),
+      new Promise((resolve) => setTimeout(resolve, PRIORITY_MS)),
+    ]),
+  );
+  return done;
 }
 
 const switching = new Set<number>();
@@ -900,6 +908,15 @@ const known = new Map<number, PullRequestSummary>();
  * asking git again while the reader waits.
  */
 let localState = new Map<string, LocalBranch>();
+
+async function localOf(repo: string, branch: string): Promise<LocalBranch | undefined> {
+  const held = shown?.repo === repo ? localState.get(branch) : undefined;
+  if (held) return held;
+  const found = await localBranches({ cwd: repo, branches: [branch] }).catch(() => undefined);
+  const local = found?.get(branch);
+  if (local && shown?.repo === repo) localState.set(branch, local);
+  return local;
+}
 
 /**
  * Reads a change as it is on this machine, without moving the working tree.
@@ -931,7 +948,7 @@ async function readLocal(number: number): Promise<void> {
    */
   const going = readingsOf(number, false, pull.branch);
 
-  const local = localState.get(pull.branch);
+  const local = await localOf(repo, pull.branch);
   const here = local?.worktree === repo;
   if (here) {
     // The reader is on it. This checkout is the live reading of that branch.

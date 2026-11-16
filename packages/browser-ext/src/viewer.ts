@@ -239,8 +239,8 @@ async function readPicker() {
       const port = await findBridge(settings.token, settings.port);
       if (!port) throw new BridgeError("VS Code is not answering.", "unreachable");
       const question = asked;
-      const full = bridgePulls(port, settings.token, owner, repo, question, true).catch(() => undefined);
-      const answer = await bridgePulls(port, settings.token, owner, repo, question);
+      const full = bridgePulls(port, settings.token, owner, repo, question).catch(() => undefined);
+      const answer = await bridgePulls(port, settings.token, owner, repo, question, true);
       picker = pickerOfSummaries(answer.pulls, answer.viewer || viewer, question);
       void full.then((detailed) => {
         if (!detailed || question !== asked) return;

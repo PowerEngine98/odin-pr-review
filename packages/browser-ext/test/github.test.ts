@@ -168,3 +168,26 @@ describe("finding VS Code's bridge", () => {
     }
   });
 });
+
+describe("the bridge's port", () => {
+  it("is found as soon as an earlier port has failed, without waiting on later ones", async () => {
+    const { findBridge } = await import("../src/bridge.js");
+    const real = globalThis.fetch;
+    let first = 0;
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const port = Number(new URL(String(input)).port);
+      if (!first) first = port;
+      if (port === first) return new Response(JSON.stringify({ odin: true }));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return new Response(JSON.stringify({ odin: false }));
+    }) as typeof fetch;
+    try {
+      const began = Date.now();
+      expect(await findBridge("t")).toBe(first);
+      expect(Date.now() - began).toBeLessThan(500);
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});
+

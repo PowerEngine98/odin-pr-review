@@ -403,7 +403,7 @@ export class BrowserBridge implements vscode.Disposable {
         state: query.state,
         ...(query.author ? { author: query.author } : {}),
         ...(query.search ? { search: query.search } : {}),
-        light: query.full !== true,
+        light: query.light === true,
       }),
       currentUser({ cwd }).catch(() => undefined),
     ]);

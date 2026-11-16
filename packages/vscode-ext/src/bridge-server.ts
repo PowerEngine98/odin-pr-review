@@ -33,7 +33,7 @@ export interface PullQuery {
   state: "open" | "merged" | "closed" | "all";
   author: string;
   search: string;
-  full?: boolean;
+  light?: boolean;
 }
 
 export const GITHUB_READS = /^\/(user|repos\/(?!\.\.?\/)[\w.-]+\/(?!\.\.?\/)[\w.-]+\/pulls(\/\d+)?)(\?[\w=&%.-]*)?$/;
@@ -224,7 +224,7 @@ export async function handle(
           state: state as PullQuery["state"],
           author,
           search,
-          ...(url.searchParams.get("full") === "1" ? { full: true } : {}),
+          ...(url.searchParams.get("light") === "1" ? { light: true } : {}),
         }),
         origin,
       );

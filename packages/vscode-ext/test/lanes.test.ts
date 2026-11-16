@@ -62,3 +62,17 @@ describe("work the reader asked for, ahead of work done for them", () => {
     expect(done).toEqual(["next"]);
   });
 });
+
+describe("a search the reader has typed past", () => {
+  it("does not hold up the next search's background work", async () => {
+    const lanes = new Lanes();
+    const done: string[] = [];
+    lanes.later(() => new Promise<void>(() => undefined));
+    await tick();
+    lanes.clear();
+    lanes.later(async () => void done.push("next search"));
+    await tick();
+    expect(done).toEqual(["next search"]);
+  });
+});
+

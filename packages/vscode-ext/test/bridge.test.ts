@@ -232,8 +232,8 @@ describe("pull requests listed by VS Code for the browser", () => {
       pulls: [{ number: 9, asked: { state: "open", author: "marco", search: "pricing gallery" } }],
       viewer: "marco",
     });
-    const full = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=shop&state=open&full=1`, { headers: auth });
-    expect(((await full.json()) as { pulls: { asked: { full?: boolean } }[] }).pulls[0]!.asked.full).toBe(true);
+    const light = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=shop&state=open&light=1`, { headers: auth });
+    expect(((await light.json()) as { pulls: { asked: { light?: boolean } }[] }).pulls[0]!.asked.light).toBe(true);
     const missing = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=elsewhere&state=open`, { headers: auth });
     expect(missing.status).toBe(404);
     const bad = await fetch(`http://127.0.0.1:${port}/odin/pulls?owner=acme&repo=shop&state=weird`, { headers: auth });

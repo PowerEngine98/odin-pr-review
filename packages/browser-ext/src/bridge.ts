@@ -32,8 +32,9 @@ export async function findBridge(token: string, known?: number): Promise<number 
   };
   if (known && (await answers(known))) return known;
   const others = BRIDGE_PORTS.filter((port) => port !== known);
-  const found = await Promise.all(others.map(answers));
-  return others.find((_, at) => found[at]);
+  const probes = others.map(answers);
+  for (const [at, probe] of probes.entries()) if (await probe) return others[at];
+  return undefined;
 }
 
 export async function bridgeGraph(
@@ -68,7 +69,7 @@ export async function bridgePulls(
   owner: string,
   repo: string,
   asked: { state: string; author: string; search?: string },
-  full = false,
+  light = false,
 ): Promise<{ pulls: PullRequestSummary[]; viewer: string }> {
   const query = new URLSearchParams({
     owner,
@@ -76,7 +77,7 @@ export async function bridgePulls(
     state: asked.state,
     author: asked.author,
     search: asked.search ?? "",
-    ...(full ? { full: "1" } : {}),
+    ...(light ? { light: "1" } : {}),
   });
   let response: Response;
   try {

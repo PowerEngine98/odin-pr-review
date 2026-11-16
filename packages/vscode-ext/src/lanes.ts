@@ -1,6 +1,7 @@
 export class Lanes {
   private urgent = 0;
-  private running = false;
+  private running = -1;
+  private round = 0;
   private queue: (() => Promise<unknown>)[] = [];
 
   async now<T>(task: () => Promise<T>): Promise<T> {
@@ -20,6 +21,7 @@ export class Lanes {
 
   clear(): void {
     this.queue = [];
+    this.round += 1;
   }
 
   get waiting(): number {
@@ -27,14 +29,15 @@ export class Lanes {
   }
 
   private pump(): void {
-    if (this.running || this.urgent > 0) return;
+    if (this.running === this.round || this.urgent > 0) return;
     const next = this.queue.shift();
     if (!next) return;
-    this.running = true;
+    const round = this.round;
+    this.running = round;
     void next()
       .catch(() => undefined)
       .finally(() => {
-        this.running = false;
+        if (this.running === round) this.running = -1;
         this.pump();
       });
   }
