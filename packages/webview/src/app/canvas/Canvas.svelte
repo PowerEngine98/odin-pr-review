@@ -11,7 +11,7 @@
   import { untrack, type Snippet } from "svelte";
   import { arriving } from "../hud/arriving.js";
   import { landed } from "../hud/boot.svelte.js";
-  import { travel, ui, view } from "../state.svelte.js";
+  import { ui, view } from "../state.svelte.js";
   import { barsAbove, barsFor, type Seen } from "./bars.js";
   import * as camera from "./camera.svelte.js";
   import type { Placed } from "./camera.svelte.js";
@@ -212,25 +212,6 @@
    */
   const onCanvas = $derived(new Set(cards.map((placed) => placed.node.id)));
   ui.visible = onCanvas;
-  /*
-   * The side bar presses; the canvas flies.
-   *
-   * The list is a different document with no camera in it, so its presses
-   * arrive as messages and the page has to be told who can act on one. Filled
-   * here rather than declared in the state module because the camera only
-   * exists while a canvas is mounted — and emptied on the way out, so a press
-   * arriving after this component has gone finds nobody home instead of
-   * reaching into a viewport that is no longer there.
-   */
-  $effect(() => {
-    travel.toFile = (path) => camera.showFile(path);
-    travel.toLine = (path, line, side) => camera.showLine(path, line, side, true);
-    return () => {
-      travel.toFile = undefined;
-      travel.toLine = undefined;
-    };
-  });
-
   $effect(() => {
     ui.visible = onCanvas;
   });

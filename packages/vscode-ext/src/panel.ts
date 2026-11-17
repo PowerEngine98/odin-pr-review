@@ -2256,7 +2256,10 @@ export class GraphPanel {
 
   /** Brings a file's card to the middle of the canvas, without opening it. */
   static focusPath(path: string): void {
-    void GraphPanel.active?.panel.webview.postMessage({ type: "focus", path });
+    const panel = GraphPanel.active;
+    if (!panel) return;
+    if (!panel.panel.visible) panel.panel.reveal(panel.panel.viewColumn, true);
+    void panel.panel.webview.postMessage({ type: "focus", path });
   }
 
   /**

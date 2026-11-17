@@ -1274,6 +1274,13 @@ export function listen(): void {
       // One of the references under a file. It names where it lands rather than
       // which arrow it is, because that is what a row in the list knows — and
       // because the same three fields would open an editor at the same place.
+      case "follow": {
+        const edge = model.current.edges.find((one) => one.id === message.edgeId);
+        const to = edge && model.current.nodes.find((node) => node.id === edge.to.nodeId);
+        if (edge && to) travel.toLine?.(to.path, edge.to.line, edge.to.side);
+        return;
+      }
+
       case "line":
         if (typeof message.path === "string" && typeof message.line === "number") {
           travel.toLine?.(

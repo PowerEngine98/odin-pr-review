@@ -156,6 +156,7 @@ type HostMessage = {
   author?: string;
   search?: string;
   path?: string;
+  edgeId?: string;
   paths?: string[];
   viewed?: boolean;
 };
@@ -627,6 +628,10 @@ async function fromSidebar(message: HostMessage) {
   }
   if (message.type === "focus" && typeof message.path === "string") {
     toGraph({ type: "focus", path: message.path });
+    return;
+  }
+  if (message.type === "follow" && typeof message.edgeId === "string") {
+    toGraph({ type: "follow", edgeId: message.edgeId });
     return;
   }
   if (message.type === "viewed" && Array.isArray(message.paths) && reading) {

@@ -1118,7 +1118,7 @@ export function showFile(path: string): string | null {
  */
 export function showFileAt(path: string, scale: number): string | null {
   if (!framedIn) return null;
-  const card = shown().find((placed) => placed.node.path === path);
+  const card = openedFor(path);
   // A file the drawing is not currently showing — filtered away, or in another
   // part. There is nothing to fly to, and inventing a destination from the
   // model would fly to where the card would have been if nothing were filtered.
@@ -1143,6 +1143,14 @@ export function showFileAt(path: string, scale: number): string | null {
   const point = aimFor(spot, win, chromeHeight(), scale);
   fly(point.x, point.y, scale);
   return card.node.id;
+}
+
+function openedFor(path: string): Placed | undefined {
+  const card = shown().find((placed) => placed.node.path === path);
+  if (card || !ui.part || !model.current.nodes.some((node) => node.path === path)) return card;
+  ui.part = null;
+  notify("part", { paths: null });
+  return shown().find((placed) => placed.node.path === path);
 }
 
 /**
@@ -1184,6 +1192,7 @@ export function showLine(
    */
   again = true,
 ): { nodeId: string; edgeId: string | null } | null {
+  openedFor(path);
   const scale = arriveAt();
   const cards = laid().cards;
   const boxes: Record<string, Box> = Object.fromEntries(

@@ -346,7 +346,7 @@
       });
     };
     travel.toLine = (path, line, side) => {
-      const at = camera.showLine(path, line, side);
+      const at = camera.showLine(path, line, side, true);
       if (!at) return;
       ui.activeNode = at.nodeId;
       ui.activeEdge = at.edgeId;

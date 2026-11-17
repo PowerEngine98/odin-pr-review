@@ -340,7 +340,8 @@ export class BrowserBridge implements vscode.Disposable {
     sink.send({ type: "note", message: `VS Code is reading #${number}…` });
     const panel = await this.serialized(() => this.present!(cwd, number, base, head));
     if (!panel) throw new Error(`VS Code could not draw #${number}.`);
-    sink.send({ type: "graph", graph: panel.changeGraph });
+    let sentGraph = panel.changeGraph;
+    sink.send({ type: "graph", graph: sentGraph });
     sink.send({
       type: "reading",
       live: panel.changeGraph.meta.worktree === true,
@@ -350,7 +351,14 @@ export class BrowserBridge implements vscode.Disposable {
     if (renderer) sink.send({ type: "renderer", source: renderer });
     const mirror = {
       html: (html: string) => sink.send({ type: "html", html }),
-      message: (message: unknown) => sink.send({ type: "message", message }),
+      message: (message: unknown) => {
+        sink.send({ type: "message", message });
+        const kind = (message as { type?: unknown } | null)?.type;
+        if ((kind === "model" || kind === "rows") && current.changeGraph !== sentGraph) {
+          sentGraph = current.changeGraph;
+          sink.send({ type: "graph", graph: sentGraph });
+        }
+      },
     };
     let current = panel;
     let detach = current.attach(mirror);
@@ -358,7 +366,8 @@ export class BrowserBridge implements vscode.Disposable {
       if (next === current) return;
       detach();
       current = next;
-      sink.send({ type: "graph", graph: next.changeGraph });
+      sentGraph = next.changeGraph;
+      sink.send({ type: "graph", graph: sentGraph });
       sink.send({
         type: "reading",
         live: next.changeGraph.meta.worktree === true,
