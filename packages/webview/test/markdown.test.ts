@@ -98,3 +98,20 @@ describe("a picture in a remark", () => {
     ]);
   });
 });
+
+describe("underscores inside a word", () => {
+  it("stay as written, so snake_case and SCREAMING_SNAKE names are not italicised", async () => {
+    const { parseInline } = await import("../src/app/panels/markdown.js");
+    const plain = (text: string) => parseInline(text).every((part) => part.kind === "text");
+    expect(plain("Set CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 to wait.")).toBe(true);
+    expect(plain("call read_db_rows and __init__ here")).toBe(true);
+    expect(plain("the file my_thing_test.ts")).toBe(true);
+  });
+
+  it("still italicise a word wrapped in underscores on its own", async () => {
+    const { parseInline } = await import("../src/app/panels/markdown.js");
+    expect(parseInline("this is _really_ it")).toContainEqual({ kind: "em", text: "really" });
+    expect(parseInline("(_note_)")).toContainEqual({ kind: "em", text: "note" });
+    expect(parseInline("say *this* too")).toContainEqual({ kind: "em", text: "this" });
+  });
+});
