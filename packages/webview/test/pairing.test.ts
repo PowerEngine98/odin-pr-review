@@ -1139,6 +1139,7 @@ describe("writing about a line on the right", () => {
      */
     expect(composer).toMatch(/class="composer-ask"[\s\S]{0,600}?<svg class="sparks"/);
     expect(composer).toMatch(/\.composer-actions \.composer-ask \{[\s\S]{0,200}?var\(--ai, #a371f7\)/);
+    expect(composer).not.toMatch(/composer-ask\.primary|class:primary=\{!canReview\}/);
   });
 
   it("draws the three buttons at one height", () => {
