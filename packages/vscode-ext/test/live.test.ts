@@ -195,8 +195,10 @@ describe("a rebuild that hangs", () => {
       onChange: () => {},
     });
 
+    await writeFile(join(repo, "src.ts"), "a");
     watched.change?.({ fsPath: `${repo}/src.ts` });
     await new Promise((done) => setTimeout(done, 400));
+    await writeFile(join(repo, "src.ts"), "ab");
     watched.change?.({ fsPath: `${repo}/src.ts` });
     await new Promise((done) => setTimeout(done, 400));
     live.dispose();
@@ -322,3 +324,30 @@ describe("the branch's history moving", () => {
     expect(seen.history).toContain(true);
   }, 20_000);
 });
+
+describe("a path the watcher keeps reporting without it changing", () => {
+  it("rebuilds once, not once per report, so a deleted file cannot keep the reading rebuilding", async () => {
+    let starts = 0;
+    const live = new LiveGraph({
+      repo,
+      settle: 10,
+      ceiling: 40,
+      rebuild: async () => {
+        starts++;
+        return undefined;
+      },
+      onChange: () => {},
+    });
+    for (let round = 0; round < 4; round++) {
+      watched.change?.({ fsPath: `${repo}/gone.sql` });
+      await new Promise((done) => setTimeout(done, 120));
+    }
+    await writeFile(join(repo, "gone.sql"), "back");
+    watched.change?.({ fsPath: `${repo}/gone.sql` });
+    await new Promise((done) => setTimeout(done, 120));
+    live.dispose();
+
+    expect(starts).toBe(2);
+  }, 20_000);
+});
+
