@@ -139,3 +139,14 @@ describe("a folder path that ends with a slash", () => {
     expect(quiet("either/ or")).toBe("either/ or");
   });
 });
+
+describe("how soon a spoken sentence may be over", () => {
+  it("is never sooner than the fastest anyone speaks", async () => {
+    const { shortest, leftToSay } = await import("../src/app/hud/voiced.js");
+    const sentence = "The extension moves, bit for bit, into the UUIDv7 object as the packed number function.";
+    expect(shortest(sentence)).toBeGreaterThan(1500);
+    expect(leftToSay(sentence, 1000, 1000)).toBe(shortest(sentence));
+    expect(leftToSay(sentence, 1000, 1000 + shortest(sentence) + 1)).toBe(0);
+    expect(shortest("   ")).toBe(0);
+  });
+});

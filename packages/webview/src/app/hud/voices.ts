@@ -19,6 +19,7 @@
  */
 
 import { host, notify, settings } from "../state.svelte.js";
+import { leftToSay } from "./voiced.js";
 import { voiceStatus } from "./voiceStatus.svelte.js";
 
 /** Starts of words in a spoken text, by character. */
@@ -135,12 +136,30 @@ export function prepare(text: string): void {
 }
 
 /** Speaks one sentence, telling `onWord` where each word starts, then `done`. */
-export function utter(text: string, onWord: OnWord, done: () => void): void {
+export function utter(text: string, onWord: OnWord, finished: () => void): void {
+  const mine = turn;
+  const began = performance.now();
+  let settled = false;
+  const done = () => {
+    if (settled || mine !== turn) return;
+    settled = true;
+    const left = leftToSay(text, began, performance.now());
+    if (left <= 50) {
+      finished();
+      return;
+    }
+    follow(text, onWord, text.length / (left / 1000));
+    timers.push(
+      setTimeout(() => {
+        stopFollowing();
+        if (mine === turn) finished();
+      }, left),
+    );
+  };
   if (!kokoro()) {
     fallBack(text, onWord, done);
     return;
   }
-  const mine = turn;
   const slow = setTimeout(() => {
     voiceStatus.warming = true;
   }, 300);
