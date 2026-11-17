@@ -2491,8 +2491,9 @@ function armLive(
     // Said in the frame this watcher belongs to. The reader may be reading
     // something else by now, and a rebuild of what they left is not news about
     // what they are looking at.
-    onRebuilding: (files, history) => {
-      log(`live: rebuilding ${repo}, ${history ? "the branch moved" : `${files} file${files === 1 ? "" : "s"} changed`}`);
+    onRebuilding: (files, history, paths) => {
+      const named = paths && paths.length > 0 ? ` (${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ", …" : ""})` : "";
+      log(`live: rebuilding ${repo}, ${history ? "the branch moved" : `${files} file${files === 1 ? "" : "s"} changed`}${named}`);
       GraphPanel.setRefreshingIn(
         shown,
         repo,

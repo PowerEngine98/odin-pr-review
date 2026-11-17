@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from "node:fs";
+import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import {
@@ -124,7 +125,7 @@ export interface LiveOptions {
    * checkout — which is worth saying differently: a count of files changed is
    * nonsense for a rebuild that no file provoked.
    */
-  onRebuilding?: (files: number, history: boolean) => void;
+  onRebuilding?: (files: number, history: boolean, paths?: readonly string[]) => void;
   /** The rebuild is over, whatever came of it. */
   onSettled?: () => void;
   /** Called only when something a reader could see has actually moved. */
@@ -274,6 +275,7 @@ export class LiveGraph implements vscode.Disposable {
   private disposed = false;
   /** What `check-ignore` has already answered, so it is asked once per path. */
   private readonly known = new Map<string, boolean>();
+  private readonly stamps = new Map<string, string>();
 
   constructor(private readonly options: LiveOptions) {
     // Short, because a rebuild provoked by an ordinary edit no longer costs
@@ -481,7 +483,7 @@ export class LiveGraph implements vscode.Disposable {
     /** Whether this rebuild is still the one the reader is waiting for. */
     const current = () => !this.disposed && this.run === mine;
 
-    this.options.onRebuilding?.(arrived.length, moved);
+    this.options.onRebuilding?.(this.changed.length, moved, this.changed);
     try {
       const staged = await this.bounded(this.options.rebuild());
       if (!current() || !staged) return;
@@ -574,7 +576,21 @@ export class LiveGraph implements vscode.Disposable {
       const ignored = await ignoredBy(this.options.repo, unknown);
       for (const path of unknown) this.known.set(path, ignored.has(path));
     }
-    return paths.some((path) => this.known.get(path) === false);
+    const kept = paths.filter((path) => this.known.get(path) === false);
+    const moved = await Promise.all(kept.map((path) => this.restamped(path)));
+    this.changed = kept.filter((_, at) => moved[at]);
+    return this.changed.length > 0;
+  }
+
+  private changed: string[] = [];
+
+  private async restamped(path: string): Promise<boolean> {
+    const now = await stat(join(this.options.repo, path))
+      .then((found) => `${found.size}:${found.mtimeMs}:${found.isDirectory() ? "d" : "f"}`)
+      .catch(() => "gone");
+    const before = this.stamps.get(path);
+    this.stamps.set(path, now);
+    return before !== now;
   }
 
   dispose(): void {
