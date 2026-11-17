@@ -144,3 +144,14 @@ export function sentences(text: string): { start: number; text: string }[] {
   }
   return out;
 }
+
+const FASTEST_SPEECH = 40;
+
+export function shortest(text: string): number {
+  return (text.trim().length / FASTEST_SPEECH) * 1000;
+}
+
+export function leftToSay(text: string, began: number, now: number): number {
+  return Math.max(0, shortest(text) - (now - began));
+}
+
