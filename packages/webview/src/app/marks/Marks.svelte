@@ -23,9 +23,9 @@
   import { motion } from "../canvas/camera.svelte.js";
   import type { CommentView } from "../model.js";
   import { threadsOf, type Conversation } from "../panels/Thread.svelte";
-  import { model, settings, ui, view } from "../state.svelte.js";
+  import { model, review, settings, ui, view } from "../state.svelte.js";
   import Mark from "./Mark.svelte";
-  import { markSize, placeMark, seenSize, sideOf, type Side } from "./marks.js";
+  import { markSize, pendingRemarks, placeMark, seenSize, sideOf, type Side } from "./marks.js";
 
   /** A conversation and where on the screen its mark has ended up. */
   interface Placed {
@@ -39,7 +39,37 @@
     seen: boolean;
   }
 
-  const threads = $derived(threadsOf(model.current.comments ?? []));
+  const threads = $derived(
+    threadsOf([
+      ...(model.current.comments ?? []),
+      ...pendingRemarks(review.drafts, model.current.viewer, model.current.viewerFace),
+    ]),
+  );
+
+  let area = $state<{ left: number; top: number; width: number; height: number } | null>(null);
+
+  function areaOf(root: CommentView): { left: number; top: number; width: number; height: number } | null {
+    const node = model.current.nodes.find((one) => one.path === root.path);
+    const card = node && document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(node.id)}"]`);
+    if (!card) return null;
+    const attribute = sideOf(root.side) === "base" ? "data-old" : "data-new";
+    const from = Math.min(root.startLine || root.line, root.line);
+    let box: DOMRect | null = null;
+    for (let line = from; line <= root.line; line++) {
+      const row = card.querySelector<HTMLElement>(`.row[${attribute}="${line}"]`);
+      if (!row || row.offsetParent === null) continue;
+      const at = row.getBoundingClientRect();
+      box = box
+        ? new DOMRect(
+            Math.min(box.left, at.left),
+            Math.min(box.top, at.top),
+            Math.max(box.right, at.right) - Math.min(box.left, at.left),
+            Math.max(box.bottom, at.bottom) - Math.min(box.top, at.top),
+          )
+        : at;
+    }
+    return box ? { left: box.left, top: box.top, width: box.width, height: box.height } : null;
+  }
 
   let layer = $state<HTMLElement | null>(null);
   let placed = $state<Placed[]>([]);
@@ -208,6 +238,8 @@
     frame = requestAnimationFrame(() => {
       frame = 0;
       placed = measure();
+      const opened = ui.thread && threads.find((one) => one.root.id === ui.thread?.id)?.root;
+      area = opened?.pending ? areaOf(opened) : null;
     });
   }
 
@@ -237,6 +269,7 @@
     settings.hideViewed,
     ui.part,
     ui.viewed,
+    ui.thread?.id,
   ]);
 
   $effect(() => {
@@ -391,8 +424,15 @@
       onopen={() => open(mark)}
       working={going}
       onagent={() => openAtAgent(mark)}
+      pending={mark.thread.root.pending === true}
     />
   {/each}
+  {#if area}
+    <div
+      class="pending-area"
+      style="left:{area.left}px;top:{area.top}px;width:{area.width}px;height:{area.height}px"
+    ></div>
+  {/if}
 </div>
 
 <style>
@@ -408,5 +448,23 @@
     inset: 0;
     z-index: var(--z-marks, 22);
     pointer-events: none;
+  }
+
+  .pending-area {
+    position: fixed;
+    box-sizing: border-box;
+    border: 1.5px solid var(--warning);
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--warning) 8%, transparent);
+    animation: pending-pulse 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pending-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 55%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 0%, transparent); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pending-area { animation: none; }
   }
 </style>

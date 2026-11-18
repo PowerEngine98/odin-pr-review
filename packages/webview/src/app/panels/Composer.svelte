@@ -438,7 +438,6 @@
       {#if canAsk}
         <button
           class="composer-ask"
-          class:primary={!canReview}
           disabled={!sayable}
           title={sayable
             ? "Send this to the agents. It stays on this machine."
@@ -493,19 +492,6 @@
     color: var(--ai, #a371f7);
     border-color: var(--ai, #a371f7);
     background: color-mix(in srgb, var(--ai, #a371f7) 12%, transparent);
-  }
-
-  /* The only way out of the box when there is no pull request to post to, so
-     it is drawn as the press rather than beside it — and still purple, since it
-     still goes to the agents and not to the forge. */
-  .composer-actions .composer-ask.primary {
-    background: var(--ai, #a371f7);
-    border-color: var(--ai, #a371f7);
-    color: var(--vscode-editor-background, #1e1e1e);
-  }
-  .composer-actions .composer-ask.primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--ai, #a371f7) 85%, white);
-    color: var(--vscode-editor-background, #1e1e1e);
   }
 
   .composer-ask .sparks {

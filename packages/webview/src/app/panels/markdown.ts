@@ -99,7 +99,7 @@ export function nameBlock(): number {
  * is here to avoid — the text is a person's, and it is rendered as text.
  */
 const INLINE =
-  /!\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_|~~([^~]+)~~|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s]+)/g;
+  /!\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|\*([^*]+)\*|(?<![\p{L}\p{N}_])_([^_]+)_(?![\p{L}\p{N}_])|~~([^~]+)~~|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s]+)/gu;
 
 export function parseInline(text: string): Inline[] {
   const parts: Inline[] = [];

@@ -990,7 +990,7 @@ describe("answering a local thread", () => {
     expect(thread).toMatch(/notify\(local \? "editLocal" : "editComment"/);
     // Reactions live on a comment the forge issued an id for. There is nowhere
     // to put one on a remark it has never seen.
-    expect(thread).toMatch(/class:none=\{local\}/);
+    expect(thread).toMatch(/class:none=\{local \|\| comment\.pending === true\}/);
   });
 });
 
@@ -1139,6 +1139,7 @@ describe("writing about a line on the right", () => {
      */
     expect(composer).toMatch(/class="composer-ask"[\s\S]{0,600}?<svg class="sparks"/);
     expect(composer).toMatch(/\.composer-actions \.composer-ask \{[\s\S]{0,200}?var\(--ai, #a371f7\)/);
+    expect(composer).not.toMatch(/composer-ask\.primary|class:primary=\{!canReview\}/);
   });
 
   it("draws the three buttons at one height", () => {

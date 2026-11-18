@@ -164,7 +164,8 @@
 <script lang="ts">
   import { forHost, type Attached } from "./attached.js";
   import type { CommentView } from "../model.js";
-  import { host, model, notify, ui } from "../state.svelte.js";
+  import { host, model, notify, review, ui } from "../state.svelte.js";
+  import { pendingRemarks } from "../marks/marks.js";
   // The exact module, not the package: `@odin/core` reaches git and spawns
   // processes, none of which exists in a browser.
   import { markOf } from "@odin/core/agents/marks.js";
@@ -266,7 +267,12 @@
     });
   }
 
-  const threads = $derived(threadsOf(model.current.comments ?? []));
+  const threads = $derived(
+    threadsOf([
+      ...(model.current.comments ?? []),
+      ...pendingRemarks(review.drafts, model.current.viewer, model.current.viewerFace),
+    ]),
+  );
   const thread = $derived(threads.find((one) => one.root.id === openId) ?? null);
   /**
    * A conversation about the change rather than about a line has no mark.
@@ -619,6 +625,9 @@
           title="The lines this was written about have been rewritten or removed. The line number is where they used to be."
         >adrift</span>
       {/if}
+      {#if thread.root.pending}
+        <span class="thread-pending" title="Part of your review. Nobody else sees it until you submit the review.">pending</span>
+      {:else}
       <button
         class="thread-state"
         class:settled={thread.root.resolved === true}
@@ -647,6 +656,7 @@
           </svg>
         {/if}
       </button>
+      {/if}
       <button class="thread-close" title="Close" aria-label="Close" onclick={onclose}>
         <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
           <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
@@ -661,7 +671,9 @@
           <div class="said">
             <div class="head">
               <span class="who">{comment.author || "?"}</span>
-              <span class="when" title={exactly(comment.createdAt)}>{ago(comment.createdAt)}</span>
+              {#if !comment.pending}
+                <span class="when" title={exactly(comment.createdAt)}>{ago(comment.createdAt)}</span>
+              {/if}
               {#if comment.outdated}<span class="outdated">outdated</span>{/if}
               <!-- Never sent anywhere. Said on every local remark rather than
                    only on the reader's own, because the thing worth knowing is
@@ -674,7 +686,7 @@
               {#if comment.task && comment.task !== "done"}
                 <span class="task {comment.task}">{TASK[comment.task]}</span>
               {/if}
-              {#if host}
+              {#if host && !comment.pending}
                 <button
                   class="more-actions"
                   title="More actions"
@@ -749,7 +761,7 @@
                  id for, and there is nowhere to put one on a remark it has
                  never seen. Offering the picker anyway would be a button that
                  always fails. -->
-            <div class="reactions" class:none={local}>
+            <div class="reactions" class:none={local || comment.pending === true}>
               {#each reactionsOf(comment) as reaction}
                 <button
                   class="pill"
@@ -779,7 +791,7 @@
       {/each}
     </div>
 
-    {#if host}
+    {#if host && !thread.root.pending}
       <div class="thread-reply">
         <!-- Re-keyed on the conversation: a box carried from one thread to the
              next arrives holding the last one's half-written sentence. -->
@@ -1065,6 +1077,26 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+  }
+
+  .thread-pending {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--warning);
+    border: 1px solid color-mix(in srgb, var(--warning) 55%, transparent);
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border-radius: 999px;
+    padding: 0 7px;
+    animation: thread-pending 1.6s ease-in-out infinite;
+  }
+
+  @keyframes thread-pending {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 55%, transparent); }
+    50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 0%, transparent); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .thread-pending { animation: none; }
   }
 
   .thread-reply {
