@@ -58,8 +58,9 @@ describe("asking the forge for pull requests in a busy repository", () => {
     const found = await listPullRequests({ cwd: repo, author: "marc" });
     expect(found?.map((one) => one.number)).toEqual([2]);
     expect(asked()[0]).toMatch(/author:marc /);
-    expect(asked()[1]).not.toMatch(/--search/);
-    expect(asked()[1]).toMatch(/--limit 200 /);
+    expect(asked().join("\n")).toMatch(/api graphql -f query=[\s\S]*user\(login: \$login\)[\s\S]*-F login=marc/);
+    expect(asked().at(-1)).not.toMatch(/--search/);
+    expect(asked().at(-1)).toMatch(/--limit 200 /);
   });
 
   it("hands typed words to the forge's own search", async () => {

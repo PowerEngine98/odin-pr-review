@@ -794,6 +794,7 @@ async function refreshPullRequests(): Promise<void> {
       currentUser({ cwd: repo }).catch(() => undefined),
     ]);
     if (mine !== asking) return;
+    if (answer === undefined) log(`pull requests: gh gave no answer for ${JSON.stringify({ state: query.state, author: asked.author, search: asked.search })}`);
     const pulls = answer ?? [];
     const faces = new Map(pulls.map((pr) => [pr.number, pr.avatarUrl]));
     for (const pr of pulls) {

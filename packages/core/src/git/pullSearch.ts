@@ -42,12 +42,15 @@ export async function findPulls<T>(
     search: (query: string) => Promise<T[] | undefined>;
     recent: (limit: number) => Promise<T[] | undefined>;
     loginOf: (pull: T) => string;
+    byAuthor?: (login: string) => Promise<T[] | undefined>;
   },
 ): Promise<T[] | undefined> {
   if (!searching(asked)) return sources.recent(50);
   const found = await sources.search(pullQuery(asked));
   if (found && found.length > 0) return found;
   if (!asked.author || asked.search) return found;
+  const theirs = await sources.byAuthor?.(asked.author);
+  if (theirs && theirs.length > 0) return theirs;
   const recent = await sources.recent(RECENT);
   return recent?.filter((pull) => partOfLogin(sources.loginOf(pull), asked.author));
 }

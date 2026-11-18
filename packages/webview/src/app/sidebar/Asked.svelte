@@ -15,7 +15,7 @@
     $props();
 
   const STATES: { value: Query["state"]; label: string }[] = [
-    { value: "open", label: "Open" },
+    { value: "open", label: "Open/draft" },
     { value: "merged", label: "Merged" },
     { value: "closed", label: "Closed" },
     { value: "all", label: "All" },

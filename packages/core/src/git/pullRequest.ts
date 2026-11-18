@@ -205,6 +205,7 @@ export async function listPullRequests(
     {
       search: (query) => listOnce({ ...rest, state: "all", query }),
       recent: (limit) => listOnce({ ...rest, limit: options.limit ?? limit }),
+      byAuthor: (login) => pullsBy(login, options.state ?? "open", rest),
       loginOf: (pull) => pull.author,
     },
   );
@@ -246,6 +247,10 @@ async function listOnce(
   );
   // Nothing came back at all: no `gh`, not signed in, or it gave up. That is
   // not the same as an empty answer, and the difference is worth carrying.
+  return parseList(json);
+}
+
+export function parseList(json: string | undefined): PullRequestSummary[] | undefined {
   if (!json) return undefined;
 
   try {
@@ -480,3 +485,56 @@ export async function mergePullRequest(
   );
   return out !== undefined;
 }
+
+const STATES: Record<PullRequestState, string> = {
+  open: "[OPEN]",
+  merged: "[MERGED]",
+  closed: "[CLOSED]",
+  all: "[OPEN, MERGED, CLOSED]",
+};
+
+export async function pullsBy(
+  login: string,
+  state: PullRequestState,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<PullRequestSummary[] | undefined> {
+  if (!/^[\w-]+$/.test(login)) return undefined;
+  const repo = (await run(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], options))?.trim();
+  if (!repo) return undefined;
+  const query = `query($login: String!) {
+    user(login: $login) {
+      pullRequests(first: 100, states: ${STATES[state]}, orderBy: { field: UPDATED_AT, direction: DESC }) {
+        nodes {
+          number title url headRefName headRefOid isDraft createdAt updatedAt state mergedAt closedAt baseRefName
+          author { login }
+          mergeCommit { oid }
+          repository { nameWithOwner }
+          reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug name } } } }
+        }
+      }
+    }
+  }`;
+  const json = await run(["api", "graphql", "-f", `query=${query}`, "-F", `login=${login}`], {
+    ...options,
+    timeoutMs: options.timeoutMs ?? 20_000,
+  });
+  if (!json) return undefined;
+  try {
+    const nodes = (JSON.parse(json) as {
+      data?: { user?: { pullRequests?: { nodes?: ({
+        repository?: { nameWithOwner?: string };
+        reviewRequests?: { nodes?: { requestedReviewer?: { login?: string; slug?: string; name?: string } }[] };
+      } & Record<string, unknown>)[] } } };
+    }).data?.user?.pullRequests?.nodes ?? [];
+    const here = nodes
+      .filter((node) => node.repository?.nameWithOwner?.toLowerCase() === repo.toLowerCase())
+      .map(({ repository: _repository, reviewRequests, ...rest }) => ({
+        ...rest,
+        reviewRequests: (reviewRequests?.nodes ?? []).map((one) => one.requestedReviewer ?? {}),
+      }));
+    return parseList(JSON.stringify(here));
+  } catch {
+    return undefined;
+  }
+}
+
