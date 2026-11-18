@@ -14,6 +14,7 @@
 -->
 <script lang="ts">
   import Settings from "./Settings.svelte";
+  import StackChip from "./StackChip.svelte";
   import { host, model, notify, ui } from "../state.svelte.js";
   import { CARET, COPY_ICON, HISTORY, PR_ICON, RING } from "./icons.js";
   import { openTour } from "../tour/panel.svelte.js";
@@ -226,6 +227,9 @@
     </span>
   {:else}
     <span class="state local">{@html PR_ICON}Local</span>
+  {/if}
+  {#if pull}
+    <StackChip number={pull.number} />
   {/if}
 
   <span class="about">

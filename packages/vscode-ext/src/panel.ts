@@ -41,6 +41,10 @@ import {
   SUPPORT_REPO,
   withAttachments,
   anonymize,
+  pullStack,
+  cachedAvatar,
+  type PullStack,
+  type PullRequestSummary,
   type Attachment,
   type Secrets,
   type SupportKind,
@@ -2355,6 +2359,31 @@ export class GraphPanel {
 
   static secrets: (() => Secrets) | undefined;
 
+  static onReadPull: ((number: number, where: string, pull: PullRequestSummary) => void) | undefined;
+
+  private stackAsked: Promise<PullStack | undefined> | undefined;
+
+  private async sendStack(): Promise<void> {
+    const pull = this.graph.meta.pullRequest;
+    if (!pull?.headRefName || !pull.baseRefName) {
+      void this.panel.webview.postMessage({ type: "stack", stack: null });
+      return;
+    }
+    this.stackAsked ??= pullStack(
+      { number: pull.number, head: pull.headRefName, base: pull.baseRefName },
+      { cwd: this.repo },
+    ).catch(() => undefined);
+    const stack = await this.stackAsked;
+    if (stack) {
+      for (const one of stack.pulls) {
+        const face = one.avatarUrl ? cachedAvatar(one.avatarUrl) ?? (await inlineAvatar(one.avatarUrl).catch(() => undefined)) : undefined;
+        if (face) one.avatarUrl = face;
+        else delete one.avatarUrl;
+      }
+    }
+    void this.panel.webview.postMessage({ type: "stack", stack: stack ?? null });
+  }
+
   static cleanLog(last?: number): string {
     return anonymize(logText(last), GraphPanel.secrets?.() ?? {});
   }
@@ -3778,6 +3807,19 @@ export class GraphPanel {
           drafts.push({ ...draft, body });
         }
         await this.submit({ ...review, body: posted, comments: drafts });
+        return;
+      }
+      if (reply.type === "askStack") {
+        void this.sendStack();
+        return;
+      }
+      if (reply.type === "stackRead") {
+        const asked = (message as unknown as { payload?: { number?: unknown; where?: unknown } }).payload;
+        const number = typeof asked?.number === "number" ? asked.number : undefined;
+        const pull = number === undefined ? undefined : (await this.stackAsked)?.pulls.find((one) => one.number === number);
+        if (pull && number !== undefined) {
+          GraphPanel.onReadPull?.(number, typeof asked?.where === "string" ? asked.where : "origin", pull);
+        }
         return;
       }
       if (reply.type === "odinLog") {

@@ -223,6 +223,8 @@ async function listOnce(
     state?: PullRequestState;
     query?: string;
     light?: boolean;
+    base?: string;
+    head?: string;
   },
 ): Promise<PullRequestSummary[] | undefined> {
   const json = await run(
@@ -230,6 +232,8 @@ async function listOnce(
       "pr", "list",
       "--state", options.state ?? "open",
       ...(options.query ? ["--search", options.query] : []),
+      ...(options.base ? ["--base", options.base] : []),
+      ...(options.head ? ["--head", options.head] : []),
       "--limit", String(options.limit ?? 50),
       "--json",
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
@@ -536,5 +540,66 @@ export async function pullsBy(
   } catch {
     return undefined;
   }
+}
+
+export interface PullStack {
+  pulls: PullRequestSummary[];
+  base: string;
+  at: number;
+}
+
+export interface StackPlace {
+  number: number;
+  head: string;
+  base: string;
+}
+
+const STACK_DEPTH = 10;
+
+export async function stackAround(
+  current: StackPlace,
+  find: { headed: (branch: string) => Promise<PullRequestSummary[] | undefined>; based: (branch: string) => Promise<PullRequestSummary[] | undefined> },
+): Promise<PullStack | undefined> {
+  const seen = new Set<number>([current.number]);
+  const down = async () => {
+    const found: PullRequestSummary[] = [];
+    let base = current.base;
+    for (let step = 0; step < STACK_DEPTH && base; step++) {
+      const under = (await find.headed(base))?.find((pr) => !seen.has(pr.number) && pr.baseRef && pr.baseRef !== base);
+      if (!under) break;
+      seen.add(under.number);
+      found.unshift(under);
+      base = under.baseRef ?? "";
+    }
+    return { found, base };
+  };
+  const up = async () => {
+    const found: PullRequestSummary[] = [];
+    let head = current.head;
+    for (let step = 0; step < STACK_DEPTH && head; step++) {
+      const over = (await find.based(head))
+        ?.filter((pr) => !seen.has(pr.number))
+        .sort(byActivity)[0];
+      if (!over) break;
+      seen.add(over.number);
+      found.push(over);
+      head = over.branch;
+    }
+    return found;
+  };
+  const [{ found: below, base }, above, mine] = await Promise.all([down(), up(), find.headed(current.head)]);
+  if (below.length === 0 && above.length === 0) return undefined;
+  const self = mine?.find((pr) => pr.number === current.number);
+  return { pulls: [...below, ...(self ? [self] : []), ...above], base, at: below.length };
+}
+
+export async function pullStack(
+  current: StackPlace,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<PullStack | undefined> {
+  return stackAround(current, {
+    headed: (branch) => listOnce({ ...options, head: branch, light: true }),
+    based: (branch) => listOnce({ ...options, base: branch, light: true }),
+  });
 }
 

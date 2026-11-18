@@ -230,6 +230,11 @@ export function activate(context: vscode.ExtensionContext): void {
   const bridge = new BrowserBridge(context, presentForBrowser, goLiveOn, GraphPanel.followers);
   GraphPanel.onGoLive = (repo, number) => goLiveOn(repo, number);
   GraphPanel.secrets = () => secretsKnown();
+  GraphPanel.onReadPull = (number, where, pull) => {
+    if (!known.has(number)) known.set(number, pull);
+    const command = where === "since" ? "odin.readSince" : where === "local" ? "odin.readLocal" : "odin.readOrigin";
+    void vscode.commands.executeCommand(command, number);
+  };
   browserBridge = bridge;
   void bridge.start();
   const driver = new Driver(context.globalStorageUri?.fsPath ?? "", (step) =>
