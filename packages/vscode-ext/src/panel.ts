@@ -958,7 +958,7 @@ export class GraphPanel {
    * editor that looks like it did nothing. The notification says a number; this
    * says it in the place the reviewer is already looking.
    */
-  static async showLoading(note: string, where?: string): Promise<void> {
+  static async showLoading(note: string, where?: string, aside = false): Promise<void> {
     /*
      * The frame this reading is already in, if it has one.
      *
@@ -1000,7 +1000,7 @@ export class GraphPanel {
      */
     const front = GraphPanel.target();
     const taken =
-      where !== undefined &&
+      (where !== undefined || aside) &&
       !own &&
       front !== undefined &&
       GraphPanel.readings().some((held) => held.panel === front && held.painted);

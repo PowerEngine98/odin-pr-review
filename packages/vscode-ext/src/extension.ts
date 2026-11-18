@@ -1043,7 +1043,7 @@ async function readOrigin(number: number, since?: string): Promise<void> {
   // goes once the forge's copy is drawn.
   const going = readingsOf(number, true, pull.branch);
 
-  await GraphPanel.showLoading(`Fetching #${number}`);
+  await GraphPanel.showLoading(`Fetching #${number}`, readingsOf(number, false, pull.branch)[0], true);
   await git(["fetch", "--quiet", "origin", pull.branch], { cwd: repo })
     .catch(() => "");
 
@@ -1535,7 +1535,7 @@ async function readFinished(pull: PullRequestSummary): Promise<void> {
   const repo = await repositoryRoot();
   if (!repo) return;
 
-  await GraphPanel.showLoading(`Fetching #${pull.number}`);
+  await GraphPanel.showLoading(`Fetching #${pull.number}`, readingsOf(pull.number, false, pull.branch)[0], true);
   let fetched = false;
   try {
     await git(["fetch", "--quiet", "origin", `refs/pull/${pull.number}/head`], {
