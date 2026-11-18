@@ -267,6 +267,7 @@ export interface CommentView {
   adrift?: boolean;
   /** The forge's own name for the conversation, when the forge knows of it. */
   threadId?: string;
+  pending?: boolean;
 }
 
 /**

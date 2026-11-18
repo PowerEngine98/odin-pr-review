@@ -377,3 +377,36 @@ export function placeMark(
     top: Math.round(y - size / 2),
   };
 }
+
+export interface PendingDraft {
+  id: string;
+  path: string;
+  side: string;
+  line: number;
+  startLine?: number;
+  body: string;
+}
+
+export const PENDING_PREFIX = "pending:";
+
+export function pendingRemarks(
+  drafts: readonly PendingDraft[],
+  viewer?: string,
+  face?: string,
+): CommentView[] {
+  return drafts.map((draft) => ({
+    id: PENDING_PREFIX + draft.id,
+    path: draft.path,
+    line: draft.line,
+    startLine: draft.startLine ?? draft.line,
+    side: draft.side,
+    body: draft.body,
+    author: viewer || "you",
+    ...(face ? { avatar: face } : {}),
+    createdAt: "",
+    url: "",
+    outdated: false,
+    pending: true,
+  }));
+}
+

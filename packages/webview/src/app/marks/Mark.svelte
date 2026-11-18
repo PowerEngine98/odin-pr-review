@@ -59,6 +59,7 @@
      * of it shows.
      */
     seen = false,
+    pending = false,
   }: {
     root: CommentView;
     count?: number;
@@ -70,6 +71,7 @@
     working?: { agent?: string; task: string } | null;
     onagent?: () => void;
     seen?: boolean;
+    pending?: boolean;
   } = $props();
 
   /**
@@ -135,8 +137,9 @@
   class="mark"
   class:is-open={open}
   class:seen={seen && !open}
+  class:pending
   style="left:{left}px;top:{top}px;--mark-size:{size}px;--seen-fade:{SEEN_FADE}"
-  title={hintOf(root)}
+  title={pending ? `Pending, not posted yet: ${hintOf(root)}` : hintOf(root)}
   aria-label="{count === 1 ? '1 remark' : count + ' remarks'} on {placeOf(root)}"
   onclick={press}
 >
@@ -500,6 +503,22 @@
   .mark:focus-visible .face,
   .mark.is-open .face {
     border-color: var(--status-renamed);
+  }
+
+  .mark.pending .face,
+  .mark.pending:hover .face,
+  .mark.pending.is-open .face {
+    border: 2px solid var(--warning);
+    animation: pending-ring 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pending-ring {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 60%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 0%, transparent); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mark.pending .face { animation: none; }
   }
 
   /* How many remarks are on the thread, when there is more than one. A single

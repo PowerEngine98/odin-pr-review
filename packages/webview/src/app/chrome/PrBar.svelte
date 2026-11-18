@@ -306,7 +306,7 @@
        of sight until they have already worked out how to do it. -->
   {#if model.current.canReview}
     <button class="submit" onclick={() => onReview?.()}>
-      Submit review{#if pending > 0}<span class="count">{pending}</span>{/if}
+      Submit review{#if pending > 0}<span class="count" title="{pending} pending {pending === 1 ? 'comment' : 'comments'}, not posted yet">{pending}</span>{/if}
     </button>
   {/if}
 
@@ -686,9 +686,21 @@
   }
   .submit:hover { filter: brightness(1.08); }
   .submit .count {
-    background: color-mix(in srgb, var(--action-ink) 22%, transparent);
+    background: var(--warning);
+    color: #1f1600;
     border-radius: 999px;
     padding: 0 6px;
     font-size: 11px;
+    font-weight: 700;
+    animation: pending-badge 1.6s ease-in-out infinite;
+  }
+
+  @keyframes pending-badge {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--warning) 60%, transparent); }
+    50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 0%, transparent); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .submit .count { animation: none; }
   }
 </style>

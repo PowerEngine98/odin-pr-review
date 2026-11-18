@@ -990,7 +990,7 @@ describe("answering a local thread", () => {
     expect(thread).toMatch(/notify\(local \? "editLocal" : "editComment"/);
     // Reactions live on a comment the forge issued an id for. There is nowhere
     // to put one on a remark it has never seen.
-    expect(thread).toMatch(/class:none=\{local\}/);
+    expect(thread).toMatch(/class:none=\{local \|\| comment\.pending === true\}/);
   });
 });
 
