@@ -70,6 +70,7 @@ import { PairingSession, PLACEHOLDER } from "./pairing.js";
 import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
 import type { FoldedStore } from "./folded.js";
+import { LiveElsewhere } from "./elsewhere.js";
 
 /** What the webview sends back when a reviewer follows something. */
 interface NavigateMessage {
@@ -958,7 +959,7 @@ export class GraphPanel {
    * editor that looks like it did nothing. The notification says a number; this
    * says it in the place the reviewer is already looking.
    */
-  static async showLoading(note: string, where?: string): Promise<void> {
+  static async showLoading(note: string, where?: string, aside = false): Promise<void> {
     /*
      * The frame this reading is already in, if it has one.
      *
@@ -1000,7 +1001,7 @@ export class GraphPanel {
      */
     const front = GraphPanel.target();
     const taken =
-      where !== undefined &&
+      (where !== undefined || aside) &&
       !own &&
       front !== undefined &&
       GraphPanel.readings().some((held) => held.panel === front && held.painted);
@@ -1634,7 +1635,7 @@ export class GraphPanel {
     GraphPanel.pendingDiscuss.set(key, { attached, ...(saved ? { saved } : {}), at: Date.now() });
     GraphPanel.onGoLive(this.repo, number).catch((error: Error) => {
       GraphPanel.pendingDiscuss.delete(key);
-      failed(`VS Code could not go live: ${error.message}`);
+      failed(error instanceof LiveElsewhere ? error.message : `VS Code could not go live: ${error.message}`);
     });
   }
 

@@ -91,14 +91,7 @@ function addTab(mode: Mode, place: Place) {
   if (!model) return;
 
   const link = tabLike(model, hrefOf(place, mode), LABELS[mode]);
-  link.addEventListener("click", (event) => {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (!alive()) return;
-    event.preventDefault();
-    history.pushState(history.state, "", link.href);
-    seen = location.href;
-    open();
-  });
+  opensGraph(link);
 
   const holder = holderOf(model);
   let tab: HTMLElement = link;
@@ -117,11 +110,86 @@ function addTab(mode: Mode, place: Place) {
   (pulls ? holderOf(pulls) : holder).after(tab);
 }
 
+function opensGraph(link: HTMLAnchorElement): void {
+  link.addEventListener("click", (event) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!alive()) return;
+    event.preventDefault();
+    history.pushState(history.state, "", link.href);
+    seen = location.href;
+    open();
+  });
+}
+
+const ACTION = "data-odin-see-graph";
+
+function addSeeAsGraph(place: Place): void {
+  const commits = document.getElementById("changes-selector-button");
+  const holder = commits?.parentElement;
+  if (!holder || holder.parentElement?.querySelector(`[${ACTION}]`)) return;
+  const link = document.createElement("a");
+  link.href = hrefOf(place, "pull");
+  link.className = "odin-see-graph";
+  link.setAttribute(ACTION, "");
+  link.append(icon(), document.createTextNode("See as a graph"));
+  opensGraph(link);
+  holder.after(link);
+}
+
+const LAYOUT_ITEM = "data-odin-layout";
+
+function goToGraph(href: string): void {
+  if (!alive()) return;
+  history.pushState(history.state, "", href);
+  seen = location.href;
+  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  open();
+}
+
+function addGraphLayout(place: Place): void {
+  const layout = document.querySelector<HTMLElement>('ul[role="group"][aria-label="Layout"]');
+  if (!layout || layout.querySelector(`[${LAYOUT_ITEM}]`)) return;
+  const model =
+    layout.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="false"]') ??
+    layout.querySelector<HTMLElement>('[role="menuitemradio"]');
+  if (!model) return;
+  const item = model.cloneNode(true) as HTMLElement;
+  item.removeAttribute("id");
+  item.removeAttribute("aria-labelledby");
+  item.setAttribute("aria-checked", "false");
+  item.setAttribute(LAYOUT_ITEM, "");
+  for (const labelled of item.querySelectorAll("[id]")) labelled.removeAttribute("id");
+  const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.textContent?.trim()) {
+      node.textContent = "Graph";
+      break;
+    }
+  }
+  const href = hrefOf(place, "pull");
+  item.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    goToGraph(href);
+  });
+  item.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    goToGraph(href);
+  });
+  layout.append(item);
+}
+
 function ensureTabs() {
   const place = placeOf(location.pathname);
   if (!place) return;
   addTab("repo", place);
-  if (place.number) addTab("pull", place);
+  if (place.number) {
+    addTab("pull", place);
+    addSeeAsGraph(place);
+    addGraphLayout(place);
+  }
 }
 
 function theme(): "dark" | "light" {
