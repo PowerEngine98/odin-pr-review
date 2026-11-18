@@ -59,6 +59,8 @@ import { TourStore } from "./tour.js";
 import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 import { claimHandoff, leaveHandoff } from "./handoff.js";
+import { LiveElsewhere } from "./elsewhere.js";
+import { liveFitsHere } from "./liveRule.js";
 import { Lanes } from "./lanes.js";
 
 /** The editor's own theme, which the grammars' colours have to match. */
@@ -998,7 +1000,11 @@ async function readLocal(number: number): Promise<void> {
       `Preparing a checkout of ${pull.branch}`,
       () => readableCheckout(pull.branch, { cwd: repo }),
     );
-    await review(pull.baseRef, undefined, true, checkout.path, pull.number, going);
+    if (await liveBelongsHere(checkout.path)) {
+      await review(pull.baseRef, undefined, true, checkout.path, pull.number, going);
+    } else {
+      await liveInNewWindow(checkout.path, pull.number);
+    }
   } catch (error) {
     /*
      * Every way this fails is worth saying rather than driving through: the
@@ -1396,6 +1402,20 @@ async function checkout(
  */
 let handoffs = "";
 
+async function liveBelongsHere(at: string): Promise<boolean> {
+  const windowRepo = await repositoryRoot();
+  const held = GraphPanel.readings().map((one) => ({
+    repo: one.repo,
+    live: one.changeGraph.meta.worktree === true,
+  }));
+  return liveFitsHere(windowRepo, at, held);
+}
+
+async function liveInNewWindow(at: string, number: number): Promise<void> {
+  if (handoffs) leaveHandoff(handoffs, { path: at, number, live: true, at: Date.now() });
+  await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(at), { forceNewWindow: true });
+}
+
 async function takeHandoff(): Promise<void> {
   if (!handoffs) return;
   const folders = (vscode.workspace.workspaceFolders ?? []).map((one) => one.uri.fsPath);
@@ -1479,8 +1499,13 @@ async function goLiveOn(repo: string, number: number): Promise<GraphPanel> {
   let at = repo;
   if (here !== branch) {
     const elsewhere = await worktreeFor(branch, { cwd: repo });
-    if (elsewhere && elsewhere !== repo) {
-      at = elsewhere;
+    const busy = !(await liveBelongsHere(repo));
+    if ((elsewhere && elsewhere !== repo) || busy) {
+      at = elsewhere && elsewhere !== repo
+        ? elsewhere
+        : (await withProgressOn(`Preparing a checkout of ${branch}`, () => readableCheckout(branch, { cwd: repo }))).path;
+      await liveInNewWindow(at, number);
+      throw new LiveElsewhere(at, number);
     } else {
       const dirty = (await git(["status", "--porcelain"], { cwd: repo })).trim();
       if (dirty) {
@@ -1489,6 +1514,10 @@ async function goLiveOn(repo: string, number: number): Promise<GraphPanel> {
       await gh(["pr", "checkout", String(number)], repo);
       void refreshPullRequests().catch(() => undefined);
     }
+  }
+  if (!(await liveBelongsHere(at))) {
+    await liveInNewWindow(at, number);
+    throw new LiveElsewhere(at, number);
   }
   await review(pull.baseRef, undefined, true, at, number, going);
   const live = liveReadingOf(at, number);

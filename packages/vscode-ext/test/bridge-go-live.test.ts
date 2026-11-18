@@ -88,11 +88,11 @@ describe("going live from the browser", () => {
 });
 
 describe("where VS Code goes live for the browser", () => {
-  it("reads the checkout that already holds the branch, instead of refusing it", async () => {
+  it("opens the checkout that already holds the branch in its own window, instead of refusing it", async () => {
     const { readFileSync } = await import("node:fs");
     const source = readFileSync(join(__dirname, "../src/extension.ts"), "utf8");
     const body = source.slice(source.indexOf("async function goLiveOn("), source.indexOf("async function presentForBrowser("));
-    expect(body).toMatch(/const elsewhere = await worktreeFor\(branch, \{ cwd: repo \}\);\s*if \(elsewhere && elsewhere !== repo\) \{\s*at = elsewhere;/);
+    expect(body).toMatch(/const elsewhere = await worktreeFor\(branch, \{ cwd: repo \}\);[\s\S]*?at = elsewhere && elsewhere !== repo\s*\? elsewhere/);
     expect(body).toMatch(/if \(dirty\) \{\s*throw new Error/);
     expect(body).toMatch(/await review\(pull\.baseRef, undefined, true, at, number, going\);/);
     expect(source).toMatch(/const open = liveReadingOf\(repo, number\) \?\? GraphPanel\.find\(repo, number\);/);
