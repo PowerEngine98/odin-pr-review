@@ -35,3 +35,41 @@ html.odin-open body {
   fill: currentColor;
   color: var(--fgColor-muted, #8d96a0);
 }
+
+.odin-see-graph {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  height: 28px;
+  margin-left: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--button-primary-borderColor-rest, rgba(240, 246, 252, 0.1));
+  border-radius: 6px;
+  background: var(--bgColor-accent-emphasis, #1f6feb);
+  color: var(--fgColor-onEmphasis, #ffffff) !important;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none !important;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.odin-see-graph:hover {
+  background: color-mix(in srgb, var(--bgColor-accent-emphasis, #1f6feb) 85%, #ffffff);
+}
+
+.odin-see-graph:focus-visible {
+  outline: 2px solid var(--focus-outlineColor, #1f6feb);
+  outline-offset: 2px;
+}
+
+.odin-see-graph .odin-tab-icon {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  color: inherit;
+}
+
