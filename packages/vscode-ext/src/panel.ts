@@ -40,7 +40,9 @@ import {
   SUPPORT_LABELS,
   SUPPORT_REPO,
   withAttachments,
+  anonymize,
   type Attachment,
+  type Secrets,
   type SupportKind,
 } from "@odin/core";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
@@ -58,7 +60,7 @@ import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
 import { ghSetupState, runGhInstall, runGhSignIn, skipGhSetup } from "./ghSetup.js";
 import { CliSessions } from "./cli.js";
 import { openPty } from "./pty.js";
-import { log } from "./log.js";
+import { log, logText } from "./log.js";
 
 import { baseUri } from "./baseContent.js";
 import { imageFolder, keepPasted, readImage, withImages } from "./images.js";
@@ -118,7 +120,7 @@ interface SubmitMessage {
 
 interface SupportMessage {
   type: "supportIssue";
-  payload: { kind: SupportKind; title: string; body: string; attachments?: Attachment[] };
+  payload: { kind: SupportKind; title: string; body: string; attachments?: Attachment[]; attachLog?: boolean };
 }
 
 interface DraftMessage {
@@ -2350,6 +2352,12 @@ export class GraphPanel {
   /** The neural voice on this machine, once the extension has made one. */
   static kokoro: Kokoro | undefined;
   static version: string | undefined;
+
+  static secrets: (() => Secrets) | undefined;
+
+  static cleanLog(last?: number): string {
+    return anonymize(logText(last), GraphPanel.secrets?.() ?? {});
+  }
   static errorLog: string | undefined;
 
   /** Where tours are kept, when the editor gave this extension somewhere. */
@@ -2752,7 +2760,11 @@ export class GraphPanel {
         return;
       }
       const label = SUPPORT_LABELS[payload.kind] ?? SUPPORT_LABELS.suggestion;
-      const body = `${payload.body.trim()}\n\n---\n_Sent from Odin ${GraphPanel.version ?? ""} in VS Code._`;
+      const logged = payload.attachLog ? GraphPanel.cleanLog(400).slice(-40_000) : "";
+      const attached = logged
+        ? `\n\n<details><summary>Odin log (anonymized)</summary>\n\n\`\`\`text\n${logged.replace(/\`\`\`/g, "ʼʼʼ")}\n\`\`\`\n\n</details>`
+        : "";
+      const body = `${payload.body.trim()}${attached}\n\n---\n_Sent from Odin ${GraphPanel.version ?? ""} in VS Code._`;
       const { url, left } = await openIssueWithMedia(
         gh,
         SUPPORT_REPO,
@@ -3766,6 +3778,10 @@ export class GraphPanel {
           drafts.push({ ...draft, body });
         }
         await this.submit({ ...review, body: posted, comments: drafts });
+        return;
+      }
+      if (reply.type === "odinLog") {
+        void this.panel.webview.postMessage({ type: "odinLog", raw: logText(), clean: GraphPanel.cleanLog() });
         return;
       }
       if (reply.type === "supportStatus") {

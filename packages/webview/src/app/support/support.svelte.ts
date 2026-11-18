@@ -11,6 +11,25 @@ export const support = $state({
   error: "",
 });
 
+export const odinLog = $state({
+  open: false,
+  loading: false,
+  clean: true,
+  raw: "",
+  anonymized: "",
+});
+
+export function openLog(clean = true): void {
+  odinLog.open = true;
+  odinLog.clean = clean;
+  odinLog.loading = true;
+  if (host) notify("odinLog");
+}
+
+export function closeLog(): void {
+  odinLog.open = false;
+}
+
 export interface Toast {
   id: number;
   text: string;
@@ -52,6 +71,13 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
   window.addEventListener("message", (event: MessageEvent) => {
     const message = event.data as { type?: string; url?: string; note?: string; error?: string; problem?: string; ok?: boolean; login?: string; version?: string };
     if (!message || typeof message.type !== "string") return;
+    if (message.type === "odinLog") {
+      const said = event.data as { raw?: unknown; clean?: unknown };
+      odinLog.raw = typeof said.raw === "string" ? said.raw : "";
+      odinLog.anonymized = typeof said.clean === "string" ? said.clean : "";
+      odinLog.loading = false;
+      return;
+    }
     if (message.type === "supportStatus") {
       support.gh = {
         ok: message.ok === true,

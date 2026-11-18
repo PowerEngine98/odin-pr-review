@@ -3,7 +3,7 @@
   import { host, notify } from "../state.svelte.js";
   import Editor from "../panels/Editor.svelte";
   import { forHost, type Attached } from "../panels/attached.js";
-  import { closeSupport, openLink, support, SUPPORT_NEW_ISSUE, type SupportKind } from "./support.svelte.js";
+  import { closeSupport, openLink, openLog, support, SUPPORT_NEW_ISSUE, type SupportKind } from "./support.svelte.js";
 
   const KINDS: { kind: SupportKind; label: string; hint: string }[] = [
     { kind: "bug", label: "Bug", hint: "Something is broken or wrong" },
@@ -15,6 +15,7 @@
   let title = $state("");
   let body = $state("");
   let attachments = $state<Attached[]>([]);
+  let attachLog = $state(true);
   let at = $state({ x: 0, y: 0 });
   let placed = $state(false);
   let box = $state<HTMLDivElement | null>(null);
@@ -61,7 +62,7 @@
     support.sending = true;
     support.error = "";
     const files = forHost(attachments);
-    notify("supportIssue", { kind, title: title.trim(), body: body.trim(), ...(files ? { attachments: files } : {}) });
+    notify("supportIssue", { kind, title: title.trim(), body: body.trim(), attachLog, ...(files ? { attachments: files } : {}) });
   }
 </script>
 
@@ -108,6 +109,13 @@
     <Editor bind:value={body} placeholder="What happened, or what you would like…" rows={7} />
   {/if}
 
+  {#if host}
+    <label class="support-log">
+      <input type="checkbox" bind:checked={attachLog} />
+      Attach the Odin log, anonymized
+      <button type="button" class="support-log-see" onclick={() => openLog(true)}>See what is sent</button>
+    </label>
+  {/if}
   {#if host && support.gh && !support.gh.ok}
     <p class="support-gate">
       {#if support.gh.problem === "missing"}
@@ -154,6 +162,24 @@
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
     font-family: var(--vscode-font-family, system-ui);
     font-size: 13px;
+  }
+
+  .support-log {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    opacity: 0.9;
+  }
+
+  .support-log-see {
+    margin-left: auto;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--vscode-textLink-foreground, #4493f8);
+    font: inherit;
+    cursor: pointer;
   }
 
   .support-head {
