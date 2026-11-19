@@ -23,6 +23,8 @@
   import GoLiveDiscuss from "./tour/GoLiveDiscuss.svelte";
   import GhSetup from "./support/GhSetup.svelte";
   import SupportModal from "./support/SupportModal.svelte";
+  import LogModal from "./support/LogModal.svelte";
+  import { odinLog } from "./support/support.svelte.js";
   import Toasts from "./support/Toasts.svelte";
   import { support } from "./support/support.svelte.js";
   import { tick, untrack } from "svelte";
@@ -505,6 +507,9 @@
   <GhSetup />
   {#if support.open}
     <SupportModal />
+  {/if}
+  {#if odinLog.open}
+    <LogModal />
   {/if}
   <Toasts />
 

@@ -10,9 +10,8 @@
 <script lang="ts">
   import Chevron from "./Chevron.svelte";
   import type { PullView } from "./model.js";
-  import { notify } from "./state.svelte.js";
 
-  let { pull }: { pull: PullView } = $props();
+  let { pull, send }: { pull: PullView; send: (type: string, payload: Record<string, unknown>) => void } = $props();
 
   let open = $state(false);
 
@@ -51,7 +50,7 @@
   function press(event: MouseEvent): void {
     const choice = (event.target as Element | null)?.closest("[data-where]");
     if (choice) {
-      notify("read", {
+      send("read", {
         number: pr.number,
         where: choice.getAttribute("data-where"),
       });
@@ -73,7 +72,7 @@
      *
      * Going the other way is a button of its own under the file list.
      */
-    notify("read", {
+    send("read", {
       number: pr.number,
       where: pull.current ? "local" : "origin",
     });
@@ -92,7 +91,7 @@
   onkeydown={(event) => {
     if (event.key !== "Enter") return;
     if (drifted) open = !open;
-    else notify("read", { number: pr.number, where: pull.current ? "local" : "origin" });
+    else send("read", { number: pr.number, where: pull.current ? "local" : "origin" });
   }}
 >
   <div class="line">

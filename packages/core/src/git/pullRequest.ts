@@ -205,6 +205,7 @@ export async function listPullRequests(
     {
       search: (query) => listOnce({ ...rest, state: "all", query }),
       recent: (limit) => listOnce({ ...rest, limit: options.limit ?? limit }),
+      byAuthor: (login) => pullsBy(login, options.state ?? "open", rest),
       loginOf: (pull) => pull.author,
     },
   );
@@ -222,6 +223,8 @@ async function listOnce(
     state?: PullRequestState;
     query?: string;
     light?: boolean;
+    base?: string;
+    head?: string;
   },
 ): Promise<PullRequestSummary[] | undefined> {
   const json = await run(
@@ -229,6 +232,8 @@ async function listOnce(
       "pr", "list",
       "--state", options.state ?? "open",
       ...(options.query ? ["--search", options.query] : []),
+      ...(options.base ? ["--base", options.base] : []),
+      ...(options.head ? ["--head", options.head] : []),
       "--limit", String(options.limit ?? 50),
       "--json",
       "number,title,url,headRefName,headRefOid,isDraft,author,createdAt,updatedAt," +
@@ -246,6 +251,10 @@ async function listOnce(
   );
   // Nothing came back at all: no `gh`, not signed in, or it gave up. That is
   // not the same as an empty answer, and the difference is worth carrying.
+  return parseList(json);
+}
+
+export function parseList(json: string | undefined): PullRequestSummary[] | undefined {
   if (!json) return undefined;
 
   try {
@@ -480,3 +489,117 @@ export async function mergePullRequest(
   );
   return out !== undefined;
 }
+
+const STATES: Record<PullRequestState, string> = {
+  open: "[OPEN]",
+  merged: "[MERGED]",
+  closed: "[CLOSED]",
+  all: "[OPEN, MERGED, CLOSED]",
+};
+
+export async function pullsBy(
+  login: string,
+  state: PullRequestState,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<PullRequestSummary[] | undefined> {
+  if (!/^[\w-]+$/.test(login)) return undefined;
+  const repo = (await run(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], options))?.trim();
+  if (!repo) return undefined;
+  const query = `query($login: String!) {
+    user(login: $login) {
+      pullRequests(first: 100, states: ${STATES[state]}, orderBy: { field: UPDATED_AT, direction: DESC }) {
+        nodes {
+          number title url headRefName headRefOid isDraft createdAt updatedAt state mergedAt closedAt baseRefName
+          author { login }
+          mergeCommit { oid }
+          repository { nameWithOwner }
+          reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { slug name } } } }
+        }
+      }
+    }
+  }`;
+  const json = await run(["api", "graphql", "-f", `query=${query}`, "-F", `login=${login}`], {
+    ...options,
+    timeoutMs: options.timeoutMs ?? 20_000,
+  });
+  if (!json) return undefined;
+  try {
+    const nodes = (JSON.parse(json) as {
+      data?: { user?: { pullRequests?: { nodes?: ({
+        repository?: { nameWithOwner?: string };
+        reviewRequests?: { nodes?: { requestedReviewer?: { login?: string; slug?: string; name?: string } }[] };
+      } & Record<string, unknown>)[] } } };
+    }).data?.user?.pullRequests?.nodes ?? [];
+    const here = nodes
+      .filter((node) => node.repository?.nameWithOwner?.toLowerCase() === repo.toLowerCase())
+      .map(({ repository: _repository, reviewRequests, ...rest }) => ({
+        ...rest,
+        reviewRequests: (reviewRequests?.nodes ?? []).map((one) => one.requestedReviewer ?? {}),
+      }));
+    return parseList(JSON.stringify(here));
+  } catch {
+    return undefined;
+  }
+}
+
+export interface PullStack {
+  pulls: PullRequestSummary[];
+  base: string;
+  at: number;
+}
+
+export interface StackPlace {
+  number: number;
+  head: string;
+  base: string;
+}
+
+const STACK_DEPTH = 10;
+
+export async function stackAround(
+  current: StackPlace,
+  find: { headed: (branch: string) => Promise<PullRequestSummary[] | undefined>; based: (branch: string) => Promise<PullRequestSummary[] | undefined> },
+): Promise<PullStack | undefined> {
+  const seen = new Set<number>([current.number]);
+  const down = async () => {
+    const found: PullRequestSummary[] = [];
+    let base = current.base;
+    for (let step = 0; step < STACK_DEPTH && base; step++) {
+      const under = (await find.headed(base))?.find((pr) => !seen.has(pr.number) && pr.baseRef && pr.baseRef !== base);
+      if (!under) break;
+      seen.add(under.number);
+      found.unshift(under);
+      base = under.baseRef ?? "";
+    }
+    return { found, base };
+  };
+  const up = async () => {
+    const found: PullRequestSummary[] = [];
+    let head = current.head;
+    for (let step = 0; step < STACK_DEPTH && head; step++) {
+      const over = (await find.based(head))
+        ?.filter((pr) => !seen.has(pr.number))
+        .sort(byActivity)[0];
+      if (!over) break;
+      seen.add(over.number);
+      found.push(over);
+      head = over.branch;
+    }
+    return found;
+  };
+  const [{ found: below, base }, above, mine] = await Promise.all([down(), up(), find.headed(current.head)]);
+  if (below.length === 0 && above.length === 0) return undefined;
+  const self = mine?.find((pr) => pr.number === current.number);
+  return { pulls: [...below, ...(self ? [self] : []), ...above], base, at: below.length };
+}
+
+export async function pullStack(
+  current: StackPlace,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<PullStack | undefined> {
+  return stackAround(current, {
+    headed: (branch) => listOnce({ ...options, head: branch, light: true }),
+    based: (branch) => listOnce({ ...options, base: branch, light: true }),
+  });
+}
+

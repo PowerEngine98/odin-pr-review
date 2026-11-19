@@ -10,9 +10,9 @@
 -->
 <script lang="ts">
   import Pairing from "../hud/Pairing.svelte";
-  import { openSupport } from "../support/support.svelte.js";
+  import { openLog, openSupport } from "../support/support.svelte.js";
   import { ACTIONS, KEYS_KEY, defaults, readKeys, waitFor } from "../shared/bindings.js";
-  import { model, settings } from "../state.svelte.js";
+  import { host, model, settings } from "../state.svelte.js";
   import Viewed from "../shared/Viewed.svelte";
   import { GEAR } from "./icons.js";
 
@@ -280,6 +280,28 @@
             <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
+        {#if host}
+          <button
+            class="settings-support"
+            title="Shows what Odin has logged in this window, anonymized or as written, ready to copy"
+            onclick={() => {
+              open = false;
+              openLog();
+            }}
+          >
+            <svg class="settings-support-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+              <rect x="2.5" y="2" width="11" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+              <path d="M5 5.5h6M5 8h6M5 10.5h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
+            </svg>
+            <span class="settings-support-text">
+              <span class="settings-support-name">Odin log</span>
+              <span class="settings-support-note">See and copy what Odin logged, anonymized for sharing</span>
+            </span>
+            <svg class="settings-support-go" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+              <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        {/if}
         {#if model.current.version}
           <span class="settings-version">Odin version: {model.current.version}</span>
         {/if}

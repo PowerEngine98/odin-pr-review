@@ -5,6 +5,8 @@ import {
   currentUser,
   listPullRequests,
   readPullRequest,
+  repoOfUrl,
+  type Secrets,
   type PullRequestSummary,
   listRefs,
   cachedAvatar,
@@ -62,6 +64,7 @@ import { claimHandoff, leaveHandoff } from "./handoff.js";
 import { LiveElsewhere } from "./elsewhere.js";
 import { liveFitsHere } from "./liveRule.js";
 import { Lanes } from "./lanes.js";
+import { homedir } from "node:os";
 
 /** The editor's own theme, which the grammars' colours have to match. */
 function isDark(): boolean {
@@ -226,6 +229,12 @@ export function activate(context: vscode.ExtensionContext): void {
   if (context.globalStorageUri) GraphPanel.errorLog = `${context.globalStorageUri.fsPath}/page-errors.log`;
   const bridge = new BrowserBridge(context, presentForBrowser, goLiveOn, GraphPanel.followers);
   GraphPanel.onGoLive = (repo, number) => goLiveOn(repo, number);
+  GraphPanel.secrets = () => secretsKnown();
+  GraphPanel.onReadPull = (number, where, pull) => {
+    if (!known.has(number)) known.set(number, pull);
+    const command = where === "since" ? "odin.readSince" : where === "local" ? "odin.readLocal" : "odin.readOrigin";
+    void vscode.commands.executeCommand(command, number);
+  };
   browserBridge = bridge;
   void bridge.start();
   const driver = new Driver(context.globalStorageUri?.fsPath ?? "", (step) =>
@@ -794,6 +803,8 @@ async function refreshPullRequests(): Promise<void> {
       currentUser({ cwd: repo }).catch(() => undefined),
     ]);
     if (mine !== asking) return;
+    if (me) viewerLogin = me;
+    if (answer === undefined) log(`pull requests: gh gave no answer for ${JSON.stringify({ state: query.state, author: asked.author, search: asked.search })}`);
     const pulls = answer ?? [];
     const faces = new Map(pulls.map((pr) => [pr.number, pr.avatarUrl]));
     for (const pr of pulls) {
@@ -2875,3 +2886,33 @@ function carryOver(storage: string): void {
     log(`carrying over the earlier install's storage failed: ${String(error)}`);
   }
 }
+
+let viewerLogin = "";
+
+function secretsKnown(): Secrets {
+  const readings = GraphPanel.readings();
+  const pulls = [...known.values()];
+  const metas = readings.map((one) => one.changeGraph.meta);
+  const urls = [
+    ...pulls.map((pr) => pr.url),
+    ...metas.map((meta) => meta.pullRequest?.url),
+  ].filter((url): url is string => typeof url === "string");
+  return {
+    home: homedir(),
+    repos: [
+      ...readings.map((one) => one.repo),
+      ...(vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath),
+    ],
+    names: urls.map((url) => repoOfUrl(url)).filter((name): name is string => !!name),
+    titles: [...pulls.map((pr) => pr.title), ...metas.map((meta) => meta.pullRequest?.title ?? "")],
+    branches: [
+      ...pulls.flatMap((pr) => [pr.branch, pr.baseRef ?? ""]),
+      ...metas.flatMap((meta) => [meta.headRef ?? "", meta.baseRef ?? ""]),
+    ].map((name) => name.replace(/^origin\//, "")),
+    logins: [
+      viewerLogin,
+      ...pulls.flatMap((pr) => [pr.author, ...(pr.requestedFrom ?? [])]),
+    ],
+  };
+}
+

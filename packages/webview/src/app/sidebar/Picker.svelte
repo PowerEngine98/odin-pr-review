@@ -132,7 +132,7 @@
       <div class="section">
         <div class="section-head">Waiting on you<span class="count">{mine.length}</span></div>
         <div class="pulls">
-          {#each mine as pull (pull.pr.number)}<Pull {pull} />{/each}
+          {#each mine as pull (pull.pr.number)}<Pull {pull} send={notify} />{/each}
         </div>
       </div>
     {/if}
@@ -140,13 +140,13 @@
       <div class="section">
         <div class="section-head">Everything else</div>
         <div class="pulls">
-          {#each rest as pull (pull.pr.number)}<Pull {pull} />{/each}
+          {#each rest as pull (pull.pr.number)}<Pull {pull} send={notify} />{/each}
         </div>
       </div>
     {/if}
   {:else}
     <div class="pulls">
-      {#each rest as pull (pull.pr.number)}<Pull {pull} />{/each}
+      {#each rest as pull (pull.pr.number)}<Pull {pull} send={notify} />{/each}
     </div>
   {/if}
 
