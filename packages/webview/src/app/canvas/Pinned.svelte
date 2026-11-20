@@ -183,7 +183,8 @@
       </button>
     </div>
 
-    <div class="pin-body">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="pin-body" onpointerdown={(event) => event.stopPropagation()}>
       {#if far}
         <div class="pin-shape" aria-hidden="true"></div>
       {:else}
