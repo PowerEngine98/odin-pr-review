@@ -346,8 +346,27 @@
    */
   let pressed: { x: number; y: number } | null = null;
   let lifted = false;
+  let reading = $state(false);
+
+  const LABELS = "text, tspan, foreignObject, .nodeLabel, .edgeLabel, .label, .cluster-label";
+
+  function onText(target: EventTarget | null): boolean {
+    return drawn && target instanceof Element && target.closest(LABELS) !== null;
+  }
 
   function press(event: PointerEvent): void {
+    if (onText(event.target)) {
+      reading = true;
+      event.stopPropagation();
+      const done = () => {
+        window.removeEventListener("pointerup", done);
+        window.removeEventListener("pointercancel", done);
+        reading = false;
+      };
+      window.addEventListener("pointerup", done);
+      window.addEventListener("pointercancel", done);
+      return;
+    }
     if (!openable || event.button !== 0) return;
     const from = { x: event.clientX, y: event.clientY };
     pressed = from;
@@ -379,7 +398,16 @@
 {#if failed || !drawable()}
   <!-- What it wrote, unchanged. Printed as text by the same rule as everything
        else here: this is an agent's output and never markup. -->
-  <pre class="diagram-source"><span class="lang">mermaid</span><code>{code}</code></pre>
+  {#if openable}
+    <button
+      type="button"
+      class="diagram-source openable"
+      title="Not drawn here. Press to open it in the viewer"
+      onclick={() => showDrawing(code)}
+    ><span class="lang">mermaid</span><code>{code}</code></button>
+  {:else}
+    <pre class="diagram-source"><span class="lang">mermaid</span><code>{code}</code></pre>
+  {/if}
 {:else}
   <!--
     Draggable, so a picture can be taken out of the log and put beside the code
@@ -407,7 +435,7 @@
     class:measuring
     class:liftable
     class:openable
-    draggable={liftable}
+    draggable={liftable && !reading}
     title={openable
       ? liftable
         ? "Press to see it full size, or drag it onto the change to keep it there"
@@ -449,6 +477,21 @@
      says so with the pointer instead. */
   .diagram.liftable {
     cursor: grab;
+  }
+
+  .diagram :global(:is(svg text, svg tspan, foreignObject, .nodeLabel, .edgeLabel, .label, .cluster-label)) {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+
+  button.diagram-source {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    cursor: zoom-in;
   }
 
   .diagram.openable:not(.liftable) {
