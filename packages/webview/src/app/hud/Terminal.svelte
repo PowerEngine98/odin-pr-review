@@ -1564,6 +1564,7 @@
     record, same thread, same audit. What it lacks is a file and a line, so it
     leaves no mark in any margin — which is the truth about it.
   -->
+  {#if tab !== "cli"}
   <form
     class="terminal-ask"
     onsubmit={(event) => {
@@ -1745,6 +1746,7 @@
       </svg>
     </button>
   </form>
+  {/if}
   {/if}
 </div>
 

@@ -78,6 +78,9 @@
   function measure(): void {
     if (!term || !fit) return;
     try {
+      term.options.lineHeight = 1;
+      fit.fit();
+      term.options.lineHeight = fillingLineHeight(term, holder);
       fit.fit();
     } catch {
       return;
@@ -86,6 +89,14 @@
     if (now === sized) return;
     sized = now;
     notify("cliResize", { agent, cols: term.cols, rows: term.rows });
+  }
+
+  function fillingLineHeight(screen: XtermTerminal, box: HTMLElement | undefined): number {
+    const drawn = screen.element?.querySelector<HTMLElement>(".xterm-screen")?.clientHeight ?? 0;
+    if (!box || !drawn || screen.rows < 1) return 1;
+    const style = getComputedStyle(box);
+    const room = box.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    return Math.max(1, Math.min(1.5, (room / drawn) * 0.999));
   }
 
   function start(): void {
