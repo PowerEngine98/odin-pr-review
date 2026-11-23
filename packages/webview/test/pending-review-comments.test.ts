@@ -58,3 +58,20 @@ describe("a review comment not posted yet", () => {
     expect(bar).toMatch(/\.submit \.count \{[\s\S]*?background: var\(--warning\);[\s\S]*?animation: pending-badge/);
   });
 });
+
+describe("review comments not posted yet, as they are actually stored", () => {
+  it("each keep a face of their own, though the stored drafts carry no id", () => {
+    const remarks = pendingRemarks([
+      { path: "a.ts", side: "RIGHT", line: 3, body: "one" },
+      { path: "a.ts", side: "RIGHT", line: 9, body: "two" },
+      { path: "a.ts", side: "RIGHT", line: 9, body: "three, on the same line" },
+    ]);
+    expect(new Set(remarks.map((one) => one.id)).size).toBe(3);
+    expect(remarks.every((one) => one.id.startsWith(PENDING_PREFIX) && !one.id.includes("undefined"))).toBe(true);
+  });
+
+  it("about the file as a whole, sit by the file's name", () => {
+    const [remark] = pendingRemarks([{ path: "a.ts", side: "RIGHT", body: "whole file" }]);
+    expect(remark?.wholeFile).toBe(true);
+  });
+});
