@@ -379,10 +379,10 @@ export function placeMark(
 }
 
 export interface PendingDraft {
-  id: string;
+  id?: string;
   path: string;
   side: string;
-  line: number;
+  line?: number;
   startLine?: number;
   body: string;
 }
@@ -394,11 +394,12 @@ export function pendingRemarks(
   viewer?: string,
   face?: string,
 ): CommentView[] {
-  return drafts.map((draft) => ({
-    id: PENDING_PREFIX + draft.id,
+  return drafts.map((draft, at) => ({
+    id: PENDING_PREFIX + (draft.id ?? `${draft.path}|${draft.side}|${draft.startLine ?? ""}|${draft.line ?? "file"}|${at}`),
     path: draft.path,
-    line: draft.line,
-    startLine: draft.startLine ?? draft.line,
+    line: draft.line ?? 0,
+    startLine: draft.startLine ?? draft.line ?? 0,
+    ...(draft.line === undefined ? { wholeFile: true } : {}),
     side: draft.side,
     body: draft.body,
     author: viewer || "you",
