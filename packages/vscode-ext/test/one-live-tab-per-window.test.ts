@@ -48,6 +48,6 @@ describe("going live on a pull request read from its commits", () => {
 
   it("says where it went rather than calling it a failure", () => {
     expect(panel).toMatch(/error instanceof LiveElsewhere \? error\.message : `VS Code could not go live/);
-    expect(bridge).toMatch(/error instanceof LiveElsewhere \? error\.message : `VS Code could not go live/);
+    expect(bridge).toMatch(/error instanceof LiveElsewhere \|\| error instanceof Diverged \? error\.message : `VS Code could not go live/);
   });
 });
