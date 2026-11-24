@@ -3843,6 +3843,15 @@ export class GraphPanel {
         }
         return;
       }
+      if (reply.type === "cliImages") {
+        const said = (reply as { payload?: { agent?: unknown; images?: unknown } }).payload ?? {};
+        const agent = String(said.agent ?? "");
+        const images = Array.isArray(said.images) ? (said.images as { name?: string; data: string }[]) : [];
+        if (!agent || images.length === 0) return;
+        const paths = keepPasted(images, (this.images ??= imageFolder()));
+        if (paths.length > 0) this.cli().input(agent, `\x1b[200~${paths.join(" ")}\x1b[201~`);
+        return;
+      }
       if (reply.type === "cliSend") {
         const said = (reply as { payload?: { agent?: unknown; text?: unknown } }).payload ?? {};
         const agent = String(said.agent ?? "");
