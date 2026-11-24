@@ -63,6 +63,22 @@ describe("what a CLI conversation said, read back from its transcript", () => {
   });
 });
 
+describe("a fresh CLI's session, told apart from the ones already there", () => {
+  it("is the file that appeared or grew after the CLI opened, whatever the clock says", () => {
+    const folder = mkdtempSync(join(tmpdir(), "odin-transcript-"));
+    writeFileSync(join(folder, "older.jsonl"), user("from before"));
+    const found: string[] = [];
+    const heard: string[] = [];
+    const follower = new TranscriptFollower(folder, undefined, (said) => heard.push(...said.map((one) => one.text)), (session) => found.push(session));
+    follower.poll();
+    expect(found).toEqual([]);
+    appendFileSync(join(folder, "older.jsonl"), user("continued here"));
+    follower.poll();
+    expect(found).toEqual(["older"]);
+    expect(heard).toEqual(["continued here"]);
+  });
+});
+
 describe("one conversation, whichever view it is written in", () => {
   const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
   const cli = readFileSync(join(__dirname, "../src/cli.ts"), "utf8");

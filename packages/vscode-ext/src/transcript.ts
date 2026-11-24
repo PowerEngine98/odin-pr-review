@@ -44,14 +44,23 @@ export class TranscriptFollower {
   private read = 0;
   private partial = "";
   private timer: ReturnType<typeof setInterval> | undefined;
-  private readonly since = Date.now();
+  private readonly before = new Map<string, number>();
 
   constructor(
     private readonly folder: string,
     private session: string | undefined,
     private readonly heard: (said: Heard[]) => void,
     private readonly found: (session: string) => void,
-  ) {}
+  ) {
+    if (session) return;
+    try {
+      for (const name of readdirSync(folder)) {
+        if (name.endsWith(".jsonl")) this.before.set(name, statSync(join(folder, name)).size);
+      }
+    } catch {
+      return;
+    }
+  }
 
   start(every = 1000): void {
     this.timer = setInterval(() => this.poll(), every);
@@ -103,14 +112,18 @@ export class TranscriptFollower {
       for (const name of readdirSync(this.folder)) {
         if (!name.endsWith(".jsonl")) continue;
         const path = join(this.folder, name);
-        const at = statSync(path).mtimeMs;
-        if (at >= this.since && (!newest || at > newest.at)) newest = { path, at };
+        const facts = statSync(path);
+        const was = this.before.get(name);
+        if (was !== undefined && facts.size <= was) continue;
+        if (!newest || facts.mtimeMs > newest.at) newest = { path, at: facts.mtimeMs };
       }
     } catch {
       return undefined;
     }
     if (!newest) return undefined;
     this.file = newest.path;
+    const name = newest.path.slice(newest.path.lastIndexOf("/") + 1);
+    this.read = this.before.get(name) ?? 0;
     this.session = newest.path.slice(newest.path.lastIndexOf("/") + 1, -".jsonl".length);
     this.found(this.session);
     return this.file;
