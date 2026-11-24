@@ -129,3 +129,19 @@ describe("the CLI tab's size", () => {
     expect(screen).toMatch(/\.cli \{\s*display: flex;\s*flex: 1;\s*flex-direction: column;\s*min-height: 0;\s*\}/);
   });
 });
+
+describe("the Log, while the CLI holds the conversation", () => {
+  const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
+
+  it("shows a message written in the Log, though the CLI is the one that answers it", () => {
+    expect(pairing).toMatch(/this\.terminal\.type\(agentId, [^\n]+\);\s*this\.printAsked\(agentId, claiming\?\.id \?\? id, ask\.label \|\| ask\.body\);/);
+  });
+
+  it("shows what was typed in the CLI, and what the agent answered there", () => {
+    expect(pairing).toMatch(/this\.printAsked\(agentId, comment\.id, one\.text\);\s*continue;\s*\}\s*this\.print\(agentId, `\\n\$\{one\.text\}\\n`\);/);
+  });
+
+  it("marks an ask the same way a background turn does, so the Log draws it as the reader's", () => {
+    expect(pairing).toMatch(/\.map\(\(line\) => `\[odin:ask \$\{thread\}\] \$\{line\}`\)/);
+  });
+});
