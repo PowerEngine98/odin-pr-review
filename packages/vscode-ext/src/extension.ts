@@ -62,6 +62,7 @@ import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 import { claimHandoff, leaveHandoff } from "./handoff.js";
 import { LiveElsewhere } from "./elsewhere.js";
+import { DIVERGED, Diverged, divergenceOf, fixDivergence, type DivergedFix } from "./diverged.js";
 import { liveFitsHere } from "./liveRule.js";
 import { Lanes } from "./lanes.js";
 import { homedir } from "node:os";
@@ -228,7 +229,7 @@ export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.version = String(context.extension?.packageJSON?.version ?? "");
   if (context.globalStorageUri) GraphPanel.errorLog = `${context.globalStorageUri.fsPath}/page-errors.log`;
   const bridge = new BrowserBridge(context, presentForBrowser, goLiveOn, GraphPanel.followers);
-  GraphPanel.onGoLive = (repo, number) => goLiveOn(repo, number);
+  GraphPanel.onGoLive = (repo, number, fix) => goLiveOn(repo, number, fix);
   GraphPanel.secrets = () => secretsKnown();
   GraphPanel.onReadPull = (number, where, pull) => {
     if (!known.has(number)) known.set(number, pull);
@@ -1500,7 +1501,26 @@ function liveReadingOf(repo: string, number: number): GraphPanel | undefined {
   );
 }
 
-async function goLiveOn(repo: string, number: number): Promise<GraphPanel> {
+function tellBackup(branch: string, backup: string | undefined): void {
+  if (backup) void vscode.window.showInformationMessage(`Odin: ${branch} is now GitHub's version. Your commits are kept on ${backup}.`);
+}
+
+async function checkoutPull(repo: string, number: number, branch: string, fix: DivergedFix | undefined): Promise<void> {
+  if (fix) {
+    tellBackup(branch, await fixDivergence(repo, branch, fix));
+    return;
+  }
+  try {
+    await gh(["pr", "checkout", String(number)], repo);
+  } catch (error) {
+    if (!DIVERGED.test(error instanceof Error ? error.message : String(error))) throw error;
+    const facts = await divergenceOf(repo, branch);
+    if (!facts) throw error;
+    throw new Diverged(facts);
+  }
+}
+
+async function goLiveOn(repo: string, number: number, fix?: DivergedFix): Promise<GraphPanel> {
   const pulls = (await listPullRequests({ cwd: repo }).catch(() => [])) ?? [];
   const pull = pulls.find((one) => one.number === number);
   if (!pull) throw new Error(`#${number} is not an open pull request in ${repo}.`);
@@ -1522,9 +1542,11 @@ async function goLiveOn(repo: string, number: number): Promise<GraphPanel> {
       if (dirty) {
         throw new Error(`${repo} has uncommitted changes. Commit or stash them before going live on #${number}.`);
       }
-      await gh(["pr", "checkout", String(number)], repo);
+      await checkoutPull(repo, number, branch, fix);
       void refreshPullRequests().catch(() => undefined);
     }
+  } else if (fix) {
+    tellBackup(branch, await fixDivergence(repo, branch, fix));
   }
   if (!(await liveBelongsHere(at))) {
     await liveInNewWindow(at, number);

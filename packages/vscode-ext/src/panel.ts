@@ -77,6 +77,7 @@ import { destinationFor, diffTargetsFor } from "./navigation.js";
 import type { ViewedStore } from "./viewed.js";
 import type { FoldedStore } from "./folded.js";
 import { LiveElsewhere } from "./elsewhere.js";
+import { Diverged, type DivergedFix } from "./diverged.js";
 
 /** What the webview sends back when a reviewer follows something. */
 interface NavigateMessage {
@@ -325,7 +326,7 @@ interface RerunMessage {
 
 interface GoLiveDiscussMessage {
   type: "goLiveDiscuss";
-  payload: { attached?: unknown };
+  payload: { attached?: unknown; fix?: string };
 }
 
 /** Which part of the change the reader has opened, or all of it. */
@@ -1612,7 +1613,7 @@ export class GraphPanel {
   private tourNote = "";
 
   /** What this reading's tour is filed under: the same change as its conversation. */
-  static onGoLive: ((repo: string, number: number) => Promise<unknown>) | undefined;
+  static onGoLive: ((repo: string, number: number, fix?: DivergedFix) => Promise<unknown>) | undefined;
 
   static readonly followers = new Set<(old: GraphPanel, next: GraphPanel) => void>();
 
@@ -1624,11 +1625,11 @@ export class GraphPanel {
     return pull.url || `#${pull.number}`;
   }
 
-  private goLiveToDiscuss(attached: unknown): void {
+  private goLiveToDiscuss(attached: unknown, fix?: DivergedFix): void {
     const number = this.graph.meta.pullRequest?.number;
     const key = GraphPanel.discussKey(this.graph);
-    const failed = (why: string) =>
-      void this.panel.webview.postMessage({ type: "goLiveFailed", message: why });
+    const failed = (why: string, diverged?: unknown) =>
+      void this.panel.webview.postMessage({ type: "goLiveFailed", message: why, ...(diverged ? { diverged } : {}) });
     if (number === undefined || !key) {
       failed("This reading is not of a pull request, so there is no branch to go live on.");
       return;
@@ -1639,8 +1640,12 @@ export class GraphPanel {
     }
     const saved = GraphPanel.tours?.read(this.tourKey());
     GraphPanel.pendingDiscuss.set(key, { attached, ...(saved ? { saved } : {}), at: Date.now() });
-    GraphPanel.onGoLive(this.repo, number).catch((error: Error) => {
+    GraphPanel.onGoLive(this.repo, number, fix).catch((error: Error) => {
       GraphPanel.pendingDiscuss.delete(key);
+      if (error instanceof Diverged) {
+        failed(error.message, error.facts);
+        return;
+      }
       failed(error instanceof LiveElsewhere ? error.message : `VS Code could not go live: ${error.message}`);
     });
   }
@@ -3468,7 +3473,11 @@ export class GraphPanel {
     }
     try {
       if (message.type === "goLiveDiscuss") {
-        this.goLiveToDiscuss(message.payload?.attached);
+        const fix = message.payload?.fix;
+        this.goLiveToDiscuss(
+          message.payload?.attached,
+          fix === "theirs" || fix === "rebase" || fix === "mine" ? fix : undefined,
+        );
         return;
       }
       if (message.type === "part") {

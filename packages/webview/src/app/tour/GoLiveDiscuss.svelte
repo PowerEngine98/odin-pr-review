@@ -36,14 +36,26 @@
       {#if pull !== undefined}#{pull}{:else}this change{/if}, with this frame waiting in the
       agent's composer.
     </p>
-    {#if tourPanel.liveFailed}
+    {#if tourPanel.diverged}
+      <p class="go-live-diverged" role="alert">{tourPanel.liveFailed}</p>
+    {:else if tourPanel.liveFailed}
       <p class="go-live-failed" role="alert">{tourPanel.liveFailed}</p>
     {/if}
     <div class="go-live-actions">
       <button class="go-live-stay" disabled={tourPanel.goingLive} onclick={stayCommitted}>Not now</button>
-      <button class="go-live-do" disabled={tourPanel.goingLive || pull === undefined} onclick={goLiveToDiscuss}>
-        {#if tourPanel.goingLive}Going live…{:else}Go live and discuss{/if}
-      </button>
+      {#if tourPanel.diverged}
+        {#if !tourPanel.diverged.sameFiles}
+          <button class="go-live-stay" disabled={tourPanel.goingLive} title="Go live on the commits you have here, as they are" onclick={() => goLiveToDiscuss("mine")}>Use mine</button>
+          <button class="go-live-stay" disabled={tourPanel.goingLive} title="Replay your commits on top of GitHub's" onclick={() => goLiveToDiscuss("rebase")}>Rebase mine on GitHub's</button>
+        {/if}
+        <button class="go-live-do" disabled={tourPanel.goingLive} title="Your commits are kept on a backup branch" onclick={() => goLiveToDiscuss("theirs")}>
+          {#if tourPanel.goingLive}Going live…{:else}Use GitHub's version{/if}
+        </button>
+      {:else}
+        <button class="go-live-do" disabled={tourPanel.goingLive || pull === undefined} onclick={() => goLiveToDiscuss()}>
+          {#if tourPanel.goingLive}Going live…{:else}Go live and discuss{/if}
+        </button>
+      {/if}
     </div>
   </div>
 {/if}
@@ -90,6 +102,12 @@
     font-family: var(--mono);
   }
 
+  .go-live-diverged {
+    margin: 0;
+    color: var(--text);
+    line-height: 1.5;
+  }
+
   .go-live-failed {
     margin: 0;
     color: var(--vscode-errorForeground, #f85149);
@@ -98,6 +116,7 @@
 
   .go-live-actions {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 8px;
   }

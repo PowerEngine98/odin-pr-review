@@ -17,6 +17,18 @@
 
   const live = $derived(model.current.meta.worktree === true);
 
+  let reopened = false;
+
+  $effect(() => {
+    if (reopened || !live) return;
+    const found = model.current.agents ?? [];
+    if (found.length === 0) return;
+    reopened = true;
+    const held = settings.terminals ?? [];
+    const enabled = (settings.pairing ?? []).filter((id) => found.some((agent) => agent.id === id) && !held.includes(id));
+    if (enabled.length > 0) settings.terminals = [...held, ...enabled];
+  });
+
   /**
    * The open terminals, and only for agents that still exist.
    *

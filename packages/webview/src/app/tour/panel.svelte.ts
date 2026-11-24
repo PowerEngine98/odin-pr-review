@@ -16,6 +16,7 @@ export const tourPanel = $state({
   goLiveFor: null as Attached | null,
   goingLive: false,
   liveFailed: "",
+  diverged: null as { branch: string; ahead: number; behind: number; sameFiles: boolean } | null,
   pendingDiscuss: false,
 });
 
@@ -34,17 +35,19 @@ export function discussFrame(): void {
   openDiscussion();
 }
 
-export function goLiveToDiscuss(): void {
+export function goLiveToDiscuss(fix?: "theirs" | "rebase" | "mine"): void {
   if (!tourPanel.goLiveFor) return;
   tourPanel.goingLive = true;
   tourPanel.liveFailed = "";
-  notify("goLiveDiscuss", { attached: $state.snapshot(tourPanel.goLiveFor) });
+  tourPanel.diverged = null;
+  notify("goLiveDiscuss", { attached: $state.snapshot(tourPanel.goLiveFor), ...(fix ? { fix } : {}) });
 }
 
 export function stayCommitted(): void {
   tourPanel.goLiveFor = null;
   tourPanel.goingLive = false;
   tourPanel.liveFailed = "";
+  tourPanel.diverged = null;
   tour.attached = null;
 }
 
@@ -61,7 +64,12 @@ export function openDiscussion(): boolean {
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("message", (event: MessageEvent) => {
-    const message = event.data as { type?: string; attached?: Attached; message?: string } | null;
+    const message = event.data as {
+      type?: string;
+      attached?: Attached;
+      message?: string;
+      diverged?: { branch: string; ahead: number; behind: number; sameFiles: boolean };
+    } | null;
     if (message?.type === "discussPending" && message.attached) {
       tour.attached = message.attached;
       tourPanel.pendingDiscuss = true;
@@ -70,6 +78,7 @@ if (typeof window !== "undefined" && typeof window.addEventListener === "functio
     if (message?.type === "goLiveFailed" && tourPanel.goingLive) {
       tourPanel.goingLive = false;
       tourPanel.liveFailed = typeof message.message === "string" ? message.message : "VS Code could not go live.";
+      tourPanel.diverged = message.diverged ?? null;
     }
   });
 }

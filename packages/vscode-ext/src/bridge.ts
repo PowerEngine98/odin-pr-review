@@ -13,6 +13,7 @@ import { buildGraphForRepo } from "./graph.js";
 import type { GraphPanel } from "./panel.js";
 import { githubRepositories, Repositories } from "./repositories.js";
 import { LiveElsewhere } from "./elsewhere.js";
+import { Diverged } from "./diverged.js";
 
 export type Presenter = (repo: string, number: number, base: string, head?: string) => Promise<GraphPanel | undefined>;
 export type GoLive = (repo: string, number: number) => Promise<GraphPanel>;
@@ -390,7 +391,11 @@ export class BrowserBridge implements vscode.Disposable {
           }
           void this.serialized(() => this.goLive!(cwd, number)).then(
             (live) => moveTo(live),
-            (error: Error) => sink.send({ type: "goLiveFailed", message: error instanceof LiveElsewhere ? error.message : `VS Code could not go live: ${error.message}` }),
+            (error: Error) =>
+              sink.send({
+                type: "goLiveFailed",
+                message: error instanceof LiveElsewhere || error instanceof Diverged ? error.message : `VS Code could not go live: ${error.message}`,
+              }),
           );
           return;
         }

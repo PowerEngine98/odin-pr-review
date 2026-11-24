@@ -10,13 +10,13 @@ const app = readFileSync(join(__dirname, "../src/app/App.svelte"), "utf8");
 describe("Discuss on a reading of the change as committed", () => {
   it("asks to go live first instead of opening a console that cannot run", () => {
     expect(panel).toMatch(/if \(model\.current\.meta\.worktree !== true\) \{\s*tourPanel\.goLiveFor = attached;/);
-    expect(panel).toMatch(/notify\("goLiveDiscuss", \{ attached: \$state\.snapshot\(tourPanel\.goLiveFor\) \}\)/);
+    expect(panel).toMatch(/notify\("goLiveDiscuss", \{ attached: \$state\.snapshot\(tourPanel\.goLiveFor\), \.\.\.\(fix \? \{ fix \} : \{\}\) \}\)/);
     expect(app).toMatch(/<GoLiveDiscuss \/>/);
   });
 
   it("lets the reader decline, and says why when VS Code could not go live", () => {
     expect(dialog).toMatch(/onclick=\{stayCommitted\}>Not now</);
-    expect(dialog).toMatch(/\{#if tourPanel\.liveFailed\}/);
+    expect(dialog).toMatch(/\{:else if tourPanel\.liveFailed\}/);
     expect(panel).toMatch(/message\?\.type === "goLiveFailed" && tourPanel\.goingLive/);
   });
 
