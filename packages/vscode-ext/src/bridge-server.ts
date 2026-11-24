@@ -36,7 +36,7 @@ export interface PullQuery {
   light?: boolean;
 }
 
-export const GITHUB_READS = /^\/(user|repos\/(?!\.\.?\/)[\w.-]+\/(?!\.\.?\/)[\w.-]+\/pulls(\/\d+)?)(\?[\w=&%.-]*)?$/;
+export const GITHUB_READS = /^\/(user|repos\/(?!\.\.?\/)[\w.-]+\/(?!\.\.?\/)[\w.-]+\/pulls(\/\d+(\/files)?)?)(\?[\w=&%.-]*)?$/;
 
 export interface Sink {
   send(event: Record<string, unknown>): void;
