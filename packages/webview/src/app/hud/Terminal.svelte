@@ -914,6 +914,7 @@
   class="terminal"
   class:sizing={dragging !== null}
   class:folded
+  class:filling={tab === "cli" && !folded}
   style="width:{settings.terminalWidth ?? 360}px;max-height:{Math.min(
     settings.terminalHeight ?? 320,
     cap ?? Number.POSITIVE_INFINITY,
@@ -1850,6 +1851,10 @@
     background: var(--panel);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     overflow: hidden;
+  }
+
+  .terminal.filling {
+    height: 100vh;
   }
 
   .grip {

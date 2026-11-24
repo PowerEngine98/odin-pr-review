@@ -205,7 +205,7 @@
     display: flex;
     flex: 1;
     flex-direction: column;
-    min-height: 220px;
+    min-height: 0;
   }
 
   .cli-bar {

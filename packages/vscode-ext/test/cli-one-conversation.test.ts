@@ -99,3 +99,17 @@ describe("the CLI screen", () => {
     expect(cli).toMatch(/term\.options\.lineHeight = 1;\s*fit\.fit\(\);\s*term\.options\.lineHeight = fillingLineHeight\(term, holder\);\s*fit\.fit\(\);/);
   });
 });
+
+describe("the CLI tab's size", () => {
+  const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
+  const screen = readFileSync(join(__dirname, "../../webview/src/app/hud/Cli.svelte"), "utf8");
+
+  it("is the height the console was dragged to, since a terminal has no content height of its own to grow into", () => {
+    expect(terminal).toMatch(/class:filling=\{tab === "cli" && !folded\}/);
+    expect(terminal).toMatch(/\.terminal\.filling \{\s*height: 100vh;\s*\}/);
+  });
+
+  it("shrinks with the console instead of holding it open", () => {
+    expect(screen).toMatch(/\.cli \{\s*display: flex;\s*flex: 1;\s*flex-direction: column;\s*min-height: 0;\s*\}/);
+  });
+});
