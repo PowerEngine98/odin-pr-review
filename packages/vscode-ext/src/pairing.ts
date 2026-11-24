@@ -965,6 +965,7 @@ export class PairingSession {
     to?: string;
     selfAsked?: string;
     label?: string;
+    fromTerminal?: boolean;
   }): LocalComment {
     const id = this.next--;
     const at = new Date().toISOString();
@@ -986,7 +987,7 @@ export class PairingSession {
       outdated: false,
       ...(where.inReplyTo !== undefined ? { inReplyTo: where.inReplyTo } : {}),
       local: true,
-      task: "queued",
+      task: where.fromTerminal ? "done" : "queued",
       ...(where.selfAsked ? { selfAsked: where.selfAsked } : {}),
       ...(where.label ? { label: where.label } : {}),
     };
@@ -1021,6 +1022,10 @@ export class PairingSession {
       where.body,
       this.installed.map((agent) => ({ id: agent.id, name: agent.name })),
     );
+    if (where.fromTerminal) {
+      this.changed();
+      return comment;
+    }
     this.waiting.push({
       id: String(id),
       body: where.body,
@@ -1057,9 +1062,49 @@ export class PairingSession {
   }
 
   /** One agent, one message, from the prompt to the reply it writes. */
+  terminal: { holds(agent: string): boolean; type(agent: string, text: string): void } | undefined;
+
+  private readonly inTerminal = new Map<string, number>();
+
+  private handOff(ask: Ask, agentId: string): boolean {
+    if (!this.terminal?.holds(agentId)) return false;
+    const id = Number(ask.id);
+    const claiming = this.rootOf(id);
+    if (claiming) this.taking.set(claiming.id, agentId);
+    const place = this.placeOf(id);
+    this.terminal.type(agentId, place ? `About ${place}: ${ask.body}` : ask.body);
+    this.inTerminal.set(agentId, id);
+    this.mark(id, "done");
+    this.changed();
+    return true;
+  }
+
+  heard(agentId: string, said: { role: "user" | "assistant"; text: string }[], reader: { name: string; avatarUrl?: string }): void {
+    for (const one of said) {
+      if (one.role === "user") {
+        const comment = this.ask({ body: one.text, author: reader.name, ...(reader.avatarUrl ? { avatarUrl: reader.avatarUrl } : {}), to: agentId, fromTerminal: true });
+        this.inTerminal.set(agentId, comment.id);
+        continue;
+      }
+      const to = this.inTerminal.get(agentId);
+      if (to !== undefined && this.rootOf(to)) this.reply(to, this.nameOf(agentId), agentId, one.text, false);
+      else this.say(agentId, one.text);
+    }
+  }
+
+  adopt(agentId: string, session: string): void {
+    if (this.sessions[agentId] === session) return;
+    this.sessions[agentId] = session;
+    this.save();
+  }
+
   private async work(ask: Ask, agentId: string): Promise<void> {
     const kind = this.installed.find((one) => one.id === agentId);
     if (!kind) return;
+    if (this.handOff(ask, agentId)) {
+      this.pump();
+      return;
+    }
 
     /*
      * Claimed before anything is awaited, and that ordering is load-bearing.

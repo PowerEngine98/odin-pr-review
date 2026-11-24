@@ -1,6 +1,7 @@
 import type { AgentKind } from "@odin/core";
 
 import type { Pty, PtyOptions } from "./pty.js";
+import { projectFolder, TranscriptFollower, type Heard } from "./transcript.js";
 
 export const SCROLLBACK = 512 * 1024;
 
@@ -11,6 +12,8 @@ export interface CliHost {
   env(): NodeJS.ProcessEnv;
   open(file: string, args: string[], options: PtyOptions): Pty;
   post(message: unknown): void;
+  heard?(agent: string, said: Heard[]): void;
+  adopt?(agent: string, session: string): void;
 }
 
 interface Running {
@@ -19,6 +22,8 @@ interface Running {
   resumed?: string;
   ready: boolean;
   settle?: ReturnType<typeof setTimeout>;
+  follower?: TranscriptFollower;
+  typed: string[];
 }
 
 export const SETTLED_MS = 700;
@@ -60,8 +65,26 @@ export class CliSessions {
       this.host.post({ type: "cliExit", agent, code: 1, error: (error as Error).message });
       return;
     }
-    const running: Running = { pty, screen: "", ready: false, ...(args.length ? { resumed: conversation! } : {}) };
+    const running: Running = { pty, screen: "", ready: false, typed: [], ...(args.length ? { resumed: conversation! } : {}) };
     this.running.set(agent, running);
+    if (agent === "claude" && this.host.heard) {
+      running.follower = new TranscriptFollower(
+        projectFolder(this.host.repo()),
+        running.resumed,
+        (said) => {
+          const fresh = said.filter((one) => {
+            if (one.role !== "user") return true;
+            const at = running.typed.indexOf(one.text.trim());
+            if (at < 0) return true;
+            running.typed.splice(at, 1);
+            return false;
+          });
+          if (fresh.length > 0) this.host.heard?.(agent, fresh);
+        },
+        (session) => this.host.adopt?.(agent, session),
+      );
+      running.follower.start();
+    }
     pty.onData((data) => {
       running.screen = (running.screen + data).slice(-SCROLLBACK);
       this.host.post({ type: "cliData", agent, data });
@@ -74,6 +97,7 @@ export class CliSessions {
     });
     pty.onExit((code) => {
       if (running.settle) clearTimeout(running.settle);
+      running.follower?.stop();
       if (this.running.get(agent) === running) this.running.delete(agent);
       this.host.post({ type: "cliExit", agent, code });
     });
@@ -93,6 +117,7 @@ export class CliSessions {
     if (!running || !queue?.length) return;
     this.waiting.delete(agent);
     let at = 0;
+    for (const text of queue) running.typed.push(text.trim());
     for (const text of queue) {
       setTimeout(() => running.pty.write(text), at);
       setTimeout(() => running.pty.write("\r"), at + ENTER_MS);
@@ -112,6 +137,7 @@ export class CliSessions {
     const held = this.running.get(agent);
     if (!held) return;
     this.running.delete(agent);
+    held.follower?.stop();
     held.pty.kill();
   }
 
