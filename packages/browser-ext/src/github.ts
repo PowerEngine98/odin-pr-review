@@ -31,6 +31,7 @@ export interface PullJson {
   merged_at?: string | null;
   merge_commit_sha?: string | null;
   user?: { login: string; avatar_url?: string } | null;
+  changed_files?: number;
   created_at?: string;
   updated_at?: string;
   requested_reviewers?: { login: string }[];
@@ -87,15 +88,66 @@ async function call(api: Api, path: string, accept: string): Promise<Response> {
   throw new GitHubError(said || `GitHub answered ${response.status}`, response.status, "failed");
 }
 
+export interface PullFile {
+  filename: string;
+  previous_filename?: string;
+  status: string;
+  patch?: string;
+}
+
+export const FILES_PER_PAGE = 100;
+
+export const MOST_FILES = 3000;
+
+export function diffOfFiles(files: readonly PullFile[]): string {
+  return files
+    .map((file) => {
+      const from = file.previous_filename ?? file.filename;
+      const to = file.filename;
+      const added = file.status === "added";
+      const removed = file.status === "removed";
+      const lines = [`diff --git a/${from} b/${to}`];
+      if (added) lines.push("new file mode 100644");
+      if (removed) lines.push("deleted file mode 100644");
+      if (from !== to) lines.push(`rename from ${from}`, `rename to ${to}`);
+      if (file.patch === undefined) {
+        if (added || removed || from === to) lines.push(`Binary files ${added ? "/dev/null" : `a/${from}`} and ${removed ? "/dev/null" : `b/${to}`} differ`);
+        return lines.join("\n");
+      }
+      lines.push(added ? "--- /dev/null" : `--- a/${from}`, removed ? "+++ /dev/null" : `+++ b/${to}`, file.patch);
+      return lines.join("\n");
+    })
+    .join("\n")
+    .concat(files.length ? "\n" : "");
+}
+
+export async function pullFiles(place: Required<Place>, count: number, api: Api = {}): Promise<PullFile[]> {
+  const pages = Math.max(1, Math.ceil(Math.min(count, MOST_FILES) / FILES_PER_PAGE));
+  const path = `/repos/${place.owner}/${place.repo}/pulls/${place.number}/files`;
+  const read = await Promise.all(
+    Array.from({ length: pages }, (_, at) =>
+      call(api, `${path}?per_page=${FILES_PER_PAGE}&page=${at + 1}`, "application/vnd.github+json").then(
+        (r) => r.json() as Promise<PullFile[]>,
+      ),
+    ),
+  );
+  return read.flat();
+}
+
 export async function readPull(
   place: Required<Place>,
   api: Api = {},
 ): Promise<{ pull: PullJson; diff: string }> {
   const path = `/repos/${place.owner}/${place.repo}/pulls/${place.number}`;
-  const [pull, diff] = await Promise.all([
-    call(api, path, "application/vnd.github+json").then((r) => r.json() as Promise<PullJson>),
-    call(api, path, "application/vnd.github.diff").then((r) => r.text()),
-  ]);
+  const asked = call(api, path, "application/vnd.github+json").then((r) => r.json() as Promise<PullJson>);
+  const whole = call(api, path, "application/vnd.github.diff").then(
+    (r) => r.text(),
+    (error: unknown) => {
+      if (!(error instanceof GitHubError) || error.reason !== "too-large") throw error;
+      return asked.then((pull) => pullFiles(place, pull.changed_files ?? MOST_FILES, api)).then(diffOfFiles);
+    },
+  );
+  const [pull, diff] = await Promise.all([asked, whole]);
   return { pull, diff };
 }
 
