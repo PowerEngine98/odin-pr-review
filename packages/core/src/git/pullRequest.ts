@@ -558,18 +558,32 @@ const STACK_DEPTH = 10;
 
 export async function stackAround(
   current: StackPlace,
-  find: { headed: (branch: string) => Promise<PullRequestSummary[] | undefined>; based: (branch: string) => Promise<PullRequestSummary[] | undefined> },
+  find: {
+    headed: (branch: string) => Promise<PullRequestSummary[] | undefined>;
+    based: (branch: string) => Promise<PullRequestSummary[] | undefined>;
+    merged?: (pull: StackPlace) => Promise<PullRequestSummary | undefined>;
+  },
 ): Promise<PullStack | undefined> {
   const seen = new Set<number>([current.number]);
   const down = async () => {
     const found: PullRequestSummary[] = [];
     let base = current.base;
-    for (let step = 0; step < STACK_DEPTH && base; step++) {
+    let lowest: StackPlace = current;
+    let step = 0;
+    for (; step < STACK_DEPTH && base; step++) {
       const under = (await find.headed(base))?.find((pr) => !seen.has(pr.number) && pr.baseRef && pr.baseRef !== base);
       if (!under) break;
       seen.add(under.number);
       found.unshift(under);
       base = under.baseRef ?? "";
+      lowest = { number: under.number, head: under.branch, base };
+    }
+    for (; find.merged && step < STACK_DEPTH && lowest.base; step++) {
+      const merged = await find.merged(lowest);
+      if (!merged || seen.has(merged.number)) break;
+      seen.add(merged.number);
+      found.unshift(merged);
+      lowest = { number: merged.number, head: merged.branch, base: merged.baseRef ?? lowest.base };
     }
     return { found, base };
   };
@@ -600,6 +614,66 @@ export async function pullStack(
   return stackAround(current, {
     headed: (branch) => listOnce({ ...options, head: branch, light: true }),
     based: (branch) => listOnce({ ...options, base: branch, light: true }),
+    merged: (pull) => mergedUnder(pull, options),
   });
+}
+
+const BRANCH = /^[\w./-]+$/;
+
+export function formerBases(json: string | undefined): { createdAt?: string; former: string[] } {
+  if (!json) return { former: [] };
+  try {
+    const pull = (JSON.parse(json) as {
+      data?: { repository?: { pullRequest?: { createdAt?: string; timelineItems?: { nodes?: { previousRefName?: string }[] } } } };
+    }).data?.repository?.pullRequest;
+    const names = (pull?.timelineItems?.nodes ?? [])
+      .map((node) => node.previousRefName ?? "")
+      .filter(Boolean)
+      .reverse();
+    return { ...(pull?.createdAt ? { createdAt: pull.createdAt } : {}), former: [...new Set(names)] };
+  } catch {
+    return { former: [] };
+  }
+}
+
+export function landedUnder(
+  pull: { createdAt?: string },
+  sits: string | undefined,
+  candidates: readonly PullRequestSummary[] | undefined,
+): PullRequestSummary | undefined {
+  if (!sits || !pull.createdAt) return undefined;
+  return candidates?.find(
+    (one) => one.state === "merged" && one.mergeCommit === sits && Boolean(one.mergedAt) && one.mergedAt! > pull.createdAt!,
+  );
+}
+
+async function mergedUnder(
+  pull: StackPlace,
+  options: GitOptions & { timeoutMs?: number },
+): Promise<PullRequestSummary | undefined> {
+  if (!BRANCH.test(pull.base) || !BRANCH.test(pull.head)) return undefined;
+  const timed = { ...options, timeoutMs: options.timeoutMs ?? 20_000 };
+  const query = `query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        createdAt
+        timelineItems(itemTypes: [BASE_REF_CHANGED_EVENT], last: 20) { nodes { ... on BaseRefChangedEvent { previousRefName } } }
+      }
+    }
+  }`;
+  const [history, sits] = await Promise.all([
+    run(["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "repo={repo}", "-F", `number=${pull.number}`], timed),
+    run(["api", `repos/{owner}/{repo}/compare/${pull.base}...${pull.head}`, "--jq", ".merge_base_commit.sha"], timed),
+  ]);
+  const facts = formerBases(history);
+  for (const name of facts.former.filter((one) => BRANCH.test(one))) {
+    const merged = (await listOnce({ ...options, head: name, state: "merged", light: true }))?.find(
+      (one) => one.number !== pull.number,
+    );
+    if (merged) return merged;
+  }
+  const sha = sits?.trim();
+  if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return undefined;
+  return landedUnder(facts, sha, await listOnce({ ...options, state: "merged", query: sha, light: true, limit: 5 }));
 }
 
