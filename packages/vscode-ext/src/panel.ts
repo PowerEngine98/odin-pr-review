@@ -3993,7 +3993,18 @@ export class GraphPanel {
       env: () => forgeEnv(),
       open: (file, args, options) => openPty(file, args, options, vscode.env.appRoot),
       post: (message) => void this.panel.webview.postMessage(message),
+      heard: (agent, said) =>
+        this.pairing().heard(agent, said, {
+          name: this.viewer || PLACEHOLDER,
+          ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
+        }),
+      adopt: (agent, session) => this.pairing().adopt(agent, session),
     });
+    const terminals = this.terminals;
+    this.pairing().terminal = {
+      holds: (agent) => terminals.live(agent),
+      type: (agent, text) => terminals.send(agent, text),
+    };
     return this.terminals;
   }
 

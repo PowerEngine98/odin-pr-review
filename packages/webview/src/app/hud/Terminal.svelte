@@ -914,6 +914,7 @@
   class="terminal"
   class:sizing={dragging !== null}
   class:folded
+  class:filling={tab === "cli" && !folded}
   style="width:{settings.terminalWidth ?? 360}px;max-height:{Math.min(
     settings.terminalHeight ?? 320,
     cap ?? Number.POSITIVE_INFINITY,
@@ -1564,6 +1565,7 @@
     record, same thread, same audit. What it lacks is a file and a line, so it
     leaves no mark in any margin — which is the truth about it.
   -->
+  {#if tab !== "cli"}
   <form
     class="terminal-ask"
     onsubmit={(event) => {
@@ -1746,6 +1748,7 @@
     </button>
   </form>
   {/if}
+  {/if}
 </div>
 
 <!--
@@ -1848,6 +1851,10 @@
     background: var(--panel);
     border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     overflow: hidden;
+  }
+
+  .terminal.filling {
+    height: 100vh;
   }
 
   .grip {
