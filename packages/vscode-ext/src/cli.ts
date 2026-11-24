@@ -14,6 +14,7 @@ export interface CliHost {
   post(message: unknown): void;
   heard?(agent: string, said: Heard[]): void;
   adopt?(agent: string, session: string): void;
+  ended?(agent: string): void;
 }
 
 interface Running {
@@ -99,6 +100,7 @@ export class CliSessions {
       if (running.settle) clearTimeout(running.settle);
       running.follower?.stop();
       if (this.running.get(agent) === running) this.running.delete(agent);
+      this.host.ended?.(agent);
       this.host.post({ type: "cliExit", agent, code });
     });
     this.host.post({ type: "cliReplay", agent, for: asker, data: "", ...(running.resumed ? { resumed: running.resumed } : {}) });
