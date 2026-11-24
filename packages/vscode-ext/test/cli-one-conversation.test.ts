@@ -209,3 +209,22 @@ describe("the Log, while the CLI works", () => {
     expect(pairing).toMatch(/this\.changed\(\);\s*if \(!busy\) this\.pump\(\);/);
   });
 });
+
+describe("a question the agent asks inside the CLI", () => {
+  const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
+  const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
+
+  it("is noticed in the transcript, since only the terminal can draw it", () => {
+    const said = heardIn(assistant([{ type: "tool_use", name: "AskUserQuestion", input: { questions: [] } }]).split("\n"));
+    expect(said.map((one) => one.role)).toEqual(["work", "asking"]);
+  });
+
+  it("says in the Log where to answer it, and brings the CLI tab forward", () => {
+    expect(pairing).toMatch(/is asking you something in the CLI tab\. Answer it there\./);
+    expect(terminal).toMatch(/const askedInCli = \$derived\(ui\.cliAsking\.includes\(id\)\);\s*\$effect\(\(\) => \{\s*if \(askedInCli\) tab = "cli";/);
+  });
+
+  it("lets go once anything else happens in the CLI, or it stops", () => {
+    expect(pairing).toMatch(/if \(this\.askingInTerminal\.delete\(agentId\)\) this\.changed\(\);/);
+  });
+});

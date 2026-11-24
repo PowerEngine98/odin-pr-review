@@ -554,6 +554,31 @@ export function mirrorOf(panel: vscode.WebviewPanel): MirrorLog {
   return log;
 }
 
+export const PAGE_ERRORS_MOST = 2 * 1024 * 1024;
+
+export function harmlessPageError(error: string): boolean {
+  return /ResizeObserver loop/.test(error);
+}
+
+export const PAGE_ERRORS_KEPT = 512 * 1024;
+
+export async function keepPageError(file: string, text: string): Promise<void> {
+  const fs = await import("node:fs/promises");
+  try {
+    const size = await fs.stat(file).then((facts) => facts.size, () => 0);
+    if (size > PAGE_ERRORS_MOST) {
+      const handle = await fs.open(file, "r");
+      const tail = Buffer.alloc(PAGE_ERRORS_KEPT);
+      await handle.read(tail, 0, PAGE_ERRORS_KEPT, size - PAGE_ERRORS_KEPT);
+      await handle.close();
+      await fs.writeFile(file, tail);
+    }
+    await fs.appendFile(file, `${text}\n\n`);
+  } catch {
+    return;
+  }
+}
+
 export class GraphPanel {
   private mirror!: MirrorLog;
 
@@ -1926,6 +1951,7 @@ export class GraphPanel {
       // stopped on each of these, so they travel with every update rather than
       // being announced once and missed.
       deciding: this.paired?.deciding() ?? [],
+      cliAsking: this.paired?.terminalAsking() ?? [],
       // And what they have asked that nobody has started on. The queue is only
       // visible in the margins otherwise, which is not where somebody watching
       // an agent work is looking.
@@ -3845,11 +3871,11 @@ export class GraphPanel {
       }
       if (reply.type === "pageError") {
         const said = reply as { payload?: { where?: unknown; error?: unknown } };
-        const text = `${new Date().toISOString()} [${String(said.payload?.where ?? "")}] ${String(said.payload?.error ?? "")}`;
+        const error = String(said.payload?.error ?? "");
+        if (harmlessPageError(error)) return;
+        const text = `${new Date().toISOString()} [${String(said.payload?.where ?? "")}] ${error}`;
         console.error(`Odin page: ${text}`);
-        if (GraphPanel.errorLog) {
-          void import("node:fs/promises").then((fs) => fs.appendFile(GraphPanel.errorLog!, `${text}\n\n`)).catch(() => undefined);
-        }
+        if (GraphPanel.errorLog) void keepPageError(GraphPanel.errorLog, text);
         return;
       }
       if (reply.type === "cliImages") {
