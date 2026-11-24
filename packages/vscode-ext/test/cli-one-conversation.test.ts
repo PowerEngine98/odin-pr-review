@@ -129,3 +129,49 @@ describe("the CLI tab's size", () => {
     expect(screen).toMatch(/\.cli \{\s*display: flex;\s*flex: 1;\s*flex-direction: column;\s*min-height: 0;\s*\}/);
   });
 });
+
+describe("the Log, while the CLI holds the conversation", () => {
+  const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
+
+  it("shows a message written in the Log, though the CLI is the one that answers it", () => {
+    expect(pairing).toMatch(/this\.terminal\.type\(agentId, [^\n]+\);\s*this\.printAsked\(agentId, claiming\?\.id \?\? id, ask\.label \|\| ask\.body\);/);
+  });
+
+  it("shows what was typed in the CLI, and what the agent answered there", () => {
+    expect(pairing).toMatch(/this\.printAsked\(agentId, comment\.id, one\.text\);\s*continue;\s*\}\s*this\.print\(agentId, `\\n\$\{one\.text\}\\n`\);/);
+  });
+
+  it("marks an ask the same way a background turn does, so the Log draws it as the reader's", () => {
+    expect(pairing).toMatch(/\.map\(\(line\) => `\[odin:ask \$\{thread\}\] \$\{line\}`\)/);
+  });
+});
+
+describe("Shift+Enter in the CLI", () => {
+  const screen = readFileSync(join(__dirname, "../../webview/src/app/hud/Cli.svelte"), "utf8");
+
+  it("starts a new line instead of sending, the way Option+Enter does in Claude's own terminal", () => {
+    expect(screen).toMatch(/const NEW_LINE = "\\x1b\\r";/);
+    expect(screen).toMatch(/if \(!isShiftEnter\(event\)\) return true;\s*if \(event\.type === "keydown"\) notify\("cliInput", \{ agent, data: NEW_LINE \}\);\s*return false;/);
+    expect(screen).toMatch(/event\.key === "Enter" && event\.shiftKey && !event\.ctrlKey && !event\.altKey && !event\.metaKey/);
+  });
+});
+
+describe("the clipboard in the CLI", () => {
+  const screen = readFileSync(join(__dirname, "../../webview/src/app/hud/Cli.svelte"), "utf8");
+  const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
+
+  it("lets the editor see copy and paste, which it only does from keys that reach the page", () => {
+    expect(screen).toMatch(/onkeydown=\{\(event\) => \{\s*if \(!isClipboard\(event\)\) event\.stopPropagation\(\);\s*\}\}/);
+    expect(screen).toMatch(/\["c", "v", "x", "a"\]\.includes\(key\) && \(event\.metaKey \|\| \(event\.ctrlKey && event\.shiftKey\)\)/);
+  });
+
+  it("copies the terminal's own selection, which is not a selection the page knows about", () => {
+    expect(screen).toMatch(/\(key === "c" \|\| key === "x"\) && term\?\.hasSelection\(\)\) \{\s*notify\("copyText", \{ text: term\.getSelection\(\) \}\);/);
+  });
+
+  it("pastes a picture as a file Claude can attach, pasted the way a terminal pastes", () => {
+    expect(screen).toMatch(/holder\.addEventListener\("paste", pasted, true\);/);
+    expect(screen).toMatch(/notify\("cliImages", \{ agent, images \}\)/);
+    expect(panel).toMatch(/const paths = keepPasted\(images, \(this\.images \?\?= imageFolder\(\)\)\);\s*if \(paths\.length > 0\) this\.cli\(\)\.input\(agent, `\\x1b\[200~\$\{paths\.join\(" "\)\}\\x1b\[201~`\);/);
+  });
+});

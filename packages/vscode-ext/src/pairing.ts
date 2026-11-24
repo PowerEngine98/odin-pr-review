@@ -1066,6 +1066,19 @@ export class PairingSession {
 
   private readonly inTerminal = new Map<string, number>();
 
+  private print(agentId: string, chunk: string): void {
+    this.transcripts.set(agentId, tail((this.transcripts.get(agentId) ?? "") + chunk));
+    this.printed?.(agentId, chunk);
+  }
+
+  private printAsked(agentId: string, thread: number, text: string): void {
+    const asked = text
+      .split("\n")
+      .map((line) => `[odin:ask ${thread}] ${line}`)
+      .join("\n");
+    this.print(agentId, `\n${asked}\n`);
+  }
+
   private handOff(ask: Ask, agentId: string): boolean {
     if (!this.terminal?.holds(agentId)) return false;
     const id = Number(ask.id);
@@ -1073,6 +1086,7 @@ export class PairingSession {
     if (claiming) this.taking.set(claiming.id, agentId);
     const place = this.placeOf(id);
     this.terminal.type(agentId, place ? `About ${place}: ${ask.body}` : ask.body);
+    this.printAsked(agentId, claiming?.id ?? id, ask.label || ask.body);
     this.inTerminal.set(agentId, id);
     this.mark(id, "done");
     this.changed();
@@ -1084,8 +1098,10 @@ export class PairingSession {
       if (one.role === "user") {
         const comment = this.ask({ body: one.text, author: reader.name, ...(reader.avatarUrl ? { avatarUrl: reader.avatarUrl } : {}), to: agentId, fromTerminal: true });
         this.inTerminal.set(agentId, comment.id);
+        this.printAsked(agentId, comment.id, one.text);
         continue;
       }
+      this.print(agentId, `\n${one.text}\n`);
       const to = this.inTerminal.get(agentId);
       if (to !== undefined && this.rootOf(to)) this.reply(to, this.nameOf(agentId), agentId, one.text, false);
       else this.say(agentId, one.text);

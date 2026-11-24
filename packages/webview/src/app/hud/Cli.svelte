@@ -7,6 +7,9 @@
     dispose(): void;
     loadAddon(addon: unknown): void;
     onData(listener: (data: string) => void): { dispose(): void };
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean): void;
+    hasSelection(): boolean;
+    getSelection(): string;
     cols: number;
     rows: number;
   }
@@ -17,6 +20,40 @@
   }
 
   let loading: Promise<Xterm | null> | undefined;
+
+  const NEW_LINE = "\x1b\r";
+
+  function isClipboard(event: KeyboardEvent): boolean {
+    const key = event.key.toLowerCase();
+    return ["c", "v", "x", "a"].includes(key) && (event.metaKey || (event.ctrlKey && event.shiftKey));
+  }
+
+  function picturesIn(event: ClipboardEvent): File[] {
+    return [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith("image/"));
+  }
+
+  function readAsData(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function pasted(event: ClipboardEvent): void {
+    const pictures = picturesIn(event);
+    if (pictures.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void Promise.all(pictures.map(async (file) => ({ name: file.name, data: await readAsData(file) }))).then((images) =>
+      notify("cliImages", { agent, images }),
+    );
+  }
+
+  function isShiftEnter(event: KeyboardEvent): boolean {
+    return event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey;
+  }
 
   function script(src: string): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -154,6 +191,19 @@
     term.loadAddon(fit);
     term.open(holder);
     typed = term.onData((data) => notify("cliInput", { agent, data }));
+    holder.addEventListener("paste", pasted, true);
+    term.attachCustomKeyEventHandler((event) => {
+      if (isClipboard(event)) {
+        const key = event.key.toLowerCase();
+        if (event.type === "keydown" && (key === "c" || key === "x") && term?.hasSelection()) {
+          notify("copyText", { text: term.getSelection() });
+        }
+        return false;
+      }
+      if (!isShiftEnter(event)) return true;
+      if (event.type === "keydown") notify("cliInput", { agent, data: NEW_LINE });
+      return false;
+    });
     window.addEventListener("message", heard);
     observer = new ResizeObserver(() => measure());
     observer.observe(holder);
@@ -194,8 +244,12 @@
       class="cli-screen"
       bind:this={holder}
       role="presentation"
-      onkeydown={(event) => event.stopPropagation()}
-      onkeyup={(event) => event.stopPropagation()}
+      onkeydown={(event) => {
+        if (!isClipboard(event)) event.stopPropagation();
+      }}
+      onkeyup={(event) => {
+        if (!isClipboard(event)) event.stopPropagation();
+      }}
     ></div>
   {/if}
 </div>
