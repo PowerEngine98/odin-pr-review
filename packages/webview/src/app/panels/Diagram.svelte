@@ -194,7 +194,8 @@
      * viewer itself: a press on the thing already open would open it again.
      */
     openable = true,
-  }: { code: string; liftable?: boolean; openable?: boolean } = $props();
+    ondrawn,
+  }: { code: string; liftable?: boolean; openable?: boolean; ondrawn?: (svg: SVGSVGElement) => void } = $props();
 
   let box = $state<HTMLElement | null>(null);
   let drawn = $state(false);
@@ -252,6 +253,8 @@
         await drawUnscaled(mermaid, element);
         drawn = element.querySelector("svg") !== null;
         failed = !drawn;
+        const svg = element.querySelector("svg");
+        if (svg && ondrawn) requestAnimationFrame(() => ondrawn(svg));
       } catch {
         // A diagram that will not parse is a diagram the agent got wrong, and
         // the text it wrote is the useful thing to show.

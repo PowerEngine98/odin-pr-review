@@ -484,6 +484,7 @@ function carryOut(frame: Frame, mine: number): Promise<void> | null {
     case "diagram": {
       const area = draw(frame, true);
       if (!area) return null;
+      framing = tour.diagram?.id;
       camera.showWhole(area);
       return landed();
     }
@@ -661,6 +662,21 @@ function clearDrawn(): void {
 }
 
 let diagrams = 0;
+
+let framing: number | undefined;
+
+export function diagramDrawn(id: number, drawing: Box): void {
+  if (framing !== id || tour.diagram?.id !== id) return;
+  framing = undefined;
+  if (drawing.width <= 0 || drawing.height <= 0) return;
+  const pad = (model.current.charWidth || 7) * 3;
+  camera.showWhole({
+    x: drawing.x - pad,
+    y: drawing.y - pad,
+    width: drawing.width + pad * 2,
+    height: drawing.height + pad * 2,
+  });
+}
 
 /** Room for a frame's diagram beside the card it is about, clear of every card. */
 function placeDiagram(near: string | undefined): Box {

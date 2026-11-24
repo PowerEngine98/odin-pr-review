@@ -5,19 +5,43 @@
 <script lang="ts">
   import Diagram from "../panels/Diagram.svelte";
   import { tour } from "./state.svelte.js";
+  import { diagramDrawn } from "./player.svelte.js";
+
+  let box: HTMLDivElement | undefined = $state();
+
+  function framed(id: number, svg: SVGSVGElement): void {
+    const at = tour.diagram;
+    if (!box || !at || at.id !== id) return;
+    const outer = box.getBoundingClientRect();
+    const inner = svg.getBoundingClientRect();
+    if (outer.width <= 0) return;
+    const scale = outer.width / at.width;
+    diagramDrawn(id, {
+      x: at.x + (inner.left - outer.left) / scale,
+      y: at.y + (inner.top - outer.top) / scale,
+      width: inner.width / scale,
+      height: inner.height / scale,
+    });
+  }
 </script>
 
 {#if tour.active && tour.diagram}
   {#key tour.diagram.id}
     <div
       class="tour-diagram"
+      bind:this={box}
       style:left="{tour.diagram.x}px"
       style:top="{tour.diagram.y}px"
       style:width="{tour.diagram.width}px"
       style:height="{tour.diagram.height}px"
       aria-label="A diagram the tour drew"
     >
-      <Diagram code={tour.diagram.code} liftable={false} openable={false} />
+      <Diagram
+        code={tour.diagram.code}
+        liftable={false}
+        openable={false}
+        ondrawn={(svg) => framed(tour.diagram!.id, svg)}
+      />
     </div>
   {/key}
 {/if}
