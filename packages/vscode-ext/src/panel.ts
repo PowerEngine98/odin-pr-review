@@ -4008,6 +4008,7 @@ export class GraphPanel {
           ...(this.viewerFace ? { avatarUrl: this.viewerFace } : {}),
         }),
       adopt: (agent, session) => this.pairing().adopt(agent, session),
+      ended: (agent) => this.pairing().terminalEnded(agent),
     });
     const terminals = this.terminals;
     this.pairing().terminal = {

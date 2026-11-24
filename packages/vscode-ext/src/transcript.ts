@@ -2,10 +2,14 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { readClaude } from "@odin/core";
+
 export interface Heard {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "work" | "done";
   text: string;
 }
+
+const INTERRUPTED = /^\[Request interrupted/;
 
 export function projectFolder(cwd: string, home = homedir()): string {
   return join(home, ".claude", "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"));
@@ -24,7 +28,7 @@ export function heardIn(lines: readonly string[]): Heard[] {
   const out: Heard[] = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    let entry: { type?: string; isSidechain?: boolean; isMeta?: boolean; message?: { role?: string; content?: unknown } };
+    let entry: { type?: string; isSidechain?: boolean; isMeta?: boolean; message?: { role?: string; content?: unknown; stop_reason?: unknown } };
     try {
       entry = JSON.parse(line);
     } catch {
@@ -32,9 +36,19 @@ export function heardIn(lines: readonly string[]): Heard[] {
     }
     if (entry.isSidechain || entry.isMeta) continue;
     if (entry.type !== "user" && entry.type !== "assistant") continue;
-    const text = textOf(entry.message?.content).trim();
-    if (!text || text.startsWith("<")) continue;
-    out.push({ role: entry.type, text });
+    const content = entry.message?.content;
+    if (entry.type === "assistant" && Array.isArray(content)) {
+      const others = content.filter((part: { type?: string }) => part?.type !== "text");
+      const work = others.length ? readClaude(JSON.stringify({ type: "assistant", message: { content: others } }))?.show : undefined;
+      if (work) out.push({ role: "work", text: work });
+    }
+    const text = textOf(content).trim();
+    if (entry.type === "user" && INTERRUPTED.test(text)) {
+      out.push({ role: "done", text: "" });
+      continue;
+    }
+    if (text && !text.startsWith("<")) out.push({ role: entry.type, text });
+    if (entry.type === "assistant" && entry.message?.stop_reason === "end_turn") out.push({ role: "done", text: "" });
   }
   return out;
 }

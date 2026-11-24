@@ -26,6 +26,7 @@ describe("what a CLI conversation said, read back from its transcript", () => {
     );
     expect(said).toEqual([
       { role: "user", text: "rename this to OrderTotal" },
+      { role: "work", text: "→ Edit" },
       { role: "assistant", text: "Renaming it." },
       { role: "assistant", text: "Done: Order.kt now uses OrderTotal." },
     ]);
@@ -138,7 +139,7 @@ describe("the Log, while the CLI holds the conversation", () => {
   });
 
   it("shows what was typed in the CLI, and what the agent answered there", () => {
-    expect(pairing).toMatch(/this\.printAsked\(agentId, comment\.id, one\.text\);\s*continue;\s*\}\s*this\.print\(agentId, `\\n\$\{one\.text\}\\n`\);/);
+    expect(pairing).toMatch(/this\.printAsked\(agentId, comment\.id, one\.text\);\s*this\.terminalBusy\(agentId, true\);\s*continue;\s*\}\s*this\.print\(agentId, `\\n\$\{one\.text\}\\n`\);/);
   });
 
   it("marks an ask the same way a background turn does, so the Log draws it as the reader's", () => {
@@ -173,5 +174,38 @@ describe("the clipboard in the CLI", () => {
     expect(screen).toMatch(/holder\.addEventListener\("paste", pasted, true\);/);
     expect(screen).toMatch(/notify\("cliImages", \{ agent, images \}\)/);
     expect(panel).toMatch(/const paths = keepPasted\(images, \(this\.images \?\?= imageFolder\(\)\)\);\s*if \(paths\.length > 0\) this\.cli\(\)\.input\(agent, `\\x1b\[200~\$\{paths\.join\(" "\)\}\\x1b\[201~`\);/);
+  });
+});
+
+describe("the Log, while the CLI works", () => {
+  const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
+  const cli = readFileSync(join(__dirname, "../src/cli.ts"), "utf8");
+
+  it("shows the tools the agent runs, as a background turn shows them, and when its turn ends", () => {
+    const said = heardIn(
+      [
+        assistant([{ type: "tool_use", name: "Bash", input: { command: "git status" } }]),
+        user([{ type: "tool_result", content: "clean" }]),
+        line({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Clean." }], stop_reason: "end_turn" } }),
+        user("[Request interrupted by user]"),
+      ].join("").split("\n"),
+    );
+    expect(said).toEqual([
+      { role: "work", text: "→ Bash(git status)" },
+      { role: "assistant", text: "Clean." },
+      { role: "done", text: "" },
+      { role: "done", text: "" },
+    ]);
+  });
+
+  it("is working while the CLI works, and idle when the turn ends or the CLI stops", () => {
+    expect(pairing).toMatch(/if \(one\.role === "work"\) \{\s*this\.terminalBusy\(agentId, true\);\s*this\.print\(agentId, `\$\{one\.text\}\\n`\);/);
+    expect(pairing).toMatch(/if \(one\.role === "done"\) \{\s*this\.terminalBusy\(agentId, false\);/);
+    expect(pairing).toMatch(/this\.inTerminal\.set\(agentId, id\);\s*this\.state\.set\(agentId, "working"\);/);
+    expect(cli).toMatch(/if \(this\.running\.get\(agent\) === running\) this\.running\.delete\(agent\);\s*this\.host\.ended\?\.\(agent\);/);
+  });
+
+  it("hands the next waiting message over once the CLI is free", () => {
+    expect(pairing).toMatch(/this\.changed\(\);\s*if \(!busy\) this\.pump\(\);/);
   });
 });

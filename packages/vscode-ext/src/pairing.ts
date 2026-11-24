@@ -1088,17 +1088,40 @@ export class PairingSession {
     this.terminal.type(agentId, place ? `About ${place}: ${ask.body}` : ask.body);
     this.printAsked(agentId, claiming?.id ?? id, ask.label || ask.body);
     this.inTerminal.set(agentId, id);
+    this.state.set(agentId, "working");
     this.mark(id, "done");
     this.changed();
     return true;
   }
 
-  heard(agentId: string, said: { role: "user" | "assistant"; text: string }[], reader: { name: string; avatarUrl?: string }): void {
+  private terminalBusy(agentId: string, busy: boolean): void {
+    const now = busy ? "working" : "idle";
+    if (this.state.get(agentId) === now) return;
+    this.state.set(agentId, now);
+    this.changed();
+    if (!busy) this.pump();
+  }
+
+  terminalEnded(agentId: string): void {
+    this.terminalBusy(agentId, false);
+  }
+
+  heard(agentId: string, said: { role: "user" | "assistant" | "work" | "done"; text: string }[], reader: { name: string; avatarUrl?: string }): void {
     for (const one of said) {
+      if (one.role === "done") {
+        this.terminalBusy(agentId, false);
+        continue;
+      }
+      if (one.role === "work") {
+        this.terminalBusy(agentId, true);
+        this.print(agentId, `${one.text}\n`);
+        continue;
+      }
       if (one.role === "user") {
         const comment = this.ask({ body: one.text, author: reader.name, ...(reader.avatarUrl ? { avatarUrl: reader.avatarUrl } : {}), to: agentId, fromTerminal: true });
         this.inTerminal.set(agentId, comment.id);
         this.printAsked(agentId, comment.id, one.text);
+        this.terminalBusy(agentId, true);
         continue;
       }
       this.print(agentId, `\n${one.text}\n`);
