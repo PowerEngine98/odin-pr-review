@@ -128,21 +128,6 @@
   );
 
   /**
-   * The first line of an ask, which is what a queued row has room for.
-   *
-   * Said rather than spelled out: a question that is nothing but a pasted
-   * screenshot is written `![pasted image](/var/folders/…)`, and a row of
-   * temporary directory told the reader nothing about what was waiting. The
-   * picture itself is drawn beside this where the host will serve it, and this
-   * still has to read on its own for the times it will not.
-   */
-  function gist(body: string): string {
-    const said = saidOf(body);
-    const line = said.split("\n").find((one) => one.trim() !== "") ?? "";
-    return line.trim();
-  }
-
-  /**
    * The session so far, asked for once when the terminal appears.
    *
    * A terminal opened halfway through a turn — or after a window reload — has
@@ -548,6 +533,39 @@
 
   /** Named for what it does to the picture, not the pointer: `drop` is taken
       by the end of a resize drag, a few hundred lines down. */
+  let lifting = $state<number | null>(null);
+  let dropBefore = $state<number | null>(null);
+
+  function dropQueued(target: number): void {
+    const from = lifting;
+    lifting = null;
+    dropBefore = null;
+    if (from === null || from === target) return;
+    const ids = waiting.map((one) => one.id).filter((one) => one !== from);
+    ids.splice(ids.indexOf(target), 0, from);
+    const byId = new Map(ui.queued.map((one) => [one.id, one]));
+    const rest = ui.queued.filter((one) => !ids.includes(one.id));
+    ui.queued = [...ids.map((one) => byId.get(one)!).filter(Boolean), ...rest];
+    notify("reorderQueue", { ids });
+  }
+
+  function editQueued(ask: { id: number; body: string }): void {
+    let text = ask.body;
+    const back: { id: number; url: string; name: string }[] = [];
+    for (const path of picturesNamed(ask.body)) {
+      const url = pictured(path);
+      if (!url) continue;
+      const written = new RegExp(`!\\[[^\\]]*\\]\\(${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`, "g");
+      text = text.replace(written, "");
+      back.push({ id: ++nextImage, url, name: nameOf(path) });
+    }
+    notify("cancelAsk", { id: ask.id });
+    const said = text.trim();
+    prompt = prompt.trim() ? `${prompt.trimEnd()}\n\n${said}` : said;
+    pasted = [...pasted, ...back];
+    askBox?.focus();
+  }
+
   function unpaste(id: number): void {
     pasted = pasted.filter((one) => one.id !== id);
   }
@@ -1772,7 +1790,31 @@
   {#if waiting.length > 0}
     <ul class="queue">
       {#each waiting as ask (ask.id)}
-        <li class="queued">
+        <li
+          class="queued"
+          class:lifted={lifting === ask.id}
+          class:landing={dropBefore === ask.id && lifting !== ask.id}
+          draggable={waiting.length > 1}
+          title={waiting.length > 1 ? "Drag to change the order these are taken in" : undefined}
+          ondragstart={(event) => {
+            lifting = ask.id;
+            event.dataTransfer?.setData("text/plain", String(ask.id));
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+          }}
+          ondragover={(event) => {
+            if (lifting === null) return;
+            event.preventDefault();
+            dropBefore = ask.id;
+          }}
+          ondrop={(event) => {
+            event.preventDefault();
+            dropQueued(ask.id);
+          }}
+          ondragend={() => {
+            lifting = null;
+            dropBefore = null;
+          }}
+        >
           <svg class="queued-face" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <rect width="24" height="24" rx="12" fill="var(--warning)" />
             {#if mark.stroke}
@@ -1802,10 +1844,19 @@
               </button>
             {/if}
           {/each}
-          <!-- The whole question on hover, since the row has one line of it —
-               and said the same way, because a tooltip cannot draw a picture
-               either. -->
-          <span class="queued-what" title={saidOf(ask.body)}>{gist(ask.body)}</span>
+          <span class="queued-what">{saidOf(ask.body)}</span>
+          <button
+            class="queued-now"
+            type="button"
+            title="Send this now: {name} stops what it is doing and takes this next, in the same conversation."
+            onclick={() => notify("sendNow", { id: ask.id, agent: id })}
+          >Send now</button>
+          <button
+            class="queued-now"
+            type="button"
+            title="Take this back into the box below to change it. It leaves the queue until you send it again."
+            onclick={() => editQueued(ask)}
+          >Edit</button>
           <button
             class="queued-drop"
             title="Take this back. Nothing has run, and it can be asked again."
@@ -2665,7 +2716,7 @@
   }
   .queued {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
     padding: 3px 4px;
     border-radius: 4px;
@@ -2693,8 +2744,8 @@
     cursor: zoom-in;
   }
   .queued-shot img {
-    width: 26px;
-    height: 18px;
+    width: 64px;
+    height: 44px;
     border-radius: 3px;
     border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
     background: color-mix(in srgb, var(--text) 6%, transparent);
@@ -2710,9 +2761,32 @@
   .queued-what {
     flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-height: 160px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .queued[draggable="true"] {
+    cursor: grab;
+  }
+  .queued.lifted {
+    opacity: 0.45;
+  }
+  .queued.landing {
+    box-shadow: inset 0 2px 0 0 var(--warning);
+  }
+  .queued-now {
+    flex: 0 0 auto;
+    padding: 1px 8px;
+    border: 1px solid color-mix(in srgb, var(--warning) 60%, transparent);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .queued-now:hover {
+    background: color-mix(in srgb, var(--warning) 18%, transparent);
   }
   /* Only the row it belongs to. A cross that acts on the queue rather than on
      one message would be a control nobody presses twice. */

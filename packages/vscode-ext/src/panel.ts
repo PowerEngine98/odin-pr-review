@@ -3631,6 +3631,18 @@ export class GraphPanel {
         });
         return;
       }
+      if (reply.type === "reorderQueue") {
+        const said = (reply as { payload?: { ids?: unknown } }).payload ?? {};
+        const ids = Array.isArray(said.ids) ? said.ids.map(Number).filter(Number.isFinite) : [];
+        this.paired?.reorder(ids);
+        return;
+      }
+      if (reply.type === "sendNow") {
+        const said = (reply as { payload?: { id?: unknown; agent?: unknown } }).payload ?? {};
+        const agent = String(said.agent ?? "");
+        if (agent) this.paired?.sendNow(Number(said.id), agent);
+        return;
+      }
       if (message.type === "cancelAsk") {
         this.paired?.cancel(Number(message.payload.id));
         return;

@@ -166,7 +166,7 @@ describe("a picture in the agent console", () => {
 
   it("shows a queued question's picture rather than its path", () => {
     expect(terminal).toMatch(/\{#each picturesNamed\(ask\.body\) as path \(path\)\}/);
-    expect(terminal).toMatch(/const said = saidOf\(body\)/);
+    expect(terminal).toMatch(/<span class="queued-what">\{saidOf\(ask\.body\)\}<\/span>/);
   });
 });
 

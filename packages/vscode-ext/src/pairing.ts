@@ -2301,7 +2301,7 @@ export class PairingSession {
    * questions asked in a row looked exactly like one.
    */
   queued(): { id: number; body: string; addressee?: string }[] {
-    return this.waiting.map((ask) => ({
+    return [...this.waiting].sort((a, b) => a.at.localeCompare(b.at)).map((ask) => ({
       id: Number(ask.id),
       body: ask.body,
       ...(ask.addressee ? { addressee: ask.addressee } : {}),
@@ -2322,6 +2322,35 @@ export class PairingSession {
    * honest answer then is that it is running: `stop` is the control for that,
    * and quietly doing nothing is better than half-cancelling something.
    */
+  reorder(ids: number[]): void {
+    const moved = ids
+      .map((id) => this.waiting.find((one) => Number(one.id) === id))
+      .filter((one): one is Ask => one !== undefined);
+    if (moved.length < 2) return;
+    const times = moved.map((one) => one.at).sort();
+    moved.forEach((one, at) => {
+      one.at = times[at]!;
+    });
+    this.changed();
+  }
+
+  sendNow(id: number, agentId: string): void {
+    const ask = this.waiting.find((one) => Number(one.id) === id);
+    if (!ask) return;
+    if (!ask.addressee) ask.addressee = agentId;
+    const target = ask.addressee;
+    if (this.terminal?.holds(target)) {
+      this.waiting = this.waiting.filter((one) => one !== ask);
+      this.handOff(ask, target);
+      return;
+    }
+    const earliest = this.waiting.reduce((least, one) => (one.at < least ? one.at : least), ask.at);
+    ask.at = new Date(Date.parse(earliest) - 1).toISOString();
+    if (this.state.get(target) === "working") this.stop(target);
+    else this.pump();
+    this.changed();
+  }
+
   cancel(id: number): void {
     const before = this.waiting.length;
     this.waiting = this.waiting.filter((ask) => Number(ask.id) !== id);
