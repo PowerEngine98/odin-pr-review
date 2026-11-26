@@ -40,3 +40,35 @@ describe("a queued message taken back to edit", () => {
     expect(terminal).toMatch(/pasted = \[\.\.\.pasted, \.\.\.back\];\s*askBox\?\.focus\(\);/);
   });
 });
+
+describe("queued messages dragged into a new order", () => {
+  it("are taken in the order they were dragged to", () => {
+    const asks: Ask[] = [
+      { id: "1", body: "rename Order", at: "2026-01-01T00:00:01.000Z" },
+      { id: "2", body: "add a total", at: "2026-01-01T00:00:02.000Z" },
+      { id: "3", body: "test the receipt", at: "2026-01-01T00:00:03.000Z" },
+    ];
+    const dragged = ["3", "1", "2"].map((id) => asks.find((one) => one.id === id)!);
+    const times = dragged.map((one) => one.at).sort();
+    dragged.forEach((one, at) => {
+      one.at = times[at]!;
+    });
+    const order: string[] = [];
+    let left = [...asks];
+    while (left.length) {
+      const [first] = assign(left, ["claude"], new Map([["claude", "idle"]]));
+      order.push(first!.ask.id);
+      left = left.filter((one) => one !== first!.ask);
+    }
+    expect(order).toEqual(["3", "1", "2"]);
+  });
+
+  it("are listed in the order they will be taken, and reordered by the same times the queue goes by", () => {
+    expect(pairing).toMatch(/return \[\.\.\.this\.waiting\]\.sort\(\(a, b\) => a\.at\.localeCompare\(b\.at\)\)\.map/);
+    expect(pairing).toMatch(/const times = moved\.map\(\(one\) => one\.at\)\.sort\(\);\s*moved\.forEach\(\(one, at\) => \{\s*one\.at = times\[at\]!;/);
+    expect(panel).toMatch(/this\.paired\?\.reorder\(ids\);/);
+    expect(terminal).toMatch(/draggable=\{waiting\.length > 1\}/);
+    expect(terminal).toMatch(/ondrop=\{\(event\) => \{\s*event\.preventDefault\(\);\s*dropQueued\(ask\.id\);/);
+    expect(terminal).toMatch(/notify\("reorderQueue", \{ ids \}\);/);
+  });
+});

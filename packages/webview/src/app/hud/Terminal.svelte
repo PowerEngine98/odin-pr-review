@@ -533,6 +533,22 @@
 
   /** Named for what it does to the picture, not the pointer: `drop` is taken
       by the end of a resize drag, a few hundred lines down. */
+  let lifting = $state<number | null>(null);
+  let dropBefore = $state<number | null>(null);
+
+  function dropQueued(target: number): void {
+    const from = lifting;
+    lifting = null;
+    dropBefore = null;
+    if (from === null || from === target) return;
+    const ids = waiting.map((one) => one.id).filter((one) => one !== from);
+    ids.splice(ids.indexOf(target), 0, from);
+    const byId = new Map(ui.queued.map((one) => [one.id, one]));
+    const rest = ui.queued.filter((one) => !ids.includes(one.id));
+    ui.queued = [...ids.map((one) => byId.get(one)!).filter(Boolean), ...rest];
+    notify("reorderQueue", { ids });
+  }
+
   function editQueued(ask: { id: number; body: string }): void {
     let text = ask.body;
     const back: { id: number; url: string; name: string }[] = [];
@@ -1774,7 +1790,31 @@
   {#if waiting.length > 0}
     <ul class="queue">
       {#each waiting as ask (ask.id)}
-        <li class="queued">
+        <li
+          class="queued"
+          class:lifted={lifting === ask.id}
+          class:landing={dropBefore === ask.id && lifting !== ask.id}
+          draggable={waiting.length > 1}
+          title={waiting.length > 1 ? "Drag to change the order these are taken in" : undefined}
+          ondragstart={(event) => {
+            lifting = ask.id;
+            event.dataTransfer?.setData("text/plain", String(ask.id));
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+          }}
+          ondragover={(event) => {
+            if (lifting === null) return;
+            event.preventDefault();
+            dropBefore = ask.id;
+          }}
+          ondrop={(event) => {
+            event.preventDefault();
+            dropQueued(ask.id);
+          }}
+          ondragend={() => {
+            lifting = null;
+            dropBefore = null;
+          }}
+        >
           <svg class="queued-face" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
             <rect width="24" height="24" rx="12" fill="var(--warning)" />
             {#if mark.stroke}
@@ -2725,6 +2765,15 @@
     overflow-y: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+  .queued[draggable="true"] {
+    cursor: grab;
+  }
+  .queued.lifted {
+    opacity: 0.45;
+  }
+  .queued.landing {
+    box-shadow: inset 0 2px 0 0 var(--warning);
   }
   .queued-now {
     flex: 0 0 auto;
