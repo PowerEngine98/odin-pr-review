@@ -259,3 +259,16 @@ describe("stopping an agent whose turn is in the CLI", () => {
     expect(panel).toMatch(/interrupt: \(agent\) => terminals\.input\(agent, "\\x1b"\),/);
   });
 });
+
+describe("a message typed in the CLI while the agent is working", () => {
+  it("reaches the Log, though the CLI records it as folded into the running turn", () => {
+    const said = heardIn(
+      [
+        line({ type: "attachment", attachment: { type: "queued_command", prompt: "when you finish, open the order page", origin: { kind: "human" }, commandMode: "prompt" } }),
+        line({ type: "attachment", attachment: { type: "queued_command", prompt: "<task-notification>done</task-notification>", origin: { kind: "task" } } }),
+        line({ type: "attachment", attachment: { type: "environment" } }),
+      ].join("").split("\n"),
+    );
+    expect(said).toEqual([{ role: "user", text: "when you finish, open the order page" }]);
+  });
+});

@@ -30,13 +30,25 @@ export function heardIn(lines: readonly string[]): Heard[] {
   const out: Heard[] = [];
   for (const line of lines) {
     if (!line.trim()) continue;
-    let entry: { type?: string; isSidechain?: boolean; isMeta?: boolean; message?: { role?: string; content?: unknown; stop_reason?: unknown } };
+    let entry: {
+      type?: string;
+      isSidechain?: boolean;
+      isMeta?: boolean;
+      message?: { role?: string; content?: unknown; stop_reason?: unknown };
+      attachment?: { type?: string; prompt?: unknown; origin?: { kind?: string } };
+    };
     try {
       entry = JSON.parse(line);
     } catch {
       continue;
     }
     if (entry.isSidechain || entry.isMeta) continue;
+    const queued = entry.type === "attachment" ? entry.attachment : undefined;
+    if (queued?.type === "queued_command" && queued.origin?.kind === "human" && typeof queued.prompt === "string") {
+      const text = queued.prompt.trim();
+      if (text && !text.startsWith("<")) out.push({ role: "user", text });
+      continue;
+    }
     if (entry.type !== "user" && entry.type !== "assistant") continue;
     const content = entry.message?.content;
     if (entry.type === "assistant" && Array.isArray(content)) {
