@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { AgentKind } from "@odin/core";
 
 import type { Pty, PtyOptions } from "./pty.js";
@@ -32,8 +34,10 @@ export const ENTER_MS = 120;
 
 export const REPAINT_MS = 80;
 
-export function cliArgs(kind: AgentKind, conversation: string | undefined): string[] {
-  return conversation && kind.interactive ? kind.interactive.resume(conversation) : [];
+export function cliArgs(kind: AgentKind, conversation: string | undefined, fresh?: string): string[] {
+  if (conversation && kind.interactive) return kind.interactive.resume(conversation);
+  if (fresh && kind.interactive?.start) return kind.interactive.start(fresh);
+  return [];
 }
 
 export class CliSessions {
@@ -58,7 +62,9 @@ export class CliSessions {
       return;
     }
     const conversation = this.host.conversation(agent);
-    const args = cliArgs(kind, conversation);
+    const started = conversation ? undefined : randomUUID();
+    const args = cliArgs(kind, conversation, started);
+    const session = conversation ?? (args.length ? started : undefined);
     let pty: Pty;
     try {
       pty = this.host.open(kind.path ?? kind.command, args, {
@@ -71,12 +77,12 @@ export class CliSessions {
       this.host.post({ type: "cliExit", agent, code: 1, error: (error as Error).message });
       return;
     }
-    const running: Running = { pty, screen: "", ready: false, typed: [], ...(args.length ? { resumed: conversation! } : {}) };
+    const running: Running = { pty, screen: "", ready: false, typed: [], ...(conversation && args.length ? { resumed: conversation } : {}) };
     this.running.set(agent, running);
-    if (agent === "claude" && this.host.heard) {
+    if (agent === "claude" && this.host.heard && session) {
       running.follower = new TranscriptFollower(
         projectFolder(this.host.repo()),
-        running.resumed,
+        session,
         (said) => {
           const fresh = said.filter((one) => {
             if (one.role !== "user") return true;
@@ -87,7 +93,7 @@ export class CliSessions {
           });
           if (fresh.length > 0) this.host.heard?.(agent, fresh);
         },
-        (session) => this.host.adopt?.(agent, session),
+        started ? () => this.host.adopt?.(agent, session) : undefined,
       );
       running.follower.start();
     }

@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -74,22 +74,19 @@ export class TranscriptFollower {
   private read = 0;
   private partial: Buffer = Buffer.alloc(0);
   private timer: ReturnType<typeof setInterval> | undefined;
-  private readonly before = new Map<string, number>();
 
   constructor(
     private readonly folder: string,
-    private session: string | undefined,
+    private readonly session: string,
     private readonly heard: (said: Heard[]) => void,
-    private readonly found: (session: string) => void,
+    private found?: () => void,
   ) {
-    if (session) return;
     try {
-      for (const name of readdirSync(folder)) {
-        if (name.endsWith(".jsonl")) this.before.set(name, statSync(join(folder, name)).size);
-      }
+      this.read = statSync(join(folder, `${session}.jsonl`)).size;
     } catch {
-      return;
+      this.read = 0;
     }
+    this.file = join(folder, `${session}.jsonl`);
   }
 
   start(every = 1000): void {
@@ -103,13 +100,18 @@ export class TranscriptFollower {
   }
 
   poll(): void {
-    const file = this.locate();
+    const file = this.file;
     if (!file) return;
     let size = 0;
     try {
       size = statSync(file).size;
     } catch {
       return;
+    }
+    if (size > 0 && this.found) {
+      const found = this.found;
+      this.found = undefined;
+      found();
     }
     if (size <= this.read) return;
     let fresh: Buffer;
@@ -128,39 +130,5 @@ export class TranscriptFollower {
     this.partial = Buffer.from(held.subarray(end + 1));
     const said = heardIn(held.subarray(0, end).toString("utf8").split("\n"));
     if (said.length > 0) this.heard(said);
-  }
-
-  private locate(): string | undefined {
-    if (this.file) return this.file;
-    if (this.session) {
-      const named = join(this.folder, `${this.session}.jsonl`);
-      try {
-        this.read = statSync(named).size;
-        this.file = named;
-        return undefined;
-      } catch {
-        return undefined;
-      }
-    }
-    let newest: { path: string; at: number } | undefined;
-    try {
-      for (const name of readdirSync(this.folder)) {
-        if (!name.endsWith(".jsonl")) continue;
-        const path = join(this.folder, name);
-        const facts = statSync(path);
-        const was = this.before.get(name);
-        if (was !== undefined && facts.size <= was) continue;
-        if (!newest || facts.mtimeMs > newest.at) newest = { path, at: facts.mtimeMs };
-      }
-    } catch {
-      return undefined;
-    }
-    if (!newest) return undefined;
-    this.file = newest.path;
-    const name = newest.path.slice(newest.path.lastIndexOf("/") + 1);
-    this.read = this.before.get(name) ?? 0;
-    this.session = newest.path.slice(newest.path.lastIndexOf("/") + 1, -".jsonl".length);
-    this.found(this.session);
-    return this.file;
   }
 }
