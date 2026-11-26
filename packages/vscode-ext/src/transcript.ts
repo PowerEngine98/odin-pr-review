@@ -60,7 +60,7 @@ export function heardIn(lines: readonly string[]): Heard[] {
 export class TranscriptFollower {
   private file: string | undefined;
   private read = 0;
-  private partial = "";
+  private partial: Buffer = Buffer.alloc(0);
   private timer: ReturnType<typeof setInterval> | undefined;
   private readonly before = new Map<string, number>();
 
@@ -100,16 +100,21 @@ export class TranscriptFollower {
       return;
     }
     if (size <= this.read) return;
-    let text = "";
+    let fresh: Buffer;
     try {
-      text = readFileSync(file, "utf8").slice(this.read);
+      fresh = readFileSync(file).subarray(this.read, size);
     } catch {
       return;
     }
     this.read = size;
-    const lines = (this.partial + text).split("\n");
-    this.partial = lines.pop() ?? "";
-    const said = heardIn(lines);
+    const held = Buffer.concat([this.partial, fresh]);
+    const end = held.lastIndexOf(0x0a);
+    if (end < 0) {
+      this.partial = held;
+      return;
+    }
+    this.partial = Buffer.from(held.subarray(end + 1));
+    const said = heardIn(held.subarray(0, end).toString("utf8").split("\n"));
     if (said.length > 0) this.heard(said);
   }
 

@@ -228,3 +228,34 @@ describe("a question the agent asks inside the CLI", () => {
     expect(pairing).toMatch(/if \(this\.askingInTerminal\.delete\(agentId\)\) this\.changed\(\);/);
   });
 });
+
+describe("following a transcript written in more than ASCII", () => {
+  it("loses nothing however many accents and dashes come before, even an entry arriving in pieces", () => {
+    const folder = mkdtempSync(join(tmpdir(), "odin-transcript-"));
+    const file = join(folder, "s1.jsonl");
+    writeFileSync(file, user("¿Dónde está la sesión? — ñandú, café, acción").repeat(40));
+    const heard: string[] = [];
+    const follower = new TranscriptFollower(folder, "s1", (said) => heard.push(...said.map((one) => `${one.role}:${one.text}`)), () => undefined);
+    follower.poll();
+    appendFileSync(file, user("código inválido — ¿cuántos intentos quedan?"));
+    follower.poll();
+    const last = Buffer.from(line({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Quedan 2 — listo." }], stop_reason: "end_turn" } }));
+    const cut = last.indexOf(Buffer.from("—")) + 1;
+    appendFileSync(file, last.subarray(0, cut));
+    follower.poll();
+    appendFileSync(file, last.subarray(cut));
+    follower.poll();
+    expect(heard).toEqual(["user:código inválido — ¿cuántos intentos quedan?", "assistant:Quedan 2 — listo.", "done:"]);
+  });
+});
+
+describe("stopping an agent whose turn is in the CLI", () => {
+  const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
+  const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
+
+  it("interrupts the CLI, and never leaves the console working with nothing running", () => {
+    expect(pairing).toMatch(/if \(this\.terminal\?\.holds\(agentId\)\) \{\s*this\.terminal\.interrupt\(agentId\);/);
+    expect(pairing).toMatch(/this\.print\(agentId, "\[odin\] Stopped in the CLI\.\\n"\);\s*\}\s*this\.terminalBusy\(agentId, false\);/);
+    expect(panel).toMatch(/interrupt: \(agent\) => terminals\.input\(agent, "\\x1b"\),/);
+  });
+});
