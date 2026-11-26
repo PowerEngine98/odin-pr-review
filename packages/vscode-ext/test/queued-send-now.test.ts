@@ -31,3 +31,12 @@ describe("a queued message sent now", () => {
     expect(terminal).toMatch(/\.queued-shot img \{\s*width: 64px;\s*height: 44px;/);
   });
 });
+
+describe("a queued message taken back to edit", () => {
+  it("leaves the queue and comes back into the box below, text and pictures", () => {
+    expect(terminal).toMatch(/onclick=\{\(\) => editQueued\(ask\)\}\s*>Edit<\/button>/);
+    expect(terminal).toMatch(/notify\("cancelAsk", \{ id: ask\.id \}\);\s*const said = text\.trim\(\);\s*prompt = prompt\.trim\(\) \?/);
+    expect(terminal).toMatch(/back\.push\(\{ id: \+\+nextImage, url, name: nameOf\(path\) \}\);/);
+    expect(terminal).toMatch(/pasted = \[\.\.\.pasted, \.\.\.back\];\s*askBox\?\.focus\(\);/);
+  });
+});

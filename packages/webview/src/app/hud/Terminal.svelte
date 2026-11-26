@@ -533,6 +533,23 @@
 
   /** Named for what it does to the picture, not the pointer: `drop` is taken
       by the end of a resize drag, a few hundred lines down. */
+  function editQueued(ask: { id: number; body: string }): void {
+    let text = ask.body;
+    const back: { id: number; url: string; name: string }[] = [];
+    for (const path of picturesNamed(ask.body)) {
+      const url = pictured(path);
+      if (!url) continue;
+      const written = new RegExp(`!\\[[^\\]]*\\]\\(${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`, "g");
+      text = text.replace(written, "");
+      back.push({ id: ++nextImage, url, name: nameOf(path) });
+    }
+    notify("cancelAsk", { id: ask.id });
+    const said = text.trim();
+    prompt = prompt.trim() ? `${prompt.trimEnd()}\n\n${said}` : said;
+    pasted = [...pasted, ...back];
+    askBox?.focus();
+  }
+
   function unpaste(id: number): void {
     pasted = pasted.filter((one) => one.id !== id);
   }
@@ -1794,6 +1811,12 @@
             title="Send this now: {name} stops what it is doing and takes this next, in the same conversation."
             onclick={() => notify("sendNow", { id: ask.id, agent: id })}
           >Send now</button>
+          <button
+            class="queued-now"
+            type="button"
+            title="Take this back into the box below to change it. It leaves the queue until you send it again."
+            onclick={() => editQueued(ask)}
+          >Edit</button>
           <button
             class="queued-drop"
             title="Take this back. Nothing has run, and it can be asked again."
