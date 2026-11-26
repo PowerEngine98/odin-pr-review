@@ -796,6 +796,7 @@
   .row.in-gap { display: none; }
   .row.beyond-cap.revealed { display: flex; }
   .row.in-gap.open { display: flex; }
+  .row.gap.expandable.revealed { display: none; }
 
   /* Bands open and close rather than opening once, so a band keeps its row
      instead of dissolving into what it revealed and leaving no way back. */

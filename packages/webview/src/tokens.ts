@@ -89,6 +89,7 @@ export function tokens(theme: Theme, metrics: LayoutMetrics): string {
   --status-deleted: ${theme.status.deleted};
   --status-renamed: ${theme.status.renamed};
   --status-phantom: ${theme.status.phantom};
+  --merged: #a371f7;
 
   /* The band standing in for code nobody changed. The drawing's own, for the
      same reason the washes are: it sits behind runs of rows. */

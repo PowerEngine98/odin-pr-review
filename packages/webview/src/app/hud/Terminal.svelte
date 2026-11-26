@@ -227,6 +227,12 @@
    */
   let tab = $state<"log" | "ledger" | "tour" | "cli">("log");
 
+  const askedInCli = $derived(ui.cliAsking.includes(id));
+
+  $effect(() => {
+    if (askedInCli) tab = "cli";
+  });
+
   /*
    * Turned to the Tour tab when somewhere else asked for it for this agent —
    * the bar's "Give me a tour" — and the ask is taken off the board so it is

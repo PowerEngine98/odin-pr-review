@@ -51,7 +51,7 @@ import {
 } from "@odin/core";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
 
@@ -64,6 +64,7 @@ import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
 import { ghSetupState, runGhInstall, runGhSignIn, skipGhSetup } from "./ghSetup.js";
 import { CliSessions } from "./cli.js";
 import { openPty } from "./pty.js";
+import { openWithSystem } from "./system-open.js";
 import { log, logText } from "./log.js";
 
 import { baseUri } from "./baseContent.js";
@@ -92,7 +93,7 @@ interface NavigateMessage {
 
 interface OpenMessage {
   type: "open";
-  payload: { path: string };
+  payload: { path: string; system?: boolean };
 }
 
 interface ViewedMessage {
@@ -552,6 +553,31 @@ export function mirrorOf(panel: vscode.WebviewPanel): MirrorLog {
     return log;
   }
   return log;
+}
+
+export const PAGE_ERRORS_MOST = 2 * 1024 * 1024;
+
+export function harmlessPageError(error: string): boolean {
+  return /ResizeObserver loop/.test(error);
+}
+
+export const PAGE_ERRORS_KEPT = 512 * 1024;
+
+export async function keepPageError(file: string, text: string): Promise<void> {
+  const fs = await import("node:fs/promises");
+  try {
+    const size = await fs.stat(file).then((facts) => facts.size, () => 0);
+    if (size > PAGE_ERRORS_MOST) {
+      const handle = await fs.open(file, "r");
+      const tail = Buffer.alloc(PAGE_ERRORS_KEPT);
+      await handle.read(tail, 0, PAGE_ERRORS_KEPT, size - PAGE_ERRORS_KEPT);
+      await handle.close();
+      await fs.writeFile(file, tail);
+    }
+    await fs.appendFile(file, `${text}\n\n`);
+  } catch {
+    return;
+  }
 }
 
 export class GraphPanel {
@@ -1926,6 +1952,7 @@ export class GraphPanel {
       // stopped on each of these, so they travel with every update rather than
       // being announced once and missed.
       deciding: this.paired?.deciding() ?? [],
+      cliAsking: this.paired?.terminalAsking() ?? [],
       // And what they have asked that nobody has started on. The queue is only
       // visible in the margins otherwise, which is not where somebody watching
       // an agent work is looking.
@@ -3498,6 +3525,7 @@ export class GraphPanel {
         return;
       }
       if (message.type === "open") {
+        if (message.payload.system === true && (await this.openOnDisk(message.payload.path))) return;
         await this.openDiff(message.payload.path);
         return;
       }
@@ -3845,11 +3873,11 @@ export class GraphPanel {
       }
       if (reply.type === "pageError") {
         const said = reply as { payload?: { where?: unknown; error?: unknown } };
-        const text = `${new Date().toISOString()} [${String(said.payload?.where ?? "")}] ${String(said.payload?.error ?? "")}`;
+        const error = String(said.payload?.error ?? "");
+        if (harmlessPageError(error)) return;
+        const text = `${new Date().toISOString()} [${String(said.payload?.where ?? "")}] ${error}`;
         console.error(`Odin page: ${text}`);
-        if (GraphPanel.errorLog) {
-          void import("node:fs/promises").then((fs) => fs.appendFile(GraphPanel.errorLog!, `${text}\n\n`)).catch(() => undefined);
-        }
+        if (GraphPanel.errorLog) void keepPageError(GraphPanel.errorLog, text);
         return;
       }
       if (reply.type === "cliImages") {
@@ -3999,6 +4027,13 @@ export class GraphPanel {
       targets.title,
       options,
     );
+  }
+
+  private async openOnDisk(path: string): Promise<boolean> {
+    if (this.graph.meta.worktree !== true || !path) return false;
+    const file = join(this.repo, path);
+    if (!file.startsWith(join(this.repo, "/")) || !existsSync(file)) return false;
+    return openWithSystem(file);
   }
 
   private terminals: CliSessions | undefined;

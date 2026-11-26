@@ -1103,11 +1103,25 @@ export class PairingSession {
   }
 
   terminalEnded(agentId: string): void {
+    if (this.askingInTerminal.delete(agentId)) this.changed();
     this.terminalBusy(agentId, false);
   }
 
-  heard(agentId: string, said: { role: "user" | "assistant" | "work" | "done"; text: string }[], reader: { name: string; avatarUrl?: string }): void {
+  private readonly askingInTerminal = new Set<string>();
+
+  terminalAsking(): string[] {
+    return [...this.askingInTerminal];
+  }
+
+  heard(agentId: string, said: { role: "user" | "assistant" | "work" | "done" | "asking"; text: string }[], reader: { name: string; avatarUrl?: string }): void {
     for (const one of said) {
+      if (one.role === "asking") {
+        this.askingInTerminal.add(agentId);
+        this.print(agentId, `[odin] ${this.nameOf(agentId)} is asking you something in the CLI tab. Answer it there.\n`);
+        this.changed();
+        continue;
+      }
+      if (this.askingInTerminal.delete(agentId)) this.changed();
       if (one.role === "done") {
         this.terminalBusy(agentId, false);
         continue;

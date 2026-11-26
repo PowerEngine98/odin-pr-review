@@ -5,11 +5,13 @@ import { join } from "node:path";
 import { readClaude } from "@odin/core";
 
 export interface Heard {
-  role: "user" | "assistant" | "work" | "done";
+  role: "user" | "assistant" | "work" | "done" | "asking";
   text: string;
 }
 
 const INTERRUPTED = /^\[Request interrupted/;
+
+const ASKS_READER = new Set(["AskUserQuestion", "ExitPlanMode"]);
 
 export function projectFolder(cwd: string, home = homedir()): string {
   return join(home, ".claude", "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"));
@@ -41,6 +43,8 @@ export function heardIn(lines: readonly string[]): Heard[] {
       const others = content.filter((part: { type?: string }) => part?.type !== "text");
       const work = others.length ? readClaude(JSON.stringify({ type: "assistant", message: { content: others } }))?.show : undefined;
       if (work) out.push({ role: "work", text: work });
+      const asks = others.some((part: { type?: string; name?: string }) => part?.type === "tool_use" && ASKS_READER.has(part.name ?? ""));
+      if (asks) out.push({ role: "asking", text: "" });
     }
     const text = textOf(content).trim();
     if (entry.type === "user" && INTERRUPTED.test(text)) {

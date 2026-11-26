@@ -495,6 +495,7 @@ export const ui = $state({
    * the turn is stopped on every one of them until it is answered.
    */
   deciding: [] as { id: string; agent: string; steps: Step[] }[],
+  cliAsking: [] as string[],
   /**
    * What the reader has asked that nobody has started on yet.
    *
@@ -1142,6 +1143,9 @@ export function listen(): void {
         }
         if (Array.isArray(message.pending)) {
           ui.pending = message.pending as { id: string; what: string }[];
+        }
+        if (Array.isArray(message.cliAsking)) {
+          ui.cliAsking = message.cliAsking.filter((one): one is string => typeof one === "string");
         }
         if (Array.isArray(message.deciding)) {
           ui.deciding = message.deciding as { id: string; agent: string; steps: Step[] }[];
