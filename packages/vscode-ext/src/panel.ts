@@ -51,7 +51,7 @@ import {
 } from "@odin/core";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
 
@@ -64,6 +64,7 @@ import { parseTour, revisePrompt, type Tour } from "@odin/core/tour/tour.js";
 import { ghSetupState, runGhInstall, runGhSignIn, skipGhSetup } from "./ghSetup.js";
 import { CliSessions } from "./cli.js";
 import { openPty } from "./pty.js";
+import { openWithSystem } from "./system-open.js";
 import { log, logText } from "./log.js";
 
 import { baseUri } from "./baseContent.js";
@@ -92,7 +93,7 @@ interface NavigateMessage {
 
 interface OpenMessage {
   type: "open";
-  payload: { path: string };
+  payload: { path: string; system?: boolean };
 }
 
 interface ViewedMessage {
@@ -3524,6 +3525,7 @@ export class GraphPanel {
         return;
       }
       if (message.type === "open") {
+        if (message.payload.system === true && (await this.openOnDisk(message.payload.path))) return;
         await this.openDiff(message.payload.path);
         return;
       }
@@ -4025,6 +4027,13 @@ export class GraphPanel {
       targets.title,
       options,
     );
+  }
+
+  private async openOnDisk(path: string): Promise<boolean> {
+    if (this.graph.meta.worktree !== true || !path) return false;
+    const file = join(this.repo, path);
+    if (!file.startsWith(join(this.repo, "/")) || !existsSync(file)) return false;
+    return openWithSystem(file);
   }
 
   private terminals: CliSessions | undefined;

@@ -1523,12 +1523,12 @@
       {#if host}
         <button
           class="jump"
-          data-hint="Open this file in the editor"
+          data-hint="Open this file in the app your system opens it with"
           title="Open the file"
           aria-label="Open the file"
           onclick={(event) => {
             event.stopPropagation();
-            notify("open", { path: node.path });
+            notify("open", { path: node.path, system: true });
           }}
         >
           <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
