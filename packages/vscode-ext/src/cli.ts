@@ -30,6 +30,8 @@ interface Running {
 export const SETTLED_MS = 700;
 export const ENTER_MS = 120;
 
+export const REPAINT_MS = 80;
+
 export function cliArgs(kind: AgentKind, conversation: string | undefined): string[] {
   return conversation && kind.interactive ? kind.interactive.resume(conversation) : [];
 }
@@ -43,8 +45,11 @@ export class CliSessions {
   open(agent: string, cols: number, rows: number, asker: string): void {
     const held = this.running.get(agent);
     if (held) {
-      held.pty.resize(cols, rows);
       this.host.post({ type: "cliReplay", agent, for: asker, data: held.screen, ...(held.resumed ? { resumed: held.resumed } : {}) });
+      held.pty.resize(Math.max(20, cols - 1), rows);
+      setTimeout(() => {
+        if (this.running.get(agent) === held) held.pty.resize(cols, rows);
+      }, REPAINT_MS);
       return;
     }
     const kind = this.host.kind(agent);

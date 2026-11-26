@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { KNOWN_AGENTS, type AgentKind } from "@odin/core";
 
-import { CliSessions, cliArgs, ENTER_MS, SCROLLBACK, SETTLED_MS } from "../src/cli.js";
+import { CliSessions, cliArgs, ENTER_MS, REPAINT_MS, SCROLLBACK, SETTLED_MS } from "../src/cli.js";
 import { pythonPty, type Pty } from "../src/pty.js";
 
 function until(what: () => boolean, ms = 8000): Promise<void> {
@@ -109,6 +109,20 @@ describe("the CLI tab of an agent's console", () => {
     cli.open("claude", 90, 24, "second");
     expect(spawned).toHaveLength(1);
     expect(posted).toContainEqual({ type: "cliReplay", agent: "claude", for: "second", data: "hello world" });
+  });
+
+  it("has the program redraw itself for the new page, so the replayed screen leaves nothing stale behind", () => {
+    vi.useFakeTimers();
+    try {
+      const { cli, terminal } = sessions();
+      cli.open("claude", 80, 24, "first");
+      cli.open("claude", 90, 30, "second");
+      expect(terminal.sizes).toEqual([[89, 30]]);
+      vi.advanceTimersByTime(REPAINT_MS);
+      expect(terminal.sizes).toEqual([[89, 30], [90, 30]]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps a bounded scrollback", () => {
