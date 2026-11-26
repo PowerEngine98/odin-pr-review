@@ -3631,6 +3631,12 @@ export class GraphPanel {
         });
         return;
       }
+      if (reply.type === "sendNow") {
+        const said = (reply as { payload?: { id?: unknown; agent?: unknown } }).payload ?? {};
+        const agent = String(said.agent ?? "");
+        if (agent) this.paired?.sendNow(Number(said.id), agent);
+        return;
+      }
       if (message.type === "cancelAsk") {
         this.paired?.cancel(Number(message.payload.id));
         return;
