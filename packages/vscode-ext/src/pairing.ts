@@ -1062,7 +1062,7 @@ export class PairingSession {
   }
 
   /** One agent, one message, from the prompt to the reply it writes. */
-  terminal: { holds(agent: string): boolean; type(agent: string, text: string): void } | undefined;
+  terminal: { holds(agent: string): boolean; type(agent: string, text: string): void; interrupt(agent: string): void } | undefined;
 
   private readonly inTerminal = new Map<string, number>();
 
@@ -2288,7 +2288,16 @@ export class PairingSession {
    * nothing rather than complain.
    */
   stop(agentId: string): void {
-    this.running.get(agentId)?.stop();
+    const running = this.running.get(agentId);
+    if (running) {
+      running.stop();
+      return;
+    }
+    if (this.terminal?.holds(agentId)) {
+      this.terminal.interrupt(agentId);
+      this.print(agentId, "[odin] Stopped in the CLI.\n");
+    }
+    this.terminalBusy(agentId, false);
   }
 
   /**

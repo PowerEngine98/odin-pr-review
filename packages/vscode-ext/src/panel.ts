@@ -4070,6 +4070,7 @@ export class GraphPanel {
     this.pairing().terminal = {
       holds: (agent) => terminals.live(agent),
       type: (agent, text) => terminals.send(agent, text),
+      interrupt: (agent) => terminals.input(agent, "\x1b"),
     };
     return this.terminals;
   }
