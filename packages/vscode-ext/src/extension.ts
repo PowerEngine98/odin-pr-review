@@ -62,6 +62,7 @@ import { toFetch } from "./freshen.js";
 import { sinceToAsk, viewOf, type Fresh, type View } from "./views.js";
 import { claimHandoff, leaveHandoff } from "./handoff.js";
 import { LiveElsewhere } from "./elsewhere.js";
+import { movedToPull } from "./live-follow.js";
 import { DIVERGED, Diverged, divergenceOf, fixDivergence, type DivergedFix } from "./diverged.js";
 import { liveFitsHere } from "./liveRule.js";
 import { Lanes } from "./lanes.js";
@@ -2490,6 +2491,8 @@ function armLive(
   let known: Awaited<ReturnType<typeof buildGraphForRepo>> | undefined = built;
   /** Held from the rebuild to the report: what goes on screen is the build. */
   let fresh: Awaited<ReturnType<typeof buildGraphForRepo>> | undefined;
+  const armedFor = shown.meta.pullRequest?.number;
+  let moving = false;
 
   const watcher = new LiveGraph({
     repo,
@@ -2582,6 +2585,14 @@ function armLive(
     onTouched: (paths) => GraphPanel.observedIn(shown, repo, paths),
     onChange: async (_graph, delta) => {
       if (!fresh) return;
+      const moved = movedToPull(armedFor, fresh.graph.meta.pullRequest);
+      if (moved) {
+        if (moving) return;
+        moving = true;
+        log(`live: the checkout moved to #${moved.number}; reading it against ${moved.base}`);
+        await review(moved.base, undefined, true, repo, moved.number, [key]);
+        return;
+      }
       await present(fresh, repo, base, headRef, true, undefined, key);
       // In the status bar rather than a notification: this happens every time
       // the reader saves, and a toast per save is a reason to turn the whole
