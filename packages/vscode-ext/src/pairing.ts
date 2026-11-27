@@ -33,6 +33,7 @@ import {
   type ReviewComment,
   type RunHandle,
 } from "@odin/core";
+import { savedFor } from "./session.js";
 import { withStamp } from "./stamps.js";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -318,7 +319,7 @@ export class PairingSession {
        * Nothing is deleted. `Odin: Forget This Reading's Conversation` is there
        * for a reading that has ended up holding somebody else's.
        */
-      held = this.memento.get<Record<string, Stored>>(KEY, {})[this.key];
+      held = savedFor(this.memento.get<Record<string, Stored>>(KEY, {}), this.key);
     } catch {
       held = undefined;
     }
