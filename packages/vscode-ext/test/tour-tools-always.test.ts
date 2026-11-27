@@ -21,7 +21,7 @@ describe("Odin's own tools, tour_read and tour_update among them", () => {
     const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
     expect(pairing).toMatch(/const asking = this\.toolsFor\(agentId, this\.agencyOf\(agentId\) !== "full"\);/);
     expect(pairing).toMatch(/if \(asks && kind\.asks\) return kind\.asks\(this\.configFor\(kind\)\);\s*return kind\.serves \? kind\.serves\(this\.configFor\(kind\)\) : \[\];/);
-    expect(cli).toMatch(/const args = \[\.\.\.cliArgs\(kind, conversation, started\), \.\.\.\(this\.host\.tools\?\.\(agent\) \?\? \[\]\)\];/);
+    expect(cli).toMatch(/const args = \[\s*\.\.\.cliArgs\(kind, conversation, started\),\s*\.\.\.\(this\.host\.tools\?\.\(agent\) \?\? \[\]\),/);
     expect(panel).toMatch(/tools: \(agent\) => this\.pairing\(\)\.toolsFor\(agent\),/);
   });
 
