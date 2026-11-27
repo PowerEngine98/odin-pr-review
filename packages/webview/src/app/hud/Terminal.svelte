@@ -1213,6 +1213,16 @@
           <path d="M10.6 3.4A1.5 1.5 0 0 0 9.1 2.4H3.9a1.5 1.5 0 0 0-1.5 1.5v5.2a1.5 1.5 0 0 0 1 1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
         </svg>
       </button>
+      <button
+        class="terminal-act"
+        title="New conversation: {name} forgets this one and starts fresh on its next turn. The messages stay."
+        aria-label="Start a new conversation with {name}"
+        onclick={() => notify("newConversation", { agent: id })}
+      >
+        <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+          <path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+      </button>
     {/if}
   </div>
 

@@ -262,3 +262,18 @@ describe("a message typed in the CLI while the agent is working", () => {
     expect(said).toEqual([{ role: "user", text: "when you finish, open the order page" }]);
   });
 });
+
+describe("starting a new conversation with one agent", () => {
+  const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
+  const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
+  const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
+
+  it("is a button in that agent's console, beside the conversation it replaces", () => {
+    expect(terminal).toMatch(/aria-label="Start a new conversation with \{name\}"\s*onclick=\{\(\) => notify\("newConversation", \{ agent: id \}\)\}/);
+  });
+
+  it("forgets only that agent's conversation, and closes its CLI so the next one starts fresh", () => {
+    expect(pairing).toMatch(/forgetSession\(agentId: string\): void \{\s*if \(!\(agentId in this\.sessions\)\) return;\s*delete this\.sessions\[agentId\];/);
+    expect(panel).toMatch(/this\.terminals\?\.close\(agent\);\s*this\.paired\?\.forgetSession\(agent\);/);
+  });
+});
