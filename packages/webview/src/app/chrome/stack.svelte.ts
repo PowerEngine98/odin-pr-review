@@ -11,7 +11,7 @@ export interface StackView {
 export const stack = $state({ view: null as StackView | null, asked: false });
 
 export function askStack(): void {
-  if (stack.asked || !host) return;
+  if (!host) return;
   stack.asked = true;
   notify("askStack");
 }
