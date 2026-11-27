@@ -1,5 +1,331 @@
 # Changelog
 
+## 0.15.5 — 2026-11-27
+
+### UI/UX
+
+- Each part of an agent's Log shows the time it was written, like the Changes tab
+- The Changes count is yellow, matching the sidebar's marks for changed files
+
+### Bug fixes
+
+- New conversation clears the agent's Log, so the new conversation starts empty
+
+## 0.15.4 — 2026-11-27
+
+### New features
+
+- A New conversation button in each agent's console starts that agent over without touching the messages
+
+### UI/UX
+
+- The CLI tab leaves the same space under its last line as over its first
+
+### Bug fixes
+
+- A live reading follows the checkout to another branch's pull request, comparing against that pull request's base, instead of mixing both changes under the old title
+- The CLI tab and the Log always share one conversation: a fresh CLI no longer gets mixed up with another Claude session running in the same folder
+
+## 0.15.3 — 2026-11-26
+
+### Bug fixes
+
+- Messages typed in the CLI tab while Claude is working now show in the Log
+
+## 0.15.2 — 2026-11-26
+
+### Bug fixes
+
+- Reopening the CLI tab no longer leaves stale lines from earlier output under the input
+
+## 0.15.1 — 2026-11-26
+
+### Bug fixes
+
+- A turn running in the CLI tab finishes in the Log instead of leaving the console stuck on working, including on codebases with accented text
+- Stop interrupts a turn running in the CLI tab
+
+## 0.15.0 — 2026-11-26
+
+### New features
+
+- A queued message in an agent's console shows its whole text and larger pictures, with a Send now button that has the agent take it next, an Edit button that puts it back in the box to change it, and can be dragged into a new order
+
+## 0.14.1 — 2026-11-26
+
+### New features
+
+- On a live reading, a card's open button opens the file in the app your system uses for that file type, such as IntelliJ for Kotlin
+
+### Bug fixes
+
+- Merged pull requests in the stack list are purple, as on GitHub
+- When Claude asks you a question inside the CLI tab, the console switches to it and the Log says where to answer
+- Odin's page error log no longer grows without limit
+- An expanded card shows the whole file, without the "unchanged lines" bars between its parts
+
+## 0.14.0 — 2026-11-24
+
+### UI/UX
+
+- A live session starts with the console of every AI agent you have switched on, even one you closed last time
+- Going live on a pull request whose branch went separate ways from GitHub's explains what happened and offers buttons to fix it: use GitHub's version (yours kept on a backup branch), rebase yours onto it, or go live on yours
+
+## 0.13.2 — 2026-11-24
+
+### Bug fixes
+
+- While Claude works in the CLI tab, the Log shows the commands it runs and that it is working
+
+## 0.13.1 — 2026-11-24
+
+### Bug fixes
+
+- The stack chip counts pull requests that already merged, so the second of three reads 2/3 with the first shown as merged
+
+## 0.13.0 — 2026-11-24
+
+### New features
+
+- Shift+Enter starts a new line in the CLI tab, and pasting an image there attaches it for Claude
+
+### Bug fixes
+
+- Cmd+C and Cmd+V copy and paste in the CLI tab
+- With the CLI open, messages written in the Log, typed in the CLI, and Claude's answers all show in the Log
+
+## 0.12.1 — 2026-11-24
+
+### Bug fixes
+
+- The browser Graph tab opens pull requests with more than 300 files, instead of stopping with GitHub's "diff exceeded the maximum number of files"
+
+## 0.12.0 — 2026-11-24
+
+### New features
+
+- The CLI tab and the Log are one conversation: messages sent from either go to the same Claude session, and both views show the whole history
+
+### UI/UX
+
+- The CLI tab has no separate message box, and the terminal fills the panel to the bottom
+
+### Bug fixes
+
+- A Claude CLI started fresh is reliably linked to its conversation in the Log
+- A tour's diagram is framed by the drawing itself, not by the empty space around it
+- The CLI tab resizes when you drag the console's edges, the same as the Log
+
+## 0.11.9 — 2026-11-23
+
+### Bug fixes
+
+- Every review comment you haven't submitted yet shows its own avatar in the margin; before, they collapsed into one
+
+## 0.11.8 — 2026-11-20
+
+### Bug fixes
+
+- Text in drawn diagrams can be selected and copied: pressing a label no longer opens the preview, lifts the diagram or pans the canvas; a diagram that could not be drawn opens in the viewer when pressed
+
+## 0.11.7 — 2026-11-19
+
+### New features
+
+- **Settings → Support → Odin log** shows what Odin logged, anonymized or as written, ready to copy; **Send feedback** can attach the anonymized log to the issue
+- Stacked pull requests show a stack chip (**2/3**) beside their state; hovering lists the stack and pressing one opens it
+
+### UI/UX
+
+- The **Open** filter chip reads **Open/draft**
+
+### Bug fixes
+
+- Filtering pull requests by **Mine** (or any author) finds them even when GitHub's search misses them, as on large or corporate GitHub instances; drafts included
+
+## 0.11.6 — 2026-11-18
+
+### New features
+
+- On a pull request's Files changed page, a **See as a graph** button and a **Graph** choice under Layout in the diff settings open the graph
+- One live reading per window: going live on a pull request whose checkout isn't this window's folder, or while another checkout is already live here, opens a new VS Code window at that checkout and goes live there
+
+### Bug fixes
+
+- Opening another pull request from the side bar no longer leaves the live reading's tab stuck on "Fetching #…"
+
+## 0.11.5 — 2026-11-18
+
+### New features
+
+- Review comments you haven't submitted yet show your avatar in the margin with a pulsing yellow ring; opening one shows the comment and outlines the lines it covers, and the count on **Submit review** pulses in the same yellow
+
+### UI/UX
+
+- The remark box's **Ask agents** button stays outlined in purple instead of turning solid purple when there is no pull request to post to
+
+### Bug fixes
+
+- Names with underscores inside them, like `snake_case` or `SOME_SETTING_NAME`, are no longer shown in italics in agent answers and remarks
+
+## 0.11.4 — 2026-11-17
+
+### Bug fixes
+
+- A live reading no longer keeps rebuilding when files are deleted from the working tree, for instance after an agent reverts or removes files
+
+## 0.11.3 — 2026-11-17
+
+### Bug fixes
+
+- In the browser, the side bar's file list now updates when VS Code redraws a live reading, so files discarded by an agent leave the list
+- Pressing a file or reference in the side bar now always pans the graph to it: across parts, for references in the browser, and with the graph tab behind another in VS Code
+
+## 0.11.2 — 2026-11-17
+
+### Bug fixes
+
+- A narrated tour no longer races through its steps when the voice stops early, such as after resuming and seeking: each caption stays up for at least as long as it takes to read it
+
+## 0.11.1 — 2026-11-16
+
+### Quality of life
+
+- Searching pull requests in the side bar shows results within seconds on large repositories: the slow details (review decisions, avatars, local branch state) fill in afterwards, a clicked pull request always comes first, and lookups that ran one after another now run together
+
+## 0.11.0 — 2026-11-16
+
+### UI/UX
+
+- The narrator reads long numbers such as IDs one digit at a time
+- A folder path ending in a slash is read as its last folder when folders are not narrated, the same as a file path
+
+## 0.10.8 — 2026-11-12
+
+### New features
+
+- A narrator setting, Narrate folders in paths: off, only the file of a path is read, so /path/to/my/file.txt is read as "file dot txt"
+
+### UI/UX
+
+- The tour's controls say when Kokoro is warming up, and when it is waiting for a click before it may play, with a button to switch to it
+
+### Bug fixes
+
+- Open That Folder opens the pull request's reading in that folder's window even when the window was already open
+- Kokoro reads from the first sentence instead of minutes later: its audio starts on the first click or key in the page
+- Filtering pull requests by author, Mine included, finds them in repositories with many contributors, and the filter box also searches GitHub beyond the newest pull requests, in VS Code and in the browser alike
+
+## 0.10.7 — 2026-11-12
+
+### New features
+
+- Discuss on a tour frame of a reading that is not live asks to go live first; going live opens the live reading with the tour and the frame waiting in the agent's composer
+
+### UI/UX
+
+- The word being read aloud in a tour is boxed on its own, without the space after it
+
+### Bug fixes
+
+- A diagram in a tour is framed to fill the free part of the screen instead of sitting small beside the code
+- Tour diagrams are drawn in the browser's Graph tab, using the renderer VS Code sends, instead of showing their source
+- Going live from the browser's Graph tab opens the live reading, including when the branch is already checked out in another folder; when VS Code cannot go live, the reason is shown under the button instead of the committed reading coming back
+
+## 0.10.6 — 2026-11-11
+
+### Bug fixes
+
+- The file list beside the graph always shows the files of the reading in front, and the part of it that is open, instead of being narrowed or replaced by another open reading
+
+## 0.10.5 — 2026-11-11
+
+### Bug fixes
+
+- A pull request is measured against the branch it actually merges into: base branches with a slash in their name are compared with the remote's copy, and a pull request whose base was merged and deleted follows its new base, so other people's merged work no longer shows up as part of the change
+
+## 0.10.4 — 2026-11-11
+
+### Bug fixes
+
+- Opening a pull request's checkout from another folder opens that pull request's reading in the new window, instead of an empty window
+
+## 0.10.3 — 2026-11-10
+
+### UI/UX
+
+- The Marketplace page shows the three store versions together
+
+## 0.10.2 — 2026-11-10
+
+### UI/UX
+
+- The VS Code Marketplace badge shows the version actually published, and the downloads badge says it counts Open VSX
+
+## 0.10.1 — 2026-11-10
+
+### Bug fixes
+
+- An agent's request for approval, such as leaving plan mode, always appears in its console, even when the reading's panel was replaced while it was working, instead of hanging until the turn times out
+
+## 0.10.0 — 2026-11-10
+
+### New features
+
+- Typing / in an agent's console suggests the agent's own commands (built-ins, custom commands, skills, plugins) and runs any slash command in its interactive CLI, so /resume, /mcp and the rest work as they do in a terminal
+
+## 0.9.0 — 2026-11-09
+
+### New features
+
+- Each agent's console has a CLI tab: the agent's own interactive command, with /mcp, slash commands and everything else it offers, continuing the conversation Odin already has with it
+
+### UI/UX
+
+- The console's tabs no longer touch the edge of their box
+
+## 0.8.1 — 2026-11-09
+
+### Quality of life
+
+- opencode is read from its event stream: tool calls, thinking and answers show up cleanly, and its edits reach the ledger
+- opencode carries its conversation from one question to the next, and across a window reload
+
+### Bug fixes
+
+- A failed opencode turn says why instead of showing nothing
+- The build compiles the libraries first, and leaves the command line runnable
+
+## 0.8.0 — 2026-11-09
+
+### New features
+
+- Pictures and videos in remarks and feedback upload the way GitHub's own CLI does: they render inline like a browser upload, with no attachment branches or forks left behind
+
+### Quality of life
+
+- The GitHub CLI setup also updates an outdated gh, installing only from sources that ship current releases
+
+### Bug fixes
+
+- Sending feedback without write access to the Odin repository still opens the issue, and says which files to add on the page
+
+## 0.7.5 — 2026-11-09
+
+### Bug fixes
+
+- Migrations, and other files that only point at something far along the graph, sit in the column beside it instead of the first column
+
+## 0.7.4 — 2026-11-09
+
+- Maintenance release.
+
+## 0.7.3 — 2026-11-09
+
+### Quality of life
+
+- Every release says what changed, grouped into new features, UI/UX, quality of life and bug fixes, on GitHub, the VS Code Marketplace and Open VSX
+
 ## 0.7.2 — 2026-11-09
 
 - Maintenance release.
