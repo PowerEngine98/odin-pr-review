@@ -277,3 +277,10 @@ describe("starting a new conversation with one agent", () => {
     expect(panel).toMatch(/this\.terminals\?\.close\(agent\);\s*this\.paired\?\.forgetSession\(agent\);/);
   });
 });
+
+describe("the CLI screen's edges", () => {
+  it("leaves the same room under the last line as over the first", () => {
+    const screen = readFileSync(join(__dirname, "../../webview/src/app/hud/Cli.svelte"), "utf8");
+    expect(screen).toMatch(/\.cli-screen \{[^}]*padding: 4px 0 4px 6px;/);
+  });
+});
