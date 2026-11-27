@@ -272,9 +272,9 @@ describe("starting a new conversation with one agent", () => {
     expect(terminal).toMatch(/aria-label="Start a new conversation with \{name\}"\s*onclick=\{\(\) => notify\("newConversation", \{ agent: id \}\)\}/);
   });
 
-  it("forgets only that agent's conversation, and closes its CLI so the next one starts fresh", () => {
-    expect(pairing).toMatch(/forgetSession\(agentId: string\): void \{\s*if \(!\(agentId in this\.sessions\)\) return;\s*delete this\.sessions\[agentId\];/);
-    expect(panel).toMatch(/this\.terminals\?\.close\(agent\);\s*this\.paired\?\.forgetSession\(agent\);/);
+  it("forgets only that agent's conversation and clears its Log, and closes its CLI so the next one starts fresh", () => {
+    expect(pairing).toMatch(/forgetSession\(agentId: string\): void \{\s*delete this\.sessions\[agentId\];\s*this\.transcripts\.delete\(agentId\);/);
+    expect(panel).toMatch(/this\.terminals\?\.close\(agent\);\s*this\.paired\?\.forgetSession\(agent\);\s*void this\.panel\.webview\.postMessage\(\{ type: "agentTranscript", payload: \{ agent, text: "" \} \}\);/);
   });
 });
 

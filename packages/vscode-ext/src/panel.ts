@@ -3636,6 +3636,7 @@ export class GraphPanel {
         if (!agent) return;
         this.terminals?.close(agent);
         this.paired?.forgetSession(agent);
+        void this.panel.webview.postMessage({ type: "agentTranscript", payload: { agent, text: "" } });
         return;
       }
       if (reply.type === "reorderQueue") {
