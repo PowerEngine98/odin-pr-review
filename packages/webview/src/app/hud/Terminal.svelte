@@ -20,6 +20,7 @@
   import { sideOf } from "../marks/marks.js";
   import Editor from "../panels/Editor.svelte";
   import { initialsOf, threadsOf } from "../panels/Thread.svelte";
+  import { clockOf } from "@odin/core/agents/deltas.js";
   import { nameOf, picturesNamed, saidOf } from "../pictures.js";
   import { pictured } from "../pictured.svelte.js";
   import { model, notify, settings, ui } from "../state.svelte.js";
@@ -703,6 +704,7 @@
    * not the agent talking, and are not drawn as though they were.
    */
   const ASKED = /^\[odin:ask (-?\d+)\] ?/;
+  const STAMPED = /^\[odin:at ([^\]]+)\]$/;
 
   /**
    * The agent working, as opposed to the agent answering.
@@ -718,8 +720,15 @@
       kind: "note" | "asked" | "said" | "work";
       text: string;
       thread?: number;
+      at?: string;
     }[] = [];
+    let stamp: string | undefined;
     for (const line of shown.split("\n")) {
+      const stamped = STAMPED.exec(line);
+      if (stamped) {
+        stamp = stamped[1];
+        continue;
+      }
       const asked = ASKED.exec(line);
       const kind = asked
         ? "asked"
@@ -735,7 +744,8 @@
       if (last && last.kind === kind && last.thread === thread) {
         last.text += `\n${text}`;
       } else {
-        out.push({ kind, text, ...(thread !== undefined ? { thread } : {}) });
+        out.push({ kind, text, ...(thread !== undefined ? { thread } : {}), ...(stamp ? { at: stamp } : {}) });
+        stamp = undefined;
       }
     }
     return out
@@ -1303,6 +1313,9 @@
   <div class="terminal-body" bind:this={pane} onscroll={scrolled}>
     {#if shown}
       {#each blocks as block, at (at)}
+        {#if block.at}
+          <span class="block-time">{clockOf(Date.parse(block.at))}</span>
+        {/if}
         {#if block.kind === "note"}
           <p class="note">{block.text}</p>
         {:else if block.kind === "work"}
@@ -2192,10 +2205,18 @@
     color: var(--box-set);
   }
 
+  .block-time {
+    display: block;
+    margin: 6px 0 2px;
+    color: var(--muted);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
   .record-count {
     padding: 0 4px;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--text) 16%, transparent);
+    background: var(--warning);
+    color: var(--bg);
     font-size: 9px;
     line-height: 13px;
     font-variant-numeric: tabular-nums;

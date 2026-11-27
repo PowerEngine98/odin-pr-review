@@ -33,6 +33,7 @@ import {
   type ReviewComment,
   type RunHandle,
 } from "@odin/core";
+import { withStamp } from "./stamps.js";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
@@ -1066,9 +1067,19 @@ export class PairingSession {
 
   private readonly inTerminal = new Map<string, number>();
 
+  private readonly stampedAt = new Map<string, number>();
+
+  private append(agentId: string, chunk: string): string {
+    const before = this.transcripts.get(agentId) ?? "";
+    const now = Date.now();
+    const { text, stamped } = withStamp(before, chunk, now, this.stampedAt.get(agentId) ?? 0);
+    if (stamped) this.stampedAt.set(agentId, now);
+    this.transcripts.set(agentId, tail(before + text));
+    return text;
+  }
+
   private print(agentId: string, chunk: string): void {
-    this.transcripts.set(agentId, tail((this.transcripts.get(agentId) ?? "") + chunk));
-    this.printed?.(agentId, chunk);
+    this.printed?.(agentId, this.append(agentId, chunk));
   }
 
   private printAsked(agentId: string, thread: number, text: string): void {
@@ -1234,8 +1245,8 @@ export class PairingSession {
      * wanting to read, to find out what it managed before it stopped.
      */
     let kept = 0;
-    const say = (chunk: string): void => {
-      this.transcripts.set(agentId, tail((this.transcripts.get(agentId) ?? "") + chunk));
+    const say = (raw: string): void => {
+      const chunk = this.append(agentId, raw);
       const now = Date.now();
       if (now - kept > 4000) {
         kept = now;
