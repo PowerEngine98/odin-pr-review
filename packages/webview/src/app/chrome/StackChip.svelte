@@ -31,6 +31,7 @@
 
   function enter(): void {
     if (leaving) clearTimeout(leaving);
+    if (!open) askStack();
     open = true;
   }
 

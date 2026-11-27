@@ -580,6 +580,8 @@ export async function keepPageError(file: string, text: string): Promise<void> {
   }
 }
 
+export const STACK_FRESH_MS = 60_000;
+
 export class GraphPanel {
   private mirror!: MirrorLog;
 
@@ -2395,17 +2397,29 @@ export class GraphPanel {
 
   private stackAsked: Promise<PullStack | undefined> | undefined;
 
+  private stackKey = "";
+
+  private stackAt = 0;
+
   private async sendStack(): Promise<void> {
     const pull = this.graph.meta.pullRequest;
     if (!pull?.headRefName || !pull.baseRefName) {
       void this.panel.webview.postMessage({ type: "stack", stack: null });
       return;
     }
-    this.stackAsked ??= pullStack(
-      { number: pull.number, head: pull.headRefName, base: pull.baseRefName },
-      { cwd: this.repo },
-    ).catch(() => undefined);
+    const key = [pull.number, pull.state ?? "", pull.headRefName, pull.baseRefName].join(" ");
+    if (key !== this.stackKey || Date.now() - this.stackAt > STACK_FRESH_MS) this.stackAsked = undefined;
+    this.stackKey = key;
+    if (!this.stackAsked) {
+      this.stackAt = Date.now();
+      this.stackAsked = pullStack(
+        { number: pull.number, head: pull.headRefName, base: pull.baseRefName },
+        { cwd: this.repo },
+      ).catch(() => undefined);
+    }
     const stack = await this.stackAsked;
+    const here = stack?.pulls.find((one) => one.number === pull.number);
+    if (here && pull.state) here.state = pull.state.toLowerCase();
     if (stack) {
       for (const one of stack.pulls) {
         const face = one.avatarUrl ? cachedAvatar(one.avatarUrl) ?? (await inlineAvatar(one.avatarUrl).catch(() => undefined)) : undefined;
