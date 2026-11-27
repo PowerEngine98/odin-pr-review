@@ -46,7 +46,7 @@ export interface AgentKind {
    */
   holdsPrompt?: boolean;
   /** How its interactive session picks up the conversation Odin has been having with it. */
-  interactive?: { resume(id: string): string[]; start?(id: string): string[] };
+  interactive?: { resume(id: string): string[]; start?(id: string): string[]; reports?(file: string): string[] };
   /** Arguments for a run that is only there to hear what the tool offers, saving nothing. */
   probe?: string[];
   /**
@@ -116,6 +116,8 @@ export interface AgentKind {
    * being asked but an honest one.
    */
   asks?: (config: string) => string[];
+  /** How to hand it Odin's own tools without making Odin the one it asks permission of. */
+  serves?: (config: string) => string[];
   /**
    * How to make it narrate, for a tool that can.
    *
@@ -158,7 +160,14 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     name: "Claude",
     command: "claude",
     probe: ["--no-session-persistence", "--max-turns", "1"],
-    interactive: { resume: (id) => ["--resume", id], start: (id) => ["--session-id", id] },
+    interactive: {
+      resume: (id) => ["--resume", id],
+      start: (id) => ["--session-id", id],
+      reports: (file) => [
+        "--settings",
+        JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: "command", command: `cat > '${file}'` }] }] } }),
+      ],
+    },
     once: ["--print"],
     version: ["--version"],
     /*
@@ -197,6 +206,7 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
      * child of the tool, and its only way back is a socket it can open by name.
      */
     asks: (config) => ["--mcp-config", config, "--permission-prompt-tool", "mcp__odin__approve"],
+    serves: (config) => ["--mcp-config", config],
     /*
      * Its own named modes, which map onto the ladder almost exactly. `manual`
      * is the tool's default and is left unsaid rather than restated: passing a

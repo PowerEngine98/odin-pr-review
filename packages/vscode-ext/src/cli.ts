@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync, rmSync, unwatchFile, watchFile } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { AgentKind } from "@odin/core";
 
@@ -17,6 +20,7 @@ export interface CliHost {
   heard?(agent: string, said: Heard[]): void;
   adopt?(agent: string, session: string): void;
   ended?(agent: string): void;
+  tools?(agent: string): string[];
 }
 
 interface Running {
@@ -26,7 +30,25 @@ interface Running {
   ready: boolean;
   settle?: ReturnType<typeof setTimeout>;
   follower?: TranscriptFollower;
+  session?: string;
+  report?: string;
   typed: string[];
+}
+
+export function reportedSession(text: string): string | undefined {
+  try {
+    const id = (JSON.parse(text) as { session_id?: unknown }).session_id;
+    return typeof id === "string" && /^[\w-]+$/.test(id) ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function unreport(running: Running): void {
+  if (!running.report) return;
+  unwatchFile(running.report);
+  rmSync(running.report, { force: true });
+  running.report = undefined;
 }
 
 export const SETTLED_MS = 700;
@@ -63,8 +85,13 @@ export class CliSessions {
     }
     const conversation = this.host.conversation(agent);
     const started = conversation ? undefined : randomUUID();
-    const args = cliArgs(kind, conversation, started);
-    const session = conversation ?? (args.length ? started : undefined);
+    const report = agent === "claude" && this.host.heard && kind.interactive?.reports ? join(tmpdir(), `odin-cli-${randomUUID()}.json`) : undefined;
+    const args = [
+      ...cliArgs(kind, conversation, started),
+      ...(this.host.tools?.(agent) ?? []),
+      ...(report && kind.interactive?.reports ? kind.interactive.reports(report) : []),
+    ];
+    const session = conversation ?? (started && kind.interactive?.start ? started : undefined);
     let pty: Pty;
     try {
       pty = this.host.open(kind.path ?? kind.command, args, {
@@ -77,12 +104,12 @@ export class CliSessions {
       this.host.post({ type: "cliExit", agent, code: 1, error: (error as Error).message });
       return;
     }
-    const running: Running = { pty, screen: "", ready: false, typed: [], ...(conversation && args.length ? { resumed: conversation } : {}) };
+    const running: Running = { pty, screen: "", ready: false, typed: [], ...(conversation && kind.interactive ? { resumed: conversation } : {}) };
     this.running.set(agent, running);
-    if (agent === "claude" && this.host.heard && session) {
-      running.follower = new TranscriptFollower(
+    const follow = (id: string, found?: () => void): TranscriptFollower => {
+      const follower = new TranscriptFollower(
         projectFolder(this.host.repo()),
-        session,
+        id,
         (said) => {
           const fresh = said.filter((one) => {
             if (one.role !== "user") return true;
@@ -93,9 +120,31 @@ export class CliSessions {
           });
           if (fresh.length > 0) this.host.heard?.(agent, fresh);
         },
-        started ? () => this.host.adopt?.(agent, session) : undefined,
+        found,
       );
-      running.follower.start();
+      follower.start();
+      return follower;
+    };
+    if (agent === "claude" && this.host.heard && session) {
+      running.session = session;
+      running.follower = follow(session, started ? () => this.host.adopt?.(agent, session) : undefined);
+    }
+    if (report) {
+      running.report = report;
+      watchFile(report, { interval: 500 }, () => {
+        let text = "";
+        try {
+          text = readFileSync(report, "utf8");
+        } catch {
+          return;
+        }
+        const id = reportedSession(text);
+        if (!id || id === running.session || this.running.get(agent) !== running) return;
+        running.follower?.stop();
+        running.session = id;
+        running.follower = follow(id);
+        this.host.adopt?.(agent, id);
+      });
     }
     pty.onData((data) => {
       running.screen = (running.screen + data).slice(-SCROLLBACK);
@@ -110,6 +159,7 @@ export class CliSessions {
     pty.onExit((code) => {
       if (running.settle) clearTimeout(running.settle);
       running.follower?.stop();
+      unreport(running);
       if (this.running.get(agent) === running) this.running.delete(agent);
       this.host.ended?.(agent);
       this.host.post({ type: "cliExit", agent, code });
@@ -151,6 +201,7 @@ export class CliSessions {
     if (!held) return;
     this.running.delete(agent);
     held.follower?.stop();
+    unreport(held);
     held.pty.kill();
   }
 
