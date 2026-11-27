@@ -17,6 +17,7 @@ export interface CliHost {
   heard?(agent: string, said: Heard[]): void;
   adopt?(agent: string, session: string): void;
   ended?(agent: string): void;
+  tools?(agent: string): string[];
 }
 
 interface Running {
@@ -63,8 +64,8 @@ export class CliSessions {
     }
     const conversation = this.host.conversation(agent);
     const started = conversation ? undefined : randomUUID();
-    const args = cliArgs(kind, conversation, started);
-    const session = conversation ?? (args.length ? started : undefined);
+    const args = [...cliArgs(kind, conversation, started), ...(this.host.tools?.(agent) ?? [])];
+    const session = conversation ?? (started && kind.interactive?.start ? started : undefined);
     let pty: Pty;
     try {
       pty = this.host.open(kind.path ?? kind.command, args, {
@@ -77,7 +78,7 @@ export class CliSessions {
       this.host.post({ type: "cliExit", agent, code: 1, error: (error as Error).message });
       return;
     }
-    const running: Running = { pty, screen: "", ready: false, typed: [], ...(conversation && args.length ? { resumed: conversation } : {}) };
+    const running: Running = { pty, screen: "", ready: false, typed: [], ...(conversation && kind.interactive ? { resumed: conversation } : {}) };
     this.running.set(agent, running);
     if (agent === "claude" && this.host.heard && session) {
       running.follower = new TranscriptFollower(

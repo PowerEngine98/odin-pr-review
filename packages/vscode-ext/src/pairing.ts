@@ -1453,10 +1453,7 @@ export class PairingSession {
      * ever opens. And only when the stub is actually on disk, which it is not
      * when this runs from a test or a checkout that was never packaged.
      */
-    const asking =
-      kind.asks && PairingSession.stub && this.agencyOf(agentId) !== "full"
-        ? kind.asks(this.configFor(kind))
-        : [];
+    const asking = this.toolsFor(agentId, this.agencyOf(agentId) !== "full");
 
     /*
      * Which model, when the reader has picked one and the tool can be told.
@@ -1745,6 +1742,13 @@ export class PairingSession {
   }
 
   /** The agents that have something to carry on from, for the panel to say so. */
+  toolsFor(agentId: string, asks = false): string[] {
+    const kind = this.installed.find((one) => one.id === agentId);
+    if (!kind || !PairingSession.stub) return [];
+    if (asks && kind.asks) return kind.asks(this.configFor(kind));
+    return kind.serves ? kind.serves(this.configFor(kind)) : [];
+  }
+
   forgetSession(agentId: string): void {
     delete this.sessions[agentId];
     this.transcripts.delete(agentId);

@@ -116,6 +116,8 @@ export interface AgentKind {
    * being asked but an honest one.
    */
   asks?: (config: string) => string[];
+  /** How to hand it Odin's own tools without making Odin the one it asks permission of. */
+  serves?: (config: string) => string[];
   /**
    * How to make it narrate, for a tool that can.
    *
@@ -197,6 +199,7 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
      * child of the tool, and its only way back is a socket it can open by name.
      */
     asks: (config) => ["--mcp-config", config, "--permission-prompt-tool", "mcp__odin__approve"],
+    serves: (config) => ["--mcp-config", config],
     /*
      * Its own named modes, which map onto the ladder almost exactly. `manual`
      * is the tool's default and is left unsaid rather than restated: passing a

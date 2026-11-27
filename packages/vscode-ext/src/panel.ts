@@ -4073,6 +4073,7 @@ export class GraphPanel {
         }),
       adopt: (agent, session) => this.pairing().adopt(agent, session),
       ended: (agent) => this.pairing().terminalEnded(agent),
+      tools: (agent) => this.pairing().toolsFor(agent),
     });
     const terminals = this.terminals;
     this.pairing().terminal = {
