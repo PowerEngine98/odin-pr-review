@@ -607,10 +607,71 @@ export async function stackAround(
   return { pulls: [...below, ...(self ? [self] : []), ...above], base, at: below.length };
 }
 
+export interface NativeStack {
+  base: string;
+  pulls: { number: number; head: string }[];
+}
+
+export function nativeStack(json: string | undefined, number: number): NativeStack | undefined {
+  if (!json) return undefined;
+  try {
+    const stacks = JSON.parse(json) as {
+      base?: { ref?: string };
+      pull_requests?: { number?: number; head?: { ref?: string } }[];
+    }[];
+    if (!Array.isArray(stacks)) return undefined;
+    for (const stack of stacks) {
+      const pulls = (stack.pull_requests ?? [])
+        .filter((pull) => typeof pull.number === "number" && typeof pull.head?.ref === "string")
+        .map((pull) => ({ number: pull.number!, head: pull.head!.ref! }));
+      if (pulls.length > 1 && pulls.some((pull) => pull.number === number) && stack.base?.ref) {
+        return { base: stack.base.ref, pulls };
+      }
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function usesStacks(json: string | undefined): boolean {
+  try {
+    const stacks = JSON.parse(json ?? "") as unknown;
+    return Array.isArray(stacks) && stacks.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export async function stackFrom(
+  native: NativeStack,
+  current: number,
+  headed: (branch: string) => Promise<PullRequestSummary[] | undefined>,
+): Promise<PullStack | undefined> {
+  const found = await Promise.all(
+    native.pulls.map(async (pull) => (await headed(pull.head))?.find((one) => one.number === pull.number)),
+  );
+  if (found.some((one) => !one)) return undefined;
+  const pulls = found as PullRequestSummary[];
+  const at = pulls.findIndex((one) => one.number === current);
+  return at < 0 ? undefined : { pulls, base: native.base, at };
+}
+
 export async function pullStack(
   current: StackPlace,
   options: GitOptions & { timeoutMs?: number },
 ): Promise<PullStack | undefined> {
+  const timed = { ...options, timeoutMs: options.timeoutMs ?? 20_000 };
+  const answer = await run(["api", `repos/{owner}/{repo}/stacks?pull_request=${current.number}`], timed);
+  const native = nativeStack(answer, current.number);
+  if (native) {
+    const stacked = await stackFrom(native, current.number, (branch) =>
+      listOnce({ ...options, head: branch, state: "all", light: true }),
+    );
+    if (stacked) return stacked;
+  } else if (answer?.trim() === "[]" && usesStacks(await run(["api", "repos/{owner}/{repo}/stacks?per_page=1"], timed))) {
+    return undefined;
+  }
   return stackAround(current, {
     headed: (branch) => listOnce({ ...options, head: branch, light: true }),
     based: (branch) => listOnce({ ...options, base: branch, light: true }),
