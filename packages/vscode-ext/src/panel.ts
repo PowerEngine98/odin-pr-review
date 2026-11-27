@@ -3631,6 +3631,13 @@ export class GraphPanel {
         });
         return;
       }
+      if (reply.type === "newConversation") {
+        const agent = String((reply as { payload?: { agent?: unknown } }).payload?.agent ?? "");
+        if (!agent) return;
+        this.terminals?.close(agent);
+        this.paired?.forgetSession(agent);
+        return;
+      }
       if (reply.type === "reorderQueue") {
         const said = (reply as { payload?: { ids?: unknown } }).payload ?? {};
         const ids = Array.isArray(said.ids) ? said.ids.map(Number).filter(Number.isFinite) : [];

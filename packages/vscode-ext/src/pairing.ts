@@ -1733,6 +1733,13 @@ export class PairingSession {
   }
 
   /** The agents that have something to carry on from, for the panel to say so. */
+  forgetSession(agentId: string): void {
+    if (!(agentId in this.sessions)) return;
+    delete this.sessions[agentId];
+    this.save();
+    this.changed();
+  }
+
   carrying(): string[] {
     return Object.keys(this.sessions);
   }

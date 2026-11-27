@@ -52,31 +52,21 @@ describe("what a CLI conversation said, read back from its transcript", () => {
     expect(heard).toEqual(["new question", "new answer"]);
   });
 
-  it("finds the session a fresh CLI started, and says which it is", () => {
+  it("follows only the session it was told about, though other sessions in the same folder grow", () => {
     const folder = mkdtempSync(join(tmpdir(), "odin-transcript-"));
-    const found: string[] = [];
+    writeFileSync(join(folder, "someone-else.jsonl"), user("not this one"));
     const heard: string[] = [];
-    const follower = new TranscriptFollower(folder, undefined, (said) => heard.push(...said.map((one) => one.text)), (session) => found.push(session));
-    writeFileSync(join(folder, "fresh-id.jsonl"), user("hello"));
+    let started = 0;
+    const follower = new TranscriptFollower(folder, "mine", (said) => heard.push(...said.map((one) => one.text)), () => started++);
     follower.poll();
-    expect(found).toEqual(["fresh-id"]);
+    appendFileSync(join(folder, "someone-else.jsonl"), user("still not this one"));
+    follower.poll();
+    expect(started).toBe(0);
+    writeFileSync(join(folder, "mine.jsonl"), user("hello"));
+    follower.poll();
+    follower.poll();
     expect(heard).toEqual(["hello"]);
-  });
-});
-
-describe("a fresh CLI's session, told apart from the ones already there", () => {
-  it("is the file that appeared or grew after the CLI opened, whatever the clock says", () => {
-    const folder = mkdtempSync(join(tmpdir(), "odin-transcript-"));
-    writeFileSync(join(folder, "older.jsonl"), user("from before"));
-    const found: string[] = [];
-    const heard: string[] = [];
-    const follower = new TranscriptFollower(folder, undefined, (said) => heard.push(...said.map((one) => one.text)), (session) => found.push(session));
-    follower.poll();
-    expect(found).toEqual([]);
-    appendFileSync(join(folder, "older.jsonl"), user("continued here"));
-    follower.poll();
-    expect(found).toEqual(["older"]);
-    expect(heard).toEqual(["continued here"]);
+    expect(started).toBe(1);
   });
 });
 
@@ -270,5 +260,27 @@ describe("a message typed in the CLI while the agent is working", () => {
       ].join("").split("\n"),
     );
     expect(said).toEqual([{ role: "user", text: "when you finish, open the order page" }]);
+  });
+});
+
+describe("starting a new conversation with one agent", () => {
+  const pairing = readFileSync(join(__dirname, "../src/pairing.ts"), "utf8");
+  const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
+  const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
+
+  it("is a button in that agent's console, beside the conversation it replaces", () => {
+    expect(terminal).toMatch(/aria-label="Start a new conversation with \{name\}"\s*onclick=\{\(\) => notify\("newConversation", \{ agent: id \}\)\}/);
+  });
+
+  it("forgets only that agent's conversation, and closes its CLI so the next one starts fresh", () => {
+    expect(pairing).toMatch(/forgetSession\(agentId: string\): void \{\s*if \(!\(agentId in this\.sessions\)\) return;\s*delete this\.sessions\[agentId\];/);
+    expect(panel).toMatch(/this\.terminals\?\.close\(agent\);\s*this\.paired\?\.forgetSession\(agent\);/);
+  });
+});
+
+describe("the CLI screen's edges", () => {
+  it("leaves the same room under the last line as over the first", () => {
+    const screen = readFileSync(join(__dirname, "../../webview/src/app/hud/Cli.svelte"), "utf8");
+    expect(screen).toMatch(/\.cli-screen \{[^}]*padding: 4px 0 4px 6px;/);
   });
 });

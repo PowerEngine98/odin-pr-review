@@ -293,7 +293,7 @@
   .cli-screen {
     flex: 1;
     min-height: 0;
-    padding: 4px 0 0 6px;
+    padding: 4px 0 4px 6px;
     background: var(--bg);
   }
 

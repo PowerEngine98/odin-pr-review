@@ -46,7 +46,7 @@ export interface AgentKind {
    */
   holdsPrompt?: boolean;
   /** How its interactive session picks up the conversation Odin has been having with it. */
-  interactive?: { resume(id: string): string[] };
+  interactive?: { resume(id: string): string[]; start?(id: string): string[] };
   /** Arguments for a run that is only there to hear what the tool offers, saving nothing. */
   probe?: string[];
   /**
@@ -158,7 +158,7 @@ export const KNOWN_AGENTS: readonly AgentKind[] = [
     name: "Claude",
     command: "claude",
     probe: ["--no-session-persistence", "--max-turns", "1"],
-    interactive: { resume: (id) => ["--resume", id] },
+    interactive: { resume: (id) => ["--resume", id], start: (id) => ["--session-id", id] },
     once: ["--print"],
     version: ["--version"],
     /*

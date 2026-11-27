@@ -84,10 +84,10 @@ describe("the CLI tab of an agent's console", () => {
     expect(spawned).toEqual([{ file: "/bin/claude", args: ["--resume", "conversation-1"], cols: 100, rows: 30 }]);
   });
 
-  it("starts fresh when Odin has no conversation with the agent yet", () => {
+  it("starts fresh when Odin has no conversation with the agent yet, under a session it names itself", () => {
     const { cli, spawned } = sessions();
     cli.open("claude", 80, 24, "page");
-    expect(spawned[0]!.args).toEqual([]);
+    expect(spawned[0]!.args).toEqual(["--session-id", expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)]);
   });
 
   it("passes keys and sizes through, and streams what it prints", () => {
