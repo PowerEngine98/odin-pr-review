@@ -278,6 +278,7 @@ const DEFAULTS: ReaderSettings = {
   showUntouched: true,
   hideViewed: false,
   showInfra: true,
+  fileIcons: true,
   clusters: false,
   narrateExtensions: true,
   narrateFolders: false,

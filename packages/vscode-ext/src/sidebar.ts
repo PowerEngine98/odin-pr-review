@@ -6,7 +6,7 @@ import {
   type PullRequestSummary,
   type Theme,
 } from "@odin/core";
-import { fileIcons } from "./file-icons.js";
+import { fileIcons, withFolderIcons } from "./file-icons.js";
 import {
   renderSidebar,
   sidebarTokens,
@@ -367,6 +367,10 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage({ type: "loading", value: on });
   }
 
+  setFileIcons(): void {
+    this.render();
+  }
+
   /** Untouched files shown or hidden from a drawing, without redrawing the list. */
   setUntouched(on: boolean): void {
     void this.view?.webview.postMessage({ type: "showUntouched", value: on });
@@ -406,21 +410,14 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /** Everything the view is drawn from, as one object it can be handed. */
   private model(): SidebarModel {
     const graph = this.showing();
-    const icons = graph ? fileIcons(graph.nodes.map((node) => node.path)) : undefined;
+    const shown = this.settings?.read()?.fileIcons !== false;
+    const icons = graph && shown ? fileIcons(graph.nodes.map((node) => node.path)) : undefined;
+    const change = graph ? changeView(graph, (path) => this.viewed.has(path), this.here, this.fresh) : undefined;
     return {
       ...(icons ? { fileIcons: icons } : {}),
       loading: this.loading,
       showUntouched: this.settings?.read()?.showUntouched !== false,
-      ...(graph
-        ? {
-            change: changeView(
-              graph,
-              (path) => this.viewed.has(path),
-              this.here,
-              this.fresh,
-            ),
-          }
-        : {}),
+      ...(change ? { change: { ...change, tree: withFolderIcons(change.tree, icons) } } : {}),
       picker: pickerView(
         this.pulls,
         this.branch,

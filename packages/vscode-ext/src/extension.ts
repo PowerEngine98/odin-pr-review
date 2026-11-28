@@ -345,6 +345,7 @@ export function activate(context: vscode.ExtensionContext): void {
   GraphPanel.sidebarShown = () => sidebar.shown();
   sidebar.onUntouched = (on) => GraphPanel.showUntouched(on);
   GraphPanel.onUntouched = (on) => sidebar.setUntouched(on);
+  GraphPanel.onFileIcons = () => sidebar.setFileIcons();
 
   // Populated in the background so activation is not held up by the network.
   void refreshPullRequests();

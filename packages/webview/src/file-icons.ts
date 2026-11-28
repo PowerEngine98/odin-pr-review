@@ -7,7 +7,30 @@ export interface IconTable {
   file: string;
   fileNames: Record<string, string>;
   fileExtensions: Record<string, string>;
+  folder?: string;
+  folderExpanded?: string;
+  folderNames?: Record<string, string>;
+  folderNamesExpanded?: Record<string, string>;
   svgs: Record<string, string>;
+}
+
+export function folderIconNamesFor(
+  label: string,
+  table: Pick<IconTable, "folder" | "folderExpanded" | "folderNames" | "folderNamesExpanded">,
+): { closed?: string; open?: string } {
+  const segments = label.split("/").filter(Boolean).reverse();
+  const named = segments.map((one) => one.toLowerCase()).find((one) => table.folderNames?.[one]);
+  if (named) {
+    return { closed: table.folderNames![named], open: table.folderNamesExpanded?.[named] ?? table.folderExpanded };
+  }
+  return { closed: table.folder, open: table.folderExpanded };
+}
+
+export function addIcon(icons: FileIcons, name: string | undefined, table: IconTable): boolean {
+  const svg = name ? table.svgs[name] : undefined;
+  if (!name || !svg) return false;
+  icons.icons[name] ??= `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  return true;
 }
 
 export function iconNameFor(path: string, table: Pick<IconTable, "file" | "fileNames" | "fileExtensions">): string {
@@ -29,10 +52,7 @@ export function fileIconsFor(paths: Iterable<string>, table: IconTable | undefin
   const icons: Record<string, string> = {};
   for (const path of paths) {
     const name = iconNameFor(path, table);
-    const svg = table.svgs[name];
-    if (!svg) continue;
-    of[path] = name;
-    icons[name] ??= `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    if (addIcon({ of, icons }, name, table)) of[path] = name;
   }
   return { of, icons };
 }

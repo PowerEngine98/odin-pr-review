@@ -2381,6 +2381,8 @@ export class GraphPanel {
   /** Told when a drawing shows or hides untouched files, for the list to follow. */
   static onUntouched: ((on: boolean) => void) | undefined;
 
+  static onFileIcons: (() => void) | undefined;
+
   /**
    * Where the reader's own choices are kept between pages.
    *
@@ -3847,6 +3849,7 @@ export class GraphPanel {
       if (message.type === "settings") {
         await GraphPanel.settings?.write(message.payload);
         GraphPanel.onUntouched?.(message.payload.showUntouched !== false);
+        GraphPanel.onFileIcons?.();
         // The order is the priority rule, so a reorder is not merely a
         // preference to file: a message waiting on a busy agent may now have
         // somebody above it who is free.

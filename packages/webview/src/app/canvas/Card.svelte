@@ -1392,7 +1392,7 @@
         <span class="path-tip">{node.path}</span>
       {/if}
       <span class="box">{@render statusMark(node.status)}</span>
-      <FileIcon path={node.path} icons={model.current.fileIcons} />
+      <FileIcon path={node.path} icons={settings.fileIcons ? model.current.fileIcons : undefined} />
       {head.name}
       {#if head.was}<span class="was">{head.was}</span>{/if}
       <span class="stats">

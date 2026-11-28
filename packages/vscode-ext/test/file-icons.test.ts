@@ -43,7 +43,7 @@ describe("the icon a file is shown with", () => {
   it("is drawn before the name in the sidebar, on a file's card and on the graph's tabs", () => {
     const read = (path: string) => readFileSync(join(__dirname, "../../webview/src/app", path), "utf8");
     expect(read("sidebar/File.svelte")).toMatch(/<FileIcon path=\{file\.path\} icons=\{model\.current\.fileIcons\} \/>\s*<span class="name">/);
-    expect(read("canvas/Card.svelte")).toMatch(/<FileIcon path=\{node\.path\} icons=\{model\.current\.fileIcons\} \/>\s*\{head\.name\}/);
-    expect(read("chrome/Tabs.svelte")).toMatch(/<FileIcon path=\{paths\.get\(id\)!\} icons=\{model\.current\.fileIcons\} \/>/);
+    expect(read("canvas/Card.svelte")).toMatch(/<FileIcon path=\{node\.path\} icons=\{settings\.fileIcons \? model\.current\.fileIcons : undefined\} \/>\s*\{head\.name\}/);
+    expect(read("chrome/Tabs.svelte")).toMatch(/<FileIcon path=\{paths\.get\(id\)!\} icons=\{settings\.fileIcons \? model\.current\.fileIcons : undefined\} \/>/);
   });
 });

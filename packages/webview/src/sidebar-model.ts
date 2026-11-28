@@ -82,6 +82,9 @@ export interface TotalsView {
 export interface FolderView {
   /** Path segments this folder covers, joined. Empty at the root. */
   label: string;
+  test?: boolean;
+  icon?: string;
+  iconOpen?: string;
   folders: FolderView[];
   files: FileView[];
 }

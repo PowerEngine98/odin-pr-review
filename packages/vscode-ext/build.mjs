@@ -60,5 +60,14 @@ for (const [name, definition] of Object.entries(manifest.iconDefinitions)) {
 }
 await writeFile(
   "dist/media/file-icons.json",
-  JSON.stringify({ file: manifest.file, fileNames: manifest.fileNames, fileExtensions: manifest.fileExtensions, svgs }),
+  JSON.stringify({
+    file: manifest.file,
+    fileNames: manifest.fileNames,
+    fileExtensions: manifest.fileExtensions,
+    folder: manifest.folder,
+    folderExpanded: manifest.folderExpanded,
+    folderNames: manifest.folderNames,
+    folderNamesExpanded: manifest.folderNamesExpanded,
+    svgs,
+  }),
 );

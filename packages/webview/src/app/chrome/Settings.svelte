@@ -379,6 +379,11 @@
         <!-- Not beside the filters above, which take things away. This adds a
              shape: the same cards, gathered into the folders they live in. -->
         <Viewed
+          label="File icons"
+          title="The Material Icon Theme's icon for each file and folder, in the sidebar, on the cards and on the tabs"
+          bind:checked={settings.fileIcons}
+        />
+        <Viewed
           label="Folder clusters"
           title="Group the cards into a box per folder. Columns stay as they are — those are the call order."
           bind:checked={settings.clusters}

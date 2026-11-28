@@ -411,6 +411,7 @@ export interface ReaderSettings {
    * right by call order, and clustering only ever decides the order of cards
    * within one.
    */
+  fileIcons: boolean;
   clusters: boolean;
   /** Read `Main.kt` as "Main dot kt" rather than as "Main". */
   narrateExtensions: boolean;

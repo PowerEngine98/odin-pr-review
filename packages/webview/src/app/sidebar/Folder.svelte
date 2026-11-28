@@ -26,7 +26,7 @@
   import type { FolderView } from "./model.js";
   import Self from "./Folder.svelte";
   import { trailTo } from "./shut.js";
-  import { folderOpen, markAll, needle, toggleFolder, ui } from "./state.svelte.js";
+  import { folderOpen, markAll, model, needle, toggleFolder, ui } from "./state.svelte.js";
   import { reviewableIn } from "./tree.js";
   import Viewed from "../shared/Viewed.svelte";
 
@@ -98,6 +98,7 @@
   <div class="branch">
     <div
       class="folder"
+      class:test={folder.test}
       hidden={!survives}
       style:padding-left="{8 + depth * 10}px"
       style:top="max(0px, calc({depth - 1} * var(--folder-row) - 1px))"
@@ -113,6 +114,15 @@
       }}
     >
       <Chevron {open} />
+      {#if model.current.fileIcons && (open ? folder.iconOpen : folder.icon)}
+        <img
+          class="folder-icon"
+          src={model.current.fileIcons.icons[(open ? folder.iconOpen : folder.icon) ?? ""]}
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+        />
+      {/if}
       <span class="dir">{folder.label}</span>
       {#if under.length > 0}
         <Viewed
@@ -131,6 +141,17 @@
 {/if}
 
 <style>
+  .folder.test {
+    background-image: linear-gradient(
+      color-mix(in srgb, var(--added) 7%, transparent),
+      color-mix(in srgb, var(--added) 7%, transparent)
+    );
+  }
+  .folder-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+  }
   .folder {
     position: sticky;
     display: flex;

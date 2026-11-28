@@ -271,10 +271,15 @@ function folderView(
   isViewed: (path: string) => boolean,
   fresh: (path: string) => string | undefined = () => undefined,
 ): FolderView {
+  const folders = folder.folders.map((child) => folderView(child, graph, isViewed, fresh));
+  const files = folder.files.map((node) => fileView(node, graph, isViewed, fresh(node.path)));
+  const tests =
+    folders.length + files.length > 0 && folders.every((child) => child.test) && files.every((file) => file.test);
   return {
     label: folder.label,
-    folders: folder.folders.map((child) => folderView(child, graph, isViewed, fresh)),
-    files: folder.files.map((node) => fileView(node, graph, isViewed, fresh(node.path))),
+    ...(tests ? { test: true } : {}),
+    folders,
+    files,
   };
 }
 
