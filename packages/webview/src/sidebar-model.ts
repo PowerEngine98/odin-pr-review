@@ -89,6 +89,7 @@ export interface FileView {
   /** The name the row shows. */
   name: string;
   status: FileStatus;
+  test?: boolean;
   /** Whether it was marked read when the page was built. */
   viewed: boolean;
   /** Already formatted, and empty where a count would say nothing. */
