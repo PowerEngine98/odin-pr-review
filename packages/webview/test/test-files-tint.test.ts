@@ -29,3 +29,12 @@ describe("a test file pointed at in the sidebar", () => {
     expect(file).toMatch(/\.row\.test:hover \{\s*background: color-mix\(in srgb, var\(--added\) 14%, transparent\);\s*\}\s*\.row\.here:hover \{/);
   });
 });
+
+describe("a file named in the Changes tab", () => {
+  it("wears its icon and its status's colour, as it does in the sidebar", () => {
+    const ledger = readFileSync(join(__dirname, "../src/app/hud/Ledger.svelte"), "utf8");
+    expect(ledger).toMatch(/class="entry-file status-\{statusOf\.get\(delta\.path\) \?\? 'none'\}"/);
+    expect(ledger).toMatch(/<FileIcon path=\{delta\.path\} icons=\{settings\.fileIcons \? model\.current\.fileIcons : undefined\} \/>/);
+    expect(ledger).toMatch(/\.entry-file\.status-modified \{ color: var\(--status-modified\); \}/);
+  });
+});

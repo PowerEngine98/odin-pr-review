@@ -31,7 +31,8 @@
 <script lang="ts">
   import { clockOf, linesOf, type Delta } from "@odin/core/agents/deltas.js";
 
-  import { model, notify, travel, ui } from "../state.svelte.js";
+  import { model, notify, settings, travel, ui } from "../state.svelte.js";
+  import FileIcon from "../shared/FileIcon.svelte";
 
   import { nameBlock, type Token } from "../panels/markdown.js";
 
@@ -352,6 +353,7 @@
   $effect(() => {
     notify("deltas", {});
   });
+  const statusOf = $derived(new Map(model.current.nodes.map((node) => [node.path, node.status])));
 </script>
 
 {#snippet code(at: number, lines: string[], row: number)}{#if painted[at] && painted[at][row]}{#each painted[at][row] as token}<span style="color:{safeColour(token.color)}">{token.text}</span>{/each}{:else}{lines[row]}{/if}{/snippet}
@@ -388,7 +390,7 @@
             is the worse of the two.
           -->
           <button
-            class="entry-file"
+            class="entry-file status-{statusOf.get(delta.path) ?? 'none'}"
             type="button"
             disabled={delta.line === undefined}
             title={delta.line === undefined
@@ -396,6 +398,7 @@
               : `${delta.path}:${delta.line} — press to go to it`}
             onclick={() => goTo(delta)}
           >
+            <FileIcon path={delta.path} icons={settings.fileIcons ? model.current.fileIcons : undefined} />
             {fileOf(delta.path)}{#if delta.line !== undefined}<span class="entry-line">:{delta.line}</span>{/if}
           </button>
           {#if delta.whole}
@@ -634,6 +637,11 @@
     white-space: nowrap;
   }
 
+  .entry-file :global(.file-icon) { margin-right: 4px; }
+  .entry-file.status-added { color: var(--status-added); }
+  .entry-file.status-modified { color: var(--status-modified); }
+  .entry-file.status-deleted { color: var(--status-deleted); }
+  .entry-file.status-renamed { color: var(--status-renamed); }
   .entry-file {
     background: none;
     border: 0;
