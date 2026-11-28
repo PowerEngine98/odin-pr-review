@@ -7,6 +7,7 @@ export interface ProcView {
   status: ProcStatus;
   beat: number;
   readable: boolean;
+  ports: number[];
   startedAt: number;
   endedAt?: number;
 }

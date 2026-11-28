@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isShell, launched, parsePs, ProcessWatch, seconds, statusOf, techOf } from "../src/processes.js";
+import { isShell, launched, listening, parsePs, ProcessWatch, seconds, statusOf, techOf } from "../src/processes.js";
 
 function until(what: () => boolean, ms = 15_000): Promise<void> {
   const stop = Date.now() + ms;
@@ -49,12 +49,21 @@ describe("the processes an agent starts", () => {
 
   it("wear the icon of the technology they run, looking through to what they start", () => {
     expect(techOf(["node yarn dev", "node /repo/node_modules/.bin/vite"])).toBe("vite");
-    expect(techOf(["./gradlew bootRun", "java -cp gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain bootRun"])).toBe("java");
+    expect(techOf(["./gradlew bootRun", "java -cp gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain bootRun"])).toBe("spring");
+    expect(techOf(["mvn spring-boot:run"])).toBe("spring");
+    expect(techOf(["java -cp /lib/spring-boot-3.3.0.jar:/app com.shop.Main"])).toBe("spring");
     expect(techOf(["java -jar app.jar"])).toBe("java");
     expect(techOf(["./gradlew test"])).toBe("gradle");
     expect(techOf(["node server.js"])).toBe("nodejs");
     expect(techOf(["python3 -m http.server"])).toBe("python");
     expect(techOf(["sleep 5"])).toBe("console");
+  });
+
+  it("say which ports they listen on, read from lsof", () => {
+    expect([...listening("p501\nf12\nn*:8080\np502\nf20\nn127.0.0.1:5173\nf21\nn[::1]:5173\n")]).toEqual([
+      [501, [8080]],
+      [502, [5173]],
+    ]);
   });
 
   it("are running while they print or work, idle when quiet, and terminated once gone", () => {
@@ -70,22 +79,23 @@ describe.skipIf(process.platform === "win32")("a real process an agent started i
   it("is found, its output followed into its tab, its badge pulsed on each line, and killed with what it started", async () => {
     const dir = mkdtempSync(join(tmpdir(), "odin-proc-"));
     const out = join(dir, "out.txt");
-    const shell = spawn("sh", ["-c", `node -e 'let n=0;setInterval(()=>console.log("tick "+(n++)),300)' > '${out}'; true`], { stdio: "ignore" });
-    const posted: { type?: string; lists?: Record<string, { pid: number; icon: string; status: string; beat: number; readable: boolean }[]>; data?: string }[] = [];
+    const shell = spawn("sh", ["-c", `node -e 'require("http").createServer().listen(0);let n=0;setInterval(()=>console.log("tick "+(n++)),300)' > '${out}'; true`], { stdio: "ignore" });
+    const posted: { type?: string; lists?: Record<string, { pid: number; icon: string; status: string; beat: number; readable: boolean; ports: number[] }[]>; data?: string }[] = [];
     const watch = new ProcessWatch(
       () => new Map([["claude", [process.pid]]]),
       (message) => posted.push(message as never),
       (name) => `data:${name}`,
     );
     try {
-      let found: { pid: number; icon: string; status: string; beat: number; readable: boolean } | undefined;
+      let found: { pid: number; icon: string; status: string; beat: number; readable: boolean; ports: number[] } | undefined;
       await until(() => {
         void watch.poll();
         const lists = [...posted].reverse().find((one) => one.type === "processes")?.lists;
         found = lists?.claude?.find((one) => one.icon === "nodejs");
-        return Boolean(found && found.readable && found.beat > 1);
+        return Boolean(found && found.readable && found.beat > 1 && found.ports.length > 0);
       });
       expect(found!.status).toBe("running");
+      expect(found!.ports[0]).toBeGreaterThan(0);
       watch.attach(found!.pid);
       const replay = posted.find((one) => one.type === "procReplay") as { data?: string } | undefined;
       expect(replay?.data).toMatch(/tick \d+/);
@@ -132,5 +142,22 @@ describe("the processes strip in an agent's console", () => {
     const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
     expect(panel).toMatch(/for \(const \[agent, pid\] of this\.paired\?\.runPids\(\) \?\? \[\]\) add\(agent, pid\);/);
     expect(panel).toMatch(/for \(const agent of this\.terminals\?\.agents\(\) \?\? \[\]\) add\(agent, this\.terminals\?\.pidOf\(agent\)\);/);
+  });
+});
+
+describe("a Spring server's icon", () => {
+  it("is the Spring leaf, in Spring's green, packed with the rest at build", () => {
+    const packed = join(__dirname, "../dist/media/file-icons.json");
+    const svgs = (JSON.parse(readFileSync(packed, "utf8")) as { svgs: Record<string, string> }).svgs;
+    expect(svgs.spring).toMatch(/^<svg fill="#6DB33F" role="img" viewBox="0 0 24 24"/);
+    expect(svgs.spring).toMatch(/<title>Spring<\/title>/);
+  });
+});
+
+describe("a process avatar", () => {
+  it("is the size of a comment's avatar, and shows the ports it listens on", () => {
+    const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
+    expect(terminal).toMatch(/\.proc-avatar \{[^}]*width: 22px;\s*height: 22px;/);
+    expect(terminal).toMatch(/<span class="proc-port" title="Listening on port \{port\}">:\{port\}<\/span>/);
   });
 });

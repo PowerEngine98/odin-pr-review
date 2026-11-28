@@ -58,6 +58,8 @@ const svgs = {};
 for (const [name, definition] of Object.entries(manifest.iconDefinitions)) {
   svgs[name] = await readFile(join(material, "dist", definition.iconPath), "utf8");
 }
+const brands = dirname(require.resolve("simple-icons"));
+svgs.spring = (await readFile(join(brands, "icons", "spring.svg"), "utf8")).replace("<svg ", '<svg fill="#6DB33F" ');
 await writeFile(
   "dist/media/file-icons.json",
   JSON.stringify({

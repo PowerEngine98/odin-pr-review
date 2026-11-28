@@ -72,6 +72,9 @@
     {#if procs.icons[proc.icon]}<img class="proc-head-icon" src={procs.icons[proc.icon]} alt="" />{/if}
     <code class="proc-command" title={proc.command}>{proc.command}</code>
     <span class="proc-pid">PID {proc.pid}</span>
+    {#each proc.ports as port (port)}
+      <span class="proc-pid" title="Listening on port {port}">port {port}</span>
+    {/each}
     <span class="proc-state {proc.status}">{proc.status}</span>
     {#if proc.status !== "terminated"}
       <button class="proc-kill" title="Stop this process and everything it started" onclick={() => notify("procKill", { pid })}>Kill</button>

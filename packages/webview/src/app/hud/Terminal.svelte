@@ -1271,6 +1271,9 @@
               {/key}
             </span>
             <span class="proc-name">{shortCommand(proc.command)}</span>
+            {#each proc.ports as port (port)}
+              <span class="proc-port" title="Listening on port {port}">:{port}</span>
+            {/each}
           </button>
           <button
             class="proc-x"
@@ -2224,21 +2227,28 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: color-mix(in srgb, var(--text) 10%, transparent);
   }
   .proc-avatar img {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
+  }
+  .proc-port {
+    padding: 0 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--proc-running) 18%, transparent);
+    color: var(--proc-running);
+    font-variant-numeric: tabular-nums;
   }
   .proc-badge {
     position: absolute;
     right: -2px;
     bottom: -2px;
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     border: 2px solid var(--bg);
   }

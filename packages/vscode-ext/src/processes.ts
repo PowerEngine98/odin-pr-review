@@ -19,8 +19,22 @@ export interface ProcView {
   status: ProcStatus;
   beat: number;
   readable: boolean;
+  ports: number[];
   startedAt: number;
   endedAt?: number;
+}
+
+export function listening(text: string): Map<number, number[]> {
+  const found = new Map<number, number[]>();
+  let pid = 0;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("p")) pid = Number(line.slice(1));
+    else if (line.startsWith("n") && pid) {
+      const port = Number(/:(\d+)$/.exec(line)?.[1]);
+      if (port && !(found.get(pid) ?? []).includes(port)) found.set(pid, [...(found.get(pid) ?? []), port]);
+    }
+  }
+  return found;
 }
 
 export function seconds(etime: string): number {
@@ -84,7 +98,7 @@ export function subtreeOf(rows: readonly ProcRow[], pid: number): ProcRow[] {
 }
 
 const TECH: [RegExp, string][] = [
-  [/\bbootRun\b|spring/i, "java"],
+  [/\bbootRun\b|spring-boot|SpringApplication|\bspring\b/i, "spring"],
   [/\bvitest\b/, "vitest"],
   [/\bvite\b/, "vite"],
   [/\bnext\b/, "next"],
@@ -177,6 +191,7 @@ interface Tracked {
   lastOutput: number;
   beat: number;
   looked: boolean;
+  ports: number[];
 }
 
 export const POLL_MS = 2000;
@@ -239,10 +254,26 @@ export class ProcessWatch {
           lastOutput: 0,
           beat: 0,
           looked: false,
+          ports: [],
         });
       }
     }
+    const owners = new Map<number, number>();
     for (const one of this.tracked.values()) {
+      if (!one.alive || !byPid.has(one.pid)) continue;
+      owners.set(one.pid, one.pid);
+      for (const child of subtreeOf(rows, one.pid)) owners.set(child.pid, one.pid);
+    }
+    const ports = new Map<number, number[]>();
+    if (owners.size > 0) {
+      const out = await run("lsof", ["-a", "-iTCP", "-sTCP:LISTEN", "-P", "-n", "-Fpn", "-p", [...owners.keys()].join(",")]);
+      for (const [pid, held] of listening(out)) {
+        const owner = owners.get(pid);
+        if (owner) ports.set(owner, [...new Set([...(ports.get(owner) ?? []), ...held])].sort((a, b) => a - b));
+      }
+    }
+    for (const one of this.tracked.values()) {
+      one.ports = one.alive ? (ports.get(one.pid) ?? []) : [];
       const row = byPid.get(one.pid);
       if (one.alive && !row) {
         one.alive = false;
@@ -280,6 +311,7 @@ export class ProcessWatch {
         status: statusOf(one.alive, one.stat, one.cpu, one.lastOutput, now),
         beat: one.beat,
         readable: Boolean(one.out),
+        ports: one.ports,
         startedAt: one.startedAt,
         ...(one.endedAt ? { endedAt: one.endedAt } : {}),
       }));
