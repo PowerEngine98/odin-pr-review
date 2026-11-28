@@ -33,6 +33,7 @@ import {
   type ReviewComment,
   type RunHandle,
 } from "@odin/core";
+import { withColour } from "./processes.js";
 import { savedFor } from "./session.js";
 import { withStamp } from "./stamps.js";
 import { randomUUID } from "node:crypto";
@@ -1264,7 +1265,7 @@ export class PairingSession {
         kind,
         prompt,
         cwd: this.repo,
-        env: forgeEnv(),
+        env: withColour(forgeEnv()),
         ...(args ? { args } : {}),
         onOutput: say,
         onEdit: (change) => this.record(agentId, change),

@@ -50,7 +50,7 @@ import {
   type SupportKind,
 } from "@odin/core";
 import { fileIcons, iconUri } from "./file-icons.js";
-import { ProcessWatch, type SavedProcesses } from "./processes.js";
+import { ProcessWatch, withColour, type SavedProcesses } from "./processes.js";
 import type { FileIcons } from "@odin/webview";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
@@ -4149,7 +4149,7 @@ export class GraphPanel {
       repo: () => this.repo,
       kind: (agent) => this.pairing().agents().find((one) => one.id === agent),
       conversation: (agent) => this.pairing().session(agent),
-      env: () => forgeEnv(),
+      env: () => withColour(forgeEnv()),
       open: (file, args, options) => openPty(file, args, options, vscode.env.appRoot),
       post: (message) => void this.panel.webview.postMessage(message),
       heard: (agent, said) =>
