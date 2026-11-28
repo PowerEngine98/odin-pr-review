@@ -1,6 +1,7 @@
 import {
   cardTitle,
   differs,
+  isTestPath,
   type ChangeGraph,
   type Edge,
   type FileNode,
@@ -290,6 +291,7 @@ function fileView(
     ...(fresh ? { fresh } : {}),
     name: title.name,
     status: node.status,
+    ...((node.isTest ?? isTestPath(node.path)) ? { test: true } : {}),
     viewed: isViewed(node.path),
     additions: title.additions,
     deletions: title.deletions,

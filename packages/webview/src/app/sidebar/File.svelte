@@ -117,6 +117,7 @@
   bind:this={row}
   class="row status-{file.status}"
   class:seen-marked={file.viewed}
+  class:test={file.test}
   class:here
   hidden={!survives}
   style:padding-left="{indent}px"
@@ -191,6 +192,9 @@
        box reads it across the component boundary, which a class could not
        do. */
     --viewed-quiet: 0.55;
+  }
+  .row.test {
+    background: color-mix(in srgb, var(--added) 7%, transparent);
   }
   .row:hover {
     background: var(--vscode-list-hoverBackground);
