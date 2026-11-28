@@ -47,3 +47,11 @@ describe("the icon a file is shown with", () => {
     expect(read("chrome/Tabs.svelte")).toMatch(/<FileIcon path=\{paths\.get\(id\)!\} icons=\{settings\.fileIcons \? model\.current\.fileIcons : undefined\} \/>/);
   });
 });
+
+describe("the icons a reading is sent", () => {
+  it("cover every file the page can draw, tests included while they are hidden, so a test's card and tab wear one too", () => {
+    const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
+    expect(panel).toMatch(/\.\.\.\(this\.withTests\?\.nodes \?\? \[\]\)\.map\(\(placed\) => placed\.path\),/);
+    expect(panel).toMatch(/\.\.\.\(this\.alternate\?\.withTests \?\? this\.alternate\?\.layout\)\?\.nodes\.map\(\(placed\) => placed\.path\) \?\? \[\],/);
+  });
+});

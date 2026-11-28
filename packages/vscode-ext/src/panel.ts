@@ -3215,7 +3215,13 @@ export class GraphPanel {
    * markup that comes back is thrown away; the model inside it is the point.
    */
   private iconsOfGraph(): { fileIcons?: FileIcons } {
-    const icons = fileIcons(this.graph.nodes.map((node) => node.path));
+    const icons = fileIcons(
+      new Set([
+        ...this.graph.nodes.map((node) => node.path),
+        ...(this.withTests?.nodes ?? []).map((placed) => placed.path),
+        ...(this.alternate?.withTests ?? this.alternate?.layout)?.nodes.map((placed) => placed.path) ?? [],
+      ]),
+    );
     return icons ? { fileIcons: icons } : {};
   }
 
