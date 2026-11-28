@@ -1,3 +1,4 @@
+import type { FileIcons } from "../file-icons.js";
 /**
  * The view model the extension embeds in the page.
  *
@@ -328,6 +329,7 @@ export interface ViewModel {
    */
   agents?: AgentView[];
   canReview: boolean;
+  fileIcons?: FileIcons;
   version?: string;
   reading?: Record<string, unknown>;
   xterm?: { script: string; fit: string; css: string };

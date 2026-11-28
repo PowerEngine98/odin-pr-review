@@ -49,6 +49,8 @@ import {
   type Secrets,
   type SupportKind,
 } from "@odin/core";
+import { fileIcons } from "./file-icons.js";
+import type { FileIcons } from "@odin/webview";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
 import { readFileSync, rmSync, existsSync } from "node:fs";
@@ -3209,6 +3211,11 @@ export class GraphPanel {
    * copy of it here would drift from the first the day either changed. The
    * markup that comes back is thrown away; the model inside it is the point.
    */
+  private iconsOfGraph(): { fileIcons?: FileIcons } {
+    const icons = fileIcons(this.graph.nodes.map((node) => node.path));
+    return icons ? { fileIcons: icons } : {};
+  }
+
   private built(layout: GraphLayout): { html: string; model: PageModel | undefined } {
     const dark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
@@ -3230,6 +3237,7 @@ export class GraphPanel {
       // Whether this reading was built with import arrows in it, which decides
       // whether the tabs above the drawing may count them.
       includeImports: GraphPanel.imports,
+      ...this.iconsOfGraph(),
       ...(this.withTests ? { withTests: this.withTests } : {}),
       ...(this.alternate ? { alternate: this.alternate } : {}),
       ...(this.highlight ? { highlight: this.highlight } : {}),
@@ -3354,9 +3362,11 @@ export class GraphPanel {
       // One missing means the drawing is not the shape this thinks it is, and
       // a partial patch would leave the reader looking at a mixture.
       if (nodes.length === wanted.size) {
+        const icons = fileIcons(nodes.map((node) => String((node as { path?: unknown }).path ?? "")));
         void this.panel.webview.postMessage({
           type: "rows",
           nodes,
+          ...(icons ? { fileIcons: icons } : {}),
           ...(withdrawn && withdrawn.length > 0 ? { withdraw: withdrawn } : {}),
           ...(moved
             ? {

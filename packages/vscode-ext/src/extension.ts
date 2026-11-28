@@ -27,6 +27,7 @@ import {
   describeDelta,
   type LocalBranch,
 } from "@odin/core";
+import { iconsFrom } from "./file-icons.js";
 import { loadHighlighter } from "@odin/highlight";
 import { execFile } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
@@ -246,6 +247,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // The graph's tab wears the extension's own mark, which is a file on disk:
   // the tab belongs to the editor rather than to the page inside it.
   GraphPanel.assets = context.extensionUri;
+  if (typeof context.extensionUri?.fsPath === "string") iconsFrom(context.extensionUri.fsPath);
 
   viewed = new ViewedStore(context.workspaceState);
   // Per workspace, like the marks above and unlike the settings below: which

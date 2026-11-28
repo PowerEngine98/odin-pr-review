@@ -5,3 +5,4 @@ export * from "./svg.js";
 export * from "./sidebar.js";
 export * from "./sidebar-views.js";
 export type * from "./sidebar-model.js";
+export * from "./file-icons.js";

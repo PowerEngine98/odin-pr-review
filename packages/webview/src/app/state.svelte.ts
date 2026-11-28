@@ -944,6 +944,13 @@ export function listen(): void {
         const patches: Record<string, unknown>[] = Array.isArray(message.nodes)
           ? message.nodes
           : [];
+        if (message.fileIcons) {
+          const known = model.current.fileIcons ?? { of: {}, icons: {} };
+          model.current.fileIcons = {
+            of: { ...known.of, ...message.fileIcons.of },
+            icons: { ...known.icons, ...message.fileIcons.icons },
+          };
+        }
         /*
          * Arrows the host cannot vouch for yet.
          *

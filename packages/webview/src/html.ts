@@ -24,6 +24,7 @@ import {
   type Theme,
 } from "@odin/core";
 
+import type { FileIcons } from "./file-icons.js";
 import { APP_SCRIPT, APP_STYLES } from "./generated/app.js";
 import { renderApp } from "./generated/ssr.js";
 import { ODIN_MARK } from "./mark.js";
@@ -102,6 +103,7 @@ export interface RenderOptions {
   merging?: unknown;
   /** Whether the host can post a review; without it the composer is pointless. */
   canReview?: boolean;
+  fileIcons?: FileIcons;
   version?: string;
   reading?: Record<string, unknown>;
   /** Settings the page draws switched off, each with what it would take to have it. */
@@ -420,6 +422,7 @@ export function renderHtml(
       ...(graph.meta.worktree ? { worktree: true } : {}),
     },
     canReview: options.canReview === true,
+    ...(options.fileIcons ? { fileIcons: options.fileIcons } : {}),
     ...(options.version ? { version: options.version } : {}),
     ...(options.reading ? { reading: options.reading } : {}),
     ...(options.locked ? { locked: options.locked } : {}),

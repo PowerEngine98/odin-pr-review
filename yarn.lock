@@ -1550,6 +1550,11 @@ chownr@^1.1.1:
   resolved "https://registry.yarnpkg.com/chownr/-/chownr-1.1.4.tgz#6fc9d7b42d32a583596337666e7d08084da2cc6b"
   integrity sha512-jJ0bqzaylmJtVnNgzTeSOs8DPavpbYgEr/b0YL8/2GO3xJEhInFmhKMUnEJQjZumK7KXGFhUy89PrsJWlakBVg==
 
+chroma-js@^3.2.0:
+  version "3.3.0"
+  resolved "https://registry.yarnpkg.com/chroma-js/-/chroma-js-3.3.0.tgz#2244067e37c31bfccd5648913cb38e4fc81abeb8"
+  integrity sha512-afEEP0zHO4dxwrqTllKSFWs83+u+htEsmyvSe8IPjKjrfy3qmNk+vpWAdpbA2fJa14LTgkGyemC74J6v3HSUZA==
+
 cli-cursor@^5.0.0:
   version "5.0.0"
   resolved "https://registry.yarnpkg.com/cli-cursor/-/cli-cursor-5.0.0.tgz#24a4831ecf5a6b01ddeb32fb71a4b2088b0dce38"
@@ -2875,6 +2880,13 @@ marked@^16.3.0:
   version "16.4.2"
   resolved "https://registry.yarnpkg.com/marked/-/marked-16.4.2.tgz#4959a64be6c486f0db7467ead7ce288de54290a3"
   integrity sha512-TI3V8YYWvkVf3KJe1dRkpnjs68JUPyEa5vjKrp1XEEJUAOaQc+Qj+L1qWbPd0SJuAdQkFU0h73sXXqwDYxsiDA==
+
+material-icon-theme@5.40.0:
+  version "5.40.0"
+  resolved "https://registry.yarnpkg.com/material-icon-theme/-/material-icon-theme-5.40.0.tgz#3ffad32f5a2afeefc243b38799ed526189ccbae3"
+  integrity sha512-IrvgusbwtqxhUtVgUy0nToJcfN7CYVRdbBxKMfbo0vab9flVBHA5INZ9UiE5SgRj+PM6opCl5nn5TZdpm2UaxA==
+  dependencies:
+    chroma-js "^3.2.0"
 
 math-intrinsics@^1.1.0:
   version "1.1.0"
