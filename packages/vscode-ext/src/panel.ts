@@ -583,6 +583,10 @@ export async function keepPageError(file: string, text: string): Promise<void> {
   }
 }
 
+export function undockedHtml(html: string, agent: string): string {
+  return html.replace(/<body\b/, `<body data-undocked="${agent}"`);
+}
+
 export const STACK_FRESH_MS = 60_000;
 
 export class GraphPanel {
@@ -3676,6 +3680,15 @@ export class GraphPanel {
         else await watch.remove(pid);
         return;
       }
+      if (reply.type === "undock" || reply.type === "dock" || reply.type === "focusUndocked") {
+        const asked = (message as unknown as { payload?: { agent?: unknown; name?: unknown } }).payload;
+        const agent = typeof asked?.agent === "string" ? asked.agent : "";
+        if (!/^[\w-]+$/.test(agent)) return;
+        if (reply.type === "undock") await this.undock(agent, typeof asked?.name === "string" ? asked.name : agent);
+        else if (reply.type === "dock") this.dock(agent);
+        else this.undocked.get(agent)?.reveal(undefined, false);
+        return;
+      }
       if (reply.type === "procWatch") {
         this.processes();
         return;
@@ -4108,6 +4121,61 @@ export class GraphPanel {
 
   private terminals: CliSessions | undefined;
 
+  private readonly undocked = new Map<string, vscode.WebviewPanel>();
+
+  private sendUndocked(): void {
+    void this.panel.webview.postMessage({ type: "undocked", agents: [...this.undocked.keys()] });
+  }
+
+  private async undock(agent: string, name: string): Promise<void> {
+    const known = this.undocked.get(agent);
+    if (known) {
+      known.reveal(undefined, false);
+      return;
+    }
+    const number = this.graph.meta.pullRequest?.number;
+    const window = vscode.window.createWebviewPanel(
+      "odin.console",
+      `${name}${number ? ` · #${number}` : ""}`,
+      { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: GraphPanel.assets ? [GraphPanel.assets] : [],
+      },
+    );
+    if (GraphPanel.assets) {
+      window.iconPath = {
+        light: vscode.Uri.joinPath(GraphPanel.assets, "media", "odin-light.svg"),
+        dark: vscode.Uri.joinPath(GraphPanel.assets, "media", "odin-dark.svg"),
+      };
+    }
+    this.undocked.set(agent, window);
+    const detach = this.attach({
+      html: (html) => {
+        window.webview.html = undockedHtml(html, agent);
+      },
+      message: (message) => void window.webview.postMessage(message),
+    });
+    const heard = window.webview.onDidReceiveMessage((message: unknown) => this.receive(message));
+    window.onDidDispose(() => {
+      detach();
+      heard.dispose();
+      if (this.undocked.get(agent) === window) this.undocked.delete(agent);
+      this.sendUndocked();
+    });
+    this.sendUndocked();
+    try {
+      await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");
+    } catch {
+      return;
+    }
+  }
+
+  private dock(agent: string): void {
+    this.undocked.get(agent)?.dispose();
+  }
+
   private watch: ProcessWatch | undefined;
 
   private readonly roots = new Map<string, Set<number>>();
@@ -4213,6 +4281,7 @@ export class GraphPanel {
     // Turns in flight belong to this reading, and there is nowhere left for
     // them to write. What they have already said is on disk.
     this.watch?.stop();
+    for (const window of [...this.undocked.values()]) window.dispose();
     if (this.paired) PairingSession.release(this.pairedKey, this);
     this.touring?.stop();
     GraphPanel.tours?.flush(this.tourKey());

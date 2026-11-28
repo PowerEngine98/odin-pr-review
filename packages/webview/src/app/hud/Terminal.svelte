@@ -38,6 +38,7 @@
   import { showPicture } from "./picture.svelte.js";
   import Proc from "./Proc.svelte";
   import { procs, shortCommand, usageOf } from "./processes.svelte.js";
+  import { undock } from "./undock.svelte.js";
 
   let {
     id,
@@ -966,6 +967,10 @@
   }
 
   function close(): void {
+    if (undock.as === id) {
+      notify("dock", { agent: id });
+      return;
+    }
     settings.terminals = (settings.terminals ?? []).filter((held) => held !== id);
   }
 </script>
@@ -975,10 +980,9 @@
   class:sizing={dragging !== null}
   class:folded
   class:filling={tab === "cli" && !folded}
-  style="width:{settings.terminalWidth ?? 360}px;max-height:{Math.min(
-    settings.terminalHeight ?? 320,
-    cap ?? Number.POSITIVE_INFINITY,
-  )}px"
+  style={undock.as === id
+    ? undefined
+    : `width:${settings.terminalWidth ?? 360}px;max-height:${Math.min(settings.terminalHeight ?? 320, cap ?? Number.POSITIVE_INFINITY)}px`}
 >
   <!--
     The two edges that face the drawing. The other two are against the window
@@ -1085,6 +1089,30 @@
     {/if}
     <!-- Before the cross, and the cross stays last: the one that ends things is
          the one that should be hardest to hit by accident. -->
+    {#if undock.as === id}
+      <button
+        class="terminal-close"
+        title="Dock {name}'s console back into the drawing"
+        aria-label="Dock {name}'s console back"
+        onclick={() => notify("dock", { agent: id })}
+      >
+        <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
+          <path d="M3 3h10v10H3z M3 9h6v4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" />
+        </svg>
+      </button>
+    {:else}
+      <button
+        class="terminal-close"
+        title="Undock {name}'s console into a window of its own"
+        aria-label="Undock {name}'s console"
+        onclick={() => notify("undock", { agent: id, name })}
+      >
+        <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true">
+          <path d="M9 3h4v4M13 3 8 8M11 9.5V13H3V5h3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+    {/if}
+    {#if undock.as !== id}
     <button
       class="terminal-close"
       title={folded ? "Show the log" : "Fold the log away"}
@@ -1106,6 +1134,7 @@
         </svg>
       {/if}
     </button>
+    {/if}
     <button
       class="terminal-close"
       title="Close {name}'s terminal"
