@@ -2191,7 +2191,7 @@
     flex: 0 0 auto;
     align-items: center;
     gap: 8px;
-    min-height: 34px;
+    min-height: 40px;
     padding: 5px 8px;
     border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     overflow-x: auto;
@@ -2218,8 +2218,8 @@
     position: relative;
     display: inline-flex;
     flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
   }
   .proc-face {
     display: inline-flex;
@@ -2235,16 +2235,16 @@
     box-shadow: 0 0 0 2px var(--vscode-focusBorder, #1f6feb);
   }
   .proc-face img {
-    width: 14px;
-    height: 14px;
+    width: 18px;
+    height: 18px;
     border-radius: 3px;
   }
   .proc-badge {
     position: absolute;
     right: -2px;
     bottom: -2px;
-    width: 9px;
-    height: 9px;
+    width: 10px;
+    height: 10px;
     border-radius: 50%;
     border: 2px solid var(--bg);
   }

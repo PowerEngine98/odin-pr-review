@@ -203,6 +203,18 @@ interface Tracked {
   ports: number[];
 }
 
+export interface SavedProcesses {
+  roots: Record<string, number[]>;
+  procs: { pid: number; agent: string; command: string; startedAt: number }[];
+}
+
+export interface ProcessMemory {
+  read(): SavedProcesses | undefined;
+  write(saved: SavedProcesses): void;
+}
+
+export const SAME_START_MS = 5000;
+
 export const POLL_MS = 2000;
 export const SHOWN_AFTER_S = 3;
 export const GONE_AFTER_MS = 10_000;
@@ -214,13 +226,65 @@ export class ProcessWatch {
   private timer: ReturnType<typeof setInterval> | undefined;
   private last = "";
   private busy = false;
+  private restored = false;
+  private saved = "";
+  private readonly kept = new Map<string, Set<number>>();
 
   constructor(
     private readonly roots: () => Map<string, number[]>,
     private readonly post: (message: unknown) => void,
     private readonly iconUri: (name: string) => string | undefined,
     private readonly snapshot: () => Promise<string> = () => run("ps", ["-A", "-o", "pid=,ppid=,stat=,etime=,pcpu=,pmem=,rss=,command="]),
+    private readonly memory?: ProcessMemory,
   ) {}
+
+  private restore(rows: readonly ProcRow[], now: number): void {
+    if (this.restored) return;
+    this.restored = true;
+    const saved = this.memory?.read();
+    if (!saved) return;
+    const byPid = new Map(rows.map((row) => [row.pid, row]));
+    for (const [agent, pids] of Object.entries(saved.roots ?? {})) {
+      const alive = pids.filter((pid) => byPid.has(pid));
+      if (alive.length > 0) this.kept.set(agent, new Set(alive));
+    }
+    for (const one of saved.procs ?? []) {
+      const row = byPid.get(one.pid);
+      if (!row || row.command !== one.command) continue;
+      if (Math.abs(now - row.seconds * 1000 - one.startedAt) > SAME_START_MS) continue;
+      this.tracked.set(one.pid, {
+        pid: one.pid,
+        agent: one.agent,
+        command: one.command,
+        icon: techOf([row.command, ...subtreeOf(rows, row.pid).map((child) => child.command)]),
+        stat: row.stat,
+        cpu: row.cpu,
+        mem: row.mem,
+        rss: row.rss,
+        alive: true,
+        startedAt: one.startedAt,
+        size: 0,
+        lastOutput: 0,
+        beat: 0,
+        looked: false,
+        ports: [],
+      });
+    }
+  }
+
+  private remember(roots: Map<string, number[]>): void {
+    if (!this.memory) return;
+    const saved: SavedProcesses = {
+      roots: Object.fromEntries([...roots].map(([agent, pids]) => [agent, [...new Set(pids)]])),
+      procs: [...this.tracked.values()]
+        .filter((one) => one.alive)
+        .map((one) => ({ pid: one.pid, agent: one.agent, command: one.command, startedAt: one.startedAt })),
+    };
+    const text = JSON.stringify(saved);
+    if (text === this.saved) return;
+    this.saved = text;
+    this.memory.write(saved);
+  }
 
   start(): void {
     if (this.timer) return;
@@ -247,7 +311,13 @@ export class ProcessWatch {
     const rows = parsePs(await this.snapshot());
     const byPid = new Map(rows.map((row) => [row.pid, row]));
     const now = Date.now();
-    for (const [agent, pids] of this.roots()) {
+    this.restore(rows, now);
+    const roots = new Map<string, number[]>();
+    for (const [agent, pids] of [...this.kept, ...this.roots()]) {
+      roots.set(agent, [...new Set([...(roots.get(agent) ?? []), ...pids])].filter((pid) => byPid.has(pid)));
+    }
+    for (const [agent, pids] of roots) this.kept.set(agent, new Set(pids));
+    for (const [agent, pids] of roots) {
       for (const row of launched(rows, pids)) {
         if (this.tracked.has(row.pid) || this.removed.has(row.pid) || row.seconds < SHOWN_AFTER_S) continue;
         const commands = [row.command, ...subtreeOf(rows, row.pid).map((one) => one.command)];
@@ -324,6 +394,7 @@ export class ProcessWatch {
         this.removed.add(one.pid);
       }
     }
+    this.remember(roots);
     this.send(now);
   }
 

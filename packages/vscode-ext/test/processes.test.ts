@@ -155,9 +155,9 @@ describe("a Spring server's icon", () => {
 });
 
 describe("a process avatar", () => {
-  it("is a round avatar the size of a comment's, never squashed, with its ports, CPU and RAM in its tooltip", () => {
+  it("is a round avatar the size of the faces in the drawing's corner, never squashed, with its ports, CPU and RAM in its tooltip", () => {
     const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
-    expect(terminal).toMatch(/\.proc-avatar \{[^}]*width: 22px;\s*height: 22px;/);
+    expect(terminal).toMatch(/\.proc-avatar \{[^}]*width: 28px;\s*height: 28px;/);
     expect(terminal).toMatch(/\.proc-face \{[^}]*overflow: hidden;\s*border-radius: 50%;/);
     expect(terminal).toMatch(/<span class="proc-face">[\s\S]*?<\/span>\s*\{#key proc\.beat\}/);
     expect(terminal).toMatch(/\{proc\.ports\.length \? ` · port \$\{proc\.ports\.join\(", "\)\}` : ""\}/);
@@ -201,5 +201,45 @@ describe("the processes strip, as it fills", () => {
     expect(store).toMatch(/return `CPU \$\{proc\.cpu\}% · RAM \$\{sizeOf\(proc\.memBytes\)\} \(\$\{proc\.memPercent\}%\)`;/);
     expect(readFileSync(join(__dirname, "../../webview/src/app/hud/Proc.svelte"), "utf8")).toMatch(/\{usageOf\(proc\)\}/);
     expect(readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8")).toMatch(/&#10;\{usageOf\(proc\)\}"/);
+  });
+});
+
+describe("the processes an agent started, after the window reloads", () => {
+  it("are picked up again from what was saved: a process still running the same command since the same moment, and the agent's tree walked again", async () => {
+    let saved: unknown;
+    const memory = { read: () => saved as never, write: (one: unknown) => (saved = JSON.parse(JSON.stringify(one))) };
+    const before = [
+      "100 1 S 10:00 0.0 0.1 1000 claude",
+      "102 100 S 00:30 0.0 0.0 900 /bin/zsh -c x",
+      "103 102 S 00:30 1.0 0.5 10000 java -jar app.jar",
+    ].join("\n");
+    const first = new ProcessWatch(() => new Map([["claude", [100]]]), () => undefined, () => undefined, async () => before, memory);
+    await first.poll();
+    expect((saved as { procs: { pid: number }[] }).procs.map((one) => one.pid)).toEqual([103]);
+    expect((saved as { roots: Record<string, number[]> }).roots).toEqual({ claude: [100] });
+
+    const after = [
+      "103 1 S 00:32 1.0 0.5 10000 java -jar app.jar",
+      "200 1 S 00:31 0.0 0.0 900 /bin/zsh -c y",
+      "201 200 S 00:31 0.0 0.0 900 java -jar unrelated.jar",
+    ].join("\n");
+    const posted: { lists?: Record<string, { pid: number; status: string }[]> }[] = [];
+    const reloaded = new ProcessWatch(() => new Map(), (message) => posted.push(message as never), () => undefined, async () => after, memory);
+    await reloaded.poll();
+    expect(posted.at(-1)!.lists!.claude!.map((one) => [one.pid, one.status])).toEqual([[103, "running"]]);
+  });
+
+  it("is never a different process that happens to have been given the same number", async () => {
+    const saved = { roots: {}, procs: [{ pid: 103, agent: "claude", command: "java -jar app.jar", startedAt: Date.now() - 3_600_000 }] };
+    const posted: { lists?: Record<string, unknown[]> }[] = [];
+    const watch = new ProcessWatch(
+      () => new Map(),
+      (message) => posted.push(message as never),
+      () => undefined,
+      async () => "103 1 S 00:05 0.0 0.0 900 java -jar app.jar",
+      { read: () => saved, write: () => undefined },
+    );
+    await watch.poll();
+    expect(posted.at(-1)?.lists?.claude ?? []).toEqual([]);
   });
 });

@@ -50,7 +50,7 @@ import {
   type SupportKind,
 } from "@odin/core";
 import { fileIcons, iconUri } from "./file-icons.js";
-import { ProcessWatch } from "./processes.js";
+import { ProcessWatch, type SavedProcesses } from "./processes.js";
 import type { FileIcons } from "@odin/webview";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
@@ -4111,6 +4111,10 @@ export class GraphPanel {
 
   private readonly roots = new Map<string, Set<number>>();
 
+  private processesKey(): string {
+    return `odin.processes:${readingKey(this.graph, this.repo)}`;
+  }
+
   private processes(): ProcessWatch {
     if (!this.watch) {
       this.watch = new ProcessWatch(
@@ -4127,6 +4131,13 @@ export class GraphPanel {
         },
         (message) => void this.panel.webview.postMessage(message),
         iconUri,
+        undefined,
+        GraphPanel.store
+          ? {
+              read: () => GraphPanel.store?.get<SavedProcesses>(this.processesKey()),
+              write: (saved) => void GraphPanel.store?.update(this.processesKey(), saved),
+            }
+          : undefined,
       );
       this.watch.start();
     }
