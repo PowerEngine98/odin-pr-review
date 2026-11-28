@@ -21,3 +21,10 @@ describe("opening a file from its card", () => {
     expect(panel).toMatch(/if \(!file\.startsWith\(join\(this\.repo, "\/"\)\) \|\| !existsSync\(file\)\) return false;/);
   });
 });
+
+describe("Open File at This Line, from the context menu", () => {
+  it("opens the file with the program the system gives it, as the card's open button does, and the editor otherwise", () => {
+    const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
+    expect(panel).toMatch(/if \(where\.odinSide !== "base" && \(await panel\.openOnDisk\(where\.odinPath\)\)\) return;\s*await panel\.reveal\(/);
+  });
+});

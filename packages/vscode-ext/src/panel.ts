@@ -2290,6 +2290,7 @@ export class GraphPanel {
   }): Promise<void> {
     const panel = GraphPanel.active;
     if (!panel || !where?.odinPath || !where.odinLine) return;
+    if (where.odinSide !== "base" && (await panel.openOnDisk(where.odinPath))) return;
     await panel.reveal(
       where.odinPath,
       where.odinLine,
