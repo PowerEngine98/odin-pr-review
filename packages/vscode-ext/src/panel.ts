@@ -3665,13 +3665,14 @@ export class GraphPanel {
         });
         return;
       }
-      if (reply.type === "procAttach" || reply.type === "procDetach" || reply.type === "procKill" || reply.type === "procRemove") {
+      if (reply.type === "procAttach" || reply.type === "procDetach" || reply.type === "procKill" || reply.type === "procRemove" || reply.type === "procRerun") {
         const pid = Number((message as unknown as { payload?: { pid?: unknown } }).payload?.pid);
         if (!Number.isInteger(pid) || pid <= 0) return;
         const watch = this.processes();
         if (reply.type === "procAttach") watch.attach(pid);
         else if (reply.type === "procDetach") watch.detach(pid);
         else if (reply.type === "procKill") await watch.kill(pid);
+        else if (reply.type === "procRerun") await watch.rerun(pid);
         else await watch.remove(pid);
         return;
       }

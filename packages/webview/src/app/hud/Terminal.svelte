@@ -225,6 +225,15 @@
     if (tab.startsWith("proc:") && !opened) tab = "log";
   });
 
+  $effect(() => {
+    const swapped = (event: MessageEvent) => {
+      const message = event.data as { type?: string; agent?: string; from?: number; to?: number };
+      if (message?.type === "procReplaced" && message.agent === id && tab === `proc:${message.from}`) tab = `proc:${message.to}`;
+    };
+    window.addEventListener("message", swapped);
+    return () => window.removeEventListener("message", swapped);
+  });
+
   function removeProc(pid: number): void {
     if (tab === `proc:${pid}`) tab = "log";
     notify("procRemove", { pid });
@@ -1273,6 +1282,12 @@
                 <span class="proc-badge {proc.status}" class:pulse={proc.beat > 0 && proc.status !== "terminated"}></span>
               {/key}
             </span>
+            <span class="proc-label">
+              <span class="proc-name">{shortCommand(proc.command)}</span>
+              {#each proc.ports as port (port)}
+                <span class="proc-port">:{port}</span>
+              {/each}
+            </span>
           </button>
           <button
             class="proc-x"
@@ -1669,7 +1684,7 @@
     record, same thread, same audit. What it lacks is a file and a line, so it
     leaves no mark in any margin — which is the truth about it.
   -->
-  {#if tab !== "cli"}
+  {#if tab !== "cli" && !tab.startsWith("proc:")}
   <form
     class="terminal-ask"
     onsubmit={(event) => {
@@ -2208,11 +2223,53 @@
   }
   .proc-open {
     display: inline-flex;
+    align-items: center;
+    gap: 0;
     padding: 0;
     border: 0;
-    border-radius: 50%;
-    background: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
     cursor: pointer;
+    transition:
+      background-color 0.2s ease,
+      padding 0.25s ease,
+      gap 0.25s ease;
+  }
+  .proc-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 0;
+    overflow: hidden;
+    opacity: 0;
+    white-space: nowrap;
+    transition:
+      max-width 0.25s ease,
+      opacity 0.2s ease;
+  }
+  .proc:hover .proc-open,
+  .proc:focus-within .proc-open {
+    gap: 6px;
+    padding-right: 10px;
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+  }
+  .proc:hover .proc-label,
+  .proc:focus-within .proc-label {
+    max-width: 260px;
+    opacity: 1;
+  }
+  .proc-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .proc-port {
+    padding: 0 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--proc-running) 18%, transparent);
+    color: var(--proc-running);
+    font-variant-numeric: tabular-nums;
   }
   .proc-avatar {
     position: relative;

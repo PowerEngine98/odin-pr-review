@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isShell, launched, listening, parsePs, ProcessWatch, seconds, statusOf, techOf, withColour } from "../src/processes.js";
+import { daemonRuns, isShell, launched, listening, parsePs, ProcessWatch, runnable, seconds, shellLine, statusOf, techOf, withColour } from "../src/processes.js";
 
 function until(what: () => boolean, ms = 15_000): Promise<void> {
   const stop = Date.now() + ms;
@@ -162,7 +162,9 @@ describe("a process avatar", () => {
     expect(terminal).toMatch(/<span class="proc-face">[\s\S]*?<\/span>\s*\{#key proc\.beat\}/);
     expect(terminal).toMatch(/\{proc\.ports\.length \? ` · port \$\{proc\.ports\.join\(", "\)\}` : ""\}/);
     expect(terminal).toMatch(/\.procs \{\s*display: flex;\s*flex: 0 0 auto;/);
-    expect(terminal).not.toMatch(/class="proc-name"/);
+    expect(terminal).toMatch(/<span class="proc-label">\s*<span class="proc-name">\{shortCommand\(proc\.command\)\}<\/span>/);
+    expect(terminal).toMatch(/\.proc-label \{[^}]*max-width: 0;[^}]*opacity: 0;[^}]*transition:/);
+    expect(terminal).toMatch(/\.proc:hover \.proc-label,\s*\.proc:focus-within \.proc-label \{\s*max-width: 260px;\s*opacity: 1;/);
   });
 });
 
@@ -261,5 +263,93 @@ describe("what an agent's processes print", () => {
     ps += "\n104 103 S 00:20 5.0 1.0 9000 node /repo/node_modules/vite/bin/vite.js";
     await watch.poll();
     expect(posted.at(-1)!.lists!.claude![0]!.icon).toBe("vite");
+  });
+});
+
+describe("rerunning a process", () => {
+  it("runs the shell line the agent started it with, the script whole", () => {
+    expect(shellLine("/bin/zsh -c -l source /gone.sh && eval 'cd api && ./gradlew bootRun'")).toEqual({
+      program: "/bin/zsh",
+      args: ["-c", "-l", "source /gone.sh && eval 'cd api && ./gradlew bootRun'"],
+    });
+    expect(shellLine("sh -c node server.js > out.txt; true")).toEqual({ program: "sh", args: ["-c", "node server.js > out.txt; true"] });
+    expect(shellLine("node server.js")).toBeUndefined();
+    expect(shellLine("/bin/zsh -l")).toBeUndefined();
+    expect(runnable("source /no/such/snapshot.sh && eval 'yarn dev'")).toBe("eval 'yarn dev'");
+  });
+
+  it("finds what runs under a shell given as the walk's own root", () => {
+    const rows = parsePs(["300 1 S 00:05 0.0 0.0 900 sh -c node server.js", "301 300 S 00:05 0.0 0.0 900 node server.js"].join("\n"));
+    expect(launched(rows, [300]).map((row) => row.pid)).toEqual([301]);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("a real process rerun from its tab", () => {
+  it("is stopped, started again from the same line into the same output, and its tab moves to the new one", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "odin-rerun-"));
+    const out = join(dir, "out.txt");
+    const fd = openSync(out, "a");
+    const shell = spawn("sh", ["-c", `node -e 'console.log("run "+process.pid);setInterval(()=>{},1000)'; true`], { stdio: ["ignore", fd, fd] });
+    closeSync(fd);
+    const posted: { type?: string; from?: number; to?: number; lists?: Record<string, { pid: number; rerunnable: boolean }[]> }[] = [];
+    const watch = new ProcessWatch(() => new Map([["claude", [process.pid]]]), (message) => posted.push(message as never), () => undefined);
+    let first: number | undefined;
+    try {
+      await until(() => {
+        void watch.poll();
+        const found = [...posted].reverse().find((one) => one.type === "processes")?.lists?.claude?.find((one) => one.rerunnable);
+        first = found?.pid;
+        return Boolean(first);
+      });
+      await watch.rerun(first!);
+      await until(() => {
+        void watch.poll();
+        return posted.some((one) => one.type === "procReplaced" && one.from === first);
+      });
+      const swap = posted.find((one) => one.type === "procReplaced")!;
+      expect(swap.to).not.toBe(first);
+      await until(() => (readFileSync(out, "utf8").match(/run \d+/g) ?? []).length >= 2);
+      expect(readFileSync(out, "utf8")).toMatch(/rerun by Odin/);
+      await watch.kill(swap.to!);
+    } finally {
+      watch.stop();
+      shell.kill("SIGKILL");
+      if (first) {
+        try {
+          process.kill(first, "SIGKILL");
+        } catch {
+          void 0;
+        }
+      }
+    }
+  }, 60_000);
+});
+
+describe("a process tab", () => {
+  it("has its stats and its Rerun and Kill at the bottom, and no composer", () => {
+    const proc = readFileSync(join(__dirname, "../../webview/src/app/hud/Proc.svelte"), "utf8");
+    expect(proc.indexOf('class="proc-screen"')).toBeLessThan(proc.indexOf('class="proc-foot"'));
+    expect(proc).toMatch(/notify\("procRerun", \{ pid \}\)/);
+    const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
+    expect(terminal).toMatch(/\{#if tab !== "cli" && !tab\.startsWith\("proc:"\)\}/);
+    expect(terminal).toMatch(/message\?\.type === "procReplaced" && message\.agent === id && tab === `proc:\$\{message\.from\}`\) tab = `proc:\$\{message\.to\}`/);
+  });
+});
+
+describe("a Spring app Gradle's daemon runs for a bootRun the agent started", () => {
+  it("counts as the bootRun's own: started by the daemon after it, in the folder it was run from", () => {
+    const rows = parsePs(
+      [
+        "50 1 S 05:00:00 0.1 0.5 9000 java -jar gradle-wrapper.jar org.gradle.wrapper.GradleWrapperMain bootRun",
+        "60 1 S 10:00:00 0.1 3.0 90000 java org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.10",
+        "61 60 S 04:59:00 120.0 2.0 70000 java -cp app com.shop.Application",
+        "62 60 S 09:00:00 50.0 2.0 70000 java -cp old com.shop.Application",
+        "63 60 S 04:58:00 30.0 2.0 70000 java -cp other com.other.Application",
+      ].join("\n"),
+    );
+    const now = Date.now();
+    const cwd = (pid: number) => ({ 61: "/work/shop", 62: "/work/shop", 63: "/work/other" })[pid];
+    expect(daemonRuns(rows, { startedAt: now - 5 * 3600 * 1000, cwd: "/work/shop" }, cwd, now)).toEqual([61]);
+    expect(daemonRuns(rows, { startedAt: now - 5 * 3600 * 1000 }, cwd, now)).toEqual([]);
   });
 });

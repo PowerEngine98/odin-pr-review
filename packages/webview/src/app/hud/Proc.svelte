@@ -68,7 +68,14 @@
 </script>
 
 <div class="proc-view">
-  <div class="proc-head">
+  {#if !readable}
+    <p class="proc-note">
+      This process writes to {agent === "claude" ? "Claude" : "the agent"} directly rather than to a file, so its output cannot be followed
+      from here. Processes started in the background can be.
+    </p>
+  {/if}
+  <div class="proc-screen" bind:this={holder}></div>
+  <div class="proc-foot">
     {#if procs.icons[proc.icon]}<img class="proc-head-icon" src={procs.icons[proc.icon]} alt="" />{/if}
     <code class="proc-command" title={proc.command}>{proc.command}</code>
     <span class="proc-pid">PID {proc.pid}</span>
@@ -79,17 +86,13 @@
       <span class="proc-pid" title="Listening on port {port}">port {port}</span>
     {/each}
     <span class="proc-state {proc.status}">{proc.status}</span>
+    {#if proc.rerunnable}
+      <button class="proc-rerun" title="Stop it, then run the same command again, from the same folder" onclick={() => notify("procRerun", { pid })}>Rerun</button>
+    {/if}
     {#if proc.status !== "terminated"}
       <button class="proc-kill" title="Stop this process and everything it started" onclick={() => notify("procKill", { pid })}>Kill</button>
     {/if}
   </div>
-  {#if !readable}
-    <p class="proc-note">
-      This process writes to {agent === "claude" ? "Claude" : "the agent"} directly rather than to a file, so its output cannot be followed
-      from here. Processes started in the background can be.
-    </p>
-  {/if}
-  <div class="proc-screen" bind:this={holder}></div>
 </div>
 
 <style>
@@ -99,12 +102,13 @@
     flex-direction: column;
     min-height: 0;
   }
-  .proc-head {
+  .proc-foot {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     gap: 8px;
-    padding: 4px 8px;
-    border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+    padding: 6px 8px;
+    border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     color: var(--muted);
     font-size: 10px;
   }
@@ -127,6 +131,15 @@
   .proc-state.idle { color: var(--proc-idle); }
   .proc-state.stopped { color: var(--proc-stopped); }
   .proc-state.terminated { color: var(--proc-terminated); }
+  .proc-rerun {
+    padding: 1px 8px;
+    border: 1px solid color-mix(in srgb, var(--proc-running) 60%, transparent);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--proc-running);
+    font: inherit;
+    cursor: pointer;
+  }
   .proc-kill {
     padding: 1px 8px;
     border: 1px solid color-mix(in srgb, var(--proc-terminated) 60%, transparent);

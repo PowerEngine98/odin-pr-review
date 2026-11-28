@@ -1,5 +1,5 @@
-import { execFile } from "node:child_process";
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { execFile, spawn } from "node:child_process";
+import { closeSync, existsSync, openSync, readSync, statSync, writeSync } from "node:fs";
 
 export interface ProcRow {
   pid: number;
@@ -21,6 +21,7 @@ export interface ProcView {
   status: ProcStatus;
   beat: number;
   readable: boolean;
+  rerunnable: boolean;
   ports: number[];
   cpu: number;
   memPercent: number;
@@ -86,7 +87,8 @@ export function launched(rows: readonly ProcRow[], roots: readonly number[]): Pr
       else walk(child.pid, false);
     }
   };
-  for (const root of roots) walk(root, false);
+  const shells = new Set(rows.filter((row) => isShell(row.command)).map((row) => row.pid));
+  for (const root of roots) walk(root, shells.has(root));
   return found;
 }
 
@@ -201,6 +203,42 @@ interface Tracked {
   beat: number;
   looked: boolean;
   ports: number[];
+  shell?: string;
+  cwd?: string;
+  adopted: number[];
+}
+
+export const GRADLE_CLIENT = /GradleWrapperMain|gradle-launcher|(^|\/)gradlew?(\s|$)/;
+export const GRADLE_DAEMON = /GradleDaemon/;
+
+export function daemonRuns(
+  rows: readonly ProcRow[],
+  client: { startedAt: number; cwd?: string },
+  cwdOfPid: (pid: number) => string | undefined,
+  now: number,
+): number[] {
+  if (!client.cwd) return [];
+  const byPid = new Map(rows.map((row) => [row.pid, row]));
+  return rows
+    .filter((row) => GRADLE_DAEMON.test(byPid.get(row.ppid)?.command ?? ""))
+    .filter((row) => now - row.seconds * 1000 >= client.startedAt - 1000)
+    .filter((row) => cwdOfPid(row.pid) === client.cwd)
+    .map((row) => row.pid);
+}
+
+export function shellLine(command: string): { program: string; args: string[] } | undefined {
+  const match = /^(\S+)((?:\s+-\w+)*)\s+(.+)$/s.exec(command.trim());
+  if (!match || !isShell(command) || !/(^|\s)-\w*c\w*(\s|$)/.test(match[2] ?? "")) return undefined;
+  return { program: match[1]!, args: [...(match[2] ?? "").trim().split(/\s+/).filter(Boolean), match[3]!] };
+}
+
+export function runnable(script: string): string {
+  return script.replace(/\bsource\s+(\S+)\s*&&\s*/g, (all, file: string) => (existsSync(file) ? all : ""));
+}
+
+export async function cwdOf(pid: number): Promise<string | undefined> {
+  const out = await run("lsof", ["-a", "-p", String(pid), "-d", "cwd", "-Fn"]);
+  return out.split("\n").find((line) => line.startsWith("n/"))?.slice(1);
 }
 
 export function withColour(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -213,7 +251,7 @@ export function withColour(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 export interface SavedProcesses {
   roots: Record<string, number[]>;
-  procs: { pid: number; agent: string; command: string; startedAt: number }[];
+  procs: { pid: number; agent: string; command: string; startedAt: number; shell?: string; cwd?: string }[];
 }
 
 export interface ProcessMemory {
@@ -237,12 +275,44 @@ export class ProcessWatch {
   private restored = false;
   private saved = "";
   private readonly kept = new Map<string, Set<number>>();
+  private readonly reruns = new Map<number, { agent: string; from: number }>();
+  private replaced: { agent: string; from: number; to: number }[] = [];
+  private readonly cwds = new Map<number, string>();
+
+  private treeOf(rows: readonly ProcRow[], one: Tracked): ProcRow[] {
+    const byPid = new Map(rows.map((row) => [row.pid, row]));
+    const row = byPid.get(one.pid);
+    if (!row) return [];
+    const adopted = one.adopted.map((pid) => byPid.get(pid)).filter((each): each is ProcRow => Boolean(each));
+    return [row, ...subtreeOf(rows, row.pid), ...adopted.flatMap((each) => [each, ...subtreeOf(rows, each.pid)])];
+  }
+
+  private async adopt(rows: readonly ProcRow[], now: number): Promise<void> {
+    const byPid = new Map(rows.map((row) => [row.pid, row]));
+    const daemonChildren = rows.filter((row) => GRADLE_DAEMON.test(byPid.get(row.ppid)?.command ?? ""));
+    for (const row of daemonChildren) {
+      if (!this.cwds.has(row.pid)) {
+        const cwd = await cwdOf(row.pid);
+        if (cwd) this.cwds.set(row.pid, cwd);
+      }
+    }
+    const claimed = new Set([...this.tracked.values()].flatMap((one) => one.adopted));
+    for (const one of this.tracked.values()) {
+      one.adopted = one.adopted.filter((pid) => byPid.has(pid));
+      if (!one.alive || !GRADLE_CLIENT.test(one.command)) continue;
+      for (const pid of daemonRuns(rows, one, (each) => this.cwds.get(each), now)) {
+        if (claimed.has(pid)) continue;
+        claimed.add(pid);
+        one.adopted.push(pid);
+      }
+    }
+  }
 
   constructor(
     private readonly roots: () => Map<string, number[]>,
     private readonly post: (message: unknown) => void,
     private readonly iconUri: (name: string) => string | undefined,
-    private readonly snapshot: () => Promise<string> = () => run("ps", ["-A", "-o", "pid=,ppid=,stat=,etime=,pcpu=,pmem=,rss=,command="]),
+    private readonly snapshot: () => Promise<string> = () => run("ps", ["-A", "-ww", "-o", "pid=,ppid=,stat=,etime=,pcpu=,pmem=,rss=,command="]),
     private readonly memory?: ProcessMemory,
   ) {}
 
@@ -276,6 +346,9 @@ export class ProcessWatch {
         beat: 0,
         looked: false,
         ports: [],
+        adopted: [],
+        ...(one.shell ? { shell: one.shell } : {}),
+        ...(one.cwd ? { cwd: one.cwd } : {}),
       });
     }
   }
@@ -286,7 +359,14 @@ export class ProcessWatch {
       roots: Object.fromEntries([...roots].map(([agent, pids]) => [agent, [...new Set(pids)]])),
       procs: [...this.tracked.values()]
         .filter((one) => one.alive)
-        .map((one) => ({ pid: one.pid, agent: one.agent, command: one.command, startedAt: one.startedAt })),
+        .map((one) => ({
+          pid: one.pid,
+          agent: one.agent,
+          command: one.command,
+          startedAt: one.startedAt,
+          ...(one.shell ? { shell: one.shell } : {}),
+          ...(one.cwd ? { cwd: one.cwd } : {}),
+        })),
     };
     const text = JSON.stringify(saved);
     if (text === this.saved) return;
@@ -327,7 +407,9 @@ export class ProcessWatch {
     for (const [agent, pids] of roots) this.kept.set(agent, new Set(pids));
     for (const [agent, pids] of roots) {
       for (const row of launched(rows, pids)) {
-        if (this.tracked.has(row.pid) || this.removed.has(row.pid) || row.seconds < SHOWN_AFTER_S) continue;
+        const rerun = [...this.reruns].find(([root]) => row.ppid === root || subtreeOf(rows, root).some((one) => one.pid === row.pid));
+        if (this.tracked.has(row.pid) || this.removed.has(row.pid) || (!rerun && row.seconds < SHOWN_AFTER_S)) continue;
+        const parent = byPid.get(row.ppid);
         const commands = [row.command, ...subtreeOf(rows, row.pid).map((one) => one.command)];
         this.tracked.set(row.pid, {
           pid: row.pid,
@@ -345,14 +427,20 @@ export class ProcessWatch {
           beat: 0,
           looked: false,
           ports: [],
+          adopted: [],
+          ...(parent && isShell(parent.command) ? { shell: parent.command } : {}),
         });
+        if (rerun) {
+          this.reruns.delete(rerun[0]);
+          this.replaced.push({ agent, from: rerun[1].from, to: row.pid });
+        }
       }
     }
+    await this.adopt(rows, now);
     const owners = new Map<number, number>();
     for (const one of this.tracked.values()) {
       if (!one.alive || !byPid.has(one.pid)) continue;
-      owners.set(one.pid, one.pid);
-      for (const child of subtreeOf(rows, one.pid)) owners.set(child.pid, one.pid);
+      for (const each of this.treeOf(rows, one)) owners.set(each.pid, one.pid);
     }
     const ports = new Map<number, number[]>();
     if (owners.size > 0) {
@@ -370,7 +458,7 @@ export class ProcessWatch {
         one.endedAt = now;
       }
       if (row) {
-        const tree = [row, ...subtreeOf(rows, row.pid)];
+        const tree = this.treeOf(rows, one);
         one.icon = techOf(tree.map((each) => each.command));
         one.stat = row.stat;
         one.cpu = tree.reduce((sum, each) => sum + each.cpu, 0);
@@ -383,10 +471,18 @@ export class ProcessWatch {
       }
       if (!one.looked && one.alive) {
         one.looked = true;
+        one.cwd ??= await cwdOf(one.pid);
         one.out = await stdoutFile(one.pid);
         if (one.out) one.size = readFrom(one.out, Number.MAX_SAFE_INTEGER).size;
       }
       if (one.out) {
+        let grown = 0;
+        try {
+          grown = statSync(one.out).size;
+        } catch {
+          grown = one.size;
+        }
+        if (grown < one.size) one.size = 0;
         const read = readFrom(one.out, one.size);
         if (read.size > one.size) {
           one.lastOutput = now;
@@ -405,6 +501,7 @@ export class ProcessWatch {
     }
     this.remember(roots);
     this.send(now);
+    for (const swap of this.replaced.splice(0)) this.post({ type: "procReplaced", ...swap });
   }
 
   views(agent: string, now = Date.now()): ProcView[] {
@@ -418,6 +515,7 @@ export class ProcessWatch {
         status: statusOf(one.alive, one.stat, one.cpu, one.lastOutput, now),
         beat: one.beat,
         readable: Boolean(one.out),
+        rerunnable: Boolean(one.shell && shellLine(one.shell)),
         ports: one.ports,
         cpu: Math.round(one.cpu * 10) / 10,
         memPercent: Math.round(one.mem * 10) / 10,
@@ -455,7 +553,8 @@ export class ProcessWatch {
 
   async kill(pid: number): Promise<void> {
     const rows = parsePs(await this.snapshot());
-    const all = [pid, ...subtreeOf(rows, pid).map((row) => row.pid)];
+    const one = this.tracked.get(pid);
+    const all = [...new Set([pid, ...subtreeOf(rows, pid).map((row) => row.pid), ...(one ? this.treeOf(rows, one).map((row) => row.pid) : [])])];
     for (const one of all) {
       try {
         process.kill(one, "SIGTERM");
@@ -472,6 +571,44 @@ export class ProcessWatch {
         }
       }
     }, 3000);
+    await this.poll();
+  }
+
+  async rerun(pid: number): Promise<void> {
+    const one = this.tracked.get(pid);
+    const line = one?.shell ? shellLine(one.shell) : undefined;
+    if (!one || !line) return;
+    if (one.alive) {
+      await this.kill(pid);
+      const stop = Date.now() + 10_000;
+      while (Date.now() < stop && parsePs(await this.snapshot()).some((row) => row.pid === pid)) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    let out: number | undefined;
+    if (one.out) {
+      try {
+        out = openSync(one.out, "a");
+        writeSync(out, "\n\x1b[2m── rerun by Odin ──\x1b[0m\n");
+      } catch {
+        out = undefined;
+      }
+    }
+    const args = [...line.args.slice(0, -1), runnable(line.args.at(-1) ?? "")];
+    const child = spawn(line.program, args, {
+      cwd: one.cwd ?? process.cwd(),
+      env: withColour(process.env),
+      detached: true,
+      stdio: ["ignore", out ?? "ignore", out ?? "ignore"],
+    });
+    child.unref();
+    if (out !== undefined) closeSync(out);
+    if (!child.pid) return;
+    this.reruns.set(child.pid, { agent: one.agent, from: pid });
+    this.kept.set(one.agent, new Set([...(this.kept.get(one.agent) ?? []), child.pid]));
+    this.tracked.delete(pid);
+    this.attached.delete(pid);
+    this.removed.add(pid);
     await this.poll();
   }
 

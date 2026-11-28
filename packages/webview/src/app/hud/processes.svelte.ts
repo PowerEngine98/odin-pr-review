@@ -7,6 +7,7 @@ export interface ProcView {
   status: ProcStatus;
   beat: number;
   readable: boolean;
+  rerunnable: boolean;
   ports: number[];
   cpu: number;
   memPercent: number;
