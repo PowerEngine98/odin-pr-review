@@ -13,6 +13,11 @@
   import { model, settings } from "../state.svelte.js";
   import { tour } from "../tour/state.svelte.js";
   import Terminal from "./Terminal.svelte";
+  import { notify } from "../state.svelte.js";
+  import { onMount } from "svelte";
+  import { readUndocked, undock } from "./undock.svelte.js";
+
+  onMount(readUndocked);
   import { shareOut } from "./column.js";
 
   const live = $derived(model.current.meta.worktree === true);
@@ -20,7 +25,7 @@
   let reopened = false;
 
   $effect(() => {
-    if (reopened || !live) return;
+    if (reopened || !live || undock.as) return;
     const found = model.current.agents ?? [];
     if (found.length === 0) return;
     reopened = true;
@@ -37,9 +42,13 @@
    * an afternoon should not lose their arrangement — and this drops it from the
    * screen until it is back.
    */
+  const found = $derived(model.current.agents ?? []);
+  const away = $derived(found.filter((agent) => undock.away.includes(agent.id)));
+
   const open = $derived.by((): AgentView[] => {
-    const found = model.current.agents ?? [];
+    if (undock.as) return found.filter((agent) => agent.id === undock.as);
     return (settings.terminals ?? [])
+      .filter((id) => !undock.away.includes(id))
       .map((id) => found.find((agent) => agent.id === id))
       .filter((agent): agent is AgentView => agent !== undefined);
   });
@@ -188,10 +197,23 @@
   });
 </script>
 
-{#if live && open.length > 0}
+{#if !undock.as && away.length > 0}
+  <div class="undocked-chips">
+    {#each away as agent (agent.id)}
+      <button
+        class="undocked-chip"
+        title="{agent.name}'s console is in its own window. Press to bring it forward."
+        onclick={() => notify("focusUndocked", { agent: agent.id })}
+      >{agent.name} ↗</button>
+    {/each}
+  </div>
+{/if}
+
+{#if (live || undock.as) && open.length > 0}
   <div
     class="terminal-dock"
-    class:touring={tour.active}
+    class:undocked={Boolean(undock.as)}
+    class:touring={tour.active && !undock.as}
     bind:this={dock}
     style={room ? `max-height:${room}px` : undefined}
   >
@@ -207,6 +229,43 @@
 {/if}
 
 <style>
+  .terminal-dock.undocked {
+    inset: 0;
+    z-index: 1000;
+    max-width: none;
+    max-height: none !important;
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+  }
+  .terminal-dock.undocked :global(.grip) {
+    display: none;
+  }
+  .terminal-dock.undocked > :global(.terminal) {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+    border: 0;
+    border-radius: 0;
+  }
+  .undocked-chips {
+    position: fixed;
+    right: 12px;
+    bottom: calc(12px + var(--tour-room, 0px));
+    z-index: 30;
+    display: flex;
+    gap: 6px;
+  }
+  .undocked-chip {
+    padding: 3px 10px;
+    border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+    border-radius: 999px;
+    background: var(--panel, var(--bg));
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
   /* Over the tour's player, at its width, so the two read as one bar. */
   .terminal-dock.touring {
     left: 12px;

@@ -7,7 +7,7 @@ const terminals = readFileSync(join(__dirname, "../src/app/hud/Terminals.svelte"
 
 describe("a live reading, as it starts", () => {
   it("opens the console of every agent switched on, even one closed last time", () => {
-    expect(terminals).toMatch(/if \(reopened \|\| !live\) return;/);
+    expect(terminals).toMatch(/if \(reopened \|\| !live \|\| undock\.as\) return;/);
     expect(terminals).toMatch(/const enabled = \(settings\.pairing \?\? \[\]\)\.filter\(\(id\) => found\.some\(\(agent\) => agent\.id === id\) && !held\.includes\(id\)\);/);
     expect(terminals).toMatch(/if \(enabled\.length > 0\) settings\.terminals = \[\.\.\.held, \.\.\.enabled\];/);
   });

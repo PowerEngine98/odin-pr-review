@@ -745,7 +745,7 @@ describe("pairing with an agent", () => {
     expect(pairing).not.toMatch(/if \(!live \|\| !settings\.hud\.agents\) return/);
     // And the terminals never depended on the panel to begin with: they are
     // drawn from what is open and what exists.
-    expect(source("hud/Terminals.svelte")).toMatch(/\{#if live && open\.length > 0\}/);
+    expect(source("hud/Terminals.svelte")).toMatch(/\{#if \(live \|\| undock\.as\) && open\.length > 0\}/);
     expect(source("hud/Terminals.svelte")).not.toMatch(/hud\.agents/);
   });
 
