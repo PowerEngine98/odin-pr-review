@@ -155,12 +155,14 @@ describe("a Spring server's icon", () => {
 });
 
 describe("a process avatar", () => {
-  it("is the size of a comment's avatar, and shows the ports it listens on", () => {
+  it("is a round avatar the size of a comment's, never squashed, with its ports, CPU and RAM in its tooltip", () => {
     const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
     expect(terminal).toMatch(/\.proc-avatar \{[^}]*width: 22px;\s*height: 22px;/);
     expect(terminal).toMatch(/\.proc-face \{[^}]*overflow: hidden;\s*border-radius: 50%;/);
     expect(terminal).toMatch(/<span class="proc-face">[\s\S]*?<\/span>\s*\{#key proc\.beat\}/);
-    expect(terminal).toMatch(/<span class="proc-port" title="Listening on port \{port\}">:\{port\}<\/span>/);
+    expect(terminal).toMatch(/\{proc\.ports\.length \? ` · port \$\{proc\.ports\.join\(", "\)\}` : ""\}/);
+    expect(terminal).toMatch(/\.procs \{\s*display: flex;\s*flex: 0 0 auto;/);
+    expect(terminal).not.toMatch(/class="proc-name"/);
   });
 });
 

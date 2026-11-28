@@ -1259,7 +1259,8 @@
         <span class="proc" class:set={tab === `proc:${proc.pid}`}>
           <button
             class="proc-open"
-            title="{proc.command}&#10;PID {proc.pid} · {proc.status}&#10;{usageOf(proc)}"
+            title="{proc.command}&#10;PID {proc.pid} · {proc.status}{proc.ports.length ? ` · port ${proc.ports.join(", ")}` : ""}&#10;{usageOf(proc)}"
+            aria-label="{shortCommand(proc.command)}, {proc.status}"
             onclick={() => (tab = `proc:${proc.pid}`)}
           >
             <span class="proc-avatar">
@@ -1272,10 +1273,6 @@
                 <span class="proc-badge {proc.status}" class:pulse={proc.beat > 0 && proc.status !== "terminated"}></span>
               {/key}
             </span>
-            <span class="proc-name">{shortCommand(proc.command)}</span>
-            {#each proc.ports as port (port)}
-              <span class="proc-port" title="Listening on port {port}">:{port}</span>
-            {/each}
           </button>
           <button
             class="proc-x"
@@ -2191,44 +2188,35 @@
   }
   .procs {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
+    gap: 8px;
+    min-height: 34px;
+    padding: 5px 8px;
     border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
     overflow-x: auto;
+    overflow-y: hidden;
     font-size: 10px;
   }
   .procs-fill {
     flex: 1;
   }
   .proc {
+    position: relative;
     display: inline-flex;
-    align-items: center;
     flex: 0 0 auto;
-    border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--text) 4%, transparent);
-  }
-  .proc.set {
-    border-color: color-mix(in srgb, var(--text) 40%, transparent);
-    background: color-mix(in srgb, var(--text) 10%, transparent);
   }
   .proc-open {
     display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 4px 2px 2px;
+    padding: 0;
     border: 0;
+    border-radius: 50%;
     background: none;
-    color: var(--text);
-    font: inherit;
     cursor: pointer;
   }
   .proc-avatar {
     position: relative;
     display: inline-flex;
-    align-items: center;
-    justify-content: center;
     flex: 0 0 auto;
     width: 22px;
     height: 22px;
@@ -2243,17 +2231,13 @@
     border-radius: 50%;
     background: color-mix(in srgb, var(--text) 10%, transparent);
   }
+  .proc.set .proc-face {
+    box-shadow: 0 0 0 2px var(--vscode-focusBorder, #1f6feb);
+  }
   .proc-face img {
     width: 14px;
     height: 14px;
     border-radius: 3px;
-  }
-  .proc-port {
-    padding: 0 4px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--proc-running) 18%, transparent);
-    color: var(--proc-running);
-    font-variant-numeric: tabular-nums;
   }
   .proc-badge {
     position: absolute;
@@ -2272,26 +2256,29 @@
     animation: proc-pulse 0.9s ease-out;
   }
   @keyframes proc-pulse {
-    0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent), 0 0 0 0 var(--proc-running); transform: scale(1.35); }
+    0% { box-shadow: 0 0 0 0 var(--proc-running); transform: scale(1.35); }
     100% { box-shadow: 0 0 0 6px transparent; transform: scale(1); }
   }
-  .proc-name {
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
   .proc-x {
-    padding: 0 6px 0 2px;
+    position: absolute;
+    top: -4px;
+    right: -5px;
+    display: none;
+    width: 12px;
+    height: 12px;
+    padding: 0;
     border: 0;
-    background: none;
-    color: var(--muted);
+    border-radius: 50%;
+    background: var(--proc-terminated);
+    color: #fff;
     font: inherit;
-    font-size: 12px;
+    font-size: 10px;
+    line-height: 12px;
     cursor: pointer;
   }
-  .proc-x:hover {
-    color: var(--proc-terminated);
+  .proc:hover .proc-x,
+  .proc:focus-within .proc-x {
+    display: inline-block;
   }
   .records {
     display: inline-flex;
