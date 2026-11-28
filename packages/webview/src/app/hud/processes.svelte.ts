@@ -8,11 +8,24 @@ export interface ProcView {
   beat: number;
   readable: boolean;
   ports: number[];
+  cpu: number;
+  memPercent: number;
+  memBytes: number;
   startedAt: number;
   endedAt?: number;
 }
 
 export const procs = $state({ lists: {} as Record<string, ProcView[]>, icons: {} as Record<string, string> });
+
+export function sizeOf(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
+export function usageOf(proc: Pick<ProcView, "cpu" | "memPercent" | "memBytes">): string {
+  return `CPU ${proc.cpu}% · RAM ${sizeOf(proc.memBytes)} (${proc.memPercent}%)`;
+}
 
 export function shortCommand(command: string): string {
   const parts = command.split(/\s+/).filter(Boolean);

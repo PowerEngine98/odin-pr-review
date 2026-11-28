@@ -3,7 +3,7 @@
 
   import { model, notify } from "../state.svelte.js";
   import { loadXterm } from "./Cli.svelte";
-  import { procs, type ProcView } from "./processes.svelte.js";
+  import { procs, usageOf, type ProcView } from "./processes.svelte.js";
 
   let { agent, proc }: { agent: string; proc: ProcView } = $props();
 
@@ -72,6 +72,9 @@
     {#if procs.icons[proc.icon]}<img class="proc-head-icon" src={procs.icons[proc.icon]} alt="" />{/if}
     <code class="proc-command" title={proc.command}>{proc.command}</code>
     <span class="proc-pid">PID {proc.pid}</span>
+    {#if proc.status !== "terminated"}
+      <span class="proc-pid" title="CPU and memory of this process and everything it started">{usageOf(proc)}</span>
+    {/if}
     {#each proc.ports as port (port)}
       <span class="proc-pid" title="Listening on port {port}">port {port}</span>
     {/each}

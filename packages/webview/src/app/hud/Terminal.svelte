@@ -37,7 +37,7 @@
   import { narration } from "./narrator.svelte.js";
   import { showPicture } from "./picture.svelte.js";
   import Proc from "./Proc.svelte";
-  import { procs, shortCommand } from "./processes.svelte.js";
+  import { procs, shortCommand, usageOf } from "./processes.svelte.js";
 
   let {
     id,
@@ -1259,7 +1259,7 @@
         <span class="proc" class:set={tab === `proc:${proc.pid}`}>
           <button
             class="proc-open"
-            title="{proc.command}&#10;PID {proc.pid} · {proc.status}"
+            title="{proc.command}&#10;PID {proc.pid} · {proc.status}&#10;{usageOf(proc)}"
             onclick={() => (tab = `proc:${proc.pid}`)}
           >
             <span class="proc-avatar">

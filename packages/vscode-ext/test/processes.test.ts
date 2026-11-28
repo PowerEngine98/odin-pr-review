@@ -25,21 +25,21 @@ describe("the processes an agent starts", () => {
     expect(seconds("01:05")).toBe(65);
     expect(seconds("02:01:05")).toBe(7265);
     expect(seconds("1-00:00:01")).toBe(86401);
-    expect(parsePs("  10     1 Ss   01:00  0.0 /bin/zsh -c ./gradlew bootRun\n")).toEqual([
-      { pid: 10, ppid: 1, stat: "Ss", seconds: 60, cpu: 0, command: "/bin/zsh -c ./gradlew bootRun" },
+    expect(parsePs("  10     1 Ss   01:00  0.0  1.5  20480 /bin/zsh -c ./gradlew bootRun\n")).toEqual([
+      { pid: 10, ppid: 1, stat: "Ss", seconds: 60, cpu: 0, mem: 1.5, rss: 20480 * 1024, command: "/bin/zsh -c ./gradlew bootRun" },
     ]);
   });
 
   it("are what runs under the shells the agent opens, not the shells, and not its own helpers", () => {
     const rows = parsePs(
       [
-        "100 1 S 10:00 0.0 claude",
-        "101 100 S 10:00 0.0 node /mcp/server.js",
-        "102 100 S 00:30 0.0 /bin/zsh -c -l eval 'yarn dev'",
-        "103 102 S 00:30 0.0 node /repo/node_modules/.bin/yarn dev",
-        "104 103 S 00:29 9.0 node /repo/node_modules/.bin/vite",
-        "105 100 S 00:10 0.0 bash -c sleep 5; true",
-        "106 105 S 00:10 0.0 sleep 5",
+        "100 1 S 10:00 0.0 0.1 1000 claude",
+        "101 100 S 10:00 0.0 0.1 1000 node /mcp/server.js",
+        "102 100 S 00:30 0.0 0.1 1000 /bin/zsh -c -l eval 'yarn dev'",
+        "103 102 S 00:30 0.0 0.1 1000 node /repo/node_modules/.bin/yarn dev",
+        "104 103 S 00:29 9.0 0.1 1000 node /repo/node_modules/.bin/vite",
+        "105 100 S 00:10 0.0 0.1 1000 bash -c sleep 5; true",
+        "106 105 S 00:10 0.0 0.1 1000 sleep 5",
       ].join("\n"),
     );
     expect(isShell("/bin/zsh -c x")).toBe(true);
@@ -161,5 +161,43 @@ describe("a process avatar", () => {
     expect(terminal).toMatch(/\.proc-face \{[^}]*overflow: hidden;\s*border-radius: 50%;/);
     expect(terminal).toMatch(/<span class="proc-face">[\s\S]*?<\/span>\s*\{#key proc\.beat\}/);
     expect(terminal).toMatch(/<span class="proc-port" title="Listening on port \{port\}">:\{port\}<\/span>/);
+  });
+});
+
+describe("the processes strip, as it fills", () => {
+  const rows = (lines: string[]) => lines.join("\n");
+
+  it("orders processes by the memory they and what they started hold, largest first, and drops one ten seconds after it ends", async () => {
+    let ps = rows([
+      "100 1 S 10:00 0.0 0.1 1000 claude",
+      "102 100 S 00:30 0.0 0.0 900 /bin/zsh -c x",
+      "103 102 S 00:30 1.0 0.5 10000 node small.js",
+      "104 102 S 00:30 2.0 2.0 50000 java -jar big.jar",
+      "105 104 S 00:30 3.0 1.0 30000 java child",
+    ]);
+    const posted: { lists?: Record<string, { pid: number; cpu: number; memPercent: number; memBytes: number; status: string }[]> }[] = [];
+    const watch = new ProcessWatch(() => new Map([["claude", [100]]]), (message) => posted.push(message as never), () => undefined, async () => ps);
+    await watch.poll();
+    const first = posted.at(-1)!.lists!.claude!;
+    expect(first.map((one) => one.pid)).toEqual([104, 103]);
+    expect(first[0]).toMatchObject({ cpu: 5, memPercent: 3, memBytes: 80000 * 1024 });
+    ps = rows(["100 1 S 10:00 0.0 0.1 1000 claude", "102 100 S 00:30 0.0 0.0 900 /bin/zsh -c x", "103 102 S 00:30 1.0 0.5 10000 node small.js"]);
+    await watch.poll();
+    expect(posted.at(-1)!.lists!.claude!.find((one) => one.pid === 104)?.status).toBe("terminated");
+    const real = Date.now;
+    Date.now = () => real() + 11_000;
+    try {
+      await watch.poll();
+    } finally {
+      Date.now = real;
+    }
+    expect(posted.at(-1)!.lists!.claude!.map((one) => one.pid)).toEqual([103]);
+  });
+
+  it("shows CPU and memory, as values and shares, in the tooltip and the process's tab", () => {
+    const store = readFileSync(join(__dirname, "../../webview/src/app/hud/processes.svelte.ts"), "utf8");
+    expect(store).toMatch(/return `CPU \$\{proc\.cpu\}% · RAM \$\{sizeOf\(proc\.memBytes\)\} \(\$\{proc\.memPercent\}%\)`;/);
+    expect(readFileSync(join(__dirname, "../../webview/src/app/hud/Proc.svelte"), "utf8")).toMatch(/\{usageOf\(proc\)\}/);
+    expect(readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8")).toMatch(/&#10;\{usageOf\(proc\)\}"/);
   });
 });

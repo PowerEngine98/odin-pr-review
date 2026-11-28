@@ -7,6 +7,8 @@ export interface ProcRow {
   stat: string;
   seconds: number;
   cpu: number;
+  mem: number;
+  rss: number;
   command: string;
 }
 
@@ -20,6 +22,9 @@ export interface ProcView {
   beat: number;
   readable: boolean;
   ports: number[];
+  cpu: number;
+  memPercent: number;
+  memBytes: number;
   startedAt: number;
   endedAt?: number;
 }
@@ -48,7 +53,7 @@ export function seconds(etime: string): number {
 export function parsePs(text: string): ProcRow[] {
   const rows: ProcRow[] = [];
   for (const line of text.split("\n")) {
-    const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+([\d.]+)\s+(.*)$/.exec(line);
+    const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s+(.*)$/.exec(line);
     if (!match) continue;
     rows.push({
       pid: Number(match[1]),
@@ -56,7 +61,9 @@ export function parsePs(text: string): ProcRow[] {
       stat: match[3]!,
       seconds: seconds(match[4]!),
       cpu: Number(match[5]),
-      command: match[6]!.trim(),
+      mem: Number(match[6]),
+      rss: Number(match[7]) * 1024,
+      command: match[8]!.trim(),
     });
   }
   return rows;
@@ -183,6 +190,8 @@ interface Tracked {
   icon: string;
   stat: string;
   cpu: number;
+  mem: number;
+  rss: number;
   alive: boolean;
   startedAt: number;
   endedAt?: number;
@@ -196,6 +205,7 @@ interface Tracked {
 
 export const POLL_MS = 2000;
 export const SHOWN_AFTER_S = 3;
+export const GONE_AFTER_MS = 10_000;
 
 export class ProcessWatch {
   private readonly tracked = new Map<number, Tracked>();
@@ -209,7 +219,7 @@ export class ProcessWatch {
     private readonly roots: () => Map<string, number[]>,
     private readonly post: (message: unknown) => void,
     private readonly iconUri: (name: string) => string | undefined,
-    private readonly snapshot: () => Promise<string> = () => run("ps", ["-A", "-o", "pid=,ppid=,stat=,etime=,pcpu=,command="]),
+    private readonly snapshot: () => Promise<string> = () => run("ps", ["-A", "-o", "pid=,ppid=,stat=,etime=,pcpu=,pmem=,rss=,command="]),
   ) {}
 
   start(): void {
@@ -248,6 +258,8 @@ export class ProcessWatch {
           icon: techOf(commands),
           stat: row.stat,
           cpu: row.cpu,
+          mem: row.mem,
+          rss: row.rss,
           alive: true,
           startedAt: now - row.seconds * 1000,
           size: 0,
@@ -280,8 +292,15 @@ export class ProcessWatch {
         one.endedAt = now;
       }
       if (row) {
+        const tree = [row, ...subtreeOf(rows, row.pid)];
         one.stat = row.stat;
-        one.cpu = Math.max(row.cpu, ...subtreeOf(rows, row.pid).map((child) => child.cpu));
+        one.cpu = tree.reduce((sum, each) => sum + each.cpu, 0);
+        one.mem = tree.reduce((sum, each) => sum + each.mem, 0);
+        one.rss = tree.reduce((sum, each) => sum + each.rss, 0);
+      } else {
+        one.cpu = 0;
+        one.mem = 0;
+        one.rss = 0;
       }
       if (!one.looked && one.alive) {
         one.looked = true;
@@ -298,12 +317,20 @@ export class ProcessWatch {
         one.size = read.size;
       }
     }
+    for (const one of [...this.tracked.values()]) {
+      if (!one.alive && one.endedAt !== undefined && now - one.endedAt > GONE_AFTER_MS) {
+        this.tracked.delete(one.pid);
+        this.attached.delete(one.pid);
+        this.removed.add(one.pid);
+      }
+    }
     this.send(now);
   }
 
   views(agent: string, now = Date.now()): ProcView[] {
     return [...this.tracked.values()]
       .filter((one) => one.agent === agent)
+      .sort((a, b) => b.rss - a.rss || a.startedAt - b.startedAt)
       .map((one) => ({
         pid: one.pid,
         command: one.command,
@@ -312,6 +339,9 @@ export class ProcessWatch {
         beat: one.beat,
         readable: Boolean(one.out),
         ports: one.ports,
+        cpu: Math.round(one.cpu * 10) / 10,
+        memPercent: Math.round(one.mem * 10) / 10,
+        memBytes: one.rss,
         startedAt: one.startedAt,
         ...(one.endedAt ? { endedAt: one.endedAt } : {}),
       }));
