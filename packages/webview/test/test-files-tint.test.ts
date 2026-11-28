@@ -16,3 +16,16 @@ describe("a test file in the sidebar", () => {
     expect(file).toMatch(/\.row\.test \{\s*background: color-mix\(in srgb, var\(--added\) 7%, transparent\);\s*\}\s*\.row:hover \{/);
   });
 });
+
+describe("a file's name in the sidebar", () => {
+  it("takes its status's colour, added, modified, deleted or renamed, the way the badge beside it does", () => {
+    expect(file).toMatch(/\.row\.status-added\s+\{ color: var\(--status-added\); \}/);
+    expect(file).toMatch(/\.name \{\s*color: currentColor;/);
+  });
+});
+
+describe("a test file pointed at in the sidebar", () => {
+  it("deepens its green rather than dropping to the plain hover grey", () => {
+    expect(file).toMatch(/\.row\.test:hover \{\s*background: color-mix\(in srgb, var\(--added\) 14%, transparent\);\s*\}\s*\.row\.here:hover \{/);
+  });
+});
