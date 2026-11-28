@@ -203,6 +203,14 @@ interface Tracked {
   ports: number[];
 }
 
+export function withColour(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    FORCE_COLOR: env.FORCE_COLOR ?? "1",
+    SPRING_OUTPUT_ANSI_ENABLED: env.SPRING_OUTPUT_ANSI_ENABLED ?? "ALWAYS",
+  };
+}
+
 export interface SavedProcesses {
   roots: Record<string, number[]>;
   procs: { pid: number; agent: string; command: string; startedAt: number }[];
@@ -363,6 +371,7 @@ export class ProcessWatch {
       }
       if (row) {
         const tree = [row, ...subtreeOf(rows, row.pid)];
+        one.icon = techOf(tree.map((each) => each.command));
         one.stat = row.stat;
         one.cpu = tree.reduce((sum, each) => sum + each.cpu, 0);
         one.mem = tree.reduce((sum, each) => sum + each.mem, 0);

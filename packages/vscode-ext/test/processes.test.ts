@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isShell, launched, listening, parsePs, ProcessWatch, seconds, statusOf, techOf } from "../src/processes.js";
+import { isShell, launched, listening, parsePs, ProcessWatch, seconds, statusOf, techOf, withColour } from "../src/processes.js";
 
 function until(what: () => boolean, ms = 15_000): Promise<void> {
   const stop = Date.now() + ms;
@@ -241,5 +241,25 @@ describe("the processes an agent started, after the window reloads", () => {
     );
     await watch.poll();
     expect(posted.at(-1)?.lists?.claude ?? []).toEqual([]);
+  });
+});
+
+describe("what an agent's processes print", () => {
+  it("is in colour, as in a terminal, even written to a file: the agent's CLI and its runs ask for it, leaving a choice already made alone", () => {
+    expect(withColour({ PATH: "/bin" })).toEqual({ PATH: "/bin", FORCE_COLOR: "1", SPRING_OUTPUT_ANSI_ENABLED: "ALWAYS" });
+    expect(withColour({ FORCE_COLOR: "0" }).FORCE_COLOR).toBe("0");
+    expect(readFileSync(join(__dirname, "../src/panel.ts"), "utf8")).toMatch(/env: \(\) => withColour\(forgeEnv\(\)\),/);
+    expect(readFileSync(join(__dirname, "../src/pairing.ts"), "utf8")).toMatch(/cwd: this\.repo,\s*env: withColour\(forgeEnv\(\)\),\s*\.\.\.\(args \? \{ args \} : \{\}\),/);
+  });
+
+  it("and its icon follows what it comes to run: yarn dev wears Vite's once Vite starts under it", async () => {
+    let ps = ["100 1 S 10:00 0.0 0.1 1000 claude", "102 100 S 00:30 0.0 0.0 900 /bin/zsh -c x", "103 102 S 00:30 0.0 0.1 1000 node /bin/yarn dev"].join("\n");
+    const posted: { lists?: Record<string, { icon: string }[]> }[] = [];
+    const watch = new ProcessWatch(() => new Map([["claude", [100]]]), (message) => posted.push(message as never), () => undefined, async () => ps);
+    await watch.poll();
+    expect(posted.at(-1)!.lists!.claude![0]!.icon).toBe("yarn");
+    ps += "\n104 103 S 00:20 5.0 1.0 9000 node /repo/node_modules/vite/bin/vite.js";
+    await watch.poll();
+    expect(posted.at(-1)!.lists!.claude![0]!.icon).toBe("vite");
   });
 });
