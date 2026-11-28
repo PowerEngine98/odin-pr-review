@@ -234,6 +234,9 @@
   /* Pointed at as well as stood on. The hover's wash would otherwise replace the
      mark's and the row would look like it had stopped being the current one at
      the moment the reader reached for it. */
+  .row.test:hover {
+    background: color-mix(in srgb, var(--added) 14%, transparent);
+  }
   .row.here:hover {
     background: color-mix(in srgb, var(--here-wash) 70%, var(--vscode-list-hoverBackground));
   }
@@ -246,10 +249,8 @@
   .row.status-renamed  { color: var(--status-renamed); }
   .row.status-phantom  { color: var(--status-phantom); }
 
-  /* Only the badge is in the status's colour. The name is the thing being
-     read, and a list of forty file names in five colours is unreadable. */
   .name {
-    color: var(--vscode-foreground);
+    color: currentColor;
     overflow: hidden;
     text-overflow: ellipsis;
     flex: 0 1 auto;
