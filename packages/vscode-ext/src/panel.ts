@@ -49,7 +49,8 @@ import {
   type Secrets,
   type SupportKind,
 } from "@odin/core";
-import { fileIcons } from "./file-icons.js";
+import { fileIcons, iconUri } from "./file-icons.js";
+import { ProcessWatch, withColour, type SavedProcesses } from "./processes.js";
 import type { FileIcons } from "@odin/webview";
 import { loadHighlighter, type Highlighter } from "@odin/highlight";
 import { ODIN_MARK, renderHtml } from "@odin/webview";
@@ -3664,6 +3665,21 @@ export class GraphPanel {
         });
         return;
       }
+      if (reply.type === "procAttach" || reply.type === "procDetach" || reply.type === "procKill" || reply.type === "procRemove" || reply.type === "procRerun") {
+        const pid = Number((message as unknown as { payload?: { pid?: unknown } }).payload?.pid);
+        if (!Number.isInteger(pid) || pid <= 0) return;
+        const watch = this.processes();
+        if (reply.type === "procAttach") watch.attach(pid);
+        else if (reply.type === "procDetach") watch.detach(pid);
+        else if (reply.type === "procKill") await watch.kill(pid);
+        else if (reply.type === "procRerun") await watch.rerun(pid);
+        else await watch.remove(pid);
+        return;
+      }
+      if (reply.type === "procWatch") {
+        this.processes();
+        return;
+      }
       if (reply.type === "newConversation") {
         const agent = String((reply as { payload?: { agent?: unknown } }).payload?.agent ?? "");
         if (!agent) return;
@@ -4092,12 +4108,49 @@ export class GraphPanel {
 
   private terminals: CliSessions | undefined;
 
+  private watch: ProcessWatch | undefined;
+
+  private readonly roots = new Map<string, Set<number>>();
+
+  private processesKey(): string {
+    return `odin.processes:${readingKey(this.graph, this.repo)}`;
+  }
+
+  private processes(): ProcessWatch {
+    if (!this.watch) {
+      this.watch = new ProcessWatch(
+        () => {
+          const add = (agent: string, pid: number | undefined) => {
+            if (!pid) return;
+            const known = this.roots.get(agent) ?? new Set<number>();
+            known.add(pid);
+            this.roots.set(agent, known);
+          };
+          for (const [agent, pid] of this.paired?.runPids() ?? []) add(agent, pid);
+          for (const agent of this.terminals?.agents() ?? []) add(agent, this.terminals?.pidOf(agent));
+          return new Map([...this.roots].map(([agent, pids]) => [agent, [...pids]]));
+        },
+        (message) => void this.panel.webview.postMessage(message),
+        iconUri,
+        undefined,
+        GraphPanel.store
+          ? {
+              read: () => GraphPanel.store?.get<SavedProcesses>(this.processesKey()),
+              write: (saved) => void GraphPanel.store?.update(this.processesKey(), saved),
+            }
+          : undefined,
+      );
+      this.watch.start();
+    }
+    return this.watch;
+  }
+
   private cli(): CliSessions {
     this.terminals ??= new CliSessions({
       repo: () => this.repo,
       kind: (agent) => this.pairing().agents().find((one) => one.id === agent),
       conversation: (agent) => this.pairing().session(agent),
-      env: () => forgeEnv(),
+      env: () => withColour(forgeEnv()),
       open: (file, args, options) => openPty(file, args, options, vscode.env.appRoot),
       post: (message) => void this.panel.webview.postMessage(message),
       heard: (agent, said) =>
@@ -4159,6 +4212,7 @@ export class GraphPanel {
     this.beat = undefined;
     // Turns in flight belong to this reading, and there is nowhere left for
     // them to write. What they have already said is on disk.
+    this.watch?.stop();
     if (this.paired) PairingSession.release(this.pairedKey, this);
     this.touring?.stop();
     GraphPanel.tours?.flush(this.tourKey());

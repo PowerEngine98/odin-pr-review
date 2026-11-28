@@ -41,3 +41,8 @@ export function withFolderIcons(tree: FolderView, icons: FileIcons | undefined):
   };
   return walk(tree);
 }
+
+export function iconUri(name: string): string | undefined {
+  const svg = loaded()?.svgs[name];
+  return svg ? `data:image/svg+xml,${encodeURIComponent(svg)}` : undefined;
+}

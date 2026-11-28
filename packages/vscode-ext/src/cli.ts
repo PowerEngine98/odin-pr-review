@@ -205,6 +205,14 @@ export class CliSessions {
     held.pty.kill();
   }
 
+  agents(): string[] {
+    return [...this.running.keys()];
+  }
+
+  pidOf(agent: string): number | undefined {
+    return this.running.get(agent)?.pty.pid;
+  }
+
   live(agent: string): boolean {
     return this.running.has(agent);
   }

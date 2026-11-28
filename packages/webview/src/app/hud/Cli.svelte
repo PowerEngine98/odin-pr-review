@@ -228,18 +228,13 @@
       {/if}
     </p>
   {:else}
-    <div class="cli-bar">
-      <span class="cli-what">
-        {#if resumed}Continuing Odin's conversation{:else}Interactive {name}{/if}
-      </span>
-      <span class="cli-fill"></span>
-      {#if state === "ended"}
+    {#if state === "ended"}
+      <div class="cli-bar">
         <span class="cli-ended">{ended}</span>
+        <span class="cli-fill"></span>
         <button class="cli-button" onclick={start}>Start again</button>
-      {:else}
-        <button class="cli-button" title="End this session" onclick={stop}>Stop</button>
-      {/if}
-    </div>
+      </div>
+    {/if}
     <div
       class="cli-screen"
       bind:this={holder}

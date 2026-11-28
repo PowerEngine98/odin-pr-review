@@ -38,3 +38,13 @@ describe("a file named in the Changes tab", () => {
     expect(ledger).toMatch(/\.entry-file\.status-modified \{ color: var\(--status-modified\); \}/);
   });
 });
+
+describe("the stack popup", () => {
+  it("joins every pull request in it to the base with one line, ending in the base's dot", () => {
+    const chip = readFileSync(join(__dirname, "../src/app/chrome/StackChip.svelte"), "utf8");
+    expect(chip).toMatch(/\.stack-row::before,\s*\.stack-base::before \{[^}]*left: 4px;\s*width: 2px;/);
+    expect(chip).toMatch(/\.stack-row::before \{\s*top: 0;\s*bottom: 0;\s*\}/);
+    expect(chip).toMatch(/\.stack-base::before \{\s*top: 0;\s*height: 12px;\s*\}/);
+    expect(chip).toMatch(/\.stack-dot \{\s*box-sizing: border-box;\s*flex: 0 0 auto;\s*width: 10px;/);
+  });
+});

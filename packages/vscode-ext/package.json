@@ -333,7 +333,8 @@
     "@xterm/addon-fit": "0.10.0",
     "@xterm/xterm": "5.5.0",
     "esbuild": "^0.24.0",
-    "material-icon-theme": "5.40.0"
+    "material-icon-theme": "5.40.0",
+    "simple-icons": "16.38.1"
   },
   "capabilities": {
     "untrustedWorkspaces": {

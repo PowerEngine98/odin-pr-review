@@ -95,7 +95,7 @@ describe("one conversation, whichever view it is written in", () => {
   });
 
   it("has no composer of its own in the CLI tab", () => {
-    expect(terminal).toMatch(/\{#if tab !== "cli"\}\s*<form\s*class="terminal-ask"/);
+    expect(terminal).toMatch(/\{#if tab !== "cli" && !tab\.startsWith\("proc:"\)\}\s*<form\s*class="terminal-ask"/);
   });
 });
 

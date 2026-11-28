@@ -155,8 +155,27 @@
   .stack-row {
     position: relative;
     display: flex;
-    padding-left: 10px;
+    padding-left: 14px;
     border-radius: 6px;
+  }
+
+  .stack-row::before,
+  .stack-base::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    width: 2px;
+    background: color-mix(in srgb, var(--vscode-foreground, #ccc) 35%, transparent);
+  }
+
+  .stack-row::before {
+    top: 0;
+    bottom: 0;
+  }
+
+  .stack-base::before {
+    top: 0;
+    height: 12px;
   }
 
   .stack-row > :global(.pull) {
@@ -166,10 +185,11 @@
 
   .stack-rail {
     position: absolute;
+    z-index: 1;
     left: 3px;
     top: 6px;
     bottom: 6px;
-    width: 3px;
+    width: 4px;
     border-radius: 2px;
     background: transparent;
   }
@@ -183,19 +203,21 @@
   }
 
   .stack-base {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px 4px;
+    padding: 8px 10px 4px 0;
     font-size: 12px;
   }
 
   .stack-dot {
-    width: 8px;
-    height: 8px;
-    border: 1.5px solid currentColor;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border: 2px solid color-mix(in srgb, var(--vscode-foreground, #ccc) 35%, transparent);
     border-radius: 50%;
-    opacity: 0.7;
   }
 
   .stack-base code {

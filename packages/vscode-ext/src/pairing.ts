@@ -33,6 +33,7 @@ import {
   type ReviewComment,
   type RunHandle,
 } from "@odin/core";
+import { withColour } from "./processes.js";
 import { savedFor } from "./session.js";
 import { withStamp } from "./stamps.js";
 import { randomUUID } from "node:crypto";
@@ -1264,7 +1265,7 @@ export class PairingSession {
         kind,
         prompt,
         cwd: this.repo,
-        env: forgeEnv(),
+        env: withColour(forgeEnv()),
         ...(args ? { args } : {}),
         onOutput: say,
         onEdit: (change) => this.record(agentId, change),
@@ -1742,6 +1743,12 @@ export class PairingSession {
   }
 
   /** The agents that have something to carry on from, for the panel to say so. */
+  runPids(): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const [agent, handle] of this.running) if (handle.pid) out.set(agent, handle.pid);
+    return out;
+  }
+
   toolsFor(agentId: string, asks = false): string[] {
     const kind = this.installed.find((one) => one.id === agentId);
     if (!kind || !PairingSession.stub) return [];
