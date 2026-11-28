@@ -43,7 +43,15 @@ describe("the icon a file is shown with", () => {
   it("is drawn before the name in the sidebar, on a file's card and on the graph's tabs", () => {
     const read = (path: string) => readFileSync(join(__dirname, "../../webview/src/app", path), "utf8");
     expect(read("sidebar/File.svelte")).toMatch(/<FileIcon path=\{file\.path\} icons=\{model\.current\.fileIcons\} \/>\s*<span class="name">/);
-    expect(read("canvas/Card.svelte")).toMatch(/<FileIcon path=\{node\.path\} icons=\{model\.current\.fileIcons\} \/>\s*\{head\.name\}/);
-    expect(read("chrome/Tabs.svelte")).toMatch(/<FileIcon path=\{paths\.get\(id\)!\} icons=\{model\.current\.fileIcons\} \/>/);
+    expect(read("canvas/Card.svelte")).toMatch(/<FileIcon path=\{node\.path\} icons=\{settings\.fileIcons \? model\.current\.fileIcons : undefined\} \/>\s*\{head\.name\}/);
+    expect(read("chrome/Tabs.svelte")).toMatch(/<FileIcon path=\{paths\.get\(id\)!\} icons=\{settings\.fileIcons \? model\.current\.fileIcons : undefined\} \/>/);
+  });
+});
+
+describe("the icons a reading is sent", () => {
+  it("cover every file the page can draw, tests included while they are hidden, so a test's card and tab wear one too", () => {
+    const panel = readFileSync(join(__dirname, "../src/panel.ts"), "utf8");
+    expect(panel).toMatch(/\.\.\.\(this\.withTests\?\.nodes \?\? \[\]\)\.map\(\(placed\) => placed\.path\),/);
+    expect(panel).toMatch(/\.\.\.\(this\.alternate\?\.withTests \?\? this\.alternate\?\.layout\)\?\.nodes\.map\(\(placed\) => placed\.path\) \?\? \[\],/);
   });
 });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { fileIconsFor, type FileIcons, type IconTable } from "@odin/webview";
+import { addIcon, fileIconsFor, folderIconNamesFor, type FileIcons, type FolderView, type IconTable } from "@odin/webview";
 
 let table: IconTable | undefined;
 let from: string | undefined;
@@ -23,4 +23,21 @@ function loaded(): IconTable | undefined {
 
 export function fileIcons(paths: Iterable<string>): FileIcons | undefined {
   return fileIconsFor(paths, loaded());
+}
+
+export function withFolderIcons(tree: FolderView, icons: FileIcons | undefined): FolderView {
+  const known = loaded();
+  if (!known || !icons) return tree;
+  const walk = (folder: FolderView): FolderView => {
+    const names = folder.label ? folderIconNamesFor(folder.label, known) : {};
+    const closed = addIcon(icons, names.closed, known) ? names.closed : undefined;
+    const open = addIcon(icons, names.open, known) ? names.open : undefined;
+    return {
+      ...folder,
+      ...(closed ? { icon: closed } : {}),
+      ...(open ? { iconOpen: open } : {}),
+      folders: folder.folders.map(walk),
+    };
+  };
+  return walk(tree);
 }

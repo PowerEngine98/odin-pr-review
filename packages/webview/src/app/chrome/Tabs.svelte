@@ -14,7 +14,7 @@
   import { arriving } from "../hud/arriving.js";
   import { landed } from "../hud/boot.svelte.js";
   import { partPaths } from "../parts.js";
-  import { keep, model, notify, ui, view } from "../state.svelte.js";
+  import { keep, model, notify, settings, ui, view } from "../state.svelte.js";
   import { goToTopic } from "../tour/player.svelte.js";
   import { tour } from "../tour/state.svelte.js";
   import { TICK } from "./icons.js";
@@ -236,7 +236,7 @@
           onclick={() => openPart(id)}
         >
           {#if id && paths.get(id)}
-            <FileIcon path={paths.get(id)!} icons={model.current.fileIcons} />
+            <FileIcon path={paths.get(id)!} icons={settings.fileIcons ? model.current.fileIcons : undefined} />
           {/if}
           {label}
           <!-- Nothing read yet is just the size of the part; part-read is read
