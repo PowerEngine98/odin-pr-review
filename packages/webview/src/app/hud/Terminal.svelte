@@ -36,6 +36,8 @@
   import { grouped, shownAs } from "./models.js";
   import { narration } from "./narrator.svelte.js";
   import { showPicture } from "./picture.svelte.js";
+  import Proc from "./Proc.svelte";
+  import { procs, shortCommand } from "./processes.svelte.js";
 
   let {
     id,
@@ -211,7 +213,22 @@
    * choice that survived a reload would put them back on a ledger when what
    * they opened the window for was to see whether anything is happening.
    */
-  let tab = $state<"log" | "ledger" | "tour" | "cli">("log");
+  let tab = $state<"log" | "ledger" | "tour" | "cli" | `proc:${number}`>("log");
+  const mine = $derived(procs.lists[id] ?? []);
+  const opened = $derived(tab.startsWith("proc:") ? mine.find((one) => `proc:${one.pid}` === tab) : undefined);
+
+  $effect(() => {
+    notify("procWatch");
+  });
+
+  $effect(() => {
+    if (tab.startsWith("proc:") && !opened) tab = "log";
+  });
+
+  function removeProc(pid: number): void {
+    if (tab === `proc:${pid}`) tab = "log";
+    notify("procRemove", { pid });
+  }
 
   const askedInCli = $derived(ui.cliAsking.includes(id));
 
@@ -1236,6 +1253,40 @@
     {/if}
   </div>
 
+  {#if !folded && (mine.length > 0 || tab === "cli")}
+    <div class="procs" role="group" aria-label="Processes {name} started">
+      {#each mine as proc (proc.pid)}
+        <span class="proc" class:set={tab === `proc:${proc.pid}`}>
+          <button
+            class="proc-open"
+            title="{proc.command}&#10;PID {proc.pid} · {proc.status}"
+            onclick={() => (tab = `proc:${proc.pid}`)}
+          >
+            <span class="proc-avatar">
+              {#if procs.icons[proc.icon]}
+                <img src={procs.icons[proc.icon]} alt="" draggable="false" />
+              {/if}
+              {#key proc.beat}
+                <span class="proc-badge {proc.status}" class:pulse={proc.beat > 0 && proc.status !== "terminated"}></span>
+              {/key}
+            </span>
+            <span class="proc-name">{shortCommand(proc.command)}</span>
+          </button>
+          <button
+            class="proc-x"
+            title={proc.status === "terminated" ? "Remove from the list" : "Kill and remove from the list"}
+            aria-label="Kill and remove {shortCommand(proc.command)}"
+            onclick={() => removeProc(proc.pid)}
+          >×</button>
+        </span>
+      {/each}
+      <span class="procs-fill"></span>
+      {#if tab === "cli"}
+        <button class="terminal-act procs-stop" title="End the CLI session" onclick={() => notify("cliClose", { agent: id })}>Stop</button>
+      {/if}
+    </div>
+  {/if}
+
   {#if naming}
     <!-- A model name the tool never published. It goes on a command line as a
          single argument and nowhere else; the tool itself is what decides
@@ -1309,6 +1360,10 @@
     <Lessons onReflect={reflect} />
   {:else if tab === "cli"}
     <Cli agent={id} {name} />
+  {:else if opened}
+    {#key opened.pid}
+      <Proc agent={id} proc={opened} />
+    {/key}
   {:else}
   <div class="terminal-body" bind:this={pane} onscroll={scrolled}>
     {#if shown}
@@ -2123,6 +2178,99 @@
 
   /* The gap that used to hang off the rungs. It belongs to whatever is last on
      the left, and that is now the tabs. */
+  :global(:root) {
+    --proc-running: #3fb950;
+    --proc-idle: #d29922;
+    --proc-stopped: #58a6ff;
+    --proc-terminated: #f85149;
+  }
+  .procs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+    overflow-x: auto;
+    font-size: 10px;
+  }
+  .procs-fill {
+    flex: 1;
+  }
+  .proc {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+  }
+  .proc.set {
+    border-color: color-mix(in srgb, var(--text) 40%, transparent);
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+  }
+  .proc-open {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px 2px 2px;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+  }
+  .proc-avatar {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--text) 10%, transparent);
+  }
+  .proc-avatar img {
+    width: 14px;
+    height: 14px;
+  }
+  .proc-badge {
+    position: absolute;
+    right: -2px;
+    bottom: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 2px solid var(--bg);
+  }
+  .proc-badge.running { background: var(--proc-running); }
+  .proc-badge.idle { background: var(--proc-idle); }
+  .proc-badge.stopped { background: var(--proc-stopped); }
+  .proc-badge.terminated { background: var(--proc-terminated); }
+  .proc-badge.pulse {
+    animation: proc-pulse 0.9s ease-out;
+  }
+  @keyframes proc-pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent), 0 0 0 0 var(--proc-running); transform: scale(1.35); }
+    100% { box-shadow: 0 0 0 6px transparent; transform: scale(1); }
+  }
+  .proc-name {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .proc-x {
+    padding: 0 6px 0 2px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .proc-x:hover {
+    color: var(--proc-terminated);
+  }
   .records {
     display: inline-flex;
     margin-right: auto;

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 
 export interface Pty {
+  pid?: number;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(): void;
@@ -26,6 +27,7 @@ interface NodePty {
     write(data: string): void;
     resize(cols: number, rows: number): void;
     kill(): void;
+    pid: number;
     onData(listener: (data: string) => void): void;
     onExit(listener: (event: { exitCode: number }) => void): void;
   };
@@ -119,6 +121,7 @@ export function pythonPty(file: string, args: string[], options: PtyOptions): Pt
   });
   child.on("exit", (code) => exits.forEach((listener) => listener(code ?? 0)));
   return {
+    ...(child.pid ? { pid: child.pid } : {}),
     write: (text) => {
       child.stdin?.write(text);
     },
@@ -153,6 +156,7 @@ export function openPty(file: string, args: string[], options: PtyOptions, appRo
     env: options.env,
   });
   return {
+    pid: term.pid,
     write: (text) => term.write(text),
     resize: (cols, rows) => term.resize(cols, rows),
     kill: () => term.kill(),

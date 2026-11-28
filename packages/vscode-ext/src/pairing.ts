@@ -1742,6 +1742,12 @@ export class PairingSession {
   }
 
   /** The agents that have something to carry on from, for the panel to say so. */
+  runPids(): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const [agent, handle] of this.running) if (handle.pid) out.set(agent, handle.pid);
+    return out;
+  }
+
   toolsFor(agentId: string, asks = false): string[] {
     const kind = this.installed.find((one) => one.id === agentId);
     if (!kind || !PairingSession.stub) return [];

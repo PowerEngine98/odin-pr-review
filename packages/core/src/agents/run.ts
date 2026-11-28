@@ -79,6 +79,7 @@ export interface RunRequest {
 
 /** A turn in progress, and the one thing that can be done to it from outside. */
 export interface RunHandle {
+  pid?: number;
   done: Promise<AgentRun>;
   /** Ends the turn. The transcript keeps whatever was printed before it. */
   stop(): void;
@@ -199,6 +200,7 @@ export function runAgent(request: RunRequest): RunHandle {
   });
 
   return {
+    ...(child.pid ? { pid: child.pid } : {}),
     done,
     stop(): void {
       if (settled) return;
