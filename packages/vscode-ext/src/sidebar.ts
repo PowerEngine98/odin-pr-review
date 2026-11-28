@@ -6,6 +6,7 @@ import {
   type PullRequestSummary,
   type Theme,
 } from "@odin/core";
+import { fileIcons } from "./file-icons.js";
 import {
   renderSidebar,
   sidebarTokens,
@@ -405,7 +406,9 @@ export class ChangeSidebar implements vscode.WebviewViewProvider {
   /** Everything the view is drawn from, as one object it can be handed. */
   private model(): SidebarModel {
     const graph = this.showing();
+    const icons = graph ? fileIcons(graph.nodes.map((node) => node.path)) : undefined;
     return {
+      ...(icons ? { fileIcons: icons } : {}),
       loading: this.loading,
       showUntouched: this.settings?.read()?.showUntouched !== false,
       ...(graph

@@ -7,6 +7,7 @@
   and doing both on one press means one of them was never asked for.
 -->
 <script lang="ts">
+  import FileIcon from "../shared/FileIcon.svelte";
   import StatusBadge from "../shared/StatusBadge.svelte";
   import Viewed from "../shared/Viewed.svelte";
   import Chevron from "./Chevron.svelte";
@@ -14,7 +15,7 @@
   import Hit from "./Hit.svelte";
   import type { FileView } from "./model.js";
   import Ref from "./Ref.svelte";
-  import { here as readerAt, mark, needle, notify, ui } from "./state.svelte.js";
+  import { here as readerAt, mark, model, needle, notify, ui } from "./state.svelte.js";
 
   let { file, depth }: { file: FileView; depth: number } = $props();
 
@@ -134,6 +135,7 @@
     <Chevron {open} blank={file.refs.length === 0} />
   </span>
   <StatusBadge status={file.status} />
+  <FileIcon path={file.path} icons={model.current.fileIcons} />
   <span class="name"><Hit text={file.name} needle={needle()} /></span>
   <span class="counts">
     {#if file.status === "phantom"}

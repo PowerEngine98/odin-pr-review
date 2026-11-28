@@ -1,6 +1,7 @@
 import { build } from "esbuild";
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 /**
  * Bundles the extension to a single CommonJS file.
@@ -51,3 +52,13 @@ await copyFile(
 await copyFile(require.resolve("@xterm/xterm/lib/xterm.js"), "dist/media/xterm.js");
 await copyFile(require.resolve("@xterm/xterm/css/xterm.css"), "dist/media/xterm.css");
 await copyFile(require.resolve("@xterm/addon-fit/lib/addon-fit.js"), "dist/media/addon-fit.js");
+const material = dirname(require.resolve("material-icon-theme/package.json"));
+const manifest = JSON.parse(await readFile(join(material, "dist", "material-icons.json"), "utf8"));
+const svgs = {};
+for (const [name, definition] of Object.entries(manifest.iconDefinitions)) {
+  svgs[name] = await readFile(join(material, "dist", definition.iconPath), "utf8");
+}
+await writeFile(
+  "dist/media/file-icons.json",
+  JSON.stringify({ file: manifest.file, fileNames: manifest.fileNames, fileExtensions: manifest.fileExtensions, svgs }),
+);

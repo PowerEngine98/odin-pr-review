@@ -14,6 +14,7 @@
   its row and why the rows past the cap are hidden rather than absent.
 -->
 <script lang="ts">
+  import FileIcon from "../shared/FileIcon.svelte";
   import type { NodeView } from "../model.js";
   import { canAskAgents, host, model, notify, settings, travel, ui, view } from "../state.svelte.js";
   import { anchors, lineIn, measure } from "./measured.svelte.js";
@@ -1391,6 +1392,7 @@
         <span class="path-tip">{node.path}</span>
       {/if}
       <span class="box">{@render statusMark(node.status)}</span>
+      <FileIcon path={node.path} icons={model.current.fileIcons} />
       {head.name}
       {#if head.was}<span class="was">{head.was}</span>{/if}
       <span class="stats">

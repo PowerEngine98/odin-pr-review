@@ -8,6 +8,7 @@
   take up room to say so.
 -->
 <script lang="ts">
+  import FileIcon from "../shared/FileIcon.svelte";
   import { clock, roman, topicSeconds } from "@odin/core/tour/tour.js";
 
   import { arriving } from "../hud/arriving.js";
@@ -234,6 +235,9 @@
           use:arriving={{ id: `tab:${id ?? "all"}`, kind: "tab", tone: "var(--action, #007C36)" }}
           onclick={() => openPart(id)}
         >
+          {#if id && paths.get(id)}
+            <FileIcon path={paths.get(id)!} icons={model.current.fileIcons} />
+          {/if}
           {label}
           <!-- Nothing read yet is just the size of the part; part-read is read
                over size, with the moving number carrying the colour; all read

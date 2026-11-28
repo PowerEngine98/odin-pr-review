@@ -1,3 +1,4 @@
+import type { FileIcons } from "./file-icons.js";
 import type { FileStatus, LocalBranch, PullRequestSummary } from "@odin/core";
 
 /**
@@ -19,6 +20,7 @@ import type { FileStatus, LocalBranch, PullRequestSummary } from "@odin/core";
  * the fraction is derived from the marks, so it cannot disagree with them.
  */
 export interface SidebarModel {
+  fileIcons?: FileIcons;
   /** Something is being fetched, and the view says so rather than sitting blank. */
   loading: boolean;
   /** The change as a tree, when there is a change to show. */
