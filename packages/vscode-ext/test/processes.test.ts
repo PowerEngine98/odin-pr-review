@@ -158,6 +158,8 @@ describe("a process avatar", () => {
   it("is the size of a comment's avatar, and shows the ports it listens on", () => {
     const terminal = readFileSync(join(__dirname, "../../webview/src/app/hud/Terminal.svelte"), "utf8");
     expect(terminal).toMatch(/\.proc-avatar \{[^}]*width: 22px;\s*height: 22px;/);
+    expect(terminal).toMatch(/\.proc-face \{[^}]*overflow: hidden;\s*border-radius: 50%;/);
+    expect(terminal).toMatch(/<span class="proc-face">[\s\S]*?<\/span>\s*\{#key proc\.beat\}/);
     expect(terminal).toMatch(/<span class="proc-port" title="Listening on port \{port\}">:\{port\}<\/span>/);
   });
 });

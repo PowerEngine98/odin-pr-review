@@ -1263,9 +1263,11 @@
             onclick={() => (tab = `proc:${proc.pid}`)}
           >
             <span class="proc-avatar">
-              {#if procs.icons[proc.icon]}
-                <img src={procs.icons[proc.icon]} alt="" draggable="false" />
-              {/if}
+              <span class="proc-face">
+                {#if procs.icons[proc.icon]}
+                  <img src={procs.icons[proc.icon]} alt="" draggable="false" />
+                {/if}
+              </span>
               {#key proc.beat}
                 <span class="proc-badge {proc.status}" class:pulse={proc.beat > 0 && proc.status !== "terminated"}></span>
               {/key}
@@ -2227,14 +2229,24 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex: 0 0 auto;
     width: 22px;
     height: 22px;
+  }
+  .proc-face {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
     border-radius: 50%;
     background: color-mix(in srgb, var(--text) 10%, transparent);
   }
-  .proc-avatar img {
-    width: 16px;
-    height: 16px;
+  .proc-face img {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
   }
   .proc-port {
     padding: 0 4px;
